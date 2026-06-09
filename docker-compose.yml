@@ -1,0 +1,80 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: pinsaude-postgres
+    environment:
+      POSTGRES_DB: pinsaude
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: local_dev_only
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./tools/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pinsaude"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: pinsaude-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: pinsaude
+      RABBITMQ_DEFAULT_PASS: local_dev_only
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: pinsaude-keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: local_dev_only
+      KC_DB: dev-mem
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./tools/keycloak:/opt/keycloak/data/import
+
+  vault:
+    image: hashicorp/vault:1.16
+    container_name: pinsaude-vault
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: dev-root-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    cap_add:
+      - IPC_LOCK
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: pinsaude-jaeger
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: pinsaude-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  postgres_data:
+  rabbitmq_data:

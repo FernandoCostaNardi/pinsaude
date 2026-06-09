@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: pinsaude-onboarding
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pinsaude
+    username: svc_onboarding
+    password: ${DB_PASSWORD_ONBOARDING:local_dev_only}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: onboarding
+  flyway:
+    schemas: onboarding
+    default-schema: onboarding
+    table: flyway_schema_history
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: pinsaude
+    password: ${RABBITMQ_PASSWORD:local_dev_only}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/pinsaude
+
+server:
+  port: 8085
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+otel:
+  service:
+    name: pinsaude-onboarding
+  exporter:
+    otlp:
+      endpoint: http://localhost:4317
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{traceId},%X{spanId}] %-5level %logger{36} - %msg%n"

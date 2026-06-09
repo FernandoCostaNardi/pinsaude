@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: pinsaude-faturamento
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pinsaude
+    username: svc_faturamento
+    password: ${DB_PASSWORD_FATURAMENTO:local_dev_only}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: faturamento
+  flyway:
+    schemas: faturamento
+    default-schema: faturamento
+    table: flyway_schema_history
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: pinsaude
+    password: ${RABBITMQ_PASSWORD:local_dev_only}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/pinsaude
+  cloud:
+    vault:
+      host: localhost
+      port: 8200
+      token: ${VAULT_TOKEN:dev-root-token}
+      scheme: http
+      kv:
+        enabled: true
+        backend: secret
+        default-context: pinsaude
+
+server:
+  port: 8082
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+otel:
+  service:
+    name: pinsaude-faturamento
+  exporter:
+    otlp:
+      endpoint: http://localhost:4317
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{traceId},%X{spanId}] %-5level %logger{36} - %msg%n"
