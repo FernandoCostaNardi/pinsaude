@@ -1,6 +1,4 @@
 spring:
-  application:
-    name: pinsaude-gateway
   cloud:
     gateway:
       routes:
@@ -8,56 +6,35 @@ spring:
           uri: http://localhost:8081
           predicates:
             - Path=/api/fiscal/**
-          filters:
-            - StripPrefix=2
         - id: faturamento
           uri: http://localhost:8082
           predicates:
             - Path=/api/faturamento/**
-          filters:
-            - StripPrefix=2
         - id: ledger
           uri: http://localhost:8083
           predicates:
             - Path=/api/ledger/**
-          filters:
-            - StripPrefix=2
         - id: repasse
           uri: http://localhost:8084
           predicates:
             - Path=/api/repasse/**
-          filters:
-            - StripPrefix=2
         - id: onboarding
           uri: http://localhost:8085
           predicates:
             - Path=/api/onboarding/**
-          filters:
-            - StripPrefix=2
         - id: gestao
           uri: http://localhost:8086
           predicates:
             - Path=/api/gestao/**
-          filters:
-            - StripPrefix=2
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/pinsaude
-
 server:
   port: 8080
-
 management:
   endpoints:
     web:
       exposure:
         include: health,info
-
-otel:
-  service:
-    name: pinsaude-gateway
-  exporter:
-    otlp:
-      endpoint: http://localhost:4317

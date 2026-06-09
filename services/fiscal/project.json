@@ -1,0 +1,24 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "fiscal",
+  "root": "services/fiscal",
+  "sourceRoot": "services/fiscal/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tools\\scripts\\run.cmd tools/scripts/mvn-build.js services/fiscal",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tools\\scripts\\run.cmd tools/scripts/mvn-test.js services/fiscal",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  },
+  "tags": ["scope:services", "type:backend"]
+}

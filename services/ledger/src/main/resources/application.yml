@@ -1,11 +1,8 @@
 spring:
-  application:
-    name: pinsaude-ledger
   datasource:
     url: jdbc:postgresql://localhost:5432/pinsaude
     username: svc_ledger
     password: ${DB_PASSWORD_LEDGER:local_dev_only}
-    driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
       ddl-auto: validate
@@ -15,34 +12,16 @@ spring:
   flyway:
     schemas: ledger
     default-schema: ledger
-    table: flyway_schema_history
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: pinsaude
-    password: ${RABBITMQ_PASSWORD:local_dev_only}
+    enabled: false
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/pinsaude
-
 server:
   port: 8083
-
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
-
-otel:
-  service:
-    name: pinsaude-ledger
-  exporter:
-    otlp:
-      endpoint: http://localhost:4317
-
-logging:
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{traceId},%X{spanId}] %-5level %logger{36} - %msg%n"
+        include: health,info
