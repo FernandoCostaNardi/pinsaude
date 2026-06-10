@@ -1,0 +1,398 @@
+{
+  "realm": "pinsaude",
+  "enabled": true,
+  "displayName": "Pin Saúde",
+  "displayNameHtml": "<div class=\"kc-logo-text\"><span>Pin Saúde</span></div>",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "sslRequired": "external",
+  "accessTokenLifespan": 1800,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "offlineSessionIdleTimeout": 2592000,
+  "offlineSessionMaxLifespanEnabled": false,
+  "offlineSessionMaxLifespan": 5184000,
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyInitialCounter": 0,
+  "otpPolicyDigits": 6,
+  "otpPolicyLookAheadWindow": 1,
+  "otpPolicyPeriod": 30,
+  "otpSupportedApplications": ["totpAppGoogleName", "totpAppMicrosoftAuthenticatorName"],
+  "browserFlow": "pinsaude browser",
+  "directGrantFlow": "direct grant",
+  "clientAuthenticationFlow": "clients",
+  "dockerAuthenticationFlow": "docker auth",
+  "roles": {
+    "realm": [
+      {
+        "name": "medico",
+        "description": "Médico com acesso ao portal do médico",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "operacao",
+        "description": "Operador de clínica — requer MFA",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "financeiro",
+        "description": "Responsável financeiro — requer MFA",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "contabil",
+        "description": "Responsável contábil — requer MFA",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "gestao",
+        "description": "Gestor com acesso a relatórios — requer MFA",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "pinsaude-web",
+      "name": "Pin Saúde — Frontend",
+      "description": "SPA React — PKCE habilitado",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:3000"
+      ],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000"
+      },
+      "protocolMappers": [
+        {
+          "name": "cnpj_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "cnpj_id",
+            "claim.name": "cnpj_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "false",
+            "aggregate.attrs": "false"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "roles",
+        "profile",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    },
+    {
+      "clientId": "pinsaude-gateway",
+      "name": "Pin Saúde — Gateway",
+      "description": "Spring Cloud Gateway — validação server-side",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "pinsaude-gateway-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "attributes": {},
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "roles",
+        "profile",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "medico@pinsaude.com.br",
+      "email": "medico@pinsaude.com.br",
+      "firstName": "Médico",
+      "lastName": "Teste",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["medico"],
+      "attributes": {
+        "cnpj_id": ["12.345.678/0001-90"]
+      }
+    },
+    {
+      "username": "operacao@pinsaude.com.br",
+      "email": "operacao@pinsaude.com.br",
+      "firstName": "Operacao",
+      "lastName": "Teste",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": ["CONFIGURE_TOTP"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["operacao"],
+      "attributes": {
+        "cnpj_id": ["98.765.432/0001-10"]
+      }
+    },
+    {
+      "username": "gestao@pinsaude.com.br",
+      "email": "gestao@pinsaude.com.br",
+      "firstName": "Gestao",
+      "lastName": "Teste",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": ["CONFIGURE_TOTP"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "test123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["gestao"],
+      "attributes": {
+        "cnpj_id": ["11.222.333/0001-44"]
+      }
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "pinsaude browser",
+      "description": "Browser authentication com MFA condicional para perfis privilegiados",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "autheticatorFlow": false
+        },
+        {
+          "authenticator": "auth-spnego",
+          "requirement": "DISABLED",
+          "priority": 20,
+          "autheticatorFlow": false
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "requirement": "ALTERNATIVE",
+          "priority": 25,
+          "autheticatorFlow": false
+        },
+        {
+          "flowAlias": "pinsaude browser forms",
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "autheticatorFlow": true
+        }
+      ]
+    },
+    {
+      "alias": "pinsaude browser forms",
+      "description": "Username, password e MFA condicional por role",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false
+        },
+        {
+          "flowAlias": "pinsaude mfa operacao",
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "autheticatorFlow": true
+        },
+        {
+          "flowAlias": "pinsaude mfa financeiro",
+          "requirement": "CONDITIONAL",
+          "priority": 30,
+          "autheticatorFlow": true
+        },
+        {
+          "flowAlias": "pinsaude mfa contabil",
+          "requirement": "CONDITIONAL",
+          "priority": 40,
+          "autheticatorFlow": true
+        },
+        {
+          "flowAlias": "pinsaude mfa gestao",
+          "requirement": "CONDITIONAL",
+          "priority": 50,
+          "autheticatorFlow": true
+        }
+      ]
+    },
+    {
+      "alias": "pinsaude mfa operacao",
+      "description": "MFA obrigatório para role operacao",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-role",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "authenticatorConfig": "mfa-role-operacao"
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "autheticatorFlow": false
+        }
+      ]
+    },
+    {
+      "alias": "pinsaude mfa financeiro",
+      "description": "MFA obrigatório para role financeiro",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-role",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "authenticatorConfig": "mfa-role-financeiro"
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "autheticatorFlow": false
+        }
+      ]
+    },
+    {
+      "alias": "pinsaude mfa contabil",
+      "description": "MFA obrigatório para role contabil",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-role",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "authenticatorConfig": "mfa-role-contabil"
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "autheticatorFlow": false
+        }
+      ]
+    },
+    {
+      "alias": "pinsaude mfa gestao",
+      "description": "MFA obrigatório para role gestao",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-role",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "authenticatorConfig": "mfa-role-gestao"
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "autheticatorFlow": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "mfa-role-operacao",
+      "config": {
+        "condUserRole": "operacao"
+      }
+    },
+    {
+      "alias": "mfa-role-financeiro",
+      "config": {
+        "condUserRole": "financeiro"
+      }
+    },
+    {
+      "alias": "mfa-role-contabil",
+      "config": {
+        "condUserRole": "contabil"
+      }
+    },
+    {
+      "alias": "mfa-role-gestao",
+      "config": {
+        "condUserRole": "gestao"
+      }
+    }
+  ]
+}
