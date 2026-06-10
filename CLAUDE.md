@@ -210,6 +210,48 @@ Remove-Item -Recurse -Force .nx\cache
 
 ---
 
+## Frontend (apps/web) — Armadilhas Conhecidas
+
+### pnpm install precisa de `--no-frozen-lockfile` ao adicionar pacotes novos
+O `CI=true` ativado pelo ambiente faz o pnpm rodar com `frozen-lockfile` por padrão.
+Ao adicionar novas dependências ao `package.json`, rodar:
+```powershell
+$env:NODE_TLS_REJECT_UNAUTHORIZED = "0"   # SSL corporativo
+& "C:\Users\Fernando\AppData\Roaming\npm\pnpm.cmd" install --no-frozen-lockfile
+```
+
+### pnpm v11: `allowBuilds` vai em `pnpm-workspace.yaml`
+O campo `"pnpm"` no `package.json` foi removido no pnpm v11. Build scripts de `esbuild` e `nx` são aprovados em `pnpm-workspace.yaml`:
+```yaml
+allowBuilds:
+  esbuild: true
+  nx: true
+```
+
+### Resolução de `lucide-react` a partir de `libs/frontend` (Rollup)
+Rollup não consegue resolver `lucide-react` importado em `libs/frontend/src/` durante o build, pois o pacote está somente em `apps/web/node_modules`.
+**Solução:** alias explícito em `vite.config.ts`:
+```typescript
+'lucide-react': path.resolve(__dirname, './node_modules/lucide-react'),
+```
+
+### TypeScript paths para React e Lucide ao incluir `libs/frontend` no projeto
+Quando `libs/frontend/src` está no `include` do `tsconfig.json` de `apps/web`, TypeScript não encontra `react` e `lucide-react` a partir do caminho das libs.
+**Solução:** adicionar paths explícitos em `tsconfig.json`:
+```json
+"paths": {
+  "react": ["./node_modules/@types/react"],
+  "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],
+  "lucide-react": ["./node_modules/lucide-react/dist/lucide-react.d.ts"]
+}
+```
+
+### `postcss.config.js` e `tailwind.config.js` precisam de `"type": "module"` no package.json
+Com Vite 5 + Node 22, configs `.js` são tratadas como CJS se não houver `"type": "module"`.
+Adicionado em `apps/web/package.json`.
+
+---
+
 ## Infraestrutura Docker — Armadilhas Conhecidas
 
 ### Porta 5432 em conflito com PostgreSQL local

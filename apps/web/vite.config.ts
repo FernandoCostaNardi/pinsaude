@@ -7,8 +7,11 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
-    }
+      '@': path.resolve(__dirname, './src'),
+      '@pinsaude/ui': path.resolve(__dirname, '../../libs/frontend/src'),
+      // libs/frontend importa lucide-react — aponta para o node_modules de apps/web
+      'lucide-react': path.resolve(__dirname, './node_modules/lucide-react'),
+    },
   },
   server: {
     port: 3000,
