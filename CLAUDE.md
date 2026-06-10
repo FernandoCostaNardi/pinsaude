@@ -250,6 +250,46 @@ Quando `libs/frontend/src` está no `include` do `tsconfig.json` de `apps/web`, 
 Com Vite 5 + Node 22, configs `.js` são tratadas como CJS se não houver `"type": "module"`.
 Adicionado em `apps/web/package.json`.
 
+### Tailwind não encontra os templates quando o build roda fora de `apps/web`
+O Nx executa o build com `cwd: workspaceRoot` (`G:\olisystem\pinsaude`). O PostCSS/Tailwind resolve o `tailwind.config.js` pelo CWD — que é a raiz do monorepo, não `apps/web`. Resultado: warning `content option missing or empty` e CSS de 4.8kB sem nenhuma utility class.
+
+**Solução em duas partes:**
+
+1. `postcss.config.js` — passar o caminho absoluto do config explicitamente:
+```javascript
+import { fileURLToPath } from 'url'
+import path from 'path'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const configPath = path.join(__dirname, 'tailwind.config.js').replace(/\\/g, '/')
+
+export default {
+  plugins: {
+    tailwindcss: { config: configPath },
+    autoprefixer: {},
+  },
+}
+```
+
+2. `tailwind.config.js` — usar paths absolutos com forward slashes (glob falha com backslash no Windows):
+```javascript
+import { fileURLToPath } from 'url'
+import path from 'path'
+
+const dir = path.dirname(fileURLToPath(import.meta.url)).replace(/\\/g, '/')
+
+export default {
+  content: [
+    `${dir}/index.html`,
+    `${dir}/src/**/*.{js,ts,jsx,tsx}`,
+    `${dir}/../../libs/frontend/src/**/*.{js,ts,jsx,tsx}`,
+  ],
+  ...
+}
+```
+
+Com essa configuração o CSS de produção sobe de 4.8kB para ~19.6kB com todas as utility classes.
+
 ---
 
 ## Infraestrutura Docker — Armadilhas Conhecidas
