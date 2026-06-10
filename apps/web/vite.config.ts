@@ -1,6 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import fs from 'fs'
+
+// With pnpm node-linker=hoisted on Linux (CI), lucide-react is hoisted to the
+// workspace root. On Windows it lives in apps/web/node_modules.
+const lucideReact = (() => {
+  const local = path.resolve(__dirname, './node_modules/lucide-react')
+  return fs.existsSync(local) ? local : path.resolve(__dirname, '../../node_modules/lucide-react')
+})()
 
 export default defineConfig({
   root: path.resolve(__dirname, '.'),
@@ -9,8 +17,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@pinsaude/ui': path.resolve(__dirname, '../../libs/frontend/src'),
-      // libs/frontend importa lucide-react — aponta para o node_modules de apps/web
-      'lucide-react': path.resolve(__dirname, './node_modules/lucide-react'),
+      'lucide-react': lucideReact,
     },
   },
   server: {
