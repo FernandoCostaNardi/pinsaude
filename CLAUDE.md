@@ -210,6 +210,60 @@ Remove-Item -Recurse -Force .nx\cache
 
 ---
 
+## Infraestrutura Docker — Armadilhas Conhecidas
+
+### Porta 5432 em conflito com PostgreSQL local
+O ambiente de desenvolvimento tem um PostgreSQL nativo rodando na porta 5432.
+O container Docker do pinsaude usa **porta 5433** para evitar conflito.
+
+| Serviço | Porta Host | Porta Container |
+|---|---|---|
+| PostgreSQL | **5433** | 5432 |
+| RabbitMQ | 5672 / 15672 | 5672 / 15672 |
+| Keycloak | 8080 | 8080 |
+| Vault | 8200 | 8200 |
+| Jaeger | 16686 / 4317 | 16686 / 4317 |
+| Mailhog | 1025 / 8025 | 1025 / 8025 |
+
+Para se conectar ao banco via string JDBC nos serviços Spring Boot locais (fora do Docker):
+```
+spring.datasource.url=jdbc:postgresql://localhost:5433/pinsaude?currentSchema=<schema>
+```
+
+### Keycloak 24 não tem curl nem wget
+`quay.io/keycloak/keycloak:24.0` é baseado em Red Hat UBI 9 minimal.
+Não possui `curl`, `wget`, `nc` nem Python. **Possui `bash` e suporta `/dev/tcp`**.
+
+Healthcheck correto — usar `CMD` array (não `CMD-SHELL`, que usa `sh` sem `/dev/tcp`):
+```yaml
+test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && timeout 3 head -1 <&3 | grep -q '200'"]
+```
+
+`KC_HEALTH_ENABLED: "true"` deve estar nos env vars do Keycloak para o endpoint `/health/ready` ser exposto.
+
+### Docker CLI não está no PATH padrão do PowerShell
+O Docker Desktop instala o binário em `C:\Program Files\Docker\Docker\resources\bin\`.
+Em sessões PowerShell sem o PATH configurado, usar caminho absoluto:
+```powershell
+$docker = "C:\Program Files\Docker\Docker\resources\bin\docker.exe"
+$env:PATH = "C:\Program Files\Docker\Docker\resources\bin;" + $env:PATH
+```
+O `docker-credential-desktop.exe` também fica nessa pasta — sem ele no PATH, pulls falham.
+
+### Atributo `version:` obsoleto no docker-compose.yml
+Docker Compose v2+ ignora o campo `version`. Não usar para evitar warning no `compose up`.
+
+### Iniciar a infra local
+```powershell
+# Windows (recomendado)
+.\tools\scripts\start-infra.ps1
+
+# Derrubar tudo
+.\tools\scripts\start-infra.ps1 -Down
+```
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
