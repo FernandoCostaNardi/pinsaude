@@ -14,8 +14,16 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@pinsaude/ui": ["../../libs/frontend/src/index"],
+      "@pinsaude/ui/*": ["../../libs/frontend/src/*"],
+      "react": ["./node_modules/@types/react"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],
+      "lucide-react": ["./node_modules/lucide-react/dist/lucide-react.d.ts"]
+    }
   },
-  "include": ["src"],
+  "include": ["src", "../../libs/frontend/src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
