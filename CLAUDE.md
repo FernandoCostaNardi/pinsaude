@@ -346,6 +346,41 @@ Docker Compose v2+ ignora o campo `version`. Não usar para evitar warning no `c
 
 ---
 
+## Design System Oficial — Pin Saúde (Corvi Design)
+
+Arquivo de referência: `design_system/corvidesign_defesa_pin-saude-02.pdf`
+**Sempre consultar este arquivo ao criar ou revisar componentes visuais.**
+
+### Cores
+
+| Token Tailwind | Hex | Uso |
+|---|---|---|
+| `primary` / DEFAULT | `#02A9F7` | Cor principal — azul confiança/tecnologia |
+| `primary-700` | `#0069A0` | Sidebar, nav ativa (escuro) |
+| `secondary` | `#8EDD65` | Verde saúde — cor opcional |
+| `gray-brand-mid` | `#939598` | Textos, boa leiturabilidade |
+| `gray-brand-light` | `#B7B9BC` | Elementos auxiliares |
+
+Paleta `primary` completa no Tailwind:
+```
+50: #E6F6FF | 100: #BAE9FF | 200: #7DD4FF | 300: #40BEFF | 400: #17B3FF
+500: #02A9F7 | 600: #0089CC | 700: #0069A0 | 800: #004C74 | 900: #002F47
+```
+
+### Tipografia
+
+**Source Sans Pro** (Google Fonts) — font sem serifa projetada para UI.
+- Black 900 → títulos / logotipo
+- Semi-bold 600 → subtítulos, labels
+- Regular 400 → parágrafos, textos
+
+### Logo
+
+`apps/web/public/logo-pinsaude.png` — baixada do site institucional.
+Em sidebar escura: usar `className="brightness-0 invert"` para versão branca.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
