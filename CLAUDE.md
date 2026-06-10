@@ -381,6 +381,40 @@ Em sidebar escura: usar `className="brightness-0 invert"` para versão branca.
 
 ---
 
+## CI/CD — GitHub Actions
+
+### Estrutura dos workflows
+- `.github/workflows/ci.yml` — executa em cada push para `main` e em PRs
+- `.github/workflows/release.yml` — stub, ativa em tags `v*.*.*`
+
+### Jobs do CI
+| Job | O que executa |
+|---|---|
+| `build-web` | `node tools/scripts/build-web.js` (tsc + vite) |
+| `test-web` | `node tools/scripts/build-web.js test` (vitest) |
+| `lint-web` | `node tools/scripts/build-web.js lint` (eslint) |
+| `build-java` | `mvn clean install --no-transfer-progress -DskipTests` |
+| `affected` | Relatório Nx affected (somente PRs) |
+
+### Por que não usar `npx nx run-many` no CI
+Os `project.json` referenciam `tools\scripts\run.cmd` que é um wrapper Windows-only para contornar o overflow de PATH. Em Linux (Ubuntu runner), esse `.cmd` não existe.
+**Solução:** chamar `node tools/scripts/build-web.js` e `mvn` diretamente no CI, sem passar pelo Nx executor.
+
+### Layout do `node_modules` no CI (pnpm + hoisted)
+Com `node-linker=hoisted`, o `pnpm install` cria:
+- `node_modules/.pnpm/<pkg>@<ver>/` — virtual store (existe mesmo com hoisted)
+- `apps/web/node_modules/.bin/vite|vitest|eslint` — binários do workspace app
+- `node_modules/.bin/nx|tsc` — binários das deps raiz
+
+`resolveNodeBin` em `build-web.js` busca no `.pnpm` store (funciona no CI).
+
+### Vitest: binário em raiz do pacote, não em `bin/`
+`vitest@1.6.1` coloca o executável em `vitest.mjs` na raiz do pacote (não em `bin/vitest.js`).
+`resolveNodeBin` foi atualizado para checar o diretório raiz do pacote como fallback.
+A flag `--passWithNoTests` é obrigatória no CI enquanto não houver arquivos de teste.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

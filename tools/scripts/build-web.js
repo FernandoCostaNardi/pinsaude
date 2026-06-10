@@ -25,8 +25,11 @@ function resolveNodeBin(pkg, binFile) {
   const entries = fs.readdirSync(pnpmDir);
   for (const entry of entries) {
     if (!entry.startsWith(pkg + '@')) continue;
-    const candidate = path.join(pnpmDir, entry, 'node_modules', pkg, 'bin', binFile);
-    if (fs.existsSync(candidate)) return candidate;
+    const inBin = path.join(pnpmDir, entry, 'node_modules', pkg, 'bin', binFile);
+    if (fs.existsSync(inBin)) return inBin;
+    // some packages (e.g. vitest) place the binary at the package root, not bin/
+    const inRoot = path.join(pnpmDir, entry, 'node_modules', pkg, binFile);
+    if (fs.existsSync(inRoot)) return inRoot;
   }
   return null;
 }
@@ -51,9 +54,9 @@ if (action === 'build') {
   runNode(vitePath, ['--config', path.join(webRoot, 'vite.config.ts')]);
 
 } else if (action === 'test') {
-  const vitestPath = resolveNodeBin('vitest', 'vitest.js');
+  const vitestPath = resolveNodeBin('vitest', 'vitest.mjs') || resolveNodeBin('vitest', 'vitest.js');
   if (!vitestPath) { console.error('Could not resolve vitest path'); process.exit(1); }
-  runNode(vitestPath, ['run', '--config', path.join(webRoot, 'vite.config.ts')]);
+  runNode(vitestPath, ['run', '--passWithNoTests', '--config', path.join(webRoot, 'vite.config.ts')]);
 
 } else if (action === 'lint') {
   const eslintPath = resolveNodeBin('eslint', 'eslint.js');
