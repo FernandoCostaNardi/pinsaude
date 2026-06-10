@@ -449,6 +449,53 @@ O scope `basic` foi removido em versões mais novas. Não adicionar em `defaultC
 
 ---
 
+## Autenticação Frontend (React + Keycloak ROPC)
+
+### Abordagem adotada
+Fluxo ROPC (Resource Owner Password Credentials) via `fetch` direto ao endpoint `/token` do Keycloak.
+NÃO usa o adapter `keycloak-js` para o login — o adapter é para redirect flow (PKCE).
+ROPC permite formulário customizado sem redirect para o Keycloak.
+
+### Estrutura dos arquivos de auth
+```
+apps/web/src/auth/
+  keycloak.ts        → constantes (URL, realm, client, endpoints) + decodeJwt()
+  AuthContext.tsx    → Context, AuthProvider, useAuth() — gerencia tokens + refresh automático
+  useAuth.ts         → re-export de useAuth e AuthUser para imports limpos
+```
+
+### Armazenamento de tokens
+Tokens (access + refresh + expiresAt) armazenados em `sessionStorage` com chave `pinsaude_tokens`.
+Sessão é restaurada ao recarregar a página; expirada automaticamente com o refresh timer.
+
+### Refresh automático
+`setTimeout` agendado `(expires_in - 60) * 1000` ms após cada token emitido.
+Usa `useRef` para o callback (evita circular dependency entre `applyTokens` e `performRefresh`).
+
+### `import.meta.env` no TypeScript
+Vite expõe variáveis de ambiente via `import.meta.env`. Para o TypeScript não reclamar,
+criar `apps/web/src/vite-env.d.ts` com:
+```ts
+/// <reference types="vite/client" />
+```
+Sem esse arquivo: `error TS2339: Property 'env' does not exist on type 'ImportMeta'`.
+
+### Variáveis de ambiente Vite (auth)
+```
+VITE_KC_URL    → URL base do Keycloak (default: http://localhost:8080)
+VITE_KC_REALM  → Realm (default: pinsaude)
+VITE_KC_CLIENT → Client ID (default: pinsaude-web)
+```
+
+### Erros ROPC tratados
+| Resposta Keycloak | Tratamento |
+|---|---|
+| `invalid_grant` + `"Invalid user credentials"` | "E-mail ou senha incorretos" |
+| `invalid_grant` + `"Account is not fully set up"` | Mensagem sobre configuração de MFA |
+| Outros 4xx/5xx | Mensagem genérica com status |
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
