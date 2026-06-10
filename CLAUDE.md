@@ -312,6 +312,27 @@ Para se conectar ao banco via string JDBC nos serviços Spring Boot locais (fora
 spring.datasource.url=jdbc:postgresql://localhost:5433/pinsaude?currentSchema=<schema>
 ```
 
+### Keycloak usa PostgreSQL (não dev-mem)
+`KC_DB: dev-mem` causava perda de estado periodicamente (H2 in-memory). Substituído por:
+```yaml
+KC_DB: postgres
+KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+KC_DB_USERNAME: postgres
+KC_DB_PASSWORD: postgres
+```
+O banco `keycloak` é criado automaticamente pelo `tools/db/init.sql` via `\gexec`.
+
+**Recriando o volume do PostgreSQL** (necessário apenas uma vez ao migrar de `dev-mem`):
+```powershell
+$docker = "C:\Program Files\Docker\Docker\resources\bin\docker.exe"
+# Cria o banco manualmente se o volume já existir
+& $docker exec pinsaude-postgres psql -U postgres -c "CREATE DATABASE keycloak;"
+# Ou recria tudo do zero:
+.\tools\scripts\start-infra.ps1 -Down
+& $docker volume rm pinsaude_postgres_data
+.\tools\scripts\start-infra.ps1
+```
+
 ### Keycloak 24 não tem curl nem wget
 `quay.io/keycloak/keycloak:24.0` é baseado em Red Hat UBI 9 minimal.
 Não possui `curl`, `wget`, `nc` nem Python. **Possui `bash` e suporta `/dev/tcp`**.
