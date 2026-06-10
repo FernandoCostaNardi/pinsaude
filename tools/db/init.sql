@@ -1,6 +1,12 @@
 -- Pin Saúde — Inicialização do banco de desenvolvimento
 -- Cria schemas e usuários isolados por serviço (sem acesso cruzado)
 
+-- Banco dedicado para o Keycloak (idempotente via \gexec)
+SELECT 'CREATE DATABASE keycloak'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'keycloak')
+\gexec
+
+
 -- Schemas de domínio (6 serviços)
 CREATE SCHEMA IF NOT EXISTS fiscal;
 CREATE SCHEMA IF NOT EXISTS faturamento;
