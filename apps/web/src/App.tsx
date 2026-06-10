@@ -4,6 +4,7 @@ import { ProtectedRoute }    from './components/ProtectedRoute'
 import { Shell }             from './layouts/Shell'
 import { LoginPage }         from './pages/LoginPage'
 import { Dashboard }         from './pages/Dashboard'
+import { UsersPage }         from './pages/UsersPage'
 import { UnderConstruction } from './pages/UnderConstruction'
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
             }
           >
             <Route path="/"            element={<Dashboard />} />
+            <Route path="/usuarios"    element={<UsersPage />} />
             <Route path="/medicos"     element={<UnderConstruction title="Médicos"     epic="EPIC-03" />} />
             <Route path="/empresas"    element={<UnderConstruction title="Empresas"    epic="EPIC-02" />} />
             <Route path="/notas"       element={<UnderConstruction title="Notas"       epic="EPIC-05" />} />

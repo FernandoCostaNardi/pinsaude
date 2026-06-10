@@ -24,6 +24,15 @@
   "otpPolicyLookAheadWindow": 1,
   "otpPolicyPeriod": 30,
   "otpSupportedApplications": ["totpAppGoogleName", "totpAppMicrosoftAuthenticatorName"],
+  "smtpServer": {
+    "host": "mailhog",
+    "port": "1025",
+    "from": "noreply@pinsaude.com.br",
+    "fromDisplayName": "Pin Saude",
+    "ssl": "false",
+    "starttls": "false",
+    "auth": "false"
+  },
   "browserFlow": "pinsaude browser",
   "directGrantFlow": "direct grant",
   "clientAuthenticationFlow": "clients",

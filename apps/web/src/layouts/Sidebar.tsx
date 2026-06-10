@@ -7,17 +7,20 @@ import {
   Banknote,
   ArrowLeftRight,
   BarChart3,
+  Users,
   X,
 } from 'lucide-react'
+import { useAuth } from '../auth/AuthContext'
 
 const navItems = [
-  { to: '/',            label: 'Dashboard',   icon: LayoutDashboard },
-  { to: '/medicos',     label: 'Médicos',      icon: Stethoscope     },
-  { to: '/empresas',    label: 'Empresas',     icon: Building2       },
-  { to: '/notas',       label: 'Notas',        icon: FileText        },
-  { to: '/repasses',    label: 'Repasses',     icon: Banknote        },
-  { to: '/conciliacao', label: 'Conciliação',  icon: ArrowLeftRight  },
-  { to: '/gestao',      label: 'Gestão',       icon: BarChart3       },
+  { to: '/',            label: 'Dashboard',   icon: LayoutDashboard, roles: null       },
+  { to: '/medicos',     label: 'Médicos',      icon: Stethoscope,     roles: null       },
+  { to: '/empresas',    label: 'Empresas',     icon: Building2,       roles: null       },
+  { to: '/notas',       label: 'Notas',        icon: FileText,        roles: null       },
+  { to: '/repasses',    label: 'Repasses',     icon: Banknote,        roles: null       },
+  { to: '/conciliacao', label: 'Conciliação',  icon: ArrowLeftRight,  roles: null       },
+  { to: '/gestao',      label: 'Gestão',       icon: BarChart3,       roles: null       },
+  { to: '/usuarios',    label: 'Usuários',     icon: Users,           roles: ['gestao'] },
 ]
 
 interface SidebarProps {
@@ -26,6 +29,13 @@ interface SidebarProps {
 }
 
 export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
+  const { user } = useAuth()
+  const userRoles = user?.realm_access?.roles ?? []
+
+  const visibleItems = navItems.filter(
+    item => item.roles === null || item.roles.some(r => userRoles.includes(r))
+  )
+
   const content = (
     <nav className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 h-16 border-b border-white/10 shrink-0">
@@ -45,7 +55,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-        {navItems.map(({ to, label, icon: Icon }) => (
+        {visibleItems.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
