@@ -398,20 +398,15 @@ Em sidebar escura: usar `className="brightness-0 invert"` para versão branca.
 
 ### Por que não usar `npx nx run-many` no CI
 Os `project.json` referenciam `tools\scripts\run.cmd` que é um wrapper Windows-only para contornar o overflow de PATH. Em Linux (Ubuntu runner), esse `.cmd` não existe.
-**Solução:** chamar `node tools/scripts/build-web.js` e `mvn` diretamente no CI, sem passar pelo Nx executor.
+**Solução:** chamar `pnpm --filter web run <script>` e `mvn` diretamente, sem passar pelo Nx executor.
 
-### Layout do `node_modules` no CI (pnpm + hoisted)
-Com `node-linker=hoisted`, o `pnpm install` cria:
-- `node_modules/.pnpm/<pkg>@<ver>/` — virtual store (existe mesmo com hoisted)
-- `apps/web/node_modules/.bin/vite|vitest|eslint` — binários do workspace app
-- `node_modules/.bin/nx|tsc` — binários das deps raiz
+### Por que não usar `node tools/scripts/build-web.js` no CI
+`build-web.js` usa `resolveNodeBin` que busca em `node_modules/.pnpm/`. Com `node-linker=hoisted` no Linux, o pnpm **não cria** o diretório `.pnpm` — logo os binários (vite, vitest, eslint) não são encontrados.
+**Solução:** usar `pnpm --filter web run build|test|lint` que executa os scripts do `apps/web/package.json` com os binários corretos do workspace.
+`build-web.js` continua sendo usado localmente no Windows via Nx targets (funciona porque `.pnpm` existe no Windows).
 
-`resolveNodeBin` em `build-web.js` busca no `.pnpm` store (funciona no CI).
-
-### Vitest: binário em raiz do pacote, não em `bin/`
-`vitest@1.6.1` coloca o executável em `vitest.mjs` na raiz do pacote (não em `bin/vitest.js`).
-`resolveNodeBin` foi atualizado para checar o diretório raiz do pacote como fallback.
-A flag `--passWithNoTests` é obrigatória no CI enquanto não houver arquivos de teste.
+### Vitest: `--passWithNoTests` no script do package.json
+`apps/web/package.json` tem `"test": "vitest run --passWithNoTests"` para não falhar enquanto não há arquivos de teste.
 
 ---
 

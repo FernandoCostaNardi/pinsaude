@@ -46,7 +46,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build (tsc + vite)
-        run: node tools/scripts/build-web.js
+        run: pnpm --filter web run build
 
   test-web:
     name: Test — Frontend (Vitest)
@@ -67,7 +67,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Test
-        run: node tools/scripts/build-web.js test
+        run: pnpm --filter web run test
 
   lint-web:
     name: Lint — Frontend (ESLint)
@@ -88,7 +88,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: node tools/scripts/build-web.js lint
+        run: pnpm --filter web run lint
 
   # ── Java Services ─────────────────────────────────────────────────────────
 
@@ -140,7 +140,7 @@ jobs:
       - name: Report affected projects
         run: |
           echo "### Projetos afetados por este PR" >> "$GITHUB_STEP_SUMMARY"
-          AFFECTED=$(node node_modules/.bin/nx show projects \
+          AFFECTED=$(pnpm exec nx show projects \
             --affected \
             --base=origin/${{ github.base_ref }} \
             --head=HEAD 2>/dev/null || true)
