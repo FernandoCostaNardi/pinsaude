@@ -517,6 +517,49 @@ VITE_KC_CLIENT → Client ID (default: pinsaude-web)
 
 ---
 
+## Keycloak Admin API — Armadilhas Conhecidas (EPIC-01.5)
+
+### Token do admin usa o realm `master`, não `pinsaude`
+```
+POST /realms/master/protocol/openid-connect/token
+grant_type=password&client_id=admin-cli&username=admin&password=admin
+```
+Chamar com realm `pinsaude` retorna 401.
+
+### GET /role-mappings/realm retorna lista flat, não objeto
+```
+GET /admin/realms/pinsaude/users/{id}/role-mappings/realm
+→ [ { "id": "...", "name": "gestao", ... }, ... ]
+```
+Não é `{ mappings: [...] }`. Desserializar direto como `List<Map<String, Object>>`.
+
+### DELETE com body requer `RestClient.method(HttpMethod.DELETE)`
+`restClient.delete()` no Spring não aceita body. Para remover roles (DELETE com payload JSON):
+```java
+restClient.method(HttpMethod.DELETE)
+    .uri(url)
+    .contentType(MediaType.APPLICATION_JSON)
+    .body(List.of(role))
+    .retrieve()
+    .toBodilessEntity();
+```
+
+### smtpServer no realm-export.json usa nome do serviço Docker
+O Keycloak roda dentro do container Docker. O SMTP deve apontar para `mailhog` (nome do serviço),
+não `localhost`. `localhost` funcionaria apenas fora do Docker.
+```json
+"smtpServer": { "host": "mailhog", "port": "1025", ... }
+```
+
+### `execute-actions-email` envia o e-mail de convite
+```
+PUT /admin/realms/pinsaude/users/{id}/execute-actions-email
+Body: ["UPDATE_PASSWORD", "VERIFY_EMAIL"]
+```
+Requer que o realm tenha `smtpServer` configurado; caso contrário retorna 500 silencioso.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
