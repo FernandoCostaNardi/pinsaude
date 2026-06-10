@@ -1,0 +1,17 @@
+{
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "gateway",
+  "root": "gateway",
+  "sourceRoot": "gateway/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tools\\scripts\\run.cmd tools/scripts/mvn-build.js gateway",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  },
+  "tags": ["scope:gateway", "type:backend"]
+}

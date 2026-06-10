@@ -1,0 +1,216 @@
+# CLAUDE.md — Pin Saúde Monorepo
+
+Instruções específicas deste projeto para o Claude Code.
+
+---
+
+## Stack e Versões
+
+| Camada | Tecnologia | Versão |
+|---|---|---|
+| Orquestrador | Nx | 19.8.14 |
+| Frontend | React + Vite + TypeScript | 18 / 5.x / 5.x |
+| Backend | Spring Boot | 3.2.5 |
+| Gateway | Spring Cloud Gateway | 4.1.x |
+| Java | JDK | 17 |
+| Build Java | Maven | 3.6.3 |
+| Gerenciador JS | pnpm | 9.11.0 |
+
+---
+
+## Estrutura do Monorepo
+
+```
+pinsaude/
+  apps/web/          → React 18 (porta 3000, proxy /api → 8080)
+  services/fiscal/   → Spring Boot (porta 8081)
+  services/faturamento/ → Spring Boot (porta 8082)
+  services/ledger/   → Spring Boot (porta 8083)
+  services/repasse/  → Spring Boot (porta 8084)
+  services/onboarding/ → Spring Boot (porta 8085)
+  services/gestao/   → Spring Boot (porta 8086)
+  gateway/           → Spring Cloud Gateway (porta 8080)
+  tools/scripts/     → Scripts Node.js de build/test
+  docs/              → PRD, ADR
+```
+
+---
+
+## Regras Nx 19
+
+**Nx 19 NÃO suporta a seção `projects` inline no `nx.json`.**
+Cada projeto (app, service, gateway) deve ter seu próprio `project.json` na raiz do módulo.
+Nunca adicionar `"projects": { ... }` ao `nx.json`.
+
+Estrutura mínima de um `project.json`:
+```json
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "nome-do-projeto",
+  "sourceRoot": "caminho/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tools\\scripts\\run.cmd tools/scripts/mvn-build.js :nome-do-modulo",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}
+```
+
+Usar sempre `"command":` (singular) nos targets — `"commands": [...]` (array) não propaga exit codes corretamente e o Nx reporta sucesso mesmo quando o build falha.
+
+---
+
+## Ambiente Windows — Problemas Conhecidos
+
+### PATH overflow no cmd.exe
+O PATH do Windows tem limite de ~8.191 caracteres. Com 292+ entradas no PATH, `pnpm`, `mvn`, `npm` e outros executáveis não são encontrados pelo cmd.exe quando invocado pelo Nx.
+
+**Solução:** O wrapper `tools/scripts/run.cmd` usa o caminho absoluto do Node.js:
+```batch
+"C:\Program Files\nodejs\node.exe" %*
+```
+Todo target Nx deve chamar scripts via `tools\scripts\run.cmd <script>`.
+
+### WSL bash interceptando chamadas Node.js
+Quando o Nx (cmd.exe) spawna um processo Node.js, e esse processo chama `spawnSync('bash', ...)`, o Windows encontra o bash do WSL — que não tem Node.js, Maven, nem acesso a caminhos Windows (`G:\...`).
+
+**Solução:** Nunca usar `bash` em scripts Node.js neste projeto. Usar sempre:
+- `process.execPath` para chamar binários Node (tsc, vite, etc.)
+- `fs.readdirSync` para localizar binários dentro de `node_modules/.pnpm/`
+- Caminho absoluto `.cmd` para Maven (ver seção Maven abaixo)
+
+### Arquivos `.cmd` no spawnSync
+`spawnSync(path, args, { shell: false })` falha para arquivos `.cmd` no Windows.
+
+**Solução:** Sempre usar `shell: true` ao chamar qualquer `.cmd`:
+```javascript
+spawnSync(mvnPath, ['clean', 'package', ...], { shell: true, ... })
+```
+
+---
+
+## Maven
+
+### Localização do executável
+O script `tools/scripts/mvn-build.js` e `mvn-test.js` resolvem o Maven por candidatos conhecidos:
+```javascript
+const candidates = [
+  process.env.MAVEN_HOME && path.join(process.env.MAVEN_HOME, 'bin', 'mvn.cmd'),
+  'C:\\ProgramData\\chocolatey\\lib\\maven\\apache-maven-3.6.3\\bin\\mvn.cmd',
+  'C:\\Program Files\\Apache\\maven\\bin\\mvn.cmd',
+  'C:\\maven\\bin\\mvn.cmd'
+].filter(Boolean);
+```
+Se um novo caminho for necessário, adicionar aqui.
+
+### SSL corporativo
+O ambiente tem inspeção SSL corporativa que bloqueia downloads do Maven Central.
+Sempre passar estas flags via `MAVEN_OPTS`:
+```
+-Dmaven.wagon.http.ssl.insecure=true
+-Dmaven.wagon.http.ssl.allowall=true
+-Dmaven.wagon.http.ssl.ignore.validity.dates=true
+```
+Já configurado nos scripts. Não remover.
+
+### JAVA_HOME
+Usar `C:\Program Files\Java\jdk-17.0.16` (ou o que estiver em `JAVA_HOME` do ambiente).
+Sempre passar explicitamente no env do spawnSync:
+```javascript
+env: { ...process.env, JAVA_HOME: javaHome, MAVEN_OPTS: mavenOpts }
+```
+
+---
+
+## Dependências Maven — Armadilhas Conhecidas
+
+### flyway-database-postgresql
+**NÃO existe** como artefato separado no Flyway 9.22.3 (versão gerenciada pelo BOM do Spring Boot 3.2.5).
+Nunca adicionar `flyway-database-postgresql` como dependência nos POMs dos serviços.
+Usar apenas `flyway-core` + `postgresql` (driver JDBC).
+
+---
+
+## Frontend (apps/web)
+
+### Vite e o `root`
+Ao rodar `vite build --config /caminho/absoluto/vite.config.ts`, o Vite usa o CWD como root para localizar `index.html` — não o diretório do config.
+
+**Solução:** Sempre definir `root` explicitamente no `vite.config.ts`:
+```typescript
+export default defineConfig({
+  root: path.resolve(__dirname, '.'),
+  ...
+})
+```
+
+### Localização de binários pnpm
+Binários instalados pelo pnpm ficam em `node_modules/.pnpm/<pkg>@<version>/node_modules/<pkg>/bin/`.
+Para localizar sem bash, usar `fs.readdirSync` em `node_modules/.pnpm/` e filtrar por prefixo de pacote:
+```javascript
+function resolveNodeBin(pkg, binFile) {
+  const pnpmDir = path.join(workspaceRoot, 'node_modules', '.pnpm');
+  const entries = fs.readdirSync(pnpmDir);
+  for (const entry of entries) {
+    if (!entry.startsWith(pkg + '@')) continue;
+    const candidate = path.join(pnpmDir, entry, 'node_modules', pkg, 'bin', binFile);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+```
+
+### React StrictMode
+Importar `StrictMode` nomeado, não via `React.StrictMode`:
+```tsx
+import { StrictMode } from 'react'
+// não: import React from 'react' ... <React.StrictMode>
+```
+
+---
+
+## Nx Cache
+
+O Nx armazena resultados em `.nx/cache/`. Em caso de comportamento estranho (build reporta sucesso mas artefato não foi gerado), limpar o cache:
+```powershell
+Remove-Item -Recurse -Force .nx\cache
+Remove-Item -Recurse -Force .nx\workspace-data
+```
+Se o diretório estiver bloqueado por processo Node.js em execução, matar o processo primeiro:
+```powershell
+Get-Process node | Stop-Process -Force
+```
+
+---
+
+## Comandos Úteis
+
+```powershell
+# Build de todos os projetos
+npx nx run-many --target=build --all
+
+# Build de um projeto específico
+npx nx run web:build
+npx nx run fiscal:build
+
+# Testes de um serviço Java
+node tools/scripts/mvn-test.js :fiscal
+
+# Dev server frontend
+npx nx run web:dev
+
+# Limpar cache Nx
+Remove-Item -Recurse -Force .nx\cache
+```
+
+---
+
+## Convenções de Commit e Branch
+
+- **Branch:** `feature/pinsaude-<numero>`
+- **Commit:** `#PINSAUDE-<NUMERO> - <descrição em português>`

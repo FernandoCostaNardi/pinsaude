@@ -1,35 +1,30 @@
-# Maven
+# Java
 target/
 *.class
 *.jar
 *.war
+*.ear
+.mvn/
 
-# Nx / Node
+# Node / pnpm
 node_modules/
-.nx/cache/
-.nx/workspace-data/
 dist/
-build/
-.pnpm-store/
+.nx/
 
 # IDE
 .idea/
 .vscode/
 *.iml
-*.ipr
-*.iws
+
+# Env
+.env
+.env.local
+
+# Secrets / certs
+*.p12
+*.pfx
+*.jks
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Secrets / local config
-*.env
-.env.local
-*.p12
-*.pfx
-application-local.yml
-
-# Logs
-*.log
-logs/

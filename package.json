@@ -1,18 +1,16 @@
 {
   "name": "pinsaude",
-  "version": "0.0.1",
+  "version": "0.0.1-SNAPSHOT",
   "private": true,
   "scripts": {
-    "dev": "pnpm --filter web dev",
-    "build": "pnpm -r build",
-    "test": "pnpm -r test",
-    "lint": "pnpm -r lint"
+    "dev": "nx run web:dev",
+    "build": "nx run-many --target=build --all",
+    "test": "nx run-many --target=test --all",
+    "lint": "nx run-many --target=lint --all"
   },
   "devDependencies": {
-    "nx": "^19.2.3"
-  },
-  "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=9.0.0"
+    "nx": "19.8.14",
+    "@nx/js": "19.8.14",
+    "typescript": "^5.4.5"
   }
 }
