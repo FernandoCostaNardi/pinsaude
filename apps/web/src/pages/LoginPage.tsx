@@ -42,27 +42,26 @@ export function LoginPage() {
     <div className="min-h-screen flex">
 
       {/* ── Painel esquerdo — branding ────────────────────────────────── */}
-      <div className="hidden lg:flex lg:w-1/2 bg-primary-700 flex-col justify-between p-12">
-        {/* Logo */}
-        <div>
+      <div className="hidden lg:flex lg:w-1/2 bg-primary-700 items-center justify-center p-12">
+        <div className="space-y-8 max-w-sm">
+          {/* Logo */}
           <img
             src="/logo-pinsaude.png"
             alt="Pin Saúde"
-            className="h-10 w-auto brightness-0 invert"
+            className="h-16 w-auto brightness-0 invert"
           />
-        </div>
 
-        {/* Tagline central */}
-        <div className="space-y-6">
-          <div>
+          {/* Tagline */}
+          <div className="space-y-3">
             <h1 className="text-4xl font-black text-white leading-tight">
               Gestão de saúde<br />corporativa
             </h1>
-            <p className="mt-3 text-primary-200 text-lg leading-relaxed">
+            <p className="text-primary-200 text-lg leading-relaxed">
               Emissão de notas, repasses médicos e conciliação financeira em uma única plataforma.
             </p>
           </div>
 
+          {/* Bullets */}
           <ul className="space-y-3">
             {features.map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-3">
@@ -74,11 +73,6 @@ export function LoginPage() {
             ))}
           </ul>
         </div>
-
-        {/* Rodapé do painel */}
-        <p className="text-white/30 text-xs">
-          © {new Date().getFullYear()} Pin Saúde · Todos os direitos reservados
-        </p>
       </div>
 
       {/* ── Painel direito — formulário ───────────────────────────────── */}
