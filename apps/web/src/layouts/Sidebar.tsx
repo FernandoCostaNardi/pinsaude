@@ -29,9 +29,12 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const content = (
     <nav className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 h-16 border-b border-white/10 shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">🏥</span>
-          <span className="text-white font-bold text-lg tracking-tight">Pin Saúde</span>
+        <div className="flex items-center">
+          <img
+            src="/logo-pinsaude.png"
+            alt="Pin Saúde"
+            className="h-8 w-auto brightness-0 invert"
+          />
         </div>
         <button
           onClick={onMobileClose}
