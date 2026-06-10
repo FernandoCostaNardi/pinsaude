@@ -381,6 +381,35 @@ Em sidebar escura: usar `className="brightness-0 invert"` para versão branca.
 
 ---
 
+## CI/CD — GitHub Actions
+
+### Estrutura dos workflows
+- `.github/workflows/ci.yml` — executa em cada push para `main` e em PRs
+- `.github/workflows/release.yml` — stub, ativa em tags `v*.*.*`
+
+### Jobs do CI
+| Job | O que executa |
+|---|---|
+| `build-web` | `node tools/scripts/build-web.js` (tsc + vite) |
+| `test-web` | `node tools/scripts/build-web.js test` (vitest) |
+| `lint-web` | `node tools/scripts/build-web.js lint` (eslint) |
+| `build-java` | `mvn clean install --no-transfer-progress -DskipTests` |
+| `affected` | Relatório Nx affected (somente PRs) |
+
+### Por que não usar `npx nx run-many` no CI
+Os `project.json` referenciam `tools\scripts\run.cmd` que é um wrapper Windows-only para contornar o overflow de PATH. Em Linux (Ubuntu runner), esse `.cmd` não existe.
+**Solução:** chamar `pnpm --filter web run <script>` e `mvn` diretamente, sem passar pelo Nx executor.
+
+### Por que não usar `node tools/scripts/build-web.js` no CI
+`build-web.js` usa `resolveNodeBin` que busca em `node_modules/.pnpm/`. Com `node-linker=hoisted` no Linux, o pnpm **não cria** o diretório `.pnpm` — logo os binários (vite, vitest, eslint) não são encontrados.
+**Solução:** usar `pnpm --filter web run build|test|lint` que executa os scripts do `apps/web/package.json` com os binários corretos do workspace.
+`build-web.js` continua sendo usado localmente no Windows via Nx targets (funciona porque `.pnpm` existe no Windows).
+
+### Vitest: `--passWithNoTests` no script do package.json
+`apps/web/package.json` tem `"test": "vitest run --passWithNoTests"` para não falhar enquanto não há arquivos de teste.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

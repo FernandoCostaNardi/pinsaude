@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  JAVA_VERSION: '17'
+  PNPM_VERSION: '9.11.0'
+
+jobs:
+  # ── Frontend ──────────────────────────────────────────────────────────────
+
+  build-web:
+    name: Build — Frontend (TypeScript + Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Restore Nx cache
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('nx.json', '**/project.json') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('nx.json', '**/project.json') }}-
+            nx-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (tsc + vite)
+        run: pnpm --filter web run build
+
+  test-web:
+    name: Test — Frontend (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm --filter web run test
+
+  lint-web:
+    name: Lint — Frontend (ESLint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter web run lint
+
+  # ── Java Services ─────────────────────────────────────────────────────────
+
+  build-java:
+    name: Build — Java Services (Maven)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-
+
+      - name: Build all Maven modules
+        run: mvn clean install --no-transfer-progress -DskipTests
+
+  # ── Nx Affected (PRs only) ────────────────────────────────────────────────
+
+  affected:
+    name: Nx Affected Report
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Report affected projects
+        run: |
+          echo "### Projetos afetados por este PR" >> "$GITHUB_STEP_SUMMARY"
+          AFFECTED=$(pnpm exec nx show projects \
+            --affected \
+            --base=origin/${{ github.base_ref }} \
+            --head=HEAD 2>/dev/null || true)
+          if [ -z "$AFFECTED" ]; then
+            echo "_Nenhum projeto afetado detectado_" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "$AFFECTED" | tr ' ' '\n' | while IFS= read -r p; do
+              [ -n "$p" ] && echo "- \`$p\`" >> "$GITHUB_STEP_SUMMARY"
+            done
+          fi
