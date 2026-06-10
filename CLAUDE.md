@@ -410,6 +410,45 @@ Os `project.json` referenciam `tools\scripts\run.cmd` que é um wrapper Windows-
 
 ---
 
+## Keycloak — Configuração do Realm
+
+### Realm `pinsaude`
+- Arquivo de configuração: `tools/keycloak/realm-export.json`
+- Script de setup via REST API: `tools/keycloak/setup-realm.sh`
+- Auto-importado pelo Docker via `--import-realm` + volume em `/opt/keycloak/data/import/`
+
+### Clients
+| Client | Tipo | Uso |
+|---|---|---|
+| `pinsaude-web` | Public (PKCE S256) | SPA React — flow OIDC |
+| `pinsaude-gateway` | Confidential | Spring Cloud Gateway — validação server-side |
+
+Segredo do gateway: `pinsaude-gateway-secret` (alterar em produção)
+
+### Roles
+`medico` · `operacao` · `financeiro` · `contabil` · `gestao`
+
+### MFA (TOTP)
+- Perfis privilegiados (`operacao`, `financeiro`, `contabil`, `gestao`) têm `CONFIGURE_TOTP` como required action
+- Flow `pinsaude browser` contém sub-flows CONDITIONAL com `conditional-user-role` por role
+- `pinsaude-web` tem `directAccessGrantsEnabled: true` para testes (desabilitar em produção)
+- Usuários com CONFIGURE_TOTP pendente recebem `invalid_grant: Account is not fully set up` no password grant
+
+### Claim `cnpj_id`
+Protocol mapper `oidc-usermodel-attribute-mapper` no client `pinsaude-web` lê o atributo `cnpj_id` do usuário e injeta no JWT. Definir o atributo no cadastro do usuário no Keycloak.
+
+### Usuários de teste
+| Email | Senha | Role | MFA |
+|---|---|---|---|
+| medico@pinsaude.com.br | test123 | medico | Não |
+| operacao@pinsaude.com.br | test123 | operacao | Sim (CONFIGURE_TOTP) |
+| gestao@pinsaude.com.br | test123 | gestao | Sim (CONFIGURE_TOTP) |
+
+### Scope `basic` não existe no Keycloak 24
+O scope `basic` foi removido em versões mais novas. Não adicionar em `defaultClientScopes` — causará warning silencioso na importação.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
