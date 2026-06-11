@@ -1,0 +1,10 @@
+# Copiar para /home/pinsaude/infra/.env e preencher com senhas reais
+# NUNCA versionar este arquivo com senhas reais
+
+# Keycloak
+KC_ADMIN_USER=admin
+KC_ADMIN_PASS=TROCAR_POR_SENHA_FORTE
+KC_DB_PASS=TROCAR_POR_SENHA_FORTE
+
+# Onboarding service
+DB_PASSWORD_ONBOARDING=TROCAR_POR_SENHA_FORTE

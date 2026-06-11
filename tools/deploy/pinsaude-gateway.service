@@ -1,0 +1,23 @@
+[Unit]
+Description=Pin Saude - Gateway
+After=network.target pinsaude-onboarding.service
+
+[Service]
+Type=simple
+User=pinsaude
+Group=pinsaude
+WorkingDirectory=/home/pinsaude/apps/gateway
+
+ExecStart=/usr/bin/java \
+  -Xms128m -Xmx256m \
+  -Dspring.profiles.active=prod \
+  -Dspring.config.additional-location=file:/home/pinsaude/apps/gateway/application-prod.yml \
+  -jar /home/pinsaude/apps/gateway/app.jar
+
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/pinsaude/logs/gateway.log
+StandardError=append:/home/pinsaude/logs/gateway.log
+
+[Install]
+WantedBy=multi-user.target
