@@ -7,6 +7,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
@@ -25,7 +26,11 @@ public class SecurityConfig {
             )
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-            );
+            )
+            // TenantFilter roda dentro da cadeia Spring Security, depois do JWT estar
+            // autenticado no SecurityContextHolder. Não é @Component para não ser
+            // registrado também como servlet filter (evitaria dupla execução).
+            .addFilterAfter(new TenantFilter(), BearerTokenAuthenticationFilter.class);
         return http.build();
     }
 
