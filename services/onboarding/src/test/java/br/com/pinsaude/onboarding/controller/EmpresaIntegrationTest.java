@@ -55,7 +55,7 @@ class EmpresaIntegrationTest {
 
     private EmpresaRequest requestParaTenant(String cnpj) {
         return new EmpresaRequest(cnpj, "Clínica " + cnpj, "IM-" + cnpj.replaceAll("\\D", ""),
-            "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL, null);
+            "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL);
     }
 
     @Test
@@ -174,7 +174,7 @@ class EmpresaIntegrationTest {
     @Test
     void cnpjInvalido_retorna400() throws Exception {
         EmpresaRequest req = new EmpresaRequest("11.222.333/0001-44", "Clínica", "IM-123",
-            null, null, RegimeTributario.SIMPLES_NACIONAL, null);
+            null, null, RegimeTributario.SIMPLES_NACIONAL);
 
         mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)

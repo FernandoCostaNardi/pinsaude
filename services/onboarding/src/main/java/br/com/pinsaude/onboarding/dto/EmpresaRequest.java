@@ -11,6 +11,5 @@ public record EmpresaRequest(
     @NotBlank String inscricaoMunicipal,
     String municipio,
     String codigoMunicipioIbge,
-    @NotNull RegimeTributario regimeTributario,
-    String contaBancaria
+    @NotNull RegimeTributario regimeTributario
 ) {}
