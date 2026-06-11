@@ -84,16 +84,31 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
         setCodigoLc116(data.codigoLc116 ?? '')
         setEquiparacao(data.indicadorEquiparacaoHospitalar)
         setVencimentoA1(data.vencimentoCertificadoA1 ?? '')
-        // preenche campos da competência atual se existir
-        const atual = data.historicoAliquotas.find(a => a.competencia === mesAtual())
-        if (atual) {
-          setAliquotas({ iss: String(atual.iss), ir: String(atual.ir), csll: String(atual.csll), pis: String(atual.pis), cofins: String(atual.cofins) })
-          setRegimePresuncao(atual.regimePresuncao)
-        }
+        // alíquotas são preenchidas pelo useEffect [competencia, config]
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [empresaId])
+
+  // Ao mudar a competência (ou ao carregar os dados), preenche com os valores
+  // daquela competência se existir no histórico — zera tudo caso contrário.
+  useEffect(() => {
+    if (!config) return
+    const encontrada = config.historicoAliquotas.find(a => a.competencia === competencia)
+    if (encontrada) {
+      setAliquotas({
+        iss:    Number(encontrada.iss).toFixed(2),
+        ir:     Number(encontrada.ir).toFixed(2),
+        csll:   Number(encontrada.csll).toFixed(2),
+        pis:    Number(encontrada.pis).toFixed(2),
+        cofins: Number(encontrada.cofins).toFixed(2),
+      })
+      setRegimePresuncao(encontrada.regimePresuncao)
+    } else {
+      setAliquotas({ iss: '0.00', ir: '0.00', csll: '0.00', pis: '0.00', cofins: '0.00' })
+      setRegimePresuncao('CHEIA')
+    }
+  }, [competencia, config])
 
   function handleAliquota(name: string, value: string) {
     setAliquotas(prev => ({ ...prev, [name]: value }))
@@ -213,9 +228,14 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
                     <label className="block text-xs font-medium text-gray-600 mb-1">Competência (YYYY-MM)</label>
                     <input type="month" value={competencia} min={mesAtual()} onChange={e => setCompetencia(e.target.value)}
                       className="block w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary" />
-                    {competenciaPassada && (
-                      <p className="mt-1 text-xs text-red-500">Competências passadas não podem ser alteradas.</p>
-                    )}
+                    {competenciaPassada
+                      ? <p className="mt-1 text-xs text-red-500">Competências passadas não podem ser alteradas.</p>
+                      : config && (
+                          config.historicoAliquotas.some(a => a.competencia === competencia)
+                            ? <p className="mt-1 text-xs text-blue-500">Editando configuração existente para esta competência.</p>
+                            : <p className="mt-1 text-xs text-gray-400">Nova competência — campos iniciados zerados.</p>
+                        )
+                    }
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Regime de Presunção</label>
