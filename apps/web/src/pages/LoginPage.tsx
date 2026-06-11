@@ -157,6 +157,10 @@ export function LoginPage() {
             </Button>
           </form>
         </div>
+
+        <p className="text-center text-xs text-gray-400 mt-6">
+          © {new Date().getFullYear()} Pin Saúde · Todos os direitos reservados
+        </p>
       </div>
     </div>
   )
