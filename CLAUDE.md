@@ -158,6 +158,59 @@ Usar o schema explícito (`onboarding.regime_tributario_enum`) para evitar ambig
 
 ---
 
+## JPA / Hibernate 6 — Armadilhas com PostgreSQL
+
+### CHAR(n) vs VARCHAR: mapeamento correto no Hibernate 6
+O PostgreSQL armazena `CHAR(n)` como `bpchar` (tipo JDBC `Types#CHAR`).
+Hibernate 6 mapeia `String` para `VARCHAR` por padrão — isso causa falha no `ddl-auto=validate`.
+**Solução:** combinar `columnDefinition = "char(n)"` com `@JdbcTypeCode(SqlTypes.CHAR)`:
+```java
+@JdbcTypeCode(SqlTypes.CHAR)
+@Column(name = "codigo_municipio_ibge", columnDefinition = "char(7)")
+private String codigoMunicipioIbge;
+```
+
+### PostgreSQL ENUM com Hibernate 6 — @ColumnTransformer
+Hibernate 6 envia enums como `character varying`, mas PostgreSQL não faz cast automático para `user-defined ENUM`.
+Isso causa: `column "x" is of type schema.enum_type but expression is of type character varying`.
+**Solução:** usar `@ColumnTransformer(write = "?::schema.nome_enum")` para cast explícito na escrita:
+```java
+@Enumerated(EnumType.STRING)
+@Column(name = "regime_tributario")
+@ColumnTransformer(write = "?::onboarding.regime_tributario_enum")
+private RegimeTributario regimeTributario;
+```
+A leitura funciona sem transformer — PostgreSQL retorna o label do enum como String.
+
+### Testcontainers com Spring Boot 3.2.5
+Para testes de integração com banco real (PostgreSQL):
+```xml
+<dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-testcontainers</artifactId><scope>test</scope></dependency>
+<dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
+<dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+```
+
+Configuração do teste (sobrescreve `application.properties` de teste):
+```java
+@SpringBootTest(properties = {
+    "spring.flyway.enabled=true",
+    "spring.jpa.hibernate.ddl-auto=validate",
+    "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:9999/dummy",
+    "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9999/dummy"
+})
+@AutoConfigureMockMvc
+@Testcontainers
+class MinhaIntegrationTest {
+    @Container
+    @ServiceConnection
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16");
+```
+- `@ServiceConnection` sobrescreve automaticamente datasource (URL, user, password, driver) — não conflita com H2 do `application.properties` de teste.
+- O `test` user do Testcontainers PostgreSQL é superuser — extensões (`pgcrypto`, `uuid-ossp`) são instaladas sem problemas.
+- Para JWT mockado no teste, usar `SecurityMockMvcRequestPostProcessors.jwt().authorities(new SimpleGrantedAuthority("ROLE_xxx"))` — não precisa de WireMock.
+
+---
+
 ## Dependências Maven — Armadilhas Conhecidas
 
 ### flyway-database-postgresql
