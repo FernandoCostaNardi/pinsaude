@@ -21,7 +21,6 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -45,11 +44,11 @@ class EmpresaControllerTest {
     @MockBean
     EmpresaService empresaService;
 
-    private static final String TENANT_CNPJ = "11.222.333/0001-81";
+    private static final String CNPJ = "11.222.333/0001-81";
     private static final UUID ID = UUID.randomUUID();
 
     private EmpresaResponse empresaResponse() {
-        return new EmpresaResponse(ID, TENANT_CNPJ, "Clínica Teste", "1234/2024",
+        return new EmpresaResponse(ID, CNPJ, "Clínica Teste", "1234/2024",
             "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL,
             true, OffsetDateTime.now(), OffsetDateTime.now());
     }
@@ -59,31 +58,25 @@ class EmpresaControllerTest {
     }
 
     private EmpresaRequest requestValido() {
-        return new EmpresaRequest(TENANT_CNPJ, "Clínica Teste", "1234/2024",
+        return new EmpresaRequest(CNPJ, "Clínica Teste", "1234/2024",
             "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL);
     }
 
     @Test
     void gestao_podeListar() throws Exception {
-        when(empresaService.listar(anyString(), anyInt(), anyInt())).thenReturn(pageResponse());
+        when(empresaService.listar(anyInt(), anyInt())).thenReturn(pageResponse());
 
         mockMvc.perform(get("/api/empresas")
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_CNPJ))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test
-    void operacao_podeListar() throws Exception {
-        when(empresaService.listar(anyString(), anyInt(), anyInt())).thenReturn(pageResponse());
-
+    void operacao_naoPodeListar_retorna403() throws Exception {
         mockMvc.perform(get("/api/empresas")
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_CNPJ))
-                    .authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
-            .andExpect(status().isOk());
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
+            .andExpect(status().isForbidden());
     }
 
     @Test
@@ -100,28 +93,23 @@ class EmpresaControllerTest {
     }
 
     @Test
-    void getBorId_retorna200() throws Exception {
-        when(empresaService.buscarPorId(any(UUID.class), anyString()))
-            .thenReturn(empresaResponse());
+    void getById_retorna200() throws Exception {
+        when(empresaService.buscarPorId(any(UUID.class))).thenReturn(empresaResponse());
 
         mockMvc.perform(get("/api/empresas/{id}", ID)
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_CNPJ))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.cnpj").value(TENANT_CNPJ));
+            .andExpect(jsonPath("$.cnpj").value(CNPJ));
     }
 
     @Test
     void getById_inexistente_retorna404() throws Exception {
-        when(empresaService.buscarPorId(any(UUID.class), anyString()))
+        when(empresaService.buscarPorId(any(UUID.class)))
             .thenThrow(new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.NOT_FOUND, "Empresa não encontrada"));
 
         mockMvc.perform(get("/api/empresas/{id}", UUID.randomUUID())
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_CNPJ))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isNotFound());
     }
 
@@ -145,9 +133,7 @@ class EmpresaControllerTest {
         mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(requestValido()))
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_CNPJ))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isCreated())
             .andExpect(header().exists("Location"));
     }
@@ -163,26 +149,22 @@ class EmpresaControllerTest {
 
     @Test
     void put_retorna200() throws Exception {
-        when(empresaService.atualizar(any(UUID.class), any(EmpresaRequest.class), anyString()))
+        when(empresaService.atualizar(any(UUID.class), any(EmpresaRequest.class)))
             .thenReturn(empresaResponse());
 
         mockMvc.perform(put("/api/empresas/{id}", ID)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(requestValido()))
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_CNPJ))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isOk());
     }
 
     @Test
     void delete_retorna204() throws Exception {
-        doNothing().when(empresaService).deletar(any(UUID.class), anyString());
+        doNothing().when(empresaService).deletar(any(UUID.class));
 
         mockMvc.perform(delete("/api/empresas/{id}", ID)
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_CNPJ))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isNoContent());
     }
 }

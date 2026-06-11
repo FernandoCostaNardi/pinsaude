@@ -5,7 +5,6 @@ import br.com.pinsaude.onboarding.dto.EmpresaPageResponse;
 import br.com.pinsaude.onboarding.dto.EmpresaRequest;
 import br.com.pinsaude.onboarding.dto.EmpresaResponse;
 import br.com.pinsaude.onboarding.repository.EmpresaRepository;
-import jakarta.persistence.EntityNotFoundException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -24,16 +23,15 @@ public class EmpresaService {
         this.repository = repository;
     }
 
-    public EmpresaPageResponse listar(String tenantCnpj, int page, int size) {
+    public EmpresaPageResponse listar(int page, int size) {
         var pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         return EmpresaPageResponse.from(
-            repository.findByCnpjAndAtivoTrue(tenantCnpj, pageable)
-                      .map(EmpresaResponse::from)
+            repository.findAllByAtivoTrue(pageable).map(EmpresaResponse::from)
         );
     }
 
-    public EmpresaResponse buscarPorId(UUID id, String tenantCnpj) {
-        return repository.findByIdAndCnpjAndAtivoTrue(id, tenantCnpj)
+    public EmpresaResponse buscarPorId(UUID id) {
+        return repository.findByIdAndAtivoTrue(id)
             .map(EmpresaResponse::from)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Empresa não encontrada: " + id));
@@ -41,6 +39,10 @@ public class EmpresaService {
 
     @Transactional
     public EmpresaResponse criar(EmpresaRequest request) {
+        if (repository.existsByCnpj(request.cnpj())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Já existe uma empresa com este CNPJ");
+        }
         var empresa = new Empresa();
         empresa.setCnpj(request.cnpj());
         empresa.setRazaoSocial(request.razaoSocial());
@@ -52,8 +54,8 @@ public class EmpresaService {
     }
 
     @Transactional
-    public EmpresaResponse atualizar(UUID id, EmpresaRequest request, String tenantCnpj) {
-        Empresa empresa = repository.findByIdAndCnpjAndAtivoTrue(id, tenantCnpj)
+    public EmpresaResponse atualizar(UUID id, EmpresaRequest request) {
+        Empresa empresa = repository.findByIdAndAtivoTrue(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Empresa não encontrada: " + id));
 
@@ -66,8 +68,8 @@ public class EmpresaService {
     }
 
     @Transactional
-    public void deletar(UUID id, String tenantCnpj) {
-        Empresa empresa = repository.findByIdAndCnpjAndAtivoTrue(id, tenantCnpj)
+    public void deletar(UUID id) {
+        Empresa empresa = repository.findByIdAndAtivoTrue(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Empresa não encontrada: " + id));
         empresa.setAtivo(false);

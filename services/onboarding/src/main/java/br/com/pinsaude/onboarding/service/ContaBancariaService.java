@@ -25,15 +25,15 @@ public class ContaBancariaService {
         this.empresaRepository = empresaRepository;
     }
 
-    public List<ContaBancariaResponse> listar(UUID empresaId, String tenantCnpj) {
-        verificarTenant(empresaId, tenantCnpj);
+    public List<ContaBancariaResponse> listar(UUID empresaId) {
+        verificarEmpresa(empresaId);
         return repository.findByEmpresaIdAndAtivoTrue(empresaId)
                          .stream().map(ContaBancariaResponse::from).toList();
     }
 
     @Transactional
-    public ContaBancariaResponse criar(UUID empresaId, ContaBancariaRequest request, String tenantCnpj) {
-        Empresa empresa = verificarTenant(empresaId, tenantCnpj);
+    public ContaBancariaResponse criar(UUID empresaId, ContaBancariaRequest request) {
+        Empresa empresa = verificarEmpresa(empresaId);
         if (request.principal()) {
             repository.desmarcarPrincipal(empresaId);
         }
@@ -49,8 +49,8 @@ public class ContaBancariaService {
     }
 
     @Transactional
-    public ContaBancariaResponse atualizar(UUID empresaId, UUID id, ContaBancariaRequest request, String tenantCnpj) {
-        verificarTenant(empresaId, tenantCnpj);
+    public ContaBancariaResponse atualizar(UUID empresaId, UUID id, ContaBancariaRequest request) {
+        verificarEmpresa(empresaId);
         ContaBancaria cb = repository.findByIdAndEmpresaIdAndAtivoTrue(id, empresaId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Conta bancária não encontrada: " + id));
@@ -67,8 +67,8 @@ public class ContaBancariaService {
     }
 
     @Transactional
-    public void deletar(UUID empresaId, UUID id, String tenantCnpj) {
-        verificarTenant(empresaId, tenantCnpj);
+    public void deletar(UUID empresaId, UUID id) {
+        verificarEmpresa(empresaId);
         ContaBancaria cb = repository.findByIdAndEmpresaIdAndAtivoTrue(id, empresaId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Conta bancária não encontrada: " + id));
@@ -76,8 +76,8 @@ public class ContaBancariaService {
         repository.save(cb);
     }
 
-    private Empresa verificarTenant(UUID empresaId, String tenantCnpj) {
-        return empresaRepository.findByIdAndCnpjAndAtivoTrue(empresaId, tenantCnpj)
+    private Empresa verificarEmpresa(UUID empresaId) {
+        return empresaRepository.findByIdAndAtivoTrue(empresaId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Empresa não encontrada: " + empresaId));
     }

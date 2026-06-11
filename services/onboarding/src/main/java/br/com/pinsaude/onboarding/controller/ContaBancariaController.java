@@ -1,6 +1,5 @@
 package br.com.pinsaude.onboarding.controller;
 
-import br.com.pinsaude.onboarding.config.SecurityUtils;
 import br.com.pinsaude.onboarding.dto.ContaBancariaRequest;
 import br.com.pinsaude.onboarding.dto.ContaBancariaResponse;
 import br.com.pinsaude.onboarding.service.ContaBancariaService;
@@ -15,7 +14,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/empresas/{empresaId}/contas")
-@PreAuthorize("hasRole('gestao') or hasRole('operacao')")
+@PreAuthorize("hasRole('gestao')")
 public class ContaBancariaController {
 
     private final ContaBancariaService service;
@@ -26,35 +25,32 @@ public class ContaBancariaController {
 
     @GetMapping
     public ResponseEntity<List<ContaBancariaResponse>> listar(@PathVariable UUID empresaId) {
-        return ResponseEntity.ok(service.listar(empresaId, SecurityUtils.currentCnpjTenant()));
+        return ResponseEntity.ok(service.listar(empresaId));
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('gestao')")
     public ResponseEntity<ContaBancariaResponse> criar(
             @PathVariable UUID empresaId,
             @Valid @RequestBody ContaBancariaRequest request) {
-        ContaBancariaResponse created = service.criar(empresaId, request, SecurityUtils.currentCnpjTenant());
+        ContaBancariaResponse created = service.criar(empresaId, request);
         var location = ServletUriComponentsBuilder.fromCurrentRequest()
             .path("/{id}").buildAndExpand(created.id()).toUri();
         return ResponseEntity.created(location).body(created);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('gestao')")
     public ResponseEntity<ContaBancariaResponse> atualizar(
             @PathVariable UUID empresaId,
             @PathVariable UUID id,
             @Valid @RequestBody ContaBancariaRequest request) {
-        return ResponseEntity.ok(service.atualizar(empresaId, id, request, SecurityUtils.currentCnpjTenant()));
+        return ResponseEntity.ok(service.atualizar(empresaId, id, request));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('gestao')")
     public ResponseEntity<Void> deletar(
             @PathVariable UUID empresaId,
             @PathVariable UUID id) {
-        service.deletar(empresaId, id, SecurityUtils.currentCnpjTenant());
+        service.deletar(empresaId, id);
         return ResponseEntity.noContent().build();
     }
 }

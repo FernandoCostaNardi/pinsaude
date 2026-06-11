@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -38,7 +37,6 @@ class ContaBancariaControllerTest {
     @Autowired ObjectMapper objectMapper;
     @MockBean ContaBancariaService contaBancariaService;
 
-    private static final String TENANT = "11.222.333/0001-81";
     private static final UUID EMPRESA_ID = UUID.randomUUID();
     private static final UUID CONTA_ID   = UUID.randomUUID();
 
@@ -53,29 +51,24 @@ class ContaBancariaControllerTest {
 
     @Test
     void gestao_podeListar_retorna200() throws Exception {
-        when(contaBancariaService.listar(any(UUID.class), anyString()))
+        when(contaBancariaService.listar(any(UUID.class)))
             .thenReturn(List.of(contaResponse()));
 
         mockMvc.perform(get("/api/empresas/{empresaId}/contas", EMPRESA_ID)
-                .with(jwt().jwt(j -> j.claim("cnpj_id", TENANT))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].banco").value("Itaú"));
     }
 
     @Test
-    void operacao_podeListar_retorna200() throws Exception {
-        when(contaBancariaService.listar(any(UUID.class), anyString()))
-            .thenReturn(List.of());
-
+    void operacao_naoPodeListar_retorna403() throws Exception {
         mockMvc.perform(get("/api/empresas/{empresaId}/contas", EMPRESA_ID)
-                .with(jwt().jwt(j -> j.claim("cnpj_id", TENANT))
-                    .authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
-            .andExpect(status().isOk());
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
+            .andExpect(status().isForbidden());
     }
 
     @Test
-    void medico_naoPodelListar_retorna403() throws Exception {
+    void medico_naoPodeListar_retorna403() throws Exception {
         mockMvc.perform(get("/api/empresas/{empresaId}/contas", EMPRESA_ID)
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_medico"))))
             .andExpect(status().isForbidden());
@@ -89,25 +82,23 @@ class ContaBancariaControllerTest {
 
     @Test
     void gestao_podeCriar_retorna201() throws Exception {
-        when(contaBancariaService.criar(any(UUID.class), any(ContaBancariaRequest.class), anyString()))
+        when(contaBancariaService.criar(any(UUID.class), any(ContaBancariaRequest.class)))
             .thenReturn(contaResponse());
 
         mockMvc.perform(post("/api/empresas/{empresaId}/contas", EMPRESA_ID)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(requestValido()))
-                .with(jwt().jwt(j -> j.claim("cnpj_id", TENANT))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isCreated())
             .andExpect(header().exists("Location"));
     }
 
     @Test
-    void operacao_naoPodelCriar_retorna403() throws Exception {
+    void operacao_naoPodeCriar_retorna403() throws Exception {
         mockMvc.perform(post("/api/empresas/{empresaId}/contas", EMPRESA_ID)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(requestValido()))
-                .with(jwt().jwt(j -> j.claim("cnpj_id", TENANT))
-                    .authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
             .andExpect(status().isForbidden());
     }
 
@@ -120,31 +111,28 @@ class ContaBancariaControllerTest {
         mockMvc.perform(post("/api/empresas/{empresaId}/contas", EMPRESA_ID)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(payload)
-                .with(jwt().jwt(j -> j.claim("cnpj_id", TENANT))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isBadRequest());
     }
 
     @Test
     void gestao_podeAtualizar_retorna200() throws Exception {
-        when(contaBancariaService.atualizar(any(UUID.class), any(UUID.class), any(ContaBancariaRequest.class), anyString()))
+        when(contaBancariaService.atualizar(any(UUID.class), any(UUID.class), any(ContaBancariaRequest.class)))
             .thenReturn(contaResponse());
 
         mockMvc.perform(put("/api/empresas/{empresaId}/contas/{id}", EMPRESA_ID, CONTA_ID)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(requestValido()))
-                .with(jwt().jwt(j -> j.claim("cnpj_id", TENANT))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isOk());
     }
 
     @Test
     void gestao_podeDeletar_retorna204() throws Exception {
-        doNothing().when(contaBancariaService).deletar(any(UUID.class), any(UUID.class), anyString());
+        doNothing().when(contaBancariaService).deletar(any(UUID.class), any(UUID.class));
 
         mockMvc.perform(delete("/api/empresas/{empresaId}/contas/{id}", EMPRESA_ID, CONTA_ID)
-                .with(jwt().jwt(j -> j.claim("cnpj_id", TENANT))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isNoContent());
     }
 }

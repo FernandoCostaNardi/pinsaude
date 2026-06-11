@@ -45,15 +45,15 @@ class EmpresaIntegrationTest {
     @Autowired
     EmpresaRepository empresaRepository;
 
-    private static final String TENANT_A = "11.222.333/0001-81";
-    private static final String TENANT_B = "22.333.444/0001-81";
+    private static final String CNPJ_A = "11.222.333/0001-81";
+    private static final String CNPJ_B = "22.333.444/0001-81";
 
     @BeforeEach
     void limparBanco() {
         empresaRepository.deleteAll();
     }
 
-    private EmpresaRequest requestParaTenant(String cnpj) {
+    private EmpresaRequest requestComCnpj(String cnpj) {
         return new EmpresaRequest(cnpj, "Clínica " + cnpj, "IM-" + cnpj.replaceAll("\\D", ""),
             "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL);
     }
@@ -62,91 +62,77 @@ class EmpresaIntegrationTest {
     void criarEListar_retornaEmpresaCriada() throws Exception {
         mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestParaTenant(TENANT_A)))
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .content(objectMapper.writeValueAsString(requestComCnpj(CNPJ_A)))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/empresas")
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.totalElements").value(1))
-            .andExpect(jsonPath("$.content[0].cnpj").value(TENANT_A));
+            .andExpect(jsonPath("$.content[0].cnpj").value(CNPJ_A));
+    }
+
+    @Test
+    void gestao_veTodasAsEmpresas() throws Exception {
+        mockMvc.perform(post("/api/empresas")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(requestComCnpj(CNPJ_A)))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+            .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/empresas")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(requestComCnpj(CNPJ_B)))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+            .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/empresas")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalElements").value(2));
+    }
+
+    @Test
+    void operacao_naoPodeAcessar_retorna403() throws Exception {
+        mockMvc.perform(get("/api/empresas")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
+            .andExpect(status().isForbidden());
     }
 
     @Test
     void cnpjDuplicado_retorna409() throws Exception {
         mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestParaTenant(TENANT_A)))
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .content(objectMapper.writeValueAsString(requestComCnpj(CNPJ_A)))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isCreated());
 
         mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestParaTenant(TENANT_A)))
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .content(objectMapper.writeValueAsString(requestComCnpj(CNPJ_A)))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.mensagem").value(containsString("CNPJ")));
-    }
-
-    @Test
-    void multiTenancy_empresaDeATenantNaoAparece_paraBTenant() throws Exception {
-        mockMvc.perform(post("/api/empresas")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestParaTenant(TENANT_A)))
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
-            .andExpect(status().isCreated());
-
-        mockMvc.perform(post("/api/empresas")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestParaTenant(TENANT_B)))
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_B))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
-            .andExpect(status().isCreated());
-
-        mockMvc.perform(get("/api/empresas")
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.totalElements").value(1))
-            .andExpect(jsonPath("$.content[0].cnpj").value(TENANT_A));
     }
 
     @Test
     void softDelete_empresaDeletadaNaoAparece_naListagem() throws Exception {
         String responseJson = mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestParaTenant(TENANT_A)))
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .content(objectMapper.writeValueAsString(requestComCnpj(CNPJ_A)))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString();
 
         String id = objectMapper.readTree(responseJson).get("id").asText();
 
         mockMvc.perform(delete("/api/empresas/{id}", id)
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/empresas")
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.totalElements").value(0));
     }
@@ -155,16 +141,12 @@ class EmpresaIntegrationTest {
     void paginacao_retornaPageESize_corretos() throws Exception {
         mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestParaTenant(TENANT_A)))
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .content(objectMapper.writeValueAsString(requestComCnpj(CNPJ_A)))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/empresas?page=0&size=5")
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.page").value(0))
             .andExpect(jsonPath("$.size").value(5))
@@ -179,9 +161,7 @@ class EmpresaIntegrationTest {
         mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req))
-                .with(jwt()
-                    .jwt(j -> j.claim("cnpj_id", TENANT_A))
-                    .authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isBadRequest());
     }
 }

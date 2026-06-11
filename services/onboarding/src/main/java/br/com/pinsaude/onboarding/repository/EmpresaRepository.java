@@ -12,9 +12,9 @@ import java.util.UUID;
 @Repository
 public interface EmpresaRepository extends JpaRepository<Empresa, UUID> {
 
-    Page<Empresa> findByCnpjAndAtivoTrue(String cnpj, Pageable pageable);
+    Page<Empresa> findAllByAtivoTrue(Pageable pageable);
 
-    Optional<Empresa> findByIdAndCnpjAndAtivoTrue(UUID id, String cnpj);
+    Optional<Empresa> findByIdAndAtivoTrue(UUID id);
 
     boolean existsByCnpj(String cnpj);
 }

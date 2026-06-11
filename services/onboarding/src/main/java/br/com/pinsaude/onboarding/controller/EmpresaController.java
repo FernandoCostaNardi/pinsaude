@@ -1,6 +1,5 @@
 package br.com.pinsaude.onboarding.controller;
 
-import br.com.pinsaude.onboarding.config.SecurityUtils;
 import br.com.pinsaude.onboarding.dto.EmpresaPageResponse;
 import br.com.pinsaude.onboarding.dto.EmpresaRequest;
 import br.com.pinsaude.onboarding.dto.EmpresaResponse;
@@ -15,7 +14,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/empresas")
-@PreAuthorize("hasRole('gestao') or hasRole('operacao')")
+@PreAuthorize("hasRole('gestao')")
 public class EmpresaController {
 
     private final EmpresaService service;
@@ -28,16 +27,15 @@ public class EmpresaController {
     public ResponseEntity<EmpresaPageResponse> listar(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(service.listar(SecurityUtils.currentCnpjTenant(), page, size));
+        return ResponseEntity.ok(service.listar(page, size));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<EmpresaResponse> buscarPorId(@PathVariable UUID id) {
-        return ResponseEntity.ok(service.buscarPorId(id, SecurityUtils.currentCnpjTenant()));
+        return ResponseEntity.ok(service.buscarPorId(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('gestao')")
     public ResponseEntity<EmpresaResponse> criar(@Valid @RequestBody EmpresaRequest request) {
         EmpresaResponse created = service.criar(request);
         var location = ServletUriComponentsBuilder.fromCurrentRequest()
@@ -46,17 +44,15 @@ public class EmpresaController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('gestao')")
     public ResponseEntity<EmpresaResponse> atualizar(
             @PathVariable UUID id,
             @Valid @RequestBody EmpresaRequest request) {
-        return ResponseEntity.ok(service.atualizar(id, request, SecurityUtils.currentCnpjTenant()));
+        return ResponseEntity.ok(service.atualizar(id, request));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('gestao')")
     public ResponseEntity<Void> deletar(@PathVariable UUID id) {
-        service.deletar(id, SecurityUtils.currentCnpjTenant());
+        service.deletar(id);
         return ResponseEntity.noContent().build();
     }
 }

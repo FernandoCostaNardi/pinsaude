@@ -15,7 +15,7 @@ import { useAuth } from '../auth/AuthContext'
 const navItems = [
   { to: '/',            label: 'Dashboard',   icon: LayoutDashboard, roles: null       },
   { to: '/medicos',     label: 'Médicos',      icon: Stethoscope,     roles: null       },
-  { to: '/empresas',    label: 'Empresas',     icon: Building2,       roles: null       },
+  { to: '/empresas',    label: 'Empresas',     icon: Building2,       roles: ['gestao'] },
   { to: '/notas',       label: 'Notas',        icon: FileText,        roles: null       },
   { to: '/repasses',    label: 'Repasses',     icon: Banknote,        roles: null       },
   { to: '/conciliacao', label: 'Conciliação',  icon: ArrowLeftRight,  roles: null       },
