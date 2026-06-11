@@ -26,6 +26,10 @@ spring:
           uri: http://localhost:8086
           predicates:
             - Path=/api/gestao/**
+        - id: usuarios
+          uri: http://localhost:8086
+          predicates:
+            - Path=/api/usuarios/**
   security:
     oauth2:
       resourceserver:

@@ -1,15 +1,21 @@
 import { FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, MapPin } from 'lucide-react'
-import { Button }  from '@pinsaude/ui'
-import { Input }   from '@pinsaude/ui'
-import { Alert }   from '@pinsaude/ui'
-import { useAuth } from '../auth/useAuth'
+import { Eye, EyeOff, ShieldCheck, Activity, Building2 } from 'lucide-react'
+import { Button } from '@pinsaude/ui'
+import { Input }  from '@pinsaude/ui'
+import { Alert }  from '@pinsaude/ui'
+import { useAuth }            from '../auth/useAuth'
 import { KC_RESET_PASSWORD_URL } from '../auth/keycloak'
 
+const features = [
+  { icon: ShieldCheck, text: 'Autenticação segura com MFA' },
+  { icon: Activity,    text: 'Gestão integrada de produção médica' },
+  { icon: Building2,   text: 'Multi-empresa com controle por CNPJ' },
+]
+
 export function LoginPage() {
-  const { login }  = useAuth()
-  const navigate   = useNavigate()
+  const { login } = useAuth()
+  const navigate  = useNavigate()
 
   const [email,        setEmail]        = useState('')
   const [password,     setPassword]     = useState('')
@@ -33,21 +39,58 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Brand */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary shadow-lg shadow-primary/25 mb-4">
-            <MapPin size={28} className="text-white" />
+    <div className="min-h-screen flex">
+
+      {/* ── Painel esquerdo — branding ────────────────────────────────── */}
+      <div className="hidden lg:flex lg:w-1/2 bg-primary-700 items-center justify-center p-12">
+        <div className="space-y-8 max-w-sm">
+          {/* Logo */}
+          <img
+            src="/logo-pinsaude.png"
+            alt="Pin Saúde"
+            className="h-16 w-auto brightness-0 invert"
+          />
+
+          {/* Tagline */}
+          <div className="space-y-3">
+            <h1 className="text-4xl font-black text-white leading-tight">
+              Gestão de saúde<br />corporativa
+            </h1>
+            <p className="text-primary-200 text-lg leading-relaxed">
+              Emissão de notas, repasses médicos e conciliação financeira em uma única plataforma.
+            </p>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Pin Saúde</h1>
-          <p className="text-sm text-gray-500 mt-1">Gestão de saúde corporativa</p>
+
+          {/* Bullets */}
+          <ul className="space-y-3">
+            {features.map(({ icon: Icon, text }) => (
+              <li key={text} className="flex items-center gap-3">
+                <div className="flex-shrink-0 h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center">
+                  <Icon size={16} className="text-secondary" />
+                </div>
+                <span className="text-white/80 text-sm">{text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {/* ── Painel direito — formulário ───────────────────────────────── */}
+      <div className="flex-1 flex flex-col items-center justify-center bg-white px-8 py-12">
+        {/* Logo mobile (só aparece em telas < lg) */}
+        <div className="lg:hidden mb-8">
+          <img
+            src="/logo-pinsaude.png"
+            alt="Pin Saúde"
+            className="h-10 w-auto"
+          />
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/60 border border-gray-100 p-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-1">Bem-vindo de volta</h2>
-          <p className="text-sm text-gray-500 mb-6">Acesse sua conta para continuar</p>
+        <div className="w-full max-w-sm">
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900">Bem-vindo de volta</h2>
+            <p className="text-sm text-gray-500 mt-1">Acesse sua conta para continuar</p>
+          </div>
 
           {error && (
             <Alert variant="error" onClose={() => setError(null)} className="mb-5">
