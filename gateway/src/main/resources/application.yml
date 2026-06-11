@@ -22,6 +22,10 @@ spring:
           uri: http://localhost:8085
           predicates:
             - Path=/api/onboarding/**
+        - id: empresas
+          uri: http://localhost:8085
+          predicates:
+            - Path=/api/empresas/**
         - id: gestao
           uri: http://localhost:8086
           predicates:
