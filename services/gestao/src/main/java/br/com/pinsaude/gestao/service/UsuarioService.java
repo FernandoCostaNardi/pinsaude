@@ -2,6 +2,8 @@ package br.com.pinsaude.gestao.service;
 
 import br.com.pinsaude.gestao.dto.ConviteRequest;
 import br.com.pinsaude.gestao.dto.UsuarioDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -12,6 +14,8 @@ import java.util.Set;
 
 @Service
 public class UsuarioService {
+
+    private static final Logger log = LoggerFactory.getLogger(UsuarioService.class);
 
     private static final Set<String> PERFIS_VALIDOS = Set.of(
         "medico", "operacao", "financeiro", "contabil", "gestao"
@@ -35,7 +39,11 @@ public class UsuarioService {
         }
         String userId = keycloak.createUser(request.email(), request.nome(), cnpjId);
         keycloak.assignRole(userId, request.perfil());
-        keycloak.sendInvitationEmail(userId);
+        try {
+            keycloak.sendInvitationEmail(userId);
+        } catch (Exception e) {
+            log.warn("Falha ao enviar e-mail de convite para userId={}: {}", userId, e.getMessage());
+        }
         Map<String, Object> user = keycloak.getUser(userId);
         return toDto(user);
     }

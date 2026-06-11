@@ -23,7 +23,10 @@
   "otpPolicyDigits": 6,
   "otpPolicyLookAheadWindow": 1,
   "otpPolicyPeriod": 30,
-  "otpSupportedApplications": ["totpAppGoogleName", "totpAppMicrosoftAuthenticatorName"],
+  "otpSupportedApplications": [
+    "totpAppGoogleName",
+    "totpAppMicrosoftAuthenticatorName"
+  ],
   "smtpServer": {
     "host": "mailhog",
     "port": "1025",
@@ -88,7 +91,9 @@
         "http://localhost:3000/*",
         "http://localhost:3000"
       ],
-      "webOrigins": ["http://localhost:3000"],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:3000"
@@ -170,9 +175,13 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["medico"],
+      "realmRoles": [
+        "medico"
+      ],
       "attributes": {
-        "cnpj_id": ["12.345.678/0001-90"]
+        "cnpj_id": [
+          "11.222.333/0001-44"
+        ]
       }
     },
     {
@@ -182,7 +191,9 @@
       "lastName": "Teste",
       "enabled": true,
       "emailVerified": true,
-      "requiredActions": ["CONFIGURE_TOTP"],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
       "credentials": [
         {
           "type": "password",
@@ -190,9 +201,13 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["operacao"],
+      "realmRoles": [
+        "operacao"
+      ],
       "attributes": {
-        "cnpj_id": ["98.765.432/0001-10"]
+        "cnpj_id": [
+          "11.222.333/0001-44"
+        ]
       }
     },
     {
@@ -202,7 +217,9 @@
       "lastName": "Teste",
       "enabled": true,
       "emailVerified": true,
-      "requiredActions": ["CONFIGURE_TOTP"],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
       "credentials": [
         {
           "type": "password",
@@ -210,9 +227,13 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["gestao"],
+      "realmRoles": [
+        "gestao"
+      ],
       "attributes": {
-        "cnpj_id": ["11.222.333/0001-44"]
+        "cnpj_id": [
+          "11.222.333/0001-44"
+        ]
       }
     }
   ],
