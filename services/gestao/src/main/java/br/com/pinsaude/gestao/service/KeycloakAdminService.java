@@ -7,7 +7,9 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.*;
 
@@ -52,8 +54,16 @@ public class KeycloakAdminService {
     }
 
     public List<Map<String, Object>> listUsers(String cnpjId) {
+        URI uri = UriComponentsBuilder
+            .fromHttpUrl(adminUrl("/users"))
+            .queryParam("q", "cnpj_id:{v}")
+            .queryParam("max", 200)
+            .queryParam("briefRepresentation", false)
+            .buildAndExpand(cnpjId)
+            .encode()
+            .toUri();
         return restClient.get()
-            .uri(adminUrl("/users?q=cnpj_id:" + cnpjId + "&max=200&briefRepresentation=false"))
+            .uri(uri)
             .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
             .retrieve()
             .body(new ParameterizedTypeReference<>() {});

@@ -16,8 +16,15 @@ function authHeaders(): HeadersInit {
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(body || `Erro ${res.status}`)
+    const text = await res.text().catch(() => '')
+    let mensagem = `Erro ${res.status}`
+    try {
+      const json = JSON.parse(text)
+      mensagem = json.mensagem ?? json.message ?? json.error_description ?? json.error ?? mensagem
+    } catch {
+      if (text) mensagem = text
+    }
+    throw new Error(mensagem)
   }
   if (res.status === 204) return undefined as T
   return res.json()
