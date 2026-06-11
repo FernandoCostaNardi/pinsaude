@@ -182,7 +182,7 @@
       "lastName": "Teste",
       "enabled": true,
       "emailVerified": true,
-      "requiredActions": ["CONFIGURE_TOTP"],
+      "requiredActions": [],
       "credentials": [
         {
           "type": "password",
@@ -202,7 +202,7 @@
       "lastName": "Teste",
       "enabled": true,
       "emailVerified": true,
-      "requiredActions": ["CONFIGURE_TOTP"],
+      "requiredActions": [],
       "credentials": [
         {
           "type": "password",
