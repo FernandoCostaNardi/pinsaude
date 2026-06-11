@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/pinsaude
+    url: jdbc:postgresql://localhost:5433/pinsaude
     username: svc_onboarding
-    password: ${DB_PASSWORD_ONBOARDING:local_dev_only}
+    password: ${DB_PASSWORD_ONBOARDING:onboarding_dev}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -12,7 +12,8 @@ spring:
   flyway:
     schemas: onboarding
     default-schema: onboarding
-    enabled: false
+    locations: classpath:db/migration
+    enabled: true
   security:
     oauth2:
       resourceserver:

@@ -6,6 +6,14 @@ SELECT 'CREATE DATABASE keycloak'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'keycloak')
 \gexec
 
+-- Extensões necessárias para geração de UUID e criptografia
+-- Executadas aqui (superuser) para evitar dependência de grants em Flyway
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Permite que svc_onboarding crie extensões trusted via Flyway (PostgreSQL 13+)
+GRANT CREATE ON DATABASE pinsaude TO svc_onboarding;
+
 
 -- Schemas de domínio (6 serviços)
 CREATE SCHEMA IF NOT EXISTS fiscal;
