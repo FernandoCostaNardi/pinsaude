@@ -22,14 +22,14 @@ Instruções específicas deste projeto para o Claude Code.
 
 ```
 pinsaude/
-  apps/web/          → React 18 (porta 3000, proxy /api → 8080)
+  apps/web/          → React 18 (porta 3000, proxy /api → 8090)
   services/fiscal/   → Spring Boot (porta 8081)
   services/faturamento/ → Spring Boot (porta 8082)
   services/ledger/   → Spring Boot (porta 8083)
   services/repasse/  → Spring Boot (porta 8084)
   services/onboarding/ → Spring Boot (porta 8085)
   services/gestao/   → Spring Boot (porta 8086)
-  gateway/           → Spring Cloud Gateway (porta 8080)
+  gateway/           → Spring Cloud Gateway (porta 8090)
   tools/scripts/     → Scripts Node.js de build/test
   docs/              → PRD, ADR
 ```
@@ -155,6 +155,59 @@ A policy usa `current_setting('app.current_tenant', TRUE)` — o `TRUE` evita er
 ### Tipos enum em migrações Flyway
 Criar enums PostgreSQL como `CREATE TYPE schema.nome_enum AS ENUM (...)` antes das tabelas que os referenciam.
 Usar o schema explícito (`onboarding.regime_tributario_enum`) para evitar ambiguidade.
+
+---
+
+## JPA / Hibernate 6 — Armadilhas com PostgreSQL
+
+### CHAR(n) vs VARCHAR: mapeamento correto no Hibernate 6
+O PostgreSQL armazena `CHAR(n)` como `bpchar` (tipo JDBC `Types#CHAR`).
+Hibernate 6 mapeia `String` para `VARCHAR` por padrão — isso causa falha no `ddl-auto=validate`.
+**Solução:** combinar `columnDefinition = "char(n)"` com `@JdbcTypeCode(SqlTypes.CHAR)`:
+```java
+@JdbcTypeCode(SqlTypes.CHAR)
+@Column(name = "codigo_municipio_ibge", columnDefinition = "char(7)")
+private String codigoMunicipioIbge;
+```
+
+### PostgreSQL ENUM com Hibernate 6 — @ColumnTransformer
+Hibernate 6 envia enums como `character varying`, mas PostgreSQL não faz cast automático para `user-defined ENUM`.
+Isso causa: `column "x" is of type schema.enum_type but expression is of type character varying`.
+**Solução:** usar `@ColumnTransformer(write = "?::schema.nome_enum")` para cast explícito na escrita:
+```java
+@Enumerated(EnumType.STRING)
+@Column(name = "regime_tributario")
+@ColumnTransformer(write = "?::onboarding.regime_tributario_enum")
+private RegimeTributario regimeTributario;
+```
+A leitura funciona sem transformer — PostgreSQL retorna o label do enum como String.
+
+### Testcontainers com Spring Boot 3.2.5
+Para testes de integração com banco real (PostgreSQL):
+```xml
+<dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-testcontainers</artifactId><scope>test</scope></dependency>
+<dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
+<dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+```
+
+Configuração do teste (sobrescreve `application.properties` de teste):
+```java
+@SpringBootTest(properties = {
+    "spring.flyway.enabled=true",
+    "spring.jpa.hibernate.ddl-auto=validate",
+    "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:9999/dummy",
+    "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9999/dummy"
+})
+@AutoConfigureMockMvc
+@Testcontainers
+class MinhaIntegrationTest {
+    @Container
+    @ServiceConnection
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16");
+```
+- `@ServiceConnection` sobrescreve automaticamente datasource (URL, user, password, driver) — não conflita com H2 do `application.properties` de teste.
+- O `test` user do Testcontainers PostgreSQL é superuser — extensões (`pgcrypto`, `uuid-ossp`) são instaladas sem problemas.
+- Para JWT mockado no teste, usar `SecurityMockMvcRequestPostProcessors.jwt().authorities(new SimpleGrantedAuthority("ROLE_xxx"))` — não precisa de WireMock.
 
 ---
 
@@ -545,6 +598,25 @@ VITE_KC_CLIENT → Client ID (default: pinsaude-web)
 | `invalid_grant` + `"Invalid user credentials"` | "E-mail ou senha incorretos" |
 | `invalid_grant` + `"Account is not fully set up"` | Mensagem sobre configuração de MFA |
 | Outros 4xx/5xx | Mensagem genérica com status |
+
+### Roles no JWT — `realm_access.roles`, não `user.roles`
+O `AuthUser` extende `JwtPayload`. As roles do Keycloak ficam em `realm_access.roles` (array).
+**NUNCA usar `user.roles`** — essa propriedade não existe.
+```typescript
+const isGestao = user?.realm_access?.roles.includes('gestao') ?? false
+```
+
+### Token de acesso — ler do sessionStorage, não de export do keycloak.ts
+O `keycloak.ts` exporta apenas constantes e `decodeJwt()`. O token em si fica em `sessionStorage`.
+Padrão adotado em todos os módulos de API (`usersApi.ts`, `empresasApi.ts`):
+```typescript
+const STORAGE_KEY = 'pinsaude_tokens'
+function getAccessToken(): string {
+  const raw = sessionStorage.getItem(STORAGE_KEY)
+  if (!raw) throw new Error('Não autenticado')
+  return JSON.parse(raw).accessToken
+}
+```
 
 ---
 

@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/pinsaude
+    url: jdbc:postgresql://localhost:5433/pinsaude
     username: svc_fiscal
-    password: ${DB_PASSWORD_FISCAL:local_dev_only}
+    password: ${DB_PASSWORD_FISCAL:fiscal_dev}
   jpa:
     hibernate:
       ddl-auto: validate

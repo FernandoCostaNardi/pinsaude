@@ -2,7 +2,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5433/pinsaude
     username: svc_gestao
-    password: ${DB_PASSWORD_GESTAO:local_dev_only}
+    password: ${DB_PASSWORD_GESTAO:gestao_dev}
   jpa:
     hibernate:
       ddl-auto: validate

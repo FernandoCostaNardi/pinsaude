@@ -172,7 +172,7 @@
       ],
       "realmRoles": ["medico"],
       "attributes": {
-        "cnpj_id": ["12.345.678/0001-90"]
+        "cnpj_id": ["11.222.333/0001-81"]
       }
     },
     {
@@ -182,7 +182,7 @@
       "lastName": "Teste",
       "enabled": true,
       "emailVerified": true,
-      "requiredActions": ["CONFIGURE_TOTP"],
+      "requiredActions": [],
       "credentials": [
         {
           "type": "password",
@@ -192,7 +192,7 @@
       ],
       "realmRoles": ["operacao"],
       "attributes": {
-        "cnpj_id": ["98.765.432/0001-10"]
+        "cnpj_id": ["11.222.333/0001-81"]
       }
     },
     {
@@ -202,7 +202,7 @@
       "lastName": "Teste",
       "enabled": true,
       "emailVerified": true,
-      "requiredActions": ["CONFIGURE_TOTP"],
+      "requiredActions": [],
       "credentials": [
         {
           "type": "password",
@@ -212,7 +212,7 @@
       ],
       "realmRoles": ["gestao"],
       "attributes": {
-        "cnpj_id": ["11.222.333/0001-44"]
+        "cnpj_id": ["11.222.333/0001-81"]
       }
     }
   ],
