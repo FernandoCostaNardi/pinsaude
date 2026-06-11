@@ -599,6 +599,25 @@ VITE_KC_CLIENT → Client ID (default: pinsaude-web)
 | `invalid_grant` + `"Account is not fully set up"` | Mensagem sobre configuração de MFA |
 | Outros 4xx/5xx | Mensagem genérica com status |
 
+### Roles no JWT — `realm_access.roles`, não `user.roles`
+O `AuthUser` extende `JwtPayload`. As roles do Keycloak ficam em `realm_access.roles` (array).
+**NUNCA usar `user.roles`** — essa propriedade não existe.
+```typescript
+const isGestao = user?.realm_access?.roles.includes('gestao') ?? false
+```
+
+### Token de acesso — ler do sessionStorage, não de export do keycloak.ts
+O `keycloak.ts` exporta apenas constantes e `decodeJwt()`. O token em si fica em `sessionStorage`.
+Padrão adotado em todos os módulos de API (`usersApi.ts`, `empresasApi.ts`):
+```typescript
+const STORAGE_KEY = 'pinsaude_tokens'
+function getAccessToken(): string {
+  const raw = sessionStorage.getItem(STORAGE_KEY)
+  if (!raw) throw new Error('Não autenticado')
+  return JSON.parse(raw).accessToken
+}
+```
+
 ---
 
 ## Keycloak Admin API — Armadilhas Conhecidas (EPIC-01.5)
