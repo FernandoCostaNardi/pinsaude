@@ -22,14 +22,14 @@ Instruções específicas deste projeto para o Claude Code.
 
 ```
 pinsaude/
-  apps/web/          → React 18 (porta 3000, proxy /api → 8080)
+  apps/web/          → React 18 (porta 3000, proxy /api → 8090)
   services/fiscal/   → Spring Boot (porta 8081)
   services/faturamento/ → Spring Boot (porta 8082)
   services/ledger/   → Spring Boot (porta 8083)
   services/repasse/  → Spring Boot (porta 8084)
   services/onboarding/ → Spring Boot (porta 8085)
   services/gestao/   → Spring Boot (porta 8086)
-  gateway/           → Spring Cloud Gateway (porta 8080)
+  gateway/           → Spring Cloud Gateway (porta 8090)
   tools/scripts/     → Scripts Node.js de build/test
   docs/              → PRD, ADR
 ```
