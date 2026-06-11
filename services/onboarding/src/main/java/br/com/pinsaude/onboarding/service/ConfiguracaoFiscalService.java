@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
 
@@ -62,6 +63,12 @@ public class ConfiguracaoFiscalService {
         configuracaoRepo.save(config);
 
         AliquotaCompetenciaRequest ar = request.aliquota();
+        String mesAtual = YearMonth.now().toString();
+        if (ar.competencia().compareTo(mesAtual) < 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Não é permitido alterar alíquotas de competências passadas. Competência mínima: " + mesAtual);
+        }
+
         AliquotaCompetencia aliquota = aliquotaRepo
             .findByEmpresaIdAndCompetencia(empresaId, ar.competencia())
             .orElseGet(() -> {

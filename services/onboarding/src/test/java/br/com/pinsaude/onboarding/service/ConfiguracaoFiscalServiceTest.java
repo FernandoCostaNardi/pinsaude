@@ -16,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -235,7 +236,31 @@ class ConfiguracaoFiscalServiceTest {
     }
 
     @Test
+    void salvar_competenciaPassada_lancaUnprocessableEntity() {
+        when(empresaRepository.findByIdAndAtivoTrue(EMPRESA_ID)).thenReturn(Optional.of(empresa()));
+        when(configuracaoRepo.findByEmpresaId(EMPRESA_ID)).thenReturn(Optional.of(configExistente()));
+        when(configuracaoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ConfiguracaoFiscalRequest reqPassado = new ConfiguracaoFiscalRequest(
+            "8630503", "Atividade médica", "4.02", false, null,
+            new AliquotaCompetenciaRequest("2020-01",
+                new BigDecimal("2.00"), new BigDecimal("1.50"),
+                new BigDecimal("1.00"), new BigDecimal("0.65"),
+                new BigDecimal("3.00"), RegimePresuncao.CHEIA)
+        );
+
+        assertThatThrownBy(() -> service.salvar(EMPRESA_ID, reqPassado, USUARIO))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(aliquotaRepo, never()).save(any());
+    }
+
+    @Test
     void salvar_competenciasDiferentes_mantemHistoricoIndependente() {
+        String mesFuturo = YearMonth.now().plusMonths(1).toString();
+
         when(empresaRepository.findByIdAndAtivoTrue(EMPRESA_ID)).thenReturn(Optional.of(empresa()));
         when(configuracaoRepo.findByEmpresaId(EMPRESA_ID)).thenReturn(Optional.of(configExistente()));
         when(aliquotaRepo.findByEmpresaIdAndCompetencia(eq(EMPRESA_ID), any())).thenReturn(Optional.empty());
@@ -243,18 +268,18 @@ class ConfiguracaoFiscalServiceTest {
         when(aliquotaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(aliquotaRepo.findByEmpresaIdOrderByCompetenciaDesc(EMPRESA_ID)).thenReturn(List.of());
 
-        ConfiguracaoFiscalRequest reqMesAnterior = new ConfiguracaoFiscalRequest(
+        ConfiguracaoFiscalRequest reqMesFuturo = new ConfiguracaoFiscalRequest(
             "8630503", "Atividade médica", "4.02", false, null,
-            new AliquotaCompetenciaRequest("2026-05",
+            new AliquotaCompetenciaRequest(mesFuturo,
                 new BigDecimal("1.00"), BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, RegimePresuncao.REDUZIDA)
         );
 
-        service.salvar(EMPRESA_ID, reqMesAnterior, USUARIO);
+        service.salvar(EMPRESA_ID, reqMesFuturo, USUARIO);
 
         ArgumentCaptor<AliquotaCompetencia> captor = ArgumentCaptor.forClass(AliquotaCompetencia.class);
         verify(aliquotaRepo).save(captor.capture());
-        assertThat(captor.getValue().getCompetencia()).isEqualTo("2026-05");
+        assertThat(captor.getValue().getCompetencia()).isEqualTo(mesFuturo);
         assertThat(captor.getValue().getRegimePresuncao()).isEqualTo(RegimePresuncao.REDUZIDA);
     }
 }

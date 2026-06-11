@@ -71,6 +71,7 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
   const [equiparacao, setEquiparacao] = useState(false)
   const [vencimentoA1, setVencimentoA1] = useState('')
   const [competencia, setCompetencia] = useState(mesAtual())
+  const competenciaPassada = competencia < mesAtual()
   const [regimePresuncao, setRegimePresuncao] = useState<RegimePresuncao>('CHEIA')
   const [aliquotas, setAliquotas] = useState({ iss: '0.00', ir: '0.00', csll: '0.00', pis: '0.00', cofins: '0.00' })
 
@@ -210,8 +211,11 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
                 <div className="grid grid-cols-3 gap-4 mb-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Competência (YYYY-MM)</label>
-                    <input type="month" value={competencia} onChange={e => setCompetencia(e.target.value)}
+                    <input type="month" value={competencia} min={mesAtual()} onChange={e => setCompetencia(e.target.value)}
                       className="block w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary" />
+                    {competenciaPassada && (
+                      <p className="mt-1 text-xs text-red-500">Competências passadas não podem ser alteradas.</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Regime de Presunção</label>
@@ -285,7 +289,7 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
           <Button variant="outline" size="md" onClick={onClose} disabled={saving}>
             Fechar
           </Button>
-          <Button size="md" onClick={handleSalvar} disabled={loading || saving}>
+          <Button size="md" onClick={handleSalvar} disabled={loading || saving || competenciaPassada}>
             {saving ? <Spinner size="sm" /> : <Save size={15} />}
             Salvar
           </Button>

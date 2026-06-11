@@ -220,6 +220,27 @@ class ConfiguracaoFiscalIntegrationTest {
     }
 
     @Test
+    void salvar_competenciaPassada_retorna422() throws Exception {
+        Map<String, Object> invalido = Map.of(
+            "cnaeCodigo", "8630503",
+            "cnaeDescricao", "Atividade médica",
+            "codigoLc116", "4.02",
+            "indicadorEquiparacaoHospitalar", false,
+            "aliquota", Map.of(
+                "competencia", "2020-01",   // mês passado
+                "iss", 2.00, "ir", 1.50, "csll", 1.00, "pis", 0.65, "cofins", 3.00,
+                "regimePresuncao", "CHEIA"
+            )
+        );
+
+        mockMvc.perform(put("/api/empresas/{id}/configuracao-fiscal", empresaId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(invalido))
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+            .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
     void operacao_naoPodeAcessar_retorna403() throws Exception {
         mockMvc.perform(get("/api/empresas/{id}/configuracao-fiscal", empresaId)
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
