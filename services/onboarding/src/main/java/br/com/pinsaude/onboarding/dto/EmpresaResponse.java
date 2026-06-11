@@ -14,7 +14,6 @@ public record EmpresaResponse(
     String municipio,
     String codigoMunicipioIbge,
     RegimeTributario regimeTributario,
-    String contaBancaria,
     boolean ativo,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
@@ -23,7 +22,7 @@ public record EmpresaResponse(
         return new EmpresaResponse(
             e.getId(), e.getCnpj(), e.getRazaoSocial(),
             e.getInscricaoMunicipal(), e.getMunicipio(), e.getCodigoMunicipioIbge(),
-            e.getRegimeTributario(), e.getContaBancaria(),
+            e.getRegimeTributario(),
             e.isAtivo(), e.getCreatedAt(), e.getUpdatedAt()
         );
     }

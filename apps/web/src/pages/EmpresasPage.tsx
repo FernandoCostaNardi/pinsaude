@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Pencil, Trash2, Building2 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Building2, Landmark } from 'lucide-react'
 import {
   Badge, Button, Spinner, Alert,
   Table, THead, TBody, TRow, TH, TD,
@@ -8,6 +8,7 @@ import { Empresa, RegimeTributario, empresasApi } from '../api/empresasApi'
 import { formatCnpj } from '../utils/cnpj'
 import { EmpresaFormModal } from '../components/EmpresaFormModal'
 import { EmpresaDeleteModal } from '../components/EmpresaDeleteModal'
+import { ContasBancariasModal } from '../components/ContasBancariasModal'
 import { useAuth } from '../auth/useAuth'
 
 const REGIME_LABELS: Record<RegimeTributario, string> = {
@@ -37,6 +38,7 @@ export function EmpresasPage() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Empresa | null>(null)
   const [deleting, setDeleting] = useState<Empresa | null>(null)
+  const [contasEmpresa, setContasEmpresa] = useState<Empresa | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -188,7 +190,7 @@ export function EmpresasPage() {
                 <TH>Município</TH>
                 <TH>Regime</TH>
                 <TH>Status</TH>
-                {isGestao && <TH className="text-right">Ações</TH>}
+                <TH className="text-right">Ações</TH>
               </TRow>
             </THead>
             <TBody>
@@ -207,26 +209,35 @@ export function EmpresasPage() {
                       {empresa.ativo ? 'Ativo' : 'Inativo'}
                     </Badge>
                   </TD>
-                  {isGestao && (
-                    <TD className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <button
-                          onClick={() => openEdit(empresa)}
-                          className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-primary transition-colors"
-                          title="Editar"
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          onClick={() => setDeleting(empresa)}
-                          className="p-1.5 rounded hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </TD>
-                  )}
+                  <TD className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => setContasEmpresa(empresa)}
+                        className="p-1.5 rounded hover:bg-blue-50 text-gray-500 hover:text-primary transition-colors"
+                        title="Contas bancárias"
+                      >
+                        <Landmark size={15} />
+                      </button>
+                      {isGestao && (
+                        <>
+                          <button
+                            onClick={() => openEdit(empresa)}
+                            className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-primary transition-colors"
+                            title="Editar"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            onClick={() => setDeleting(empresa)}
+                            className="p-1.5 rounded hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </TD>
                 </TRow>
               ))}
             </TBody>
@@ -280,6 +291,15 @@ export function EmpresasPage() {
           empresa={deleting}
           onClose={() => setDeleting(null)}
           onDeleted={handleDeleted}
+        />
+      )}
+
+      {contasEmpresa && (
+        <ContasBancariasModal
+          empresaId={contasEmpresa.id}
+          empresaNome={contasEmpresa.razaoSocial}
+          isGestao={isGestao}
+          onClose={() => setContasEmpresa(null)}
         />
       )}
     </div>

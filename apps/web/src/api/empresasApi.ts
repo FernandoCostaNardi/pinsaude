@@ -16,7 +16,6 @@ export interface Empresa {
   municipio: string | null
   codigoMunicipioIbge: string | null
   regimeTributario: RegimeTributario
-  contaBancaria: string | null
   ativo: boolean
   createdAt: string
   updatedAt: string
@@ -29,7 +28,6 @@ export interface EmpresaRequest {
   municipio: string
   codigoMunicipioIbge: string
   regimeTributario: RegimeTributario
-  contaBancaria: string
 }
 
 export interface EmpresaPage {

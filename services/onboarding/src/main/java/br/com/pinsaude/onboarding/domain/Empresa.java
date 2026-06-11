@@ -39,10 +39,6 @@ public class Empresa {
     @ColumnTransformer(write = "?::onboarding.regime_tributario_enum")
     private RegimeTributario regimeTributario;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "conta_bancaria", columnDefinition = "jsonb")
-    private String contaBancaria;
-
     @Column(name = "ativo", nullable = false)
     private boolean ativo = true;
 
@@ -74,9 +70,6 @@ public class Empresa {
 
     public RegimeTributario getRegimeTributario() { return regimeTributario; }
     public void setRegimeTributario(RegimeTributario regimeTributario) { this.regimeTributario = regimeTributario; }
-
-    public String getContaBancaria() { return contaBancaria; }
-    public void setContaBancaria(String contaBancaria) { this.contaBancaria = contaBancaria; }
 
     public boolean isAtivo() { return ativo; }
     public void setAtivo(boolean ativo) { this.ativo = ativo; }

@@ -48,7 +48,6 @@ public class EmpresaService {
         empresa.setMunicipio(request.municipio());
         empresa.setCodigoMunicipioIbge(request.codigoMunicipioIbge());
         empresa.setRegimeTributario(request.regimeTributario());
-        empresa.setContaBancaria(request.contaBancaria());
         return EmpresaResponse.from(repository.save(empresa));
     }
 
@@ -63,7 +62,6 @@ public class EmpresaService {
         empresa.setMunicipio(request.municipio());
         empresa.setCodigoMunicipioIbge(request.codigoMunicipioIbge());
         empresa.setRegimeTributario(request.regimeTributario());
-        empresa.setContaBancaria(request.contaBancaria());
         return EmpresaResponse.from(repository.save(empresa));
     }
 

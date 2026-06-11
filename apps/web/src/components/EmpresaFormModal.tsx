@@ -23,7 +23,6 @@ const emptyForm = (): EmpresaRequest => ({
   municipio: '',
   codigoMunicipioIbge: '',
   regimeTributario: 'SIMPLES_NACIONAL',
-  contaBancaria: '',
 })
 
 export function EmpresaFormModal({ empresa, onClose, onSaved }: Props) {
@@ -43,7 +42,6 @@ export function EmpresaFormModal({ empresa, onClose, onSaved }: Props) {
         municipio: empresa.municipio ?? '',
         codigoMunicipioIbge: empresa.codigoMunicipioIbge ?? '',
         regimeTributario: empresa.regimeTributario,
-        contaBancaria: empresa.contaBancaria ?? '',
       })
     } else {
       setForm(emptyForm())
@@ -158,14 +156,6 @@ export function EmpresaFormModal({ empresa, onClose, onSaved }: Props) {
             maxLength={7}
           />
 
-          <div className="sm:col-span-2">
-            <Input
-              label="Conta Bancária (JSON)"
-              value={form.contaBancaria}
-              onChange={e => set('contaBancaria', e.target.value)}
-              placeholder='{"banco":"001","agencia":"1234","conta":"56789-0"}'
-            />
-          </div>
         </div>
 
         <div className="flex justify-end gap-3 pt-2 border-t">
