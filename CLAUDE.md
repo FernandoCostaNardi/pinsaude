@@ -22,7 +22,7 @@ Instruções específicas deste projeto para o Claude Code.
 
 ```
 pinsaude/
-  apps/web/          → React 18 (porta 3000, proxy /api → 8080)
+  apps/web/          → React 18 (porta 3000, proxy /api → 9090)
   services/fiscal/   → Spring Boot (porta 8081)
   services/faturamento/ → Spring Boot (porta 8082)
   services/ledger/   → Spring Boot (porta 8083)
@@ -303,6 +303,7 @@ O container Docker do pinsaude usa **porta 5433** para evitar conflito.
 | PostgreSQL | **5433** | 5432 |
 | RabbitMQ | 5672 / 15672 | 5672 / 15672 |
 | Keycloak | 8080 | 8080 |
+| Gateway | **9090** | — |
 | Vault | 8200 | 8200 |
 | Jaeger | 16686 / 4317 | 16686 / 4317 |
 | Mailhog | 1025 / 8025 | 1025 / 8025 |
