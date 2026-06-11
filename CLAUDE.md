@@ -147,10 +147,45 @@ O Keycloak 24 habilita User Profile por padrão. Atributos não declarados (ex: 
 Para adicionar um atributo: declarar em `PUT /admin/realms/{realm}/users/profile` com `permissions.view/edit: ["admin"]`.
 O `realm-export.json` já declara `cnpj_id` em `userProfileConfig.attributes`.
 
-### RLS no PostgreSQL — owner bypass
+### RLS no PostgreSQL — FORCE e padrão de bypass (implementado em EPIC-02.5)
 `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` sem `FORCE` faz o owner (svc_X) bypassar RLS automaticamente.
-`FORCE ROW LEVEL SECURITY` será adicionado em EPIC-02.5 quando o serviço implementar `SET app.current_tenant`.
-A policy usa `current_setting('app.current_tenant', TRUE)` — o `TRUE` evita erro quando a variável não está definida.
+Com `FORCE ROW LEVEL SECURITY` o owner também fica sujeito às policies.
+Superusers PostgreSQL bypassam RLS **mesmo com FORCE** — em produção, o app deve conectar como não-superuser.
+
+**Padrão de policy com bypass para gestão/Flyway (tenant vazio = ver tudo):**
+```sql
+USING (
+    COALESCE(current_setting('app.current_tenant', TRUE), '') = ''
+    OR cnpj = current_setting('app.current_tenant', TRUE)
+)
+```
+`COALESCE(NULL, '') = ''` → bypass quando variável não está definida (Flyway, health checks).
+`COALESCE('', '') = ''` → bypass quando tenant é string vazia (gestão).
+
+**Policy em tabelas filhas** (com `empresa_id` FK, sem coluna `cnpj`):
+```sql
+USING (
+    COALESCE(current_setting('app.current_tenant', TRUE), '') = ''
+    OR empresa_id IN (
+        SELECT id FROM onboarding.empresas
+        WHERE cnpj = current_setting('app.current_tenant', TRUE)
+    )
+)
+```
+
+### Multi-tenancy — propagação do tenant (EPIC-02.5)
+A propagação do CNPJ do tenant para o PostgreSQL usa três camadas:
+
+1. **TenantContext** (ThreadLocal estático) — armazena o CNPJ durante o request
+2. **TenantFilter** — `OncePerRequestFilter` registrado na cadeia Spring Security **via `http.addFilterAfter(new TenantFilter(), BearerTokenAuthenticationFilter.class)`**, NÃO como `@Component` (evita duplo registro como servlet filter). Lê `JwtAuthenticationToken` do `SecurityContextHolder` (JWT já autenticado) e define: gestão → `""`, demais roles → `cnpj_id` do JWT. `finally` garante limpeza do ThreadLocal.
+3. **TenantAwareDataSource + TenantDataSourcePostProcessor** — `BeanPostProcessor` (sem `@Autowired`) envolve o HikariCP e executa `SELECT set_config('app.current_tenant', ?, false)` a cada `getConnection()`. `is_local=false` = sessão, não transação — sempre sobrescrito no borrow seguinte. Falha silenciosa em H2 (testes).
+
+**Testcontainers e FORCE RLS:** o usuário padrão `test` do Testcontainers é superuser → bypassa FORCE RLS. Para testar isolamento real, criar um usuário não-superuser em `@BeforeEach` e conectar via JDBC direto:
+```java
+conn.createStatement().execute("CREATE ROLE svc_rls_test LOGIN PASSWORD 'rls_test'");
+conn.createStatement().execute("GRANT SELECT ON ALL TABLES IN SCHEMA onboarding TO svc_rls_test");
+// Depois conectar como svc_rls_test para validar que as policies filtram corretamente
+```
 
 ### Tipos enum em migrações Flyway
 Criar enums PostgreSQL como `CREATE TYPE schema.nome_enum AS ENUM (...)` antes das tabelas que os referenciam.
@@ -660,6 +695,36 @@ PUT /admin/realms/pinsaude/users/{id}/execute-actions-email
 Body: ["UPDATE_PASSWORD", "VERIFY_EMAIL"]
 ```
 Requer que o realm tenha `smtpServer` configurado; caso contrário retorna 500 silencioso.
+
+---
+
+## Configuração Fiscal e Versionamento por Competência (EPIC-02.4)
+
+### Tabela `aliquotas_competencia` — padrão de versionamento
+Alíquotas fiscais (ISS, IR, CSLL, PIS, COFINS) são armazenadas por empresa + competência (YYYY-MM).
+Cada competência é independente: salvar alíquotas de julho não retroage em notas de junho.
+Modelo: UNIQUE (empresa_id, competencia) → upsert por mês. NFS-e buscará sempre pela competência do mês da nota.
+
+### `regime_presuncao` como VARCHAR (não enum PostgreSQL)
+A coluna `regime_presuncao` em `aliquotas_competencia` usa `VARCHAR(10)` com `CHECK IN ('REDUZIDA', 'CHEIA')`.
+Evita o problema de cast do Hibernate 6 com enums PostgreSQL (`@ColumnTransformer` não é necessário).
+Java usa `@Enumerated(EnumType.STRING)` normalmente.
+
+### Status do Certificado A1 — calculado em runtime
+Não armazenar status no banco. Calculado no `ConfiguracaoFiscalResponse.from()` comparando `vencimentoCertificadoA1` com `LocalDate.now()`:
+- `VALIDO` → vence em mais de 30 dias
+- `EXPIRANDO` → vence em menos de 30 dias (mas ainda válido)
+- `VENCIDO` → já passou da data
+- `NAO_CONFIGURADO` → campo nulo
+
+### Filtro de busca em arrays JavaScript — `includes("")` é sempre true
+`anyString.includes("")` retorna `true` em JavaScript. Ao combinar filtros OR com `.includes(searchTerm)`, sempre verificar se o termo pós-processamento é não-vazio antes de aplicar o filtro:
+```typescript
+const qDigits = q.replace(/\D/g, '')
+const match = !q
+  || e.campo.toLowerCase().includes(q)
+  || (qDigits.length > 0 && e.outro.replace(/\D/g, '').includes(qDigits))
+```
 
 ---
 
