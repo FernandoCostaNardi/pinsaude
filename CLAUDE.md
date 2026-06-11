@@ -127,6 +127,37 @@ env: { ...process.env, JAVA_HOME: javaHome, MAVEN_OPTS: mavenOpts }
 
 ---
 
+## Flyway — Convenções e Armadilhas
+
+### Executar migrations sem iniciar o servidor
+O serviço depende do Keycloak (issuer-uri) para subir. Para rodar migrations isoladamente:
+```powershell
+node tools/scripts/mvn-flyway.js :pinsaude-onboarding migrate
+node tools/scripts/mvn-flyway.js :pinsaude-onboarding info
+```
+O script `tools/scripts/mvn-flyway.js` aceita qualquer goal do Flyway Maven Plugin.
+
+### Extensões pgcrypto e uuid-ossp
+Extensões PostgreSQL são "trusted" no PG 13+ e exigem `GRANT CREATE ON DATABASE pinsaude TO svc_<serviço>`.
+Esse grant está no `tools/db/init.sql`. As extensões são instaladas pelo superuser no init e as migrations
+usam `IF NOT EXISTS` para serem idempotentes.
+
+### User Profile do Keycloak 24 bloqueia atributos customizados
+O Keycloak 24 habilita User Profile por padrão. Atributos não declarados (ex: `cnpj_id`) são aceitos via Admin API mas silenciosamente ignorados no PUT.
+Para adicionar um atributo: declarar em `PUT /admin/realms/{realm}/users/profile` com `permissions.view/edit: ["admin"]`.
+O `realm-export.json` já declara `cnpj_id` em `userProfileConfig.attributes`.
+
+### RLS no PostgreSQL — owner bypass
+`ALTER TABLE ... ENABLE ROW LEVEL SECURITY` sem `FORCE` faz o owner (svc_X) bypassar RLS automaticamente.
+`FORCE ROW LEVEL SECURITY` será adicionado em EPIC-02.5 quando o serviço implementar `SET app.current_tenant`.
+A policy usa `current_setting('app.current_tenant', TRUE)` — o `TRUE` evita erro quando a variável não está definida.
+
+### Tipos enum em migrações Flyway
+Criar enums PostgreSQL como `CREATE TYPE schema.nome_enum AS ENUM (...)` antes das tabelas que os referenciam.
+Usar o schema explícito (`onboarding.regime_tributario_enum`) para evitar ambiguidade.
+
+---
+
 ## Dependências Maven — Armadilhas Conhecidas
 
 ### flyway-database-postgresql
