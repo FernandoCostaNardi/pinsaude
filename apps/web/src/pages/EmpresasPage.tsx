@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Pencil, Trash2, Building2, Landmark } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Building2, Landmark, FileText } from 'lucide-react'
 import {
   Badge, Button, Spinner, Alert,
   Table, THead, TBody, TRow, TH, TD,
@@ -9,6 +9,7 @@ import { formatCnpj } from '../utils/cnpj'
 import { EmpresaFormModal } from '../components/EmpresaFormModal'
 import { EmpresaDeleteModal } from '../components/EmpresaDeleteModal'
 import { ContasBancariasModal } from '../components/ContasBancariasModal'
+import { ConfiguracaoFiscalModal } from '../components/ConfiguracaoFiscalModal'
 import { useAuth } from '../auth/useAuth'
 
 const REGIME_LABELS: Record<RegimeTributario, string> = {
@@ -39,6 +40,7 @@ export function EmpresasPage() {
   const [editing, setEditing] = useState<Empresa | null>(null)
   const [deleting, setDeleting] = useState<Empresa | null>(null)
   const [contasEmpresa, setContasEmpresa] = useState<Empresa | null>(null)
+  const [fiscalEmpresa, setFiscalEmpresa] = useState<Empresa | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -64,10 +66,11 @@ export function EmpresasPage() {
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase()
+    const qDigits = q.replace(/\D/g, '')
     return empresas.filter(e => {
       const matchSearch = !q
         || e.razaoSocial.toLowerCase().includes(q)
-        || e.cnpj.replace(/\D/g, '').includes(q.replace(/\D/g, ''))
+        || (qDigits.length > 0 && e.cnpj.replace(/\D/g, '').includes(qDigits))
       const matchRegime = !filterRegime || e.regimeTributario === filterRegime
       const matchStatus = !filterStatus
         || (filterStatus === 'ativo' ? e.ativo : !e.ativo)
@@ -219,6 +222,15 @@ export function EmpresasPage() {
                         <Landmark size={15} />
                       </button>
                       {isGestao && (
+                        <button
+                          onClick={() => setFiscalEmpresa(empresa)}
+                          className="p-1.5 rounded hover:bg-green-50 text-gray-500 hover:text-green-600 transition-colors"
+                          title="Configuração fiscal"
+                        >
+                          <FileText size={15} />
+                        </button>
+                      )}
+                      {isGestao && (
                         <>
                           <button
                             onClick={() => openEdit(empresa)}
@@ -300,6 +312,14 @@ export function EmpresasPage() {
           empresaNome={contasEmpresa.razaoSocial}
           isGestao={isGestao}
           onClose={() => setContasEmpresa(null)}
+        />
+      )}
+
+      {fiscalEmpresa && (
+        <ConfiguracaoFiscalModal
+          empresaId={fiscalEmpresa.id}
+          empresaNome={fiscalEmpresa.razaoSocial}
+          onClose={() => setFiscalEmpresa(null)}
         />
       )}
     </div>
