@@ -22,14 +22,14 @@ Instruções específicas deste projeto para o Claude Code.
 
 ```
 pinsaude/
-  apps/web/          → React 18 (porta 3000, proxy /api → 8080)
+  apps/web/          → React 18 (porta 3000, proxy /api → 8090)
   services/fiscal/   → Spring Boot (porta 8081)
   services/faturamento/ → Spring Boot (porta 8082)
   services/ledger/   → Spring Boot (porta 8083)
   services/repasse/  → Spring Boot (porta 8084)
   services/onboarding/ → Spring Boot (porta 8085)
   services/gestao/   → Spring Boot (porta 8086)
-  gateway/           → Spring Cloud Gateway (porta 8080)
+  gateway/           → Spring Cloud Gateway (porta 8090)
   tools/scripts/     → Scripts Node.js de build/test
   docs/              → PRD, ADR
 ```
@@ -598,6 +598,25 @@ VITE_KC_CLIENT → Client ID (default: pinsaude-web)
 | `invalid_grant` + `"Invalid user credentials"` | "E-mail ou senha incorretos" |
 | `invalid_grant` + `"Account is not fully set up"` | Mensagem sobre configuração de MFA |
 | Outros 4xx/5xx | Mensagem genérica com status |
+
+### Roles no JWT — `realm_access.roles`, não `user.roles`
+O `AuthUser` extende `JwtPayload`. As roles do Keycloak ficam em `realm_access.roles` (array).
+**NUNCA usar `user.roles`** — essa propriedade não existe.
+```typescript
+const isGestao = user?.realm_access?.roles.includes('gestao') ?? false
+```
+
+### Token de acesso — ler do sessionStorage, não de export do keycloak.ts
+O `keycloak.ts` exporta apenas constantes e `decodeJwt()`. O token em si fica em `sessionStorage`.
+Padrão adotado em todos os módulos de API (`usersApi.ts`, `empresasApi.ts`):
+```typescript
+const STORAGE_KEY = 'pinsaude_tokens'
+function getAccessToken(): string {
+  const raw = sessionStorage.getItem(STORAGE_KEY)
+  if (!raw) throw new Error('Não autenticado')
+  return JSON.parse(raw).accessToken
+}
+```
 
 ---
 
