@@ -22,6 +22,10 @@ services:
       KC_DB_URL: jdbc:postgresql://localhost:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: ${KC_DB_PASS}
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME: https://212.85.12.228:8443
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
     volumes:
       - ./realm-export.json:/opt/keycloak/data/import/realm-pinsaude.json:ro
     healthcheck:

@@ -18,7 +18,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://212.85.12.228:8180/realms/pinsaude
+          issuer-uri: https://212.85.12.228:8443/realms/pinsaude
 
 server:
   port: 8185

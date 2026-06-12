@@ -10,6 +10,14 @@ spring:
           uri: http://localhost:8185
           predicates:
             - Path=/api/empresas/**
+        - id: gestao-usuarios
+          uri: http://localhost:8186
+          predicates:
+            - Path=/api/gestao/**
+        - id: gestao-roles
+          uri: http://localhost:8186
+          predicates:
+            - Path=/api/usuarios/**
         # Rotas abaixo ativas quando os serviços forem implementados:
         # - id: fiscal
         #   uri: http://localhost:8181
@@ -19,7 +27,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://212.85.12.228:8180/realms/pinsaude
+          issuer-uri: https://212.85.12.228:8443/realms/pinsaude
 
 server:
   port: 8100

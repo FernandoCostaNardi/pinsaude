@@ -1,0 +1,49 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pinsaude
+    username: svc_gestao
+    password: ${DB_PASSWORD_GESTAO}
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        default_schema: gestao
+  flyway:
+    enabled: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://212.85.12.228:8443/realms/pinsaude
+  mail:
+    host: localhost
+    port: 1025
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+server:
+  port: 8186
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+keycloak:
+  admin:
+    server-url: http://localhost:8180
+    realm: pinsaude
+    username: admin
+    password: ${KC_ADMIN_PASS}
+
+app:
+  mail:
+    from: noreply@pinsaude.com.br
+    from-name: "Pin Saude"
+    app-url: http://212.85.12.228
