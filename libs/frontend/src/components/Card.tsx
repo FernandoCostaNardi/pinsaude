@@ -30,7 +30,7 @@ export function Card({ children, className = '', ...props }: CardProps) {
 export function CardHeader({ children, className = '', ...props }: CardHeaderProps) {
   return (
     <div
-      className={['px-5 py-4 border-b border-gray-100 flex items-center justify-between', className].join(' ')}
+      className={['px-5 py-4 border-b border-gray-200 flex items-center justify-between', className].join(' ')}
       {...props}
     >
       {children}
@@ -49,7 +49,7 @@ export function CardBody({ children, className = '', ...props }: CardBodyProps) 
 export function CardFooter({ children, className = '', ...props }: CardFooterProps) {
   return (
     <div
-      className={['px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl', className].join(' ')}
+      className={['px-5 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl', className].join(' ')}
       {...props}
     >
       {children}

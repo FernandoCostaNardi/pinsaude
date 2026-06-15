@@ -97,13 +97,13 @@ export function ContasBancariasModal({ empresaId, empresaNome, isGestao, onClose
                   const bancoData = bancos.find(b => b.nome === c.banco)
                   const bd = bancoData ?? { compe: '0', nome: c.banco, domain: '' }
                   return (
-                    <div key={c.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                    <div key={c.id} className="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0">
                           <BancoAvatar banco={bd} size={36} />
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-gray-900 truncate">{c.banco}</p>
-                            <p className="text-xs text-gray-400">
+                            <p className="text-xs text-gray-500">
                               {bancoData ? `${bancoData.compe} · ` : ''}
                               {c.tipoConta === 'CORRENTE' ? 'Corrente' : 'Poupança'}
                             </p>
@@ -119,7 +119,7 @@ export function ContasBancariasModal({ empresaId, empresaNome, isGestao, onClose
                             <>
                               <button
                                 onClick={() => openEdit(c)}
-                                className="p-1.5 rounded hover:bg-gray-200 text-gray-500 hover:text-primary transition-colors"
+                                className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-primary transition-colors"
                                 title="Editar"
                               >
                                 <Pencil size={13} />
@@ -137,17 +137,17 @@ export function ContasBancariasModal({ empresaId, empresaNome, isGestao, onClose
                       </div>
                       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                         <div>
-                          <p className="text-xs text-gray-400">Agência</p>
-                          <p className="font-medium text-gray-700">{c.agencia}</p>
+                          <p className="text-xs font-medium text-gray-500">Agência</p>
+                          <p className="font-medium text-gray-900">{c.agencia}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-400">Conta</p>
-                          <p className="font-mono font-medium text-gray-700">{c.conta}</p>
+                          <p className="text-xs font-medium text-gray-500">Conta</p>
+                          <p className="font-mono font-medium text-gray-900">{c.conta}</p>
                         </div>
                         {c.chavePix && (
                           <div className="col-span-2">
-                            <p className="text-xs text-gray-400">Chave PIX</p>
-                            <p className="text-xs text-gray-600 break-all">{c.chavePix}</p>
+                            <p className="text-xs font-medium text-gray-500">Chave PIX</p>
+                            <p className="text-xs text-gray-700 break-all">{c.chavePix}</p>
                           </div>
                         )}
                       </div>

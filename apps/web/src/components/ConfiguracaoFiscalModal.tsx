@@ -177,7 +177,7 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
 
               {/* ─── Dados Fiscais ─── */}
               <section>
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-200">
                   Dados Fiscais
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -220,7 +220,7 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
 
               {/* ─── Alíquotas por Competência ─── */}
               <section>
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-200">
                   Alíquotas por Competência
                 </h3>
                 <div className="grid grid-cols-3 gap-4 mb-4">
@@ -261,13 +261,13 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
               {/* ─── Histórico ─── */}
               {config && config.historicoAliquotas.length > 0 && (
                 <section>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-200">
                     Histórico de Alíquotas
                   </h3>
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-xs">
                       <thead>
-                        <tr className="border-b border-gray-100">
+                        <tr className="border-b border-gray-200">
                           <th className="text-left py-2 pr-4 font-medium text-gray-500">Competência</th>
                           <th className="text-right py-2 pr-3 font-medium text-gray-500">ISS</th>
                           <th className="text-right py-2 pr-3 font-medium text-gray-500">IR</th>

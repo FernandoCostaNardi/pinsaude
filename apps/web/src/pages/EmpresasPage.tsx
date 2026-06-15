@@ -188,27 +188,27 @@ export function EmpresasPage() {
           {/* Mobile: cards */}
           <div className="flex flex-col gap-3 sm:hidden">
             {paginated.map(empresa => (
-              <div key={empresa.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+              <div key={empresa.id} className="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">{empresa.razaoSocial}</p>
-                    <p className="mt-0.5 font-mono text-xs text-gray-400">{formatCnpj(empresa.cnpj)}</p>
+                    <p className="mt-0.5 font-mono text-xs text-gray-500">{formatCnpj(empresa.cnpj)}</p>
                   </div>
                   <Badge variant={empresa.ativo ? 'success' : 'error'} className="shrink-0">
                     {empresa.ativo ? 'Ativo' : 'Inativo'}
                   </Badge>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
-                    <p className="text-xs text-gray-400">Município</p>
-                    <p className="text-gray-700 truncate">{empresa.municipio ?? '—'}</p>
+                    <p className="text-xs font-medium text-gray-500">Município</p>
+                    <p className="text-gray-900 font-medium truncate">{empresa.municipio ?? '—'}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-400">Regime</p>
-                    <p className="text-gray-700 text-xs">{REGIME_LABELS[empresa.regimeTributario]}</p>
+                    <p className="text-xs font-medium text-gray-500">Regime</p>
+                    <p className="text-gray-900 font-medium text-xs">{REGIME_LABELS[empresa.regimeTributario]}</p>
                   </div>
                 </div>
-                <div className="mt-3 flex items-center gap-1 border-t border-gray-100 pt-3">
+                <div className="mt-3 flex items-center gap-1 border-t border-gray-200 pt-3">
                   <button
                     onClick={() => setContasEmpresa(empresa)}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-blue-50 hover:text-primary transition-colors"

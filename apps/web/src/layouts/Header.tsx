@@ -88,7 +88,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               aria-hidden="true"
             />
             <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-xl border border-gray-200 shadow-lg z-20 py-1">
-              <div className="px-4 py-3 border-b border-gray-100">
+              <div className="px-4 py-3 border-b border-gray-200">
                 <p className="text-sm font-medium text-gray-900">{name}</p>
                 <p className="text-xs text-gray-500">{email}</p>
                 {role && <p className="text-xs text-primary font-medium mt-0.5">{role}</p>}
