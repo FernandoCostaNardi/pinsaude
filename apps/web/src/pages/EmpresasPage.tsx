@@ -18,6 +18,35 @@ const REGIME_LABELS: Record<RegimeTributario, string> = {
   LUCRO_REAL: 'Lucro Real',
 }
 
+const REGIME_BADGE: Record<RegimeTributario, string> = {
+  SIMPLES_NACIONAL: 'bg-primary-50 text-primary',
+  LUCRO_PRESUMIDO:  'bg-amber-50 text-amber-600',
+  LUCRO_REAL:       'bg-violet-50 text-violet-600',
+}
+
+function RegimeBadge({ regime }: { regime: RegimeTributario }) {
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${REGIME_BADGE[regime]}`}>
+      {REGIME_LABELS[regime]}
+    </span>
+  )
+}
+
+function CompanyAvatar({ name, size = 'sm' }: { name: string; size?: 'sm' | 'md' }) {
+  const initials = name.split(/\s+/).filter(w => w.length > 2).slice(0, 2)
+    .map(w => w[0].toUpperCase()).join('') || name.slice(0, 2).toUpperCase()
+  return (
+    <div className={[
+      'rounded-lg bg-primary-50 flex items-center justify-center shrink-0',
+      size === 'md' ? 'w-10 h-10' : 'w-8 h-8',
+    ].join(' ')}>
+      <span className={['font-black text-primary', size === 'md' ? 'text-sm' : 'text-xs'].join(' ')}>
+        {initials}
+      </span>
+    </div>
+  )
+}
+
 const PAGE_SIZES = [10, 25, 50]
 
 export function EmpresasPage() {
@@ -188,11 +217,14 @@ export function EmpresasPage() {
           {/* Mobile: cards */}
           <div className="flex flex-col gap-3 sm:hidden">
             {paginated.map(empresa => (
-              <div key={empresa.id} className="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
+              <div key={empresa.id} className="rounded-xl border border-ds-border bg-white shadow-sm p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{empresa.razaoSocial}</p>
-                    <p className="mt-0.5 font-mono text-xs text-gray-500">{formatCnpj(empresa.cnpj)}</p>
+                  <div className="flex items-start gap-3 min-w-0">
+                    <CompanyAvatar name={empresa.razaoSocial} size="md" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-ds-text truncate">{empresa.razaoSocial}</p>
+                      <p className="mt-0.5 font-mono text-xs text-ds-light">{formatCnpj(empresa.cnpj)}</p>
+                    </div>
                   </div>
                   <Badge variant={empresa.ativo ? 'success' : 'error'} className="shrink-0">
                     {empresa.ativo ? 'Ativo' : 'Inativo'}
@@ -200,15 +232,15 @@ export function EmpresasPage() {
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
-                    <p className="text-xs font-medium text-gray-500">Município</p>
-                    <p className="text-gray-900 font-medium truncate">{empresa.municipio ?? '—'}</p>
+                    <p className="text-xs font-medium text-ds-light">Município</p>
+                    <p className="text-ds-text font-medium truncate">{empresa.municipio ?? '—'}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-gray-500">Regime</p>
-                    <p className="text-gray-900 font-medium text-xs">{REGIME_LABELS[empresa.regimeTributario]}</p>
+                    <p className="text-xs font-medium text-ds-light mb-1">Regime</p>
+                    <RegimeBadge regime={empresa.regimeTributario} />
                   </div>
                 </div>
-                <div className="mt-3 flex items-center gap-1 border-t border-gray-200 pt-3">
+                <div className="mt-3 flex items-center gap-1 border-t border-ds-border pt-3">
                   <button
                     onClick={() => setContasEmpresa(empresa)}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-blue-50 hover:text-primary transition-colors"
@@ -262,13 +294,16 @@ export function EmpresasPage() {
               <TBody>
                 {paginated.map(empresa => (
                   <TRow key={empresa.id}>
-                    <TD className="font-medium text-gray-900">{empresa.razaoSocial}</TD>
-                    <TD className="font-mono text-xs">{formatCnpj(empresa.cnpj)}</TD>
-                    <TD className="text-gray-600">{empresa.municipio ?? '—'}</TD>
                     <TD>
-                      <span className="text-xs text-gray-600">
-                        {REGIME_LABELS[empresa.regimeTributario]}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <CompanyAvatar name={empresa.razaoSocial} />
+                        <span className="font-semibold text-ds-text">{empresa.razaoSocial}</span>
+                      </div>
+                    </TD>
+                    <TD className="font-mono text-xs">{formatCnpj(empresa.cnpj)}</TD>
+                    <TD>{empresa.municipio ?? '—'}</TD>
+                    <TD>
+                      <RegimeBadge regime={empresa.regimeTributario} />
                     </TD>
                     <TD>
                       <Badge variant={empresa.ativo ? 'success' : 'error'}>

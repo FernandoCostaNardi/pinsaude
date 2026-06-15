@@ -12,8 +12,8 @@ interface TDProps    extends TdHTMLAttributes<HTMLTableCellElement>  { children:
 
 export function Table({ children, className = '', ...props }: TableProps) {
   return (
-    <div className={['w-full overflow-x-auto rounded-xl border border-gray-200', className].join(' ')} {...props}>
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
+    <div className={['w-full overflow-x-auto rounded-xl border border-ds-border', className].join(' ')} {...props}>
+      <table className="min-w-full divide-y divide-ds-border text-sm">
         {children}
       </table>
     </div>
@@ -22,7 +22,7 @@ export function Table({ children, className = '', ...props }: TableProps) {
 
 export function THead({ children, className = '', ...props }: THeadProps) {
   return (
-    <thead className={['bg-gray-50', className].join(' ')} {...props}>
+    <thead className={['bg-ds-input', className].join(' ')} {...props}>
       {children}
     </thead>
   )
@@ -30,7 +30,7 @@ export function THead({ children, className = '', ...props }: THeadProps) {
 
 export function TBody({ children, className = '', ...props }: TBodyProps) {
   return (
-    <tbody className={['divide-y divide-gray-100 bg-white', className].join(' ')} {...props}>
+    <tbody className={['divide-y divide-ds-border bg-white', className].join(' ')} {...props}>
       {children}
     </tbody>
   )
@@ -38,7 +38,7 @@ export function TBody({ children, className = '', ...props }: TBodyProps) {
 
 export function TRow({ children, className = '', ...props }: TRowProps) {
   return (
-    <tr className={['hover:bg-gray-50 transition-colors', className].join(' ')} {...props}>
+    <tr className={['hover:bg-ds-hover transition-colors', className].join(' ')} {...props}>
       {children}
     </tr>
   )
@@ -47,7 +47,7 @@ export function TRow({ children, className = '', ...props }: TRowProps) {
 export function TH({ children, className = '', ...props }: THProps) {
   return (
     <th
-      className={['px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide', className].join(' ')}
+      className={['px-4 py-3 text-left text-xs font-semibold text-ds-light uppercase tracking-wide', className].join(' ')}
       {...props}
     >
       {children}
@@ -57,7 +57,7 @@ export function TH({ children, className = '', ...props }: THProps) {
 
 export function TD({ children, className = '', ...props }: TDProps) {
   return (
-    <td className={['px-4 py-3 text-gray-700', className].join(' ')} {...props}>
+    <td className={['px-4 py-3 text-ds-mid', className].join(' ')} {...props}>
       {children}
     </td>
   )
