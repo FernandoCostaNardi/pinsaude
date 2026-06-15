@@ -6,7 +6,7 @@ import {
 } from '@pinsaude/ui'
 import { Empresa, RegimeTributario, empresasApi } from '../api/empresasApi'
 import { formatCnpj } from '../utils/cnpj'
-import { EmpresaFormModal } from '../components/EmpresaFormModal'
+import { EmpresaWizardModal } from '../components/EmpresaWizardModal'
 import { EmpresaDeleteModal } from '../components/EmpresaDeleteModal'
 import { ContasBancariasModal } from '../components/ContasBancariasModal'
 import { ConfiguracaoFiscalModal } from '../components/ConfiguracaoFiscalModal'
@@ -185,75 +185,139 @@ export function EmpresasPage() {
         </div>
       ) : (
         <>
-          <Table>
-            <THead>
-              <TRow>
-                <TH>Razão Social</TH>
-                <TH>CNPJ</TH>
-                <TH>Município</TH>
-                <TH>Regime</TH>
-                <TH>Status</TH>
-                <TH className="text-right">Ações</TH>
-              </TRow>
-            </THead>
-            <TBody>
-              {paginated.map(empresa => (
-                <TRow key={empresa.id}>
-                  <TD className="font-medium text-gray-900">{empresa.razaoSocial}</TD>
-                  <TD className="font-mono text-xs">{formatCnpj(empresa.cnpj)}</TD>
-                  <TD className="text-gray-600">{empresa.municipio ?? '—'}</TD>
-                  <TD>
-                    <span className="text-xs text-gray-600">
-                      {REGIME_LABELS[empresa.regimeTributario]}
-                    </span>
-                  </TD>
-                  <TD>
-                    <Badge variant={empresa.ativo ? 'success' : 'error'}>
-                      {empresa.ativo ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                  </TD>
-                  <TD className="text-right">
-                    <div className="flex justify-end gap-1">
+          {/* Mobile: cards */}
+          <div className="flex flex-col gap-3 sm:hidden">
+            {paginated.map(empresa => (
+              <div key={empresa.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{empresa.razaoSocial}</p>
+                    <p className="mt-0.5 font-mono text-xs text-gray-400">{formatCnpj(empresa.cnpj)}</p>
+                  </div>
+                  <Badge variant={empresa.ativo ? 'success' : 'error'} className="shrink-0">
+                    {empresa.ativo ? 'Ativo' : 'Inativo'}
+                  </Badge>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                  <div>
+                    <p className="text-xs text-gray-400">Município</p>
+                    <p className="text-gray-700 truncate">{empresa.municipio ?? '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Regime</p>
+                    <p className="text-gray-700 text-xs">{REGIME_LABELS[empresa.regimeTributario]}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-1 border-t border-gray-100 pt-3">
+                  <button
+                    onClick={() => setContasEmpresa(empresa)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-blue-50 hover:text-primary transition-colors"
+                  >
+                    <Landmark size={13} /> Contas
+                  </button>
+                  {isGestao && (
+                    <button
+                      onClick={() => setFiscalEmpresa(empresa)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-gray-600 hover:bg-green-50 hover:text-green-600 transition-colors"
+                    >
+                      <FileText size={13} /> Fiscal
+                    </button>
+                  )}
+                  {isGestao && (
+                    <>
                       <button
-                        onClick={() => setContasEmpresa(empresa)}
-                        className="p-1.5 rounded hover:bg-blue-50 text-gray-500 hover:text-primary transition-colors"
-                        title="Contas bancárias"
+                        onClick={() => openEdit(empresa)}
+                        className="ml-auto p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-primary transition-colors"
+                        title="Editar"
                       >
-                        <Landmark size={15} />
+                        <Pencil size={14} />
                       </button>
-                      {isGestao && (
-                        <button
-                          onClick={() => setFiscalEmpresa(empresa)}
-                          className="p-1.5 rounded hover:bg-green-50 text-gray-500 hover:text-green-600 transition-colors"
-                          title="Configuração fiscal"
-                        >
-                          <FileText size={15} />
-                        </button>
-                      )}
-                      {isGestao && (
-                        <>
-                          <button
-                            onClick={() => openEdit(empresa)}
-                            className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-primary transition-colors"
-                            title="Editar"
-                          >
-                            <Pencil size={15} />
-                          </button>
-                          <button
-                            onClick={() => setDeleting(empresa)}
-                            className="p-1.5 rounded hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
-                            title="Excluir"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </TD>
+                      <button
+                        onClick={() => setDeleting(empresa)}
+                        className="p-1.5 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden sm:block">
+            <Table>
+              <THead>
+                <TRow>
+                  <TH>Razão Social</TH>
+                  <TH>CNPJ</TH>
+                  <TH>Município</TH>
+                  <TH>Regime</TH>
+                  <TH>Status</TH>
+                  <TH className="text-right">Ações</TH>
                 </TRow>
-              ))}
-            </TBody>
-          </Table>
+              </THead>
+              <TBody>
+                {paginated.map(empresa => (
+                  <TRow key={empresa.id}>
+                    <TD className="font-medium text-gray-900">{empresa.razaoSocial}</TD>
+                    <TD className="font-mono text-xs">{formatCnpj(empresa.cnpj)}</TD>
+                    <TD className="text-gray-600">{empresa.municipio ?? '—'}</TD>
+                    <TD>
+                      <span className="text-xs text-gray-600">
+                        {REGIME_LABELS[empresa.regimeTributario]}
+                      </span>
+                    </TD>
+                    <TD>
+                      <Badge variant={empresa.ativo ? 'success' : 'error'}>
+                        {empresa.ativo ? 'Ativo' : 'Inativo'}
+                      </Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => setContasEmpresa(empresa)}
+                          className="p-1.5 rounded hover:bg-blue-50 text-gray-500 hover:text-primary transition-colors"
+                          title="Contas bancárias"
+                        >
+                          <Landmark size={15} />
+                        </button>
+                        {isGestao && (
+                          <button
+                            onClick={() => setFiscalEmpresa(empresa)}
+                            className="p-1.5 rounded hover:bg-green-50 text-gray-500 hover:text-green-600 transition-colors"
+                            title="Configuração fiscal"
+                          >
+                            <FileText size={15} />
+                          </button>
+                        )}
+                        {isGestao && (
+                          <>
+                            <button
+                              onClick={() => openEdit(empresa)}
+                              className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-primary transition-colors"
+                              title="Editar"
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              onClick={() => setDeleting(empresa)}
+                              className="p-1.5 rounded hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
+                              title="Excluir"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </TD>
+                  </TRow>
+                ))}
+              </TBody>
+            </Table>
+          </div>
 
           {/* Pagination */}
           <div className="flex items-center justify-between text-sm text-gray-500">
@@ -291,7 +355,7 @@ export function EmpresasPage() {
       )}
 
       {showForm && (
-        <EmpresaFormModal
+        <EmpresaWizardModal
           empresa={editing}
           onClose={() => { setShowForm(false); setEditing(null) }}
           onSaved={handleSaved}
