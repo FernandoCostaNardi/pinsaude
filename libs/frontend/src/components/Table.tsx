@@ -7,8 +7,8 @@ interface TableProps extends HTMLAttributes<HTMLDivElement> {
 interface THeadProps extends HTMLAttributes<HTMLTableSectionElement> { children: ReactNode }
 interface TBodyProps extends HTMLAttributes<HTMLTableSectionElement> { children: ReactNode }
 interface TRowProps  extends HTMLAttributes<HTMLTableRowElement>     { children: ReactNode }
-interface THProps    extends ThHTMLAttributes<HTMLTableCellElement>  { children: ReactNode }
-interface TDProps    extends TdHTMLAttributes<HTMLTableCellElement>  { children: ReactNode }
+interface THProps    extends ThHTMLAttributes<HTMLTableCellElement>  { children?: ReactNode }
+interface TDProps    extends TdHTMLAttributes<HTMLTableCellElement>  { children?: ReactNode }
 
 export function Table({ children, className = '', ...props }: TableProps) {
   return (

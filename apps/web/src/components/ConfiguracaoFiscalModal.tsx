@@ -45,9 +45,6 @@ function mesAtual(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-function emptyAliquotas() {
-  return { iss: '0.00', ir: '0.00', csll: '0.00', pis: '0.00', cofins: '0.00' }
-}
 
 function formFromConfig(config: ConfiguracaoFiscal, comp: string): FiscalForm {
   const aq = config.historicoAliquotas.find(a => a.competencia === comp)

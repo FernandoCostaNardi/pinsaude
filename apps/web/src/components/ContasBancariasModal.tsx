@@ -161,7 +161,7 @@ export function ContasBancariasModal({ empresaId, empresaNome, isGestao, onClose
                 <Table>
                   <THead>
                     <TRow>
-                      <TH className="w-14"></TH>
+                      <TH className="w-14" />
                       <TH>Banco</TH>
                       <TH>Agência</TH>
                       <TH>Conta</TH>

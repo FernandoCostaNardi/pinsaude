@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Landmark, CreditCard, CheckCircle, Star } from 'lucide-react'
 import { Modal, Input, Button, Alert } from '@pinsaude/ui'
 import { BancoSelect, BancoAvatar, bancos } from './BancoSelect'
