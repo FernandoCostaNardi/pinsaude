@@ -63,7 +63,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const pageName  = PAGE_NAMES[pathname] ?? 'Pin Saúde'
 
   return (
-    <header className="h-16 bg-white border-b border-ds-border flex items-center px-4 gap-4 shrink-0">
+    <header className="h-16 bg-white border-b border-ds-border shadow-sm flex items-center px-4 gap-4 shrink-0 z-10">
       <button
         onClick={onMenuClick}
         className="md:hidden p-2 rounded-lg text-ds-light hover:bg-ds-input transition-colors"

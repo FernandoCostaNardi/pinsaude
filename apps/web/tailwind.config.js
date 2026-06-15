@@ -41,11 +41,11 @@ export default {
         },
         // Design system tokens (from Corvi Design / Empresas.html)
         ds: {
-          bg:     '#F0F3F8',
-          border: '#EDF0F5',
+          bg:     '#DCE5F2',
+          border: '#DDE4EE',
           card:   '#FFFFFF',
-          input:  '#F7F9FB',
-          hover:  '#F5FAFD',
+          input:  '#F0F5FA',
+          hover:  '#EBF4FD',
           text:   '#172033',
           mid:    '#4B5E78',
           light:  '#8A9BB0',

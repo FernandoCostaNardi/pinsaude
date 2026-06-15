@@ -40,24 +40,21 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const content = (
     <nav className="flex flex-col h-full bg-white">
       {/* Logo */}
-      <div className="flex items-center justify-between px-4 h-16 border-b border-ds-border shrink-0">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <img
-            src="/logo-pinsaude.png"
-            alt="Pin Saúde"
-            className="h-8 w-auto shrink-0"
-          />
-          <div className="min-w-0">
-            <p className="text-sm font-black text-ds-text tracking-tight leading-none">pin saúde</p>
-            <p className="text-[9px] text-ds-light tracking-widest uppercase mt-0.5">Sistema de Gestão</p>
-          </div>
-        </div>
+      <div className="relative flex flex-col items-center justify-center px-4 pt-6 pb-4 border-b border-ds-border shrink-0">
         <button
           onClick={onMobileClose}
-          className="md:hidden p-1 rounded-lg text-ds-light hover:text-ds-mid hover:bg-ds-input transition-colors"
+          className="md:hidden absolute right-3 top-3 p-1 rounded-lg text-ds-light hover:text-ds-mid hover:bg-ds-input transition-colors"
         >
           <X size={20} />
         </button>
+        <img
+          src="/logo-pinsaude.png"
+          alt="Pin Saúde"
+          className="h-9 w-auto [filter:brightness(0)_saturate(100%)_invert(50%)_sepia(98%)_saturate(3000%)_hue-rotate(173deg)_brightness(103%)]"
+        />
+        <p className="mt-2 text-[9px] font-semibold text-ds-light tracking-widest uppercase">
+          Sistema de Gestão
+        </p>
       </div>
 
       {/* Nav items */}
@@ -106,7 +103,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:flex-col md:w-60 md:shrink-0 border-r border-ds-border h-screen sticky top-0">
+      <aside className="hidden md:flex md:flex-col md:w-60 md:shrink-0 border-r border-ds-border shadow-sm h-screen sticky top-0 z-10">
         {content}
       </aside>
 

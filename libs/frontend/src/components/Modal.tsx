@@ -4,7 +4,7 @@ import { X } from 'lucide-react'
 interface ModalProps {
   open: boolean
   onClose: () => void
-  title?: string
+  title?: ReactNode
   children: ReactNode
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
 }
@@ -28,7 +28,9 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    // Mobile: bottom sheet anchored to bottom edge, full width
+    // Desktop (sm+): centered dialog with padding
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
@@ -36,25 +38,38 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
       />
       <div
         className={[
-          'relative w-full bg-white rounded-2xl shadow-xl flex flex-col',
-          'max-h-[90vh]',
+          'relative w-full bg-white flex flex-col shadow-xl',
+          // Mobile: rounded top corners only, takes up to 92% of dynamic viewport
+          'rounded-t-2xl max-h-[92dvh]',
+          // Desktop: fully rounded, slightly shorter max height
+          'sm:rounded-2xl sm:max-h-[90vh]',
           sizeClasses[size],
         ].join(' ')}
         role="dialog"
         aria-modal="true"
       >
+        {/* Drag handle — visible only on mobile */}
+        <div className="sm:hidden flex justify-center pt-3 shrink-0">
+          <div className="w-9 h-1 rounded-full bg-gray-300" />
+        </div>
+
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-ds-border shrink-0">
+            <div className="flex-1 min-w-0">
+              {typeof title === 'string'
+                ? <h2 className="text-base font-bold text-ds-text">{title}</h2>
+                : title
+              }
+            </div>
             <button
               onClick={onClose}
-              className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className="ml-3 shrink-0 p-1.5 rounded-lg text-ds-light hover:text-ds-mid hover:bg-ds-input transition-colors"
             >
               <X size={18} />
             </button>
           </div>
         )}
-        <div className="overflow-y-auto px-6 py-4 flex-1">{children}</div>
+        <div className="overflow-y-auto px-4 sm:px-6 py-4 flex-1">{children}</div>
       </div>
     </div>
   )

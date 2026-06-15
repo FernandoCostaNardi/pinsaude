@@ -10,6 +10,7 @@
     "lint": "eslint src --ext ts,tsx"
   },
   "dependencies": {
+    "bancos-brasileiros": "^6.2.317",
     "keycloak-js": "24.0.5",
     "lucide-react": "^0.400.0",
     "react": "^18.3.1",
