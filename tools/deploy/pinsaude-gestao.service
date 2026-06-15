@@ -1,0 +1,25 @@
+[Unit]
+Description=Pin Saude - Gestao Service
+After=network.target pinsaude-keycloak.service
+
+[Service]
+Type=simple
+User=pinsaude
+Group=pinsaude
+WorkingDirectory=/home/pinsaude/apps/gestao
+
+EnvironmentFile=/home/pinsaude/infra/.env
+
+ExecStart=/usr/bin/java \
+  -Xms128m -Xmx256m \
+  -Dspring.profiles.active=prod \
+  -Dspring.config.additional-location=file:/home/pinsaude/apps/gestao/application-prod.yml \
+  -jar /home/pinsaude/apps/gestao/app.jar
+
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/pinsaude/logs/gestao.log
+StandardError=append:/home/pinsaude/logs/gestao.log
+
+[Install]
+WantedBy=multi-user.target

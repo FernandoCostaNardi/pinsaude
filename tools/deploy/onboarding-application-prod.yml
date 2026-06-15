@@ -1,0 +1,30 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pinsaude
+    username: svc_onboarding
+    password: ${DB_PASSWORD_ONBOARDING}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: onboarding
+  flyway:
+    schemas: onboarding
+    default-schema: onboarding
+    locations: classpath:db/migration
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://212.85.12.228:8443/realms/pinsaude
+
+server:
+  port: 8185
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

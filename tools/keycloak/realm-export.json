@@ -25,7 +25,7 @@
   "otpPolicyPeriod": 30,
   "otpSupportedApplications": ["totpAppGoogleName", "totpAppMicrosoftAuthenticatorName"],
   "smtpServer": {
-    "host": "mailhog",
+    "host": "localhost",
     "port": "1025",
     "from": "noreply@pinsaude.com.br",
     "fromDisplayName": "Pin Saude",
@@ -86,12 +86,17 @@
       "frontchannelLogout": true,
       "redirectUris": [
         "http://localhost:3000/*",
-        "http://localhost:3000"
+        "http://localhost:3000",
+        "https://212.85.12.228/*",
+        "https://212.85.12.228"
       ],
-      "webOrigins": ["http://localhost:3000"],
+      "webOrigins": [
+        "http://localhost:3000",
+        "https://212.85.12.228"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:3000"
+        "post.logout.redirect.uris": "http://localhost:3000##https://212.85.12.228"
       },
       "protocolMappers": [
         {

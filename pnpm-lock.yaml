@@ -20,6 +20,9 @@ importers:
 
   apps/web:
     dependencies:
+      bancos-brasileiros:
+        specifier: ^6.2.317
+        version: 6.2.317
       keycloak-js:
         specifier: 24.0.5
         version: 24.0.5
@@ -1357,6 +1360,9 @@ packages:
 
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
+
+  bancos-brasileiros@6.2.317:
+    resolution: {integrity: sha512-MGvUPh68QZEVyuN2G+Ucyf8BxANtNnrhKc+hKmDVQXVKFQfZ+hX2rIQY5KfAJrRYobGeb+aG3XgYSqAvXaJS6w==}
 
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
@@ -4199,6 +4205,8 @@ snapshots:
       '@babel/traverse': 7.29.7
 
   balanced-match@1.0.2: {}
+
+  bancos-brasileiros@6.2.317: {}
 
   base64-js@1.5.1: {}
 

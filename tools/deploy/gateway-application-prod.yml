@@ -1,0 +1,39 @@
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: onboarding
+          uri: http://localhost:8185
+          predicates:
+            - Path=/api/onboarding/**
+        - id: empresas
+          uri: http://localhost:8185
+          predicates:
+            - Path=/api/empresas/**
+        - id: gestao-usuarios
+          uri: http://localhost:8186
+          predicates:
+            - Path=/api/gestao/**
+        - id: gestao-roles
+          uri: http://localhost:8186
+          predicates:
+            - Path=/api/usuarios/**
+        # Rotas abaixo ativas quando os serviços forem implementados:
+        # - id: fiscal
+        #   uri: http://localhost:8181
+        #   predicates:
+        #     - Path=/api/fiscal/**
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://212.85.12.228:8443/realms/pinsaude
+
+server:
+  port: 8100
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
