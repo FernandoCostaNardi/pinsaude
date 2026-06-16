@@ -12,7 +12,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class MedicoService {
@@ -45,7 +47,17 @@ public class MedicoService {
     public MedicoListResponse listar(int page, int size, String status) {
         var pageable = PageRequest.of(page, size);
         var result = medicoRepo.findAllByStatusNot(StatusMedico.INATIVO.name(), pageable);
-        return MedicoListResponse.from(result.map(MedicoSummaryResponse::from));
+
+        List<UUID> ids = result.getContent().stream().map(Medico::getId).toList();
+        Map<UUID, UUID> medicoEmpresa = vinculoRepo.findByIdMedicoIdIn(ids).stream()
+            .collect(Collectors.toMap(
+                v -> v.getId().getMedicoId(),
+                v -> v.getId().getEmpresaId(),
+                (a, b) -> a
+            ));
+
+        return MedicoListResponse.from(result.map(m ->
+            MedicoSummaryResponse.from(m, medicoEmpresa.get(m.getId()))));
     }
 
     public MedicoResponse buscarPorId(UUID id) {
@@ -97,6 +109,13 @@ public class MedicoService {
         medico.setEspecialidade(req.especialidade());
         medico.setEmail(req.email());
         medico.setTelefone(req.telefone());
+
+        if (req.empresaId() != null && !vinculoRepo.existsByIdMedicoIdAndIdEmpresaId(id, req.empresaId())) {
+            vinculoRepo.deleteByIdMedicoId(id);
+            vinculoRepo.save(new VinculoMedicoEmpresa(
+                new VinculoMedicoEmpresaId(id, req.empresaId()), StatusSocietario.ATIVO));
+        }
+
         return toFullResponse(medicoRepo.save(medico));
     }
 
@@ -205,6 +224,11 @@ public class MedicoService {
     private MedicoResponse toFullResponse(Medico medico) {
         String cpfDecriptografado = cryptoService.decrypt(medico.getCpfCriptografado());
 
+        UUID empresaId = vinculoRepo.findByIdMedicoId(medico.getId()).stream()
+            .findFirst()
+            .map(v -> v.getId().getEmpresaId())
+            .orElse(null);
+
         DadosBancariosMedicoResponse dadosBancarios = dadosBancariosRepo
             .findByMedicoId(medico.getId())
             .map(d -> DadosBancariosMedicoResponse.from(d,
@@ -222,6 +246,6 @@ public class MedicoService {
             .map(ChecklistCondutaResponse::from)
             .orElse(null);
 
-        return MedicoResponse.from(medico, cpfDecriptografado, dadosBancarios, documentos, checklist);
+        return MedicoResponse.from(medico, cpfDecriptografado, empresaId, dadosBancarios, documentos, checklist);
     }
 }

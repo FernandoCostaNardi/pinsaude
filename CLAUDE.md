@@ -119,9 +119,10 @@ Sempre passar estas flags via `MAVEN_OPTS`:
 Já configurado nos scripts. Não remover.
 
 ### JAVA_HOME
-Usar `C:\Program Files\Java\jdk-17.0.16` (ou o que estiver em `JAVA_HOME` do ambiente).
+Usar `C:\Program Files\Java\jdk-17.0.2` (instalado nesta máquina). Verificar com `Get-ChildItem "C:\Program Files\Java"`.
 Sempre passar explicitamente no env do spawnSync:
 ```javascript
+const javaHome = process.env.JAVA_HOME || 'C:\\Program Files\\Java\\jdk-17.0.2';
 env: { ...process.env, JAVA_HOME: javaHome, MAVEN_OPTS: mavenOpts }
 ```
 

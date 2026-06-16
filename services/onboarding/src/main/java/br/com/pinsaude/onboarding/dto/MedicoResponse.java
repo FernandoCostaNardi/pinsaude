@@ -17,6 +17,7 @@ public record MedicoResponse(
     String email,
     String telefone,
     StatusMedico status,
+    UUID empresaId,
     DadosBancariosMedicoResponse dadosBancarios,
     List<DocumentoMedicoResponse> documentos,
     ChecklistCondutaResponse checklist,
@@ -26,13 +27,14 @@ public record MedicoResponse(
     public static MedicoResponse from(
             Medico m,
             String cpfDecriptografado,
+            UUID empresaId,
             DadosBancariosMedicoResponse dadosBancarios,
             List<DocumentoMedicoResponse> documentos,
             ChecklistCondutaResponse checklist) {
         return new MedicoResponse(
             m.getId(), cpfDecriptografado, m.getNome(),
             m.getCrm(), m.getCrmUf(), m.getEspecialidade(),
-            m.getEmail(), m.getTelefone(), m.getStatus(),
+            m.getEmail(), m.getTelefone(), m.getStatus(), empresaId,
             dadosBancarios, documentos, checklist,
             m.getCreatedAt(), m.getUpdatedAt()
         );
