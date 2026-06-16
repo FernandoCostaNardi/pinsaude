@@ -237,6 +237,22 @@ CREATE POLICY tenant_isolation ON onboarding.medicos
 ```
 A tabela `vinculos_medico_empresa` é a âncora do isolamento: ela tem `empresa_id` e resolve via `empresas.cnpj`.
 
+### RLS INSERT bloqueado por USING sem WITH CHECK (implementado em EPIC-03.2)
+Policies criadas apenas com `USING (...)` usam a mesma expressão como `WITH CHECK` em INSERTs.
+Quando a tabela usa lookup em outra tabela (ex: `medicos` verifica `vinculos_medico_empresa`),
+o INSERT falha porque o vínculo ainda não existe no momento da inserção:
+```
+ERROR: new row violates row-level security policy for table "medicos"
+```
+**Solução:** adicionar `WITH CHECK (true)` explícito para permitir INSERTs livremente,
+mantendo o `USING` apenas para SELECT/UPDATE:
+```sql
+ALTER POLICY tenant_isolation ON onboarding.medicos WITH CHECK (true);
+-- Idem para checklist_conduta, dados_bancarios_medico, documentos_medico
+```
+O isolamento de leitura continua garantido pelo `USING`; a aplicação é responsável por
+inserir imediatamente o vínculo na mesma transação.
+
 ---
 
 ## JPA / Hibernate 6 — Armadilhas com PostgreSQL
@@ -250,6 +266,16 @@ Hibernate 6 mapeia `String` para `VARCHAR` por padrão — isso causa falha no `
 @Column(name = "codigo_municipio_ibge", columnDefinition = "char(7)")
 private String codigoMunicipioIbge;
 ```
+
+### PageRequest com Sort em queries nativas — camelCase quebra no PostgreSQL (EPIC-03.2)
+Ao usar `PageRequest.of(page, size, Sort.by("createdAt").descending())` com `@Query(nativeQuery=true)`,
+o Hibernate 6 acrescenta `createdAt desc` ao final do SQL. PostgreSQL não reconhece camelCase:
+```
+ERROR: column "createdat" does not exist
+```
+**Solução:** passar `PageRequest.of(page, size)` sem Sort e incluir `ORDER BY created_at DESC`
+diretamente na query nativa. Nunca misturar Sort do Spring Data com queries nativas que usam
+nomes de colunas em snake_case.
 
 ### PostgreSQL ENUM com Hibernate 6 — @ColumnTransformer
 Hibernate 6 envia enums como `character varying`, mas PostgreSQL não faz cast automático para `user-defined ENUM`.
