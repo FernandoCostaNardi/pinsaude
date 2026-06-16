@@ -14,5 +14,7 @@ public interface VinculoMedicoEmpresaRepository extends JpaRepository<VinculoMed
 
     List<VinculoMedicoEmpresa> findByIdMedicoIdIn(Collection<UUID> medicoIds);
 
+    void deleteByIdMedicoId(UUID medicoId);
+
     boolean existsByIdMedicoIdAndIdEmpresaId(UUID medicoId, UUID empresaId);
 }

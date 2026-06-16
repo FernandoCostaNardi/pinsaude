@@ -109,6 +109,13 @@ public class MedicoService {
         medico.setEspecialidade(req.especialidade());
         medico.setEmail(req.email());
         medico.setTelefone(req.telefone());
+
+        if (req.empresaId() != null && !vinculoRepo.existsByIdMedicoIdAndIdEmpresaId(id, req.empresaId())) {
+            vinculoRepo.deleteByIdMedicoId(id);
+            vinculoRepo.save(new VinculoMedicoEmpresa(
+                new VinculoMedicoEmpresaId(id, req.empresaId()), StatusSocietario.ATIVO));
+        }
+
         return toFullResponse(medicoRepo.save(medico));
     }
 
