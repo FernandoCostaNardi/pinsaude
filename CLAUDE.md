@@ -191,6 +191,52 @@ conn.createStatement().execute("GRANT SELECT ON ALL TABLES IN SCHEMA onboarding 
 Criar enums PostgreSQL como `CREATE TYPE schema.nome_enum AS ENUM (...)` antes das tabelas que os referenciam.
 Usar o schema explícito (`onboarding.regime_tributario_enum`) para evitar ambiguidade.
 
+### Flyway com `classpath:` exige `mvn process-resources` antes de `flyway:migrate`
+O `flyway-maven-plugin` configurado com `<location>classpath:db/migration</location>` lê os SQLs do diretório
+`target/classes/db/migration`, **não** diretamente de `src/main/resources/db/migration`.
+Ao criar um novo arquivo SQL, o Maven precisa copiar o recurso para `target/` antes que o Flyway o veja:
+```powershell
+$mvn = "C:\ProgramData\chocolatey\lib\maven\apache-maven-3.6.3\bin\mvn.cmd"
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-17.0.2"
+& $mvn process-resources -pl :pinsaude-onboarding
+node tools/scripts/mvn-flyway.js :pinsaude-onboarding migrate
+```
+Sem esse passo, `flyway info` mostrará apenas as migrations já em `target/` e reportará "up to date" incorretamente.
+
+### Criptografia em repouso com pgcrypto (implementado em EPIC-03.1)
+CPF e chave PIX são armazenados como `bytea` usando `pgp_sym_encrypt`. A chave é fornecida pela aplicação.
+
+**Funções criadas no schema `onboarding`:**
+```sql
+CREATE OR REPLACE FUNCTION onboarding.encrypt_sensitive(data TEXT, crypto_key TEXT)
+    RETURNS BYTEA LANGUAGE sql SECURITY DEFINER AS
+$$ SELECT pgp_sym_encrypt(data, crypto_key); $$;
+
+CREATE OR REPLACE FUNCTION onboarding.decrypt_sensitive(data BYTEA, crypto_key TEXT)
+    RETURNS TEXT LANGUAGE sql SECURITY DEFINER AS
+$$ SELECT pgp_sym_decrypt(data, crypto_key); $$;
+```
+`SECURITY DEFINER` garante que apenas o owner execute as funções diretamente.
+A variável de ambiente `CRYPTO_KEY` deve ser definida na aplicação Spring Boot.
+Colunas criptografadas são do tipo `bytea` — nunca `text` ou `varchar`.
+
+### RLS em tabelas sem coluna de tenant direto (padrão médico)
+Tabelas como `medicos`, `dados_bancarios_medico`, `documentos_medico` e `checklist_conduta` não têm
+uma coluna `cnpj` ou `empresa_id` direto. O isolamento resolve via join com `vinculos_medico_empresa`:
+```sql
+CREATE POLICY tenant_isolation ON onboarding.medicos
+    USING (
+        COALESCE(current_setting('app.current_tenant', TRUE), '') = ''
+        OR id IN (
+            SELECT v.medico_id
+            FROM onboarding.vinculos_medico_empresa v
+            JOIN onboarding.empresas e ON e.id = v.empresa_id
+            WHERE e.cnpj = current_setting('app.current_tenant', TRUE)
+        )
+    );
+```
+A tabela `vinculos_medico_empresa` é a âncora do isolamento: ela tem `empresa_id` e resolve via `empresas.cnpj`.
+
 ---
 
 ## JPA / Hibernate 6 — Armadilhas com PostgreSQL
