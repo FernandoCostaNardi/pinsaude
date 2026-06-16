@@ -46,7 +46,9 @@ public class MedicoService {
 
     public MedicoListResponse listar(int page, int size, String status) {
         var pageable = PageRequest.of(page, size);
-        var result = medicoRepo.findAllByStatusNot(StatusMedico.INATIVO.name(), pageable);
+        var result = StatusMedico.INATIVO.name().equals(status)
+            ? medicoRepo.findAllByStatus(StatusMedico.INATIVO.name(), pageable)
+            : medicoRepo.findAllByStatusNot(StatusMedico.INATIVO.name(), pageable);
 
         List<UUID> ids = result.getContent().stream().map(Medico::getId).toList();
         Map<UUID, UUID> medicoEmpresa = vinculoRepo.findByIdMedicoIdIn(ids).stream()
@@ -233,7 +235,7 @@ public class MedicoService {
     }
 
     private Medico findOrThrow(UUID id) {
-        return medicoRepo.findByIdAndStatusNot(id, StatusMedico.INATIVO.name())
+        return medicoRepo.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Médico não encontrado: " + id));
     }

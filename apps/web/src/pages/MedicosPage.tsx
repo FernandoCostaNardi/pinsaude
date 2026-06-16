@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus, Search, Pencil, UserX, Stethoscope,
   UserCheck, UserCircle, CircleDot, CheckCircle2,
@@ -138,11 +138,11 @@ export function MedicosPage() {
 
   useEffect(() => { setCurrentPage(0) }, [debouncedSearch, filterStatus, pageSize])
 
-  async function load() {
+  async function load(status?: string) {
     setLoading(true)
     setError(null)
     try {
-      const page = await medicosApi.listar(0, 1000)
+      const page = await medicosApi.listar(0, 1000, status)
       setMedicos(page.content)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar médicos')
@@ -150,6 +150,18 @@ export function MedicosPage() {
       setLoading(false)
     }
   }
+
+  // Recarrega do backend quando alterna para/de INATIVO (que requer query separada)
+  const prevFilterRef = useRef<string>('')
+  useEffect(() => {
+    const prev = prevFilterRef.current
+    prevFilterRef.current = filterStatus
+    const wasInativo = prev === 'INATIVO'
+    const isInativo  = filterStatus === 'INATIVO'
+    if (wasInativo !== isInativo) {
+      load(isInativo ? 'INATIVO' : undefined)
+    }
+  }, [filterStatus])
 
   useEffect(() => { load() }, [])
 
@@ -265,10 +277,11 @@ export function MedicosPage() {
             onChange={e => setFilterStatus(e.target.value as StatusMedico | '')}
             className="py-1.5 px-3 text-sm border border-ds-border rounded-lg bg-white text-ds-mid focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
           >
-            <option value="">Todos os status</option>
+            <option value="">Ativos / Rascunho</option>
             <option value="RASCUNHO">Rascunho</option>
             <option value="ATIVO">Ativo</option>
             <option value="SUSPENSO">Suspenso</option>
+            <option value="INATIVO">Inativos</option>
           </select>
           {hasFilters && (
             <button
@@ -336,13 +349,13 @@ export function MedicosPage() {
                     </div>
                   </div>
                   <div className="mt-3 flex items-center gap-1 border-t border-ds-border pt-3">
-                    {canEdit && m.status === 'RASCUNHO' && (
+                    {canEdit && (m.status === 'RASCUNHO' || m.status === 'INATIVO') && (
                       <button
                         onClick={() => handleAtivar(m)}
                         disabled={activatingId === m.id}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-ds-mid hover:bg-green-50 hover:text-green-600 transition-colors disabled:opacity-50"
                       >
-                        <UserCheck size={13} /> Ativar
+                        <UserCheck size={13} /> {m.status === 'INATIVO' ? 'Reativar' : 'Ativar'}
                       </button>
                     )}
                     {canEdit && (
@@ -401,12 +414,12 @@ export function MedicosPage() {
                       <TD><StatusBadge status={m.status} /></TD>
                       <TD className="text-right">
                         <div className="flex justify-end gap-1">
-                          {canEdit && m.status === 'RASCUNHO' && (
+                          {canEdit && (m.status === 'RASCUNHO' || m.status === 'INATIVO') && (
                             <button
                               onClick={() => handleAtivar(m)}
                               disabled={activatingId === m.id}
                               className="p-1.5 rounded hover:bg-green-50 text-ds-light hover:text-green-600 transition-colors disabled:opacity-50"
-                              title="Ativar médico"
+                              title={m.status === 'INATIVO' ? 'Reativar médico' : 'Ativar médico'}
                             >
                               <UserCheck size={15} />
                             </button>

@@ -106,8 +106,10 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json()
 }
 
-async function listar(page = 0, size = 1000): Promise<MedicoPage> {
-  const res = await fetch(`/api/medicos?page=${page}&size=${size}`, { headers: authHeaders() })
+async function listar(page = 0, size = 1000, status?: string): Promise<MedicoPage> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) })
+  if (status) params.set('status', status)
+  const res = await fetch(`/api/medicos?${params}`, { headers: authHeaders() })
   return handleResponse<MedicoPage>(res)
 }
 
