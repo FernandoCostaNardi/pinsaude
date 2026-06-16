@@ -122,6 +122,7 @@ export function MedicosPage() {
 
   const [showForm, setShowForm]           = useState(false)
   const [editing, setEditing]             = useState<Medico | null>(null)
+  const [loadingEdit, setLoadingEdit]     = useState<string | null>(null)
   const [inativando, setInativando]       = useState<Medico | null>(null)
   const [activatingId, setActivatingId]   = useState<string | null>(null)
 
@@ -166,6 +167,19 @@ export function MedicosPage() {
   const paginated  = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize)
   const from       = filtered.length === 0 ? 0 : safePage * pageSize + 1
   const to         = Math.min((safePage + 1) * pageSize, filtered.length)
+
+  async function handleEditar(medico: Medico) {
+    setLoadingEdit(medico.id)
+    try {
+      const full = await medicosApi.buscarPorId(medico.id)
+      setEditing(full)
+      setShowForm(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar médico')
+    } finally {
+      setLoadingEdit(null)
+    }
+  }
 
   function handleSaved(saved: Medico) {
     setMedicos(prev => {
@@ -328,8 +342,9 @@ export function MedicosPage() {
                     )}
                     {canEdit && (
                       <button
-                        onClick={() => { setEditing(m); setShowForm(true) }}
-                        className="ml-auto p-1.5 rounded-lg text-ds-light hover:bg-ds-input hover:text-primary transition-colors"
+                        onClick={() => handleEditar(m)}
+                        disabled={loadingEdit === m.id}
+                        className="ml-auto p-1.5 rounded-lg text-ds-light hover:bg-ds-input hover:text-primary transition-colors disabled:opacity-50"
                         title="Editar"
                       >
                         <Pencil size={14} />
@@ -393,8 +408,9 @@ export function MedicosPage() {
                           )}
                           {canEdit && (
                             <button
-                              onClick={() => { setEditing(m); setShowForm(true) }}
-                              className="p-1.5 rounded hover:bg-ds-input text-ds-light hover:text-primary transition-colors"
+                              onClick={() => handleEditar(m)}
+                              disabled={loadingEdit === m.id}
+                              className="p-1.5 rounded hover:bg-ds-input text-ds-light hover:text-primary transition-colors disabled:opacity-50"
                               title="Editar"
                             >
                               <Pencil size={15} />

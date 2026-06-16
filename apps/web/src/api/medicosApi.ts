@@ -111,6 +111,11 @@ async function listar(page = 0, size = 1000): Promise<MedicoPage> {
   return handleResponse<MedicoPage>(res)
 }
 
+async function buscarPorId(id: string): Promise<Medico> {
+  const res = await fetch(`/api/medicos/${id}`, { headers: authHeaders() })
+  return handleResponse<Medico>(res)
+}
+
 async function criar(data: MedicoRequest): Promise<Medico> {
   const res = await fetch('/api/medicos', {
     method: 'POST',
@@ -154,4 +159,4 @@ async function atualizarDadosBancarios(id: string, data: DadosBancariosMedicoReq
   return handleResponse<DadosBancariosMedico>(res)
 }
 
-export const medicosApi = { listar, criar, atualizar, ativar, inativar, atualizarDadosBancarios }
+export const medicosApi = { listar, buscarPorId, criar, atualizar, ativar, inativar, atualizarDadosBancarios }
