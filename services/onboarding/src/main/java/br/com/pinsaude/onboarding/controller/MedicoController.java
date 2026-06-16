@@ -94,6 +94,23 @@ public class MedicoController {
         return ResponseEntity.created(location).body(response);
     }
 
+    @PutMapping("/{id}/documentos/{docId}/validar")
+    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    public ResponseEntity<DocumentoMedicoResponse> validarDocumento(
+            @PathVariable UUID id,
+            @PathVariable UUID docId,
+            @Valid @RequestBody ValidarDocumentoRequest request) {
+        return ResponseEntity.ok(service.validarDocumento(id, docId, request));
+    }
+
+    @GetMapping("/{id}/documentos/{docId}/url")
+    @PreAuthorize("hasAnyRole('gestao','operacao','medico')")
+    public ResponseEntity<java.util.Map<String, String>> getDocumentoUrl(
+            @PathVariable UUID id,
+            @PathVariable UUID docId) {
+        return ResponseEntity.ok(java.util.Map.of("url", service.getDocumentoUrl(id, docId)));
+    }
+
     @PutMapping("/{id}/checklist")
     @PreAuthorize("hasAnyRole('gestao','operacao')")
     public ResponseEntity<ChecklistCondutaResponse> atualizarChecklist(

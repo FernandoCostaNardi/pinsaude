@@ -134,6 +134,19 @@ public class MedicoService {
                 "Verifique: número do conselho, registros disciplinares e processos médicos.");
         }
 
+        List<TipoDocumentoMedico> obrigatorios = List.of(
+            TipoDocumentoMedico.CRM, TipoDocumentoMedico.DIPLOMA,
+            TipoDocumentoMedico.IDENTIDADE, TipoDocumentoMedico.RESIDENCIA);
+        List<DocumentoMedico> documentos = documentoRepo.findByMedicoId(id);
+        boolean docsAprovados = obrigatorios.stream().allMatch(tipo ->
+            documentos.stream().anyMatch(d ->
+                d.getTipo() == tipo && StatusValidacaoDocumento.APROVADO == d.getStatusValidacao()));
+        if (!docsAprovados) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ativação bloqueada: todos os documentos obrigatórios (CRM, Diploma, " +
+                "Identidade e Comprovante de residência) devem estar aprovados.");
+        }
+
         medico.setStatus(StatusMedico.ATIVO);
         return toFullResponse(medicoRepo.save(medico));
     }
@@ -204,6 +217,12 @@ public class MedicoService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Arquivo não pode estar vazio");
         }
 
+        // Substitui documento existente do mesmo tipo sem criar duplicata
+        documentoRepo.findByMedicoIdAndTipo(medicoId, tipo).ifPresent(existing -> {
+            storageService.delete(existing.getCaminhoStorage());
+            documentoRepo.delete(existing);
+        });
+
         String caminho = storageService.upload(medicoId, tipo.name(), arquivo);
 
         var doc = new DocumentoMedico();
@@ -215,6 +234,33 @@ public class MedicoService {
         doc = documentoRepo.save(doc);
 
         return DocumentoMedicoResponse.from(doc);
+    }
+
+    @Transactional
+    public DocumentoMedicoResponse validarDocumento(UUID medicoId, UUID docId, ValidarDocumentoRequest req) {
+        findOrThrow(medicoId);
+        DocumentoMedico doc = documentoRepo.findById(docId)
+            .filter(d -> medicoId.equals(d.getMedicoId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Documento não encontrado: " + docId));
+        if (StatusValidacaoDocumento.REPROVADO == req.statusValidacao()
+                && (req.motivoReprovacao() == null || req.motivoReprovacao().isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Motivo de reprovação é obrigatório ao reprovar um documento");
+        }
+        doc.setStatusValidacao(req.statusValidacao());
+        doc.setMotivoReprovacao(StatusValidacaoDocumento.REPROVADO == req.statusValidacao()
+            ? req.motivoReprovacao() : null);
+        return DocumentoMedicoResponse.from(documentoRepo.save(doc));
+    }
+
+    public String getDocumentoUrl(UUID medicoId, UUID docId) {
+        findOrThrow(medicoId);
+        DocumentoMedico doc = documentoRepo.findById(docId)
+            .filter(d -> medicoId.equals(d.getMedicoId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Documento não encontrado: " + docId));
+        return storageService.getPresignedUrl(doc.getCaminhoStorage());
     }
 
     @Transactional

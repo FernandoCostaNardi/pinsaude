@@ -801,6 +801,59 @@ const match = !q
 
 ---
 
+## Upload de Documentos — Padrões e Armadilhas (EPIC-03.4)
+
+### Preview de imagens autenticadas via URL pré-assinada do MinIO
+Imagens armazenadas no MinIO não são diretamente acessíveis pelo `<img src>` de um endpoint protegido por JWT (o browser não inclui o header `Authorization` em requisições de imagem).
+
+**Padrão adotado:**
+- Para uploads recém-feitos na sessão atual: `URL.createObjectURL(file)` (blob local, sem requisição ao servidor)
+- Para imagens de sessões anteriores: endpoint `GET /api/medicos/{id}/documentos/{docId}/url` retorna uma URL pré-assinada do MinIO. A URL pré-assinada do MinIO usa assinatura HMAC (sem JWT) e pode ser usada diretamente como `<img src>` ou `window.open()`.
+- MinIO no ambiente de desenvolvimento está disponível em `localhost:9000` (host port). A URL pré-assinada usa `localhost:9000` e é acessível pelo browser.
+
+### Replace de documento sem duplicata
+Ao fazer re-upload do mesmo tipo de documento, o service deve:
+1. Buscar documento existente do mesmo tipo com `findByMedicoIdAndTipo`
+2. Deletar o arquivo antigo do MinIO com `StorageService.delete`
+3. Deletar o registro do banco com `documentoRepo.delete`
+4. Fazer upload do novo arquivo e criar novo registro
+
+`StorageService.delete` captura todas as exceções silenciosamente (objeto órfão é aceitável; não bloqueia o re-upload).
+
+### Gating de ativação por documentos
+`MedicoService.ativar` agora verifica dois pré-requisitos antes de mudar status para ATIVO:
+1. Checklist de conduta completo (existente)
+2. Todos os 4 documentos obrigatórios (CRM, DIPLOMA, IDENTIDADE, RESIDENCIA) com `statusValidacao = APROVADO`
+
+Se algum documento estiver PENDENTE ou REPROVADO, a ativação lança `422 Unprocessable Entity`.
+
+### Revogação de blob URLs no React
+Componentes que criam blob URLs com `URL.createObjectURL` devem revogar ao desmontar para evitar memory leak:
+```typescript
+const previewsRef = useRef(previews)
+previewsRef.current = previews
+useEffect(() => () => {
+  Object.values(previewsRef.current).forEach(url => {
+    if (url?.startsWith('blob:')) URL.revokeObjectURL(url)
+  })
+}, [])
+```
+Usar `useRef` para capturar o valor mais recente sem re-registrar o cleanup a cada render.
+
+### Upload multipart sem Content-Type no header
+Para `fetch` com `FormData` (multipart), **não incluir** `Content-Type: multipart/form-data` manualmente. O browser define o header correto com o boundary automaticamente. Se incluído manualmente, o boundary fica ausente e o Spring `MultipartResolver` rejeita com 400.
+
+```typescript
+// CORRETO — apenas Authorization, sem Content-Type
+headers: { Authorization: `Bearer ${token}` },
+body: formData
+
+// ERRADO — sobrescreve o Content-Type que o browser geraria
+headers: { Authorization: `...`, 'Content-Type': 'multipart/form-data' },
+```
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

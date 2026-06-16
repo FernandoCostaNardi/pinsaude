@@ -8,9 +8,10 @@ function getAccessToken(): string {
 
 export type StatusMedico = 'RASCUNHO' | 'ATIVO' | 'INATIVO' | 'SUSPENSO'
 export type TipoPix = 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA'
-
 export type TipoRecebimento = 'PIX' | 'TED'
 export type TipoConta = 'CORRENTE' | 'POUPANCA'
+export type TipoDocumentoMedico = 'CRM' | 'DIPLOMA' | 'IDENTIDADE' | 'RESIDENCIA' | 'CONTRATO'
+export type StatusValidacaoDocumento = 'PENDENTE' | 'APROVADO' | 'REPROVADO'
 
 export interface DadosBancariosMedico {
   tipoRecebimento?: TipoRecebimento
@@ -24,6 +25,16 @@ export interface DadosBancariosMedico {
   agencia?: string
   conta?: string
   tipoConta?: TipoConta
+}
+
+export interface DocumentoMedico {
+  id: string
+  tipo: TipoDocumentoMedico
+  nomeArquivo: string
+  caminhoStorage: string
+  statusValidacao: StatusValidacaoDocumento
+  motivoReprovacao?: string
+  createdAt: string
 }
 
 export interface ChecklistConduta {
@@ -47,6 +58,7 @@ export interface Medico {
   status: StatusMedico
   empresaId?: string
   dadosBancarios?: DadosBancariosMedico
+  documentos?: DocumentoMedico[]
   checklist?: ChecklistConduta
   createdAt: string
   updatedAt: string
@@ -161,4 +173,40 @@ async function atualizarDadosBancarios(id: string, data: DadosBancariosMedicoReq
   return handleResponse<DadosBancariosMedico>(res)
 }
 
-export const medicosApi = { listar, buscarPorId, criar, atualizar, ativar, inativar, atualizarDadosBancarios }
+async function listarDocumentos(medicoId: string): Promise<DocumentoMedico[]> {
+  const res = await fetch(`/api/medicos/${medicoId}/documentos`, { headers: authHeaders() })
+  return handleResponse<DocumentoMedico[]>(res)
+}
+
+async function uploadDocumento(medicoId: string, tipo: TipoDocumentoMedico, arquivo: File): Promise<DocumentoMedico> {
+  const token = JSON.parse(sessionStorage.getItem('pinsaude_tokens') ?? '{}').accessToken ?? ''
+  const formData = new FormData()
+  formData.append('arquivo', arquivo)
+  const res = await fetch(`/api/medicos/${medicoId}/documentos?tipo=${tipo}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+  return handleResponse<DocumentoMedico>(res)
+}
+
+async function validarDocumento(
+  medicoId: string,
+  docId: string,
+  data: { statusValidacao: StatusValidacaoDocumento; motivoReprovacao?: string }
+): Promise<DocumentoMedico> {
+  const res = await fetch(`/api/medicos/${medicoId}/documentos/${docId}/validar`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  })
+  return handleResponse<DocumentoMedico>(res)
+}
+
+async function getDocumentoUrl(medicoId: string, docId: string): Promise<string> {
+  const res = await fetch(`/api/medicos/${medicoId}/documentos/${docId}/url`, { headers: authHeaders() })
+  const data = await handleResponse<{ url: string }>(res)
+  return data.url
+}
+
+export const medicosApi = { listar, buscarPorId, criar, atualizar, ativar, inativar, atualizarDadosBancarios, listarDocumentos, uploadDocumento, validarDocumento, getDocumentoUrl }
