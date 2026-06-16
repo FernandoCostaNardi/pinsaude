@@ -6,6 +6,7 @@ import {
 import { Button, Spinner, Alert, Table, THead, TBody, TRow, TH, TD } from '@pinsaude/ui'
 import { Medico, StatusMedico, medicosApi } from '../api/medicosApi'
 import { MedicoWizardModal, maskPixKey } from '../components/MedicoWizardModal'
+import { BancoAvatar, bancos } from '../components/BancoSelect'
 import { MedicoInativarModal } from '../components/MedicoInativarModal'
 import { formatCpf } from '../utils/cpf'
 import { useAuth } from '../auth/useAuth'
@@ -80,12 +81,16 @@ function DadosBancariosDisplay({ medico }: { medico: Medico }) {
   if (!db) return <span className="text-ds-light text-xs">—</span>
 
   if (db.tipoRecebimento === 'TED' && db.bancoCodigo) {
+    const bancoData = bancos.find(b => b.compe === db.bancoCodigo) ?? null
     return (
       <div className="flex flex-col gap-0.5">
         <span className="text-xs text-ds-light">TED · {db.tipoConta === 'POUPANCA' ? 'Poupança' : 'Corrente'}</span>
-        <span className="text-xs font-mono text-ds-text">
-          Banco {db.bancoCodigo} · Ag. {db.agencia} · Cc. {db.conta}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {bancoData && <BancoAvatar banco={bancoData} size={16} />}
+          <span className="text-xs font-mono text-ds-text">
+            {db.bancoNome || `Banco ${db.bancoCodigo}`} · Ag. {db.agencia} · Cc. {db.conta}
+          </span>
+        </div>
       </div>
     )
   }

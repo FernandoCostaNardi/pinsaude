@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { User, Stethoscope, CreditCard, CheckCircle } from 'lucide-react'
 import { Modal, Input, Button, Alert } from '@pinsaude/ui'
 import { CpfInput } from './CpfInput'
+import { BancoSelect, BancoAvatar, bancos } from './BancoSelect'
 import {
   Medico, MedicoRequest, DadosBancariosMedicoRequest,
   TipoPix, TipoRecebimento, TipoConta, medicosApi,
@@ -248,6 +249,10 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
               isEditing={isEditing}
               existingDados={medico?.dadosBancarios}
               onChange={setBankField}
+              onBancoSelect={(nome, compe) => {
+                setBank(b => ({ ...b, bancoNome: nome, bancoCodigo: compe }))
+                setErrors(e => ({ ...e, bancoNome: undefined }))
+              }}
             />
           )}
         </div>
@@ -451,25 +456,23 @@ function StepDadosProfissionais({
 
 // ─── Step 2: Dados Bancários ──────────────────────────────────────────────────
 
-const TIPO_CONTA_OPTIONS = [
-  { value: 'CORRENTE', label: 'Conta Corrente' },
-  { value: 'POUPANCA', label: 'Conta Poupança' },
-]
-
 function StepDadosBancarios({
   bank,
   errors,
   isEditing,
   existingDados,
   onChange,
+  onBancoSelect,
 }: {
   bank: BankForm
   errors: Partial<Record<string, string>>
   isEditing: boolean
   existingDados?: { tipoRecebimento?: string; tipoPix?: TipoPix; bancoCodigo?: string }
   onChange: <K extends keyof BankForm>(k: K, v: BankForm[K]) => void
+  onBancoSelect: (nome: string, compe: string) => void
 }) {
   const isTed = bank.tipoRecebimento === 'TED'
+  const bancoSelecionado = bancos.find(b => b.compe === bank.bancoCodigo) ?? null
 
   return (
     <div className="flex flex-col gap-4">
@@ -544,20 +547,13 @@ function StepDadosBancarios({
       ) : (
         /* ── TED ── */
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input
-            label="Código do banco *"
-            value={bank.bancoCodigo}
-            onChange={e => onChange('bancoCodigo', e.target.value)}
-            error={errors.bancoCodigo}
-            placeholder="Ex: 341 (Itaú), 033 (Santander)"
-          />
-          <Input
-            label="Nome do banco"
-            value={bank.bancoNome}
-            onChange={e => onChange('bancoNome', e.target.value)}
-            error={errors.bancoNome}
-            placeholder="Ex: Itaú Unibanco"
-          />
+          <div className="sm:col-span-2">
+            <BancoSelect
+              value={bank.bancoNome}
+              onChange={onBancoSelect}
+              error={errors.bancoNome}
+            />
+          </div>
           <Input
             label="Agência *"
             value={bank.agencia}
@@ -572,24 +568,37 @@ function StepDadosBancarios({
             error={errors.conta}
             placeholder="Ex: 12345-6"
           />
-          <div className="sm:col-span-2">
-            <SelectField
-              label="Tipo de conta *"
-              value={bank.tipoConta}
-              onChange={v => onChange('tipoConta', v as TipoConta | '')}
-              error={errors.tipoConta}
-              placeholder="Selecione o tipo"
-            >
-              {TIPO_CONTA_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </SelectField>
+          <div className="sm:col-span-2 flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">Tipo de conta *</label>
+            <div className="flex gap-4">
+              {(['CORRENTE', 'POUPANCA'] as TipoConta[]).map(tipo => (
+                <label key={tipo} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tipoConta"
+                    value={tipo}
+                    checked={bank.tipoConta === tipo}
+                    onChange={() => onChange('tipoConta', tipo)}
+                    className="accent-primary"
+                  />
+                  <span className="text-sm text-gray-700">
+                    {tipo === 'CORRENTE' ? 'Corrente' : 'Poupança'}
+                  </span>
+                </label>
+              ))}
+            </div>
+            {errors.tipoConta && <p className="text-xs text-red-500">{errors.tipoConta}</p>}
           </div>
           {bank.bancoCodigo && bank.agencia && bank.conta && (
             <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Resumo TED</p>
-              <p className="mt-1 text-sm font-semibold text-gray-900">
-                Banco {bank.bancoCodigo}{bank.bancoNome ? ` – ${bank.bancoNome}` : ''} · Ag. {bank.agencia} · Cc. {bank.conta}
-                {bank.tipoConta ? ` (${bank.tipoConta === 'CORRENTE' ? 'Corrente' : 'Poupança'})` : ''}
-              </p>
+              <div className="mt-1 flex items-center gap-2">
+                {bancoSelecionado && <BancoAvatar banco={bancoSelecionado} size={20} />}
+                <p className="text-sm font-semibold text-gray-900">
+                  {bank.bancoNome || `Banco ${bank.bancoCodigo}`} · Ag. {bank.agencia} · Cc. {bank.conta}
+                  {bank.tipoConta ? ` (${bank.tipoConta === 'CORRENTE' ? 'Corrente' : 'Poupança'})` : ''}
+                </p>
+              </div>
             </div>
           )}
         </div>
