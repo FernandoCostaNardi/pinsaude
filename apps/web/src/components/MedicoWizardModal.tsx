@@ -4,7 +4,7 @@ import { Modal, Input, Button, Alert } from '@pinsaude/ui'
 import { CpfInput } from './CpfInput'
 import {
   Medico, MedicoRequest, DadosBancariosMedicoRequest,
-  TipoPix, medicosApi,
+  TipoPix, TipoRecebimento, TipoConta, medicosApi,
 } from '../api/medicosApi'
 import { Empresa, empresasApi } from '../api/empresasApi'
 import { isValidCpf, formatCpf } from '../utils/cpf'
@@ -34,9 +34,17 @@ const TIPO_PIX_OPTIONS: { value: TipoPix; label: string }[] = [
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface BankForm {
+  tipoRecebimento: TipoRecebimento
+  // PIX
   tipoPix: TipoPix | ''
   chavePix: string
   cpfsAdicionaisSplit: string
+  // TED
+  bancoCodigo: string
+  bancoNome: string
+  agencia: string
+  conta: string
+  tipoConta: TipoConta | ''
 }
 
 interface Props {
@@ -50,7 +58,11 @@ const emptyMedico = (): MedicoRequest => ({
   email: '', telefone: '', empresaId: '',
 })
 
-const emptyBank = (): BankForm => ({ tipoPix: '', chavePix: '', cpfsAdicionaisSplit: '' })
+const emptyBank = (): BankForm => ({
+  tipoRecebimento: 'PIX',
+  tipoPix: '', chavePix: '', cpfsAdicionaisSplit: '',
+  bancoCodigo: '', bancoNome: '', agencia: '', conta: '', tipoConta: '',
+})
 
 // ─── PIX masking ─────────────────────────────────────────────────────────────
 
@@ -105,10 +117,17 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
         telefone:      medico.telefone ?? '',
         empresaId:     medico.empresaId ?? '',
       })
+      const db = medico.dadosBancarios
       setBank({
-        tipoPix:             medico.dadosBancarios?.tipoPix ?? '',
+        tipoRecebimento:     (db?.tipoRecebimento ?? 'PIX') as TipoRecebimento,
+        tipoPix:             db?.tipoPix ?? '',
         chavePix:            '',
-        cpfsAdicionaisSplit: medico.dadosBancarios?.cpfsAdicionaisSplit ?? '',
+        cpfsAdicionaisSplit: db?.cpfsAdicionaisSplit ?? '',
+        bancoCodigo:         db?.bancoCodigo ?? '',
+        bancoNome:           db?.bancoNome ?? '',
+        agencia:             db?.agencia ?? '',
+        conta:               db?.conta ?? '',
+        tipoConta:           (db?.tipoConta ?? '') as TipoConta | '',
       })
       setMaxVisited(2)
     } else {
@@ -169,11 +188,19 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
         ? await medicosApi.atualizar(medico.id, form)
         : await medicosApi.criar(form)
 
-      if (bank.tipoPix && bank.chavePix.trim()) {
+      const hasPix = bank.tipoRecebimento === 'PIX' && bank.tipoPix && bank.chavePix.trim()
+      const hasTed = bank.tipoRecebimento === 'TED' && bank.bancoCodigo.trim() && bank.agencia.trim() && bank.conta.trim() && bank.tipoConta
+      if (hasPix || hasTed) {
         const bankReq: DadosBancariosMedicoRequest = {
-          tipoPix:             bank.tipoPix,
-          chavePix:            bank.chavePix.trim(),
-          cpfsAdicionaisSplit: bank.cpfsAdicionaisSplit.trim() || null,
+          tipoRecebimento:     bank.tipoRecebimento,
+          tipoPix:             bank.tipoRecebimento === 'PIX' ? bank.tipoPix || null : null,
+          chavePix:            bank.tipoRecebimento === 'PIX' ? bank.chavePix.trim() || null : null,
+          cpfsAdicionaisSplit: bank.tipoRecebimento === 'PIX' ? bank.cpfsAdicionaisSplit.trim() || null : null,
+          bancoCodigo:         bank.tipoRecebimento === 'TED' ? bank.bancoCodigo.trim() || null : null,
+          bancoNome:           bank.tipoRecebimento === 'TED' ? bank.bancoNome.trim() || null : null,
+          agencia:             bank.tipoRecebimento === 'TED' ? bank.agencia.trim() || null : null,
+          conta:               bank.tipoRecebimento === 'TED' ? bank.conta.trim() || null : null,
+          tipoConta:           bank.tipoRecebimento === 'TED' ? bank.tipoConta || null : null,
           confirmarAlteracao:  true,
         }
         const updatedBank = await medicosApi.atualizarDadosBancarios(saved.id, bankReq)
@@ -219,7 +246,7 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
               bank={bank}
               errors={errors}
               isEditing={isEditing}
-              existingTipoPix={medico?.dadosBancarios?.tipoPix}
+              existingDados={medico?.dadosBancarios}
               onChange={setBankField}
             />
           )}
@@ -424,67 +451,147 @@ function StepDadosProfissionais({
 
 // ─── Step 2: Dados Bancários ──────────────────────────────────────────────────
 
+const TIPO_CONTA_OPTIONS = [
+  { value: 'CORRENTE', label: 'Conta Corrente' },
+  { value: 'POUPANCA', label: 'Conta Poupança' },
+]
+
 function StepDadosBancarios({
   bank,
   errors,
   isEditing,
-  existingTipoPix,
+  existingDados,
   onChange,
 }: {
   bank: BankForm
   errors: Partial<Record<string, string>>
   isEditing: boolean
-  existingTipoPix?: TipoPix
+  existingDados?: { tipoRecebimento?: string; tipoPix?: TipoPix; bancoCodigo?: string }
   onChange: <K extends keyof BankForm>(k: K, v: BankForm[K]) => void
 }) {
+  const isTed = bank.tipoRecebimento === 'TED'
+
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-gray-500">
-        Dados bancários para repasse via PIX.{' '}
+        Dados bancários para recebimento de repasses.{' '}
         <span className="text-gray-400">Passo opcional — pode ser configurado depois.</span>
       </p>
 
-      {isEditing && existingTipoPix && (
+      {/* Toggle PIX / TED */}
+      <div className="flex rounded-lg border border-gray-200 overflow-hidden self-start">
+        {(['PIX', 'TED'] as TipoRecebimento[]).map(tipo => (
+          <button
+            key={tipo}
+            type="button"
+            onClick={() => onChange('tipoRecebimento', tipo)}
+            className={[
+              'px-6 py-2 text-sm font-medium transition-colors',
+              bank.tipoRecebimento === tipo
+                ? 'bg-primary text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50',
+            ].join(' ')}
+          >
+            {tipo}
+          </button>
+        ))}
+      </div>
+
+      {isEditing && existingDados && (existingDados.tipoPix || existingDados.bancoCodigo) && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Já existe uma chave PIX cadastrada. Preencha os campos abaixo apenas se desejar alterá-la.
+          Já existem dados bancários cadastrados. Preencha os campos abaixo apenas se desejar alterá-los.
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <SelectField
-          label="Tipo de chave PIX"
-          value={bank.tipoPix}
-          onChange={v => onChange('tipoPix', v as TipoPix | '')}
-          error={errors.tipoPix}
-          placeholder="Selecione o tipo"
-        >
-          {TIPO_PIX_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </SelectField>
-        <Input
-          label="Chave PIX"
-          value={bank.chavePix}
-          onChange={e => onChange('chavePix', e.target.value)}
-          error={errors.chavePix}
-          placeholder={pixPlaceholder(bank.tipoPix)}
-          disabled={!bank.tipoPix}
-        />
-        <div className="sm:col-span-2">
+      {!isTed ? (
+        /* ── PIX ── */
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <SelectField
+            label="Tipo de chave PIX"
+            value={bank.tipoPix}
+            onChange={v => onChange('tipoPix', v as TipoPix | '')}
+            error={errors.tipoPix}
+            placeholder="Selecione o tipo"
+          >
+            {TIPO_PIX_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </SelectField>
           <Input
-            label="CPFs para split acima de R$ 40.000 (separados por vírgula)"
-            value={bank.cpfsAdicionaisSplit}
-            onChange={e => onChange('cpfsAdicionaisSplit', e.target.value)}
-            error={errors.cpfsAdicionaisSplit}
-            placeholder="Ex: 000.000.000-00, 111.111.111-11"
+            label="Chave PIX"
+            value={bank.chavePix}
+            onChange={e => onChange('chavePix', e.target.value)}
+            error={errors.chavePix}
+            placeholder={pixPlaceholder(bank.tipoPix)}
+            disabled={!bank.tipoPix}
           />
+          <div className="sm:col-span-2">
+            <Input
+              label="CPFs para split acima de R$ 40.000 (separados por vírgula)"
+              value={bank.cpfsAdicionaisSplit}
+              onChange={e => onChange('cpfsAdicionaisSplit', e.target.value)}
+              error={errors.cpfsAdicionaisSplit}
+              placeholder="Ex: 000.000.000-00, 111.111.111-11"
+            />
+          </div>
+          {bank.tipoPix && bank.chavePix && (
+            <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Pré-visualização (mascarado após salvar)</p>
+              <p className="mt-1 text-sm font-semibold text-gray-900 font-mono">
+                {maskPixKey(bank.tipoPix as TipoPix, bank.chavePix)}
+              </p>
+            </div>
+          )}
         </div>
-      </div>
-
-      {bank.tipoPix && bank.chavePix && (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Pré-visualização (mascarado após salvar)</p>
-          <p className="mt-1 text-sm font-semibold text-gray-900 font-mono">
-            {maskPixKey(bank.tipoPix as TipoPix, bank.chavePix)}
-          </p>
+      ) : (
+        /* ── TED ── */
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input
+            label="Código do banco *"
+            value={bank.bancoCodigo}
+            onChange={e => onChange('bancoCodigo', e.target.value)}
+            error={errors.bancoCodigo}
+            placeholder="Ex: 341 (Itaú), 033 (Santander)"
+          />
+          <Input
+            label="Nome do banco"
+            value={bank.bancoNome}
+            onChange={e => onChange('bancoNome', e.target.value)}
+            error={errors.bancoNome}
+            placeholder="Ex: Itaú Unibanco"
+          />
+          <Input
+            label="Agência *"
+            value={bank.agencia}
+            onChange={e => onChange('agencia', e.target.value)}
+            error={errors.agencia}
+            placeholder="Ex: 1234"
+          />
+          <Input
+            label="Conta *"
+            value={bank.conta}
+            onChange={e => onChange('conta', e.target.value)}
+            error={errors.conta}
+            placeholder="Ex: 12345-6"
+          />
+          <div className="sm:col-span-2">
+            <SelectField
+              label="Tipo de conta *"
+              value={bank.tipoConta}
+              onChange={v => onChange('tipoConta', v as TipoConta | '')}
+              error={errors.tipoConta}
+              placeholder="Selecione o tipo"
+            >
+              {TIPO_CONTA_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </SelectField>
+          </div>
+          {bank.bancoCodigo && bank.agencia && bank.conta && (
+            <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Resumo TED</p>
+              <p className="mt-1 text-sm font-semibold text-gray-900">
+                Banco {bank.bancoCodigo}{bank.bancoNome ? ` – ${bank.bancoNome}` : ''} · Ag. {bank.agencia} · Cc. {bank.conta}
+                {bank.tipoConta ? ` (${bank.tipoConta === 'CORRENTE' ? 'Corrente' : 'Poupança'})` : ''}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

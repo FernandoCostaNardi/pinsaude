@@ -73,14 +73,27 @@ function StatCard({
   )
 }
 
-// ─── PIX display ──────────────────────────────────────────────────────────────
+// ─── Dados bancários display ──────────────────────────────────────────────────
 
-function PixDisplay({ medico }: { medico: Medico }) {
+function DadosBancariosDisplay({ medico }: { medico: Medico }) {
   const db = medico.dadosBancarios
-  if (!db?.tipoPix || !db?.chavePix) return <span className="text-ds-light text-xs">—</span>
+  if (!db) return <span className="text-ds-light text-xs">—</span>
+
+  if (db.tipoRecebimento === 'TED' && db.bancoCodigo) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs text-ds-light">TED · {db.tipoConta === 'POUPANCA' ? 'Poupança' : 'Corrente'}</span>
+        <span className="text-xs font-mono text-ds-text">
+          Banco {db.bancoCodigo} · Ag. {db.agencia} · Cc. {db.conta}
+        </span>
+      </div>
+    )
+  }
+
+  if (!db.tipoPix || !db.chavePix) return <span className="text-ds-light text-xs">—</span>
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-ds-light">{db.tipoPix}</span>
+      <span className="text-xs text-ds-light">PIX · {db.tipoPix}</span>
       <span className="text-xs font-mono text-ds-text">{maskPixKey(db.tipoPix, db.chavePix)}</span>
     </div>
   )
@@ -299,8 +312,8 @@ export function MedicosPage() {
                       <p className="text-ds-text font-medium truncate">{m.especialidade || '—'}</p>
                     </div>
                     <div className="col-span-2">
-                      <p className="text-xs font-medium text-ds-light mb-0.5">Chave PIX</p>
-                      <PixDisplay medico={m} />
+                      <p className="text-xs font-medium text-ds-light mb-0.5">Recebimento</p>
+                      <DadosBancariosDisplay medico={m} />
                     </div>
                   </div>
                   <div className="mt-3 flex items-center gap-1 border-t border-ds-border pt-3">
@@ -345,7 +358,7 @@ export function MedicosPage() {
                     <TH>CPF</TH>
                     <TH>CRM / UF</TH>
                     <TH>Especialidade</TH>
-                    <TH>PIX</TH>
+                    <TH>Recebimento</TH>
                     <TH>Status</TH>
                     <TH className="text-right">Ações</TH>
                   </TRow>
@@ -364,7 +377,7 @@ export function MedicosPage() {
                       </TD>
                       <TD className="font-semibold text-xs">{m.crm} / {m.crmUf.trim()}</TD>
                       <TD className="text-xs">{m.especialidade || '—'}</TD>
-                      <TD><PixDisplay medico={m} /></TD>
+                      <TD><DadosBancariosDisplay medico={m} /></TD>
                       <TD><StatusBadge status={m.status} /></TD>
                       <TD className="text-right">
                         <div className="flex justify-end gap-1">

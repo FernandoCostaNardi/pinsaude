@@ -9,10 +9,21 @@ function getAccessToken(): string {
 export type StatusMedico = 'RASCUNHO' | 'ATIVO' | 'INATIVO' | 'SUSPENSO'
 export type TipoPix = 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA'
 
+export type TipoRecebimento = 'PIX' | 'TED'
+export type TipoConta = 'CORRENTE' | 'POUPANCA'
+
 export interface DadosBancariosMedico {
+  tipoRecebimento?: TipoRecebimento
+  // PIX
   tipoPix?: TipoPix
   chavePix?: string
   cpfsAdicionaisSplit?: string
+  // TED
+  bancoCodigo?: string
+  bancoNome?: string
+  agencia?: string
+  conta?: string
+  tipoConta?: TipoConta
 }
 
 export interface ChecklistConduta {
@@ -53,9 +64,17 @@ export interface MedicoRequest {
 }
 
 export interface DadosBancariosMedicoRequest {
+  tipoRecebimento: TipoRecebimento
+  // PIX
   tipoPix: TipoPix | null
   chavePix: string | null
   cpfsAdicionaisSplit: string | null
+  // TED
+  bancoCodigo: string | null
+  bancoNome: string | null
+  agencia: string | null
+  conta: string | null
+  tipoConta: TipoConta | null
   confirmarAlteracao: true
 }
 

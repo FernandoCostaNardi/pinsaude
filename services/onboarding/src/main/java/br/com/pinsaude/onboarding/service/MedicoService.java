@@ -160,10 +160,27 @@ public class MedicoService {
                 return novo;
             });
 
-        dados.setTipoPix(req.tipoPix());
-        dados.setChavePIXCriptografada(
-            req.chavePix() != null ? cryptoService.encrypt(req.chavePix()) : null);
-        dados.setCpfsAdicionaisSplit(req.cpfsAdicionaisSplit());
+        dados.setTipoRecebimento(req.tipoRecebimento() != null ? req.tipoRecebimento() : "PIX");
+        if ("TED".equals(req.tipoRecebimento())) {
+            dados.setTipoPix(null);
+            dados.setChavePIXCriptografada(null);
+            dados.setCpfsAdicionaisSplit(null);
+            dados.setBancoCodigo(req.bancoCodigo());
+            dados.setBancoNome(req.bancoNome());
+            dados.setAgencia(req.agencia());
+            dados.setConta(req.conta());
+            dados.setTipoConta(req.tipoConta());
+        } else {
+            dados.setTipoPix(req.tipoPix());
+            dados.setChavePIXCriptografada(
+                req.chavePix() != null ? cryptoService.encrypt(req.chavePix()) : null);
+            dados.setCpfsAdicionaisSplit(req.cpfsAdicionaisSplit());
+            dados.setBancoCodigo(null);
+            dados.setBancoNome(null);
+            dados.setAgencia(null);
+            dados.setConta(null);
+            dados.setTipoConta(null);
+        }
         dados = dadosBancariosRepo.save(dados);
 
         String chavePIXDecriptografada = dados.getChavePIXCriptografada() != null

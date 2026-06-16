@@ -33,6 +33,26 @@ public class DadosBancariosMedico {
     @Column(name = "cpfs_adicionais_split", columnDefinition = "jsonb")
     private String cpfsAdicionaisSplit;
 
+    // PIX | TED — VARCHAR para evitar cast issue do Hibernate 6 com enum PG
+    @Column(name = "tipo_recebimento", nullable = false)
+    private String tipoRecebimento = "PIX";
+
+    @Column(name = "banco_codigo", length = 10)
+    private String bancoCodigo;
+
+    @Column(name = "banco_nome", length = 100)
+    private String bancoNome;
+
+    @Column(name = "agencia", length = 10)
+    private String agencia;
+
+    @Column(name = "conta", length = 20)
+    private String conta;
+
+    // CORRENTE | POUPANCA
+    @Column(name = "tipo_conta", length = 10)
+    private String tipoConta;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -55,6 +75,24 @@ public class DadosBancariosMedico {
 
     public String getCpfsAdicionaisSplit() { return cpfsAdicionaisSplit; }
     public void setCpfsAdicionaisSplit(String cpfsAdicionaisSplit) { this.cpfsAdicionaisSplit = cpfsAdicionaisSplit; }
+
+    public String getTipoRecebimento() { return tipoRecebimento; }
+    public void setTipoRecebimento(String tipoRecebimento) { this.tipoRecebimento = tipoRecebimento; }
+
+    public String getBancoCodigo() { return bancoCodigo; }
+    public void setBancoCodigo(String bancoCodigo) { this.bancoCodigo = bancoCodigo; }
+
+    public String getBancoNome() { return bancoNome; }
+    public void setBancoNome(String bancoNome) { this.bancoNome = bancoNome; }
+
+    public String getAgencia() { return agencia; }
+    public void setAgencia(String agencia) { this.agencia = agencia; }
+
+    public String getConta() { return conta; }
+    public void setConta(String conta) { this.conta = conta; }
+
+    public String getTipoConta() { return tipoConta; }
+    public void setTipoConta(String tipoConta) { this.tipoConta = tipoConta; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
