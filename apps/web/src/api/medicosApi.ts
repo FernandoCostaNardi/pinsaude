@@ -34,6 +34,7 @@ export interface Medico {
   email?: string
   telefone?: string
   status: StatusMedico
+  empresaId?: string
   dadosBancarios?: DadosBancariosMedico
   checklist?: ChecklistConduta
   createdAt: string

@@ -1,4 +1,5 @@
 export function formatCpf(value: string): string {
+  if (!value) return ''
   const d = value.replace(/\D/g, '').slice(0, 11)
   if (d.length <= 3) return d
   if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`
@@ -7,6 +8,7 @@ export function formatCpf(value: string): string {
 }
 
 export function isValidCpf(value: string): boolean {
+  if (!value) return false
   const d = value.replace(/\D/g, '')
   if (d.length !== 11) return false
   if (/^(\d)\1+$/.test(d)) return false

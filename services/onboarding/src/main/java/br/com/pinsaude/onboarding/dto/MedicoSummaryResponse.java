@@ -14,12 +14,13 @@ public record MedicoSummaryResponse(
     String especialidade,
     String email,
     StatusMedico status,
+    UUID empresaId,
     OffsetDateTime createdAt
 ) {
-    public static MedicoSummaryResponse from(Medico m) {
+    public static MedicoSummaryResponse from(Medico m, UUID empresaId) {
         return new MedicoSummaryResponse(
             m.getId(), m.getNome(), m.getCrm(), m.getCrmUf(),
-            m.getEspecialidade(), m.getEmail(), m.getStatus(), m.getCreatedAt()
+            m.getEspecialidade(), m.getEmail(), m.getStatus(), empresaId, m.getCreatedAt()
         );
     }
 }

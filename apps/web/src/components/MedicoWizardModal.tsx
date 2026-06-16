@@ -103,7 +103,7 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
         especialidade: medico.especialidade ?? '',
         email:         medico.email ?? '',
         telefone:      medico.telefone ?? '',
-        empresaId:     '',
+        empresaId:     medico.empresaId ?? '',
       })
       setBank({
         tipoPix:             medico.dadosBancarios?.tipoPix ?? '',
@@ -203,7 +203,6 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
             <StepDadosPessoais
               form={form}
               errors={errors}
-              isEditing={isEditing}
               onChange={setField}
             />
           )}
@@ -212,7 +211,6 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
               form={form}
               errors={errors}
               empresas={empresas}
-              isEditing={isEditing}
               onChange={setField}
             />
           )}
@@ -317,12 +315,10 @@ function WizardSteps({
 function StepDadosPessoais({
   form,
   errors,
-  isEditing,
   onChange,
 }: {
   form: MedicoRequest
   errors: Partial<Record<string, string>>
-  isEditing: boolean
   onChange: <K extends keyof MedicoRequest>(k: K, v: MedicoRequest[K]) => void
 }) {
   return (
@@ -343,7 +339,6 @@ function StepDadosPessoais({
           value={form.cpf}
           onChange={v => onChange('cpf', v)}
           error={errors.cpf}
-          disabled={isEditing}
         />
         <Input
           label="Telefone"
@@ -373,13 +368,11 @@ function StepDadosProfissionais({
   form,
   errors,
   empresas,
-  isEditing,
   onChange,
 }: {
   form: MedicoRequest
   errors: Partial<Record<string, string>>
   empresas: Empresa[]
-  isEditing: boolean
   onChange: <K extends keyof MedicoRequest>(k: K, v: MedicoRequest[K]) => void
 }) {
   return (
@@ -418,8 +411,7 @@ function StepDadosProfissionais({
             onChange={v => onChange('empresaId', v)}
             error={errors.empresaId}
             placeholder="Selecione a empresa"
-            disabled={isEditing}
-          >
+            >
             {empresas.map(e => (
               <option key={e.id} value={e.id}>{e.razaoSocial}</option>
             ))}
