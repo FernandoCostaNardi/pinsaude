@@ -9,10 +9,21 @@ function getAccessToken(): string {
 export type StatusMedico = 'RASCUNHO' | 'ATIVO' | 'INATIVO' | 'SUSPENSO'
 export type TipoPix = 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA'
 
+export type TipoRecebimento = 'PIX' | 'TED'
+export type TipoConta = 'CORRENTE' | 'POUPANCA'
+
 export interface DadosBancariosMedico {
+  tipoRecebimento?: TipoRecebimento
+  // PIX
   tipoPix?: TipoPix
   chavePix?: string
   cpfsAdicionaisSplit?: string
+  // TED
+  bancoCodigo?: string
+  bancoNome?: string
+  agencia?: string
+  conta?: string
+  tipoConta?: TipoConta
 }
 
 export interface ChecklistConduta {
@@ -53,9 +64,17 @@ export interface MedicoRequest {
 }
 
 export interface DadosBancariosMedicoRequest {
+  tipoRecebimento: TipoRecebimento
+  // PIX
   tipoPix: TipoPix | null
   chavePix: string | null
   cpfsAdicionaisSplit: string | null
+  // TED
+  bancoCodigo: string | null
+  bancoNome: string | null
+  agencia: string | null
+  conta: string | null
+  tipoConta: TipoConta | null
   confirmarAlteracao: true
 }
 
@@ -87,9 +106,16 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json()
 }
 
-async function listar(page = 0, size = 1000): Promise<MedicoPage> {
-  const res = await fetch(`/api/medicos?page=${page}&size=${size}`, { headers: authHeaders() })
+async function listar(page = 0, size = 1000, status?: string): Promise<MedicoPage> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) })
+  if (status) params.set('status', status)
+  const res = await fetch(`/api/medicos?${params}`, { headers: authHeaders() })
   return handleResponse<MedicoPage>(res)
+}
+
+async function buscarPorId(id: string): Promise<Medico> {
+  const res = await fetch(`/api/medicos/${id}`, { headers: authHeaders() })
+  return handleResponse<Medico>(res)
 }
 
 async function criar(data: MedicoRequest): Promise<Medico> {
@@ -135,4 +161,4 @@ async function atualizarDadosBancarios(id: string, data: DadosBancariosMedicoReq
   return handleResponse<DadosBancariosMedico>(res)
 }
 
-export const medicosApi = { listar, criar, atualizar, ativar, inativar, atualizarDadosBancarios }
+export const medicosApi = { listar, buscarPorId, criar, atualizar, ativar, inativar, atualizarDadosBancarios }

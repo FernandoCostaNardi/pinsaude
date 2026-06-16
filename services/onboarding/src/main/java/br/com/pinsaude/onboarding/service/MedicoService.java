@@ -46,7 +46,9 @@ public class MedicoService {
 
     public MedicoListResponse listar(int page, int size, String status) {
         var pageable = PageRequest.of(page, size);
-        var result = medicoRepo.findAllByStatusNot(StatusMedico.INATIVO.name(), pageable);
+        var result = StatusMedico.INATIVO.name().equals(status)
+            ? medicoRepo.findAllByStatus(StatusMedico.INATIVO.name(), pageable)
+            : medicoRepo.findAllByStatusNot(StatusMedico.INATIVO.name(), pageable);
 
         List<UUID> ids = result.getContent().stream().map(Medico::getId).toList();
         Map<UUID, UUID> medicoEmpresa = vinculoRepo.findByIdMedicoIdIn(ids).stream()
@@ -160,10 +162,27 @@ public class MedicoService {
                 return novo;
             });
 
-        dados.setTipoPix(req.tipoPix());
-        dados.setChavePIXCriptografada(
-            req.chavePix() != null ? cryptoService.encrypt(req.chavePix()) : null);
-        dados.setCpfsAdicionaisSplit(req.cpfsAdicionaisSplit());
+        dados.setTipoRecebimento(req.tipoRecebimento() != null ? req.tipoRecebimento() : "PIX");
+        if ("TED".equals(req.tipoRecebimento())) {
+            dados.setTipoPix(null);
+            dados.setChavePIXCriptografada(null);
+            dados.setCpfsAdicionaisSplit(null);
+            dados.setBancoCodigo(req.bancoCodigo());
+            dados.setBancoNome(req.bancoNome());
+            dados.setAgencia(req.agencia());
+            dados.setConta(req.conta());
+            dados.setTipoConta(req.tipoConta());
+        } else {
+            dados.setTipoPix(req.tipoPix());
+            dados.setChavePIXCriptografada(
+                req.chavePix() != null ? cryptoService.encrypt(req.chavePix()) : null);
+            dados.setCpfsAdicionaisSplit(req.cpfsAdicionaisSplit());
+            dados.setBancoCodigo(null);
+            dados.setBancoNome(null);
+            dados.setAgencia(null);
+            dados.setConta(null);
+            dados.setTipoConta(null);
+        }
         dados = dadosBancariosRepo.save(dados);
 
         String chavePIXDecriptografada = dados.getChavePIXCriptografada() != null
@@ -216,7 +235,7 @@ public class MedicoService {
     }
 
     private Medico findOrThrow(UUID id) {
-        return medicoRepo.findByIdAndStatusNot(id, StatusMedico.INATIVO.name())
+        return medicoRepo.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Médico não encontrado: " + id));
     }

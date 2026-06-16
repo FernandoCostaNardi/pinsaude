@@ -6,6 +6,7 @@ import {
 import { Button, Spinner, Alert, Table, THead, TBody, TRow, TH, TD } from '@pinsaude/ui'
 import { Medico, StatusMedico, medicosApi } from '../api/medicosApi'
 import { MedicoWizardModal, maskPixKey } from '../components/MedicoWizardModal'
+import { BancoAvatar, bancos } from '../components/BancoSelect'
 import { MedicoInativarModal } from '../components/MedicoInativarModal'
 import { formatCpf } from '../utils/cpf'
 import { useAuth } from '../auth/useAuth'
@@ -73,14 +74,31 @@ function StatCard({
   )
 }
 
-// ─── PIX display ──────────────────────────────────────────────────────────────
+// ─── Dados bancários display ──────────────────────────────────────────────────
 
-function PixDisplay({ medico }: { medico: Medico }) {
+function DadosBancariosDisplay({ medico }: { medico: Medico }) {
   const db = medico.dadosBancarios
-  if (!db?.tipoPix || !db?.chavePix) return <span className="text-ds-light text-xs">—</span>
+  if (!db) return <span className="text-ds-light text-xs">—</span>
+
+  if (db.tipoRecebimento === 'TED' && db.bancoCodigo) {
+    const bancoData = bancos.find(b => b.compe === db.bancoCodigo) ?? null
+    return (
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs text-ds-light">TED · {db.tipoConta === 'POUPANCA' ? 'Poupança' : 'Corrente'}</span>
+        <div className="flex items-center gap-1.5">
+          {bancoData && <BancoAvatar banco={bancoData} size={16} />}
+          <span className="text-xs font-mono text-ds-text">
+            {db.bancoNome || `Banco ${db.bancoCodigo}`} · Ag. {db.agencia} · Cc. {db.conta}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  if (!db.tipoPix || !db.chavePix) return <span className="text-ds-light text-xs">—</span>
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-ds-light">{db.tipoPix}</span>
+      <span className="text-xs text-ds-light">PIX · {db.tipoPix}</span>
       <span className="text-xs font-mono text-ds-text">{maskPixKey(db.tipoPix, db.chavePix)}</span>
     </div>
   )
@@ -109,6 +127,7 @@ export function MedicosPage() {
 
   const [showForm, setShowForm]           = useState(false)
   const [editing, setEditing]             = useState<Medico | null>(null)
+  const [loadingEdit, setLoadingEdit]     = useState<string | null>(null)
   const [inativando, setInativando]       = useState<Medico | null>(null)
   const [activatingId, setActivatingId]   = useState<string | null>(null)
 
@@ -119,11 +138,11 @@ export function MedicosPage() {
 
   useEffect(() => { setCurrentPage(0) }, [debouncedSearch, filterStatus, pageSize])
 
-  async function load() {
+  async function load(status?: string) {
     setLoading(true)
     setError(null)
     try {
-      const page = await medicosApi.listar(0, 1000)
+      const page = await medicosApi.listar(0, 1000, status)
       setMedicos(page.content)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar médicos')
@@ -132,7 +151,9 @@ export function MedicosPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load(filterStatus === 'INATIVO' ? 'INATIVO' : undefined)
+  }, [filterStatus])
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase()
@@ -142,7 +163,7 @@ export function MedicosPage() {
         || m.nome.toLowerCase().includes(q)
         || m.crm.toLowerCase().includes(q)
         || (m.especialidade?.toLowerCase().includes(q) ?? false)
-        || (qDigits.length > 0 && m.cpf.replace(/\D/g, '').includes(qDigits))
+        || (qDigits.length > 0 && (m.cpf ?? '').replace(/\D/g, '').includes(qDigits))
       const matchStatus = !filterStatus || m.status === filterStatus
       return matchSearch && matchStatus
     })
@@ -153,6 +174,19 @@ export function MedicosPage() {
   const paginated  = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize)
   const from       = filtered.length === 0 ? 0 : safePage * pageSize + 1
   const to         = Math.min((safePage + 1) * pageSize, filtered.length)
+
+  async function handleEditar(medico: Medico) {
+    setLoadingEdit(medico.id)
+    try {
+      const full = await medicosApi.buscarPorId(medico.id)
+      setEditing(full)
+      setShowForm(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar médico')
+    } finally {
+      setLoadingEdit(null)
+    }
+  }
 
   function handleSaved(saved: Medico) {
     setMedicos(prev => {
@@ -233,10 +267,11 @@ export function MedicosPage() {
             onChange={e => setFilterStatus(e.target.value as StatusMedico | '')}
             className="py-1.5 px-3 text-sm border border-ds-border rounded-lg bg-white text-ds-mid focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
           >
-            <option value="">Todos os status</option>
+            <option value="">Ativos / Rascunho</option>
             <option value="RASCUNHO">Rascunho</option>
             <option value="ATIVO">Ativo</option>
             <option value="SUSPENSO">Suspenso</option>
+            <option value="INATIVO">Inativos</option>
           </select>
           {hasFilters && (
             <button
@@ -284,7 +319,7 @@ export function MedicosPage() {
                       <MedicoAvatar nome={m.nome} size="md" />
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-ds-text truncate">{m.nome}</p>
-                        <p className="mt-0.5 font-mono text-xs text-ds-light">CPF {formatCpf(m.cpf).slice(0, 7)}***.***-**</p>
+                        <p className="mt-0.5 font-mono text-xs text-ds-light">CPF {m.cpf ? formatCpf(m.cpf).slice(0, 7) + '***.***-**' : '—'}</p>
                       </div>
                     </div>
                     <StatusBadge status={m.status} />
@@ -299,24 +334,25 @@ export function MedicosPage() {
                       <p className="text-ds-text font-medium truncate">{m.especialidade || '—'}</p>
                     </div>
                     <div className="col-span-2">
-                      <p className="text-xs font-medium text-ds-light mb-0.5">Chave PIX</p>
-                      <PixDisplay medico={m} />
+                      <p className="text-xs font-medium text-ds-light mb-0.5">Recebimento</p>
+                      <DadosBancariosDisplay medico={m} />
                     </div>
                   </div>
                   <div className="mt-3 flex items-center gap-1 border-t border-ds-border pt-3">
-                    {canEdit && m.status === 'RASCUNHO' && (
+                    {canEdit && (m.status === 'RASCUNHO' || m.status === 'INATIVO') && (
                       <button
                         onClick={() => handleAtivar(m)}
                         disabled={activatingId === m.id}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-ds-mid hover:bg-green-50 hover:text-green-600 transition-colors disabled:opacity-50"
                       >
-                        <UserCheck size={13} /> Ativar
+                        <UserCheck size={13} /> {m.status === 'INATIVO' ? 'Reativar' : 'Ativar'}
                       </button>
                     )}
                     {canEdit && (
                       <button
-                        onClick={() => { setEditing(m); setShowForm(true) }}
-                        className="ml-auto p-1.5 rounded-lg text-ds-light hover:bg-ds-input hover:text-primary transition-colors"
+                        onClick={() => handleEditar(m)}
+                        disabled={loadingEdit === m.id}
+                        className="ml-auto p-1.5 rounded-lg text-ds-light hover:bg-ds-input hover:text-primary transition-colors disabled:opacity-50"
                         title="Editar"
                       >
                         <Pencil size={14} />
@@ -345,7 +381,7 @@ export function MedicosPage() {
                     <TH>CPF</TH>
                     <TH>CRM / UF</TH>
                     <TH>Especialidade</TH>
-                    <TH>PIX</TH>
+                    <TH>Recebimento</TH>
                     <TH>Status</TH>
                     <TH className="text-right">Ações</TH>
                   </TRow>
@@ -360,28 +396,29 @@ export function MedicosPage() {
                         </div>
                       </TD>
                       <TD className="font-mono text-xs">
-                        {formatCpf(m.cpf).replace(/(\d{3})\.\d{3}\.\d{3}-(\d{2})/, '$1.***.**-$2')}
+                        {m.cpf ? formatCpf(m.cpf).replace(/(\d{3})\.\d{3}\.\d{3}-(\d{2})/, '$1.***.**-$2') : '—'}
                       </TD>
                       <TD className="font-semibold text-xs">{m.crm} / {m.crmUf.trim()}</TD>
                       <TD className="text-xs">{m.especialidade || '—'}</TD>
-                      <TD><PixDisplay medico={m} /></TD>
+                      <TD><DadosBancariosDisplay medico={m} /></TD>
                       <TD><StatusBadge status={m.status} /></TD>
                       <TD className="text-right">
                         <div className="flex justify-end gap-1">
-                          {canEdit && m.status === 'RASCUNHO' && (
+                          {canEdit && (m.status === 'RASCUNHO' || m.status === 'INATIVO') && (
                             <button
                               onClick={() => handleAtivar(m)}
                               disabled={activatingId === m.id}
                               className="p-1.5 rounded hover:bg-green-50 text-ds-light hover:text-green-600 transition-colors disabled:opacity-50"
-                              title="Ativar médico"
+                              title={m.status === 'INATIVO' ? 'Reativar médico' : 'Ativar médico'}
                             >
                               <UserCheck size={15} />
                             </button>
                           )}
                           {canEdit && (
                             <button
-                              onClick={() => { setEditing(m); setShowForm(true) }}
-                              className="p-1.5 rounded hover:bg-ds-input text-ds-light hover:text-primary transition-colors"
+                              onClick={() => handleEditar(m)}
+                              disabled={loadingEdit === m.id}
+                              className="p-1.5 rounded hover:bg-ds-input text-ds-light hover:text-primary transition-colors disabled:opacity-50"
                               title="Editar"
                             >
                               <Pencil size={15} />

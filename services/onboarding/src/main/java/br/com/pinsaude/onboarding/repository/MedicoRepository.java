@@ -14,11 +14,15 @@ public interface MedicoRepository extends JpaRepository<Medico, UUID> {
 
     boolean existsByCrmAndCrmUf(String crm, String crmUf);
 
-    // native query com cast explícito: Hibernate 6 não faz cast automático VARCHAR→custom enum no WHERE
     @Query(value = "SELECT * FROM onboarding.medicos WHERE status != CAST(:status AS onboarding.status_medico_enum) ORDER BY created_at DESC",
            countQuery = "SELECT COUNT(*) FROM onboarding.medicos WHERE status != CAST(:status AS onboarding.status_medico_enum)",
            nativeQuery = true)
     Page<Medico> findAllByStatusNot(@Param("status") String status, Pageable pageable);
+
+    @Query(value = "SELECT * FROM onboarding.medicos WHERE status = CAST(:status AS onboarding.status_medico_enum) ORDER BY created_at DESC",
+           countQuery = "SELECT COUNT(*) FROM onboarding.medicos WHERE status = CAST(:status AS onboarding.status_medico_enum)",
+           nativeQuery = true)
+    Page<Medico> findAllByStatus(@Param("status") String status, Pageable pageable);
 
     @Query(value = "SELECT * FROM onboarding.medicos WHERE id = :id AND status != CAST(:status AS onboarding.status_medico_enum)",
            nativeQuery = true)
