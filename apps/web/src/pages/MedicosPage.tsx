@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Search, Pencil, UserX, Stethoscope,
   UserCheck, UserCircle, CircleDot, CheckCircle2,
@@ -151,19 +151,9 @@ export function MedicosPage() {
     }
   }
 
-  // Recarrega do backend quando alterna para/de INATIVO (que requer query separada)
-  const prevFilterRef = useRef<string>('')
   useEffect(() => {
-    const prev = prevFilterRef.current
-    prevFilterRef.current = filterStatus
-    const wasInativo = prev === 'INATIVO'
-    const isInativo  = filterStatus === 'INATIVO'
-    if (wasInativo !== isInativo) {
-      load(isInativo ? 'INATIVO' : undefined)
-    }
+    load(filterStatus === 'INATIVO' ? 'INATIVO' : undefined)
   }, [filterStatus])
-
-  useEffect(() => { load() }, [])
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase()
@@ -173,7 +163,7 @@ export function MedicosPage() {
         || m.nome.toLowerCase().includes(q)
         || m.crm.toLowerCase().includes(q)
         || (m.especialidade?.toLowerCase().includes(q) ?? false)
-        || (qDigits.length > 0 && m.cpf.replace(/\D/g, '').includes(qDigits))
+        || (qDigits.length > 0 && (m.cpf ?? '').replace(/\D/g, '').includes(qDigits))
       const matchStatus = !filterStatus || m.status === filterStatus
       return matchSearch && matchStatus
     })
@@ -329,7 +319,7 @@ export function MedicosPage() {
                       <MedicoAvatar nome={m.nome} size="md" />
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-ds-text truncate">{m.nome}</p>
-                        <p className="mt-0.5 font-mono text-xs text-ds-light">CPF {formatCpf(m.cpf).slice(0, 7)}***.***-**</p>
+                        <p className="mt-0.5 font-mono text-xs text-ds-light">CPF {m.cpf ? formatCpf(m.cpf).slice(0, 7) + '***.***-**' : '—'}</p>
                       </div>
                     </div>
                     <StatusBadge status={m.status} />
@@ -406,7 +396,7 @@ export function MedicosPage() {
                         </div>
                       </TD>
                       <TD className="font-mono text-xs">
-                        {formatCpf(m.cpf).replace(/(\d{3})\.\d{3}\.\d{3}-(\d{2})/, '$1.***.**-$2')}
+                        {m.cpf ? formatCpf(m.cpf).replace(/(\d{3})\.\d{3}\.\d{3}-(\d{2})/, '$1.***.**-$2') : '—'}
                       </TD>
                       <TD className="font-semibold text-xs">{m.crm} / {m.crmUf.trim()}</TD>
                       <TD className="text-xs">{m.especialidade || '—'}</TD>
