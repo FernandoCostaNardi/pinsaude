@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Award, GraduationCap, CreditCard, Home, FileText,
-  Upload, CheckCircle2, XCircle, Clock, Eye, RotateCcw,
+  Upload, CheckCircle2, XCircle, Clock, Eye, Plus,
 } from 'lucide-react'
 import { Modal, Button, Alert, Spinner } from '@pinsaude/ui'
 import {
@@ -38,14 +38,14 @@ function validarArquivo(f: File) {
   return null
 }
 
-// ─── Linha de documento ───────────────────────────────────────────────────────
+// ─── Linha de tipo (com múltiplos arquivos) ───────────────────────────────────
 
 interface RowProps {
   tipo: TipoDocumentoMedico
-  doc: DocumentoMedico | null
-  preview: string | null
-  uploading: boolean
-  validating: boolean
+  docs: DocumentoMedico[]
+  previews: Record<string, string>
+  uploadingThisTipo: boolean
+  validating: string | null
   canValidate: boolean
   rejectingDocId: string | null
   rejectReason: string
@@ -55,134 +55,150 @@ interface RowProps {
   onCancelarReprovacao: () => void
   onRejectReasonChange: (v: string) => void
   onVerArquivo: (doc: DocumentoMedico) => void
-  onReenviar: (tipo: TipoDocumentoMedico) => void
+  onAdicionarMais: (tipo: TipoDocumentoMedico) => void
 }
 
 function DocumentoRow({
-  tipo, doc, preview, uploading, validating, canValidate,
+  tipo, docs, previews, uploadingThisTipo, validating, canValidate,
   rejectingDocId, rejectReason,
   onAprovar, onIniciarReprovacao, onConfirmarReprovacao,
-  onCancelarReprovacao, onRejectReasonChange, onVerArquivo, onReenviar,
+  onCancelarReprovacao, onRejectReasonChange, onVerArquivo, onAdicionarMais,
 }: RowProps) {
   const { Icon, label } = TIPO_INFO[tipo]
-  const statusCfg = doc ? STATUS_CONFIG[doc.statusValidacao] : null
-  const isRejecting = !!(doc && rejectingDocId === doc.id)
 
   return (
-    <div className="flex flex-col gap-0">
-      <div className="flex items-center gap-3 py-3 px-4">
-        {/* Ícone + label */}
-        <div className="w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
-          <Icon size={15} className="text-primary" />
+    <div className="flex flex-col">
+      {/* Cabeçalho do tipo */}
+      <div className="flex items-center gap-3 py-2.5 px-4 bg-ds-input">
+        <div className="w-7 h-7 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+          <Icon size={14} className="text-primary" />
         </div>
-        <div className="flex-1 min-w-0">
-          <span className="text-sm font-semibold text-ds-text">{label}</span>
-          {doc ? (
-            <p className="text-[11px] text-ds-light truncate">{doc.nomeArquivo}</p>
-          ) : uploading ? (
-            <p className="text-[11px] text-primary">Enviando...</p>
-          ) : (
-            <p className="text-[11px] text-ds-light">Nenhum arquivo enviado</p>
-          )}
-        </div>
-
-        {/* Status badge */}
-        {uploading ? (
-          <Spinner size="sm" />
-        ) : statusCfg ? (
-          <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${statusCfg.cls}`}>
-            <statusCfg.Icon size={11} />
-            {statusCfg.label}
+        <span className="flex-1 text-sm font-semibold text-ds-text">{label}</span>
+        {docs.length > 0 && (
+          <span className="text-[11px] text-ds-light">
+            {docs.length} arquivo{docs.length > 1 ? 's' : ''}
           </span>
-        ) : (
-          <span className="text-[11px] text-ds-light">—</span>
         )}
-
-        {/* Ações rápidas */}
-        {doc && !isRejecting && (
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={() => onVerArquivo(doc)}
-              className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
-              title="Ver arquivo"
-            >
-              <Eye size={14} />
-            </button>
-            <button
-              onClick={() => onReenviar(tipo)}
-              className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
-              title="Substituir arquivo"
-            >
-              <RotateCcw size={14} />
-            </button>
-            {canValidate && doc.statusValidacao !== 'APROVADO' && (
-              <button
-                onClick={() => onAprovar(doc)}
-                disabled={validating}
-                className="px-2 py-0.5 rounded text-[11px] font-semibold bg-green-50 text-green-600 hover:bg-green-100 disabled:opacity-50 transition-colors"
-              >
-                Aprovar
-              </button>
-            )}
-            {canValidate && doc.statusValidacao !== 'REPROVADO' && (
-              <button
-                onClick={() => onIniciarReprovacao(doc)}
-                disabled={validating}
-                className="px-2 py-0.5 rounded text-[11px] font-semibold bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 transition-colors"
-              >
-                Reprovar
-              </button>
-            )}
-          </div>
-        )}
+        <button
+          onClick={() => onAdicionarMais(tipo)}
+          disabled={uploadingThisTipo}
+          title="Adicionar arquivo"
+          className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-50"
+        >
+          <Plus size={14} />
+        </button>
       </div>
 
-      {/* Motivo de reprovação */}
-      {doc?.motivoReprovacao && !isRejecting && (
-        <p className="text-[11px] text-red-500 bg-red-50 px-4 pb-2 -mt-1">
-          Motivo: {doc.motivoReprovacao}
+      {/* Sem arquivo */}
+      {docs.length === 0 && !uploadingThisTipo && (
+        <p className="text-[11px] text-ds-light px-4 py-2 border-t border-ds-border/50">
+          Nenhum arquivo enviado
         </p>
       )}
 
-      {/* Inline reject form */}
-      {isRejecting && (
-        <div className="flex flex-col gap-2 px-4 pb-3 -mt-1 bg-red-50">
-          <textarea
-            value={rejectReason}
-            onChange={e => onRejectReasonChange(e.target.value)}
-            placeholder="Informe o motivo da reprovação..."
-            rows={2}
-            autoFocus
-            className="w-full text-xs border border-red-200 rounded-lg px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 bg-white"
-          />
-          <div className="flex gap-1.5 justify-end">
-            <button
-              onClick={onCancelarReprovacao}
-              className="px-2.5 py-1 rounded-lg text-[11px] border border-ds-border text-ds-mid hover:bg-white transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={onConfirmarReprovacao}
-              disabled={!rejectReason.trim() || validating}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-            >
-              {validating ? 'Salvando...' : 'Confirmar reprovação'}
-            </button>
-          </div>
+      {/* Enviando */}
+      {uploadingThisTipo && (
+        <div className="flex items-center gap-2 px-4 py-2 border-t border-ds-border/50">
+          <Spinner size="sm" />
+          <p className="text-[11px] text-primary">Enviando...</p>
         </div>
       )}
 
-      {/* Preview thumbnail para imagens */}
-      {doc && preview && isImagem(doc.nomeArquivo) && !isRejecting && (
-        <div className="px-4 pb-3 -mt-1">
-          <img
-            src={preview}
-            alt={label}
-            className="h-16 rounded-lg border border-ds-border object-cover"
-          />
-        </div>
-      )}
+      {/* Sub-linhas — um doc por arquivo */}
+      {docs.map(doc => {
+        const statusCfg = STATUS_CONFIG[doc.statusValidacao]
+        const isRejecting = rejectingDocId === doc.id
+        const preview = previews[doc.id]
+
+        return (
+          <div key={doc.id} className="flex flex-col border-t border-ds-border/50">
+            <div className="flex items-center gap-2 py-2 px-6">
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] text-ds-mid truncate">{doc.nomeArquivo}</p>
+              </div>
+
+              <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${statusCfg.cls}`}>
+                <statusCfg.Icon size={11} />
+                {statusCfg.label}
+              </span>
+
+              {!isRejecting && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => onVerArquivo(doc)}
+                    className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
+                    title="Ver arquivo"
+                  >
+                    <Eye size={13} />
+                  </button>
+                  {canValidate && doc.statusValidacao !== 'APROVADO' && (
+                    <button
+                      onClick={() => onAprovar(doc)}
+                      disabled={validating === doc.id}
+                      className="px-2 py-0.5 rounded text-[11px] font-semibold bg-green-50 text-green-600 hover:bg-green-100 disabled:opacity-50 transition-colors"
+                    >
+                      Aprovar
+                    </button>
+                  )}
+                  {canValidate && doc.statusValidacao !== 'REPROVADO' && (
+                    <button
+                      onClick={() => onIniciarReprovacao(doc)}
+                      disabled={validating === doc.id}
+                      className="px-2 py-0.5 rounded text-[11px] font-semibold bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 transition-colors"
+                    >
+                      Reprovar
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {doc.motivoReprovacao && !isRejecting && (
+              <p className="text-[11px] text-red-500 bg-red-50 px-6 pb-2 -mt-1">
+                Motivo: {doc.motivoReprovacao}
+              </p>
+            )}
+
+            {isRejecting && (
+              <div className="flex flex-col gap-2 px-6 pb-3 -mt-1 bg-red-50">
+                <textarea
+                  value={rejectReason}
+                  onChange={e => onRejectReasonChange(e.target.value)}
+                  placeholder="Informe o motivo da reprovação..."
+                  rows={2}
+                  autoFocus
+                  className="w-full text-xs border border-red-200 rounded-lg px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 bg-white"
+                />
+                <div className="flex gap-1.5 justify-end">
+                  <button
+                    onClick={onCancelarReprovacao}
+                    className="px-2.5 py-1 rounded-lg text-[11px] border border-ds-border text-ds-mid hover:bg-white transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={onConfirmarReprovacao}
+                    disabled={!rejectReason.trim() || validating === doc.id}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  >
+                    {validating === doc.id ? 'Salvando...' : 'Confirmar reprovação'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {preview && isImagem(doc.nomeArquivo) && !isRejecting && (
+              <div className="px-6 pb-2 -mt-1">
+                <img
+                  src={preview}
+                  alt={label}
+                  className="h-14 rounded-lg border border-ds-border object-cover"
+                />
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -200,8 +216,10 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
   const canValidate = user?.realm_access?.roles.some(r => r === 'gestao' || r === 'operacao') ?? false
 
   const [selectedTipo, setSelectedTipo] = useState<TipoDocumentoMedico>('CRM')
-  const [docs, setDocs]     = useState<Partial<Record<TipoDocumentoMedico, DocumentoMedico>>>({})
-  const [previews, setPreviews] = useState<Partial<Record<TipoDocumentoMedico, string>>>({})
+  // múltiplos docs por tipo
+  const [docs, setDocs]     = useState<Partial<Record<TipoDocumentoMedico, DocumentoMedico[]>>>({})
+  // previews por docId (não por tipo)
+  const [previews, setPreviews] = useState<Record<string, string>>({})
   const [dragging, setDragging]     = useState(false)
   const [uploading, setUploading]   = useState<TipoDocumentoMedico | null>(null)
   const [validating, setValidating] = useState<string | null>(null) // docId
@@ -223,13 +241,15 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
   useEffect(() => {
     medicosApi.listarDocumentos(medico.id)
       .then(list => {
-        const byTipo: Partial<Record<TipoDocumentoMedico, DocumentoMedico>> = {}
-        for (const doc of list) byTipo[doc.tipo] = doc
+        const byTipo: Partial<Record<TipoDocumentoMedico, DocumentoMedico[]>> = {}
+        for (const doc of list) {
+          byTipo[doc.tipo] = [...(byTipo[doc.tipo] ?? []), doc]
+        }
         setDocs(byTipo)
         for (const doc of list) {
           if (isImagem(doc.nomeArquivo)) {
             medicosApi.getDocumentoUrl(medico.id, doc.id)
-              .then(url => setPreviews(p => ({ ...p, [doc.tipo]: url })))
+              .then(url => setPreviews(p => ({ ...p, [doc.id]: url })))
               .catch(() => {})
           }
         }
@@ -243,21 +263,17 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     if (err) { setError(err); return }
     setError(null)
 
-    if (isImagem(file.name)) {
-      const url = URL.createObjectURL(file)
-      setPreviews(p => ({ ...p, [tipo]: url }))
-    } else {
-      setPreviews(p => { const n = { ...p }; delete n[tipo]; return n })
-    }
-
     setUploading(tipo)
     try {
       const doc = await medicosApi.uploadDocumento(medico.id, tipo, file)
-      setDocs(d => ({ ...d, [tipo]: doc }))
+      if (isImagem(file.name)) {
+        const url = URL.createObjectURL(file)
+        setPreviews(p => ({ ...p, [doc.id]: url }))
+      }
+      setDocs(d => ({ ...d, [tipo]: [...(d[tipo] ?? []), doc] }))
       onDocumentosChange?.()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao enviar arquivo')
-      setPreviews(p => { const n = { ...p }; delete n[tipo]; return n })
     } finally {
       setUploading(null)
     }
@@ -276,7 +292,7 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     if (file) handleUpload(selectedTipo, file)
   }
 
-  function handleReenviar(tipo: TipoDocumentoMedico) {
+  function handleAdicionarMais(tipo: TipoDocumentoMedico) {
     setSelectedTipo(tipo)
     setTimeout(() => fileInputRef.current?.click(), 0)
   }
@@ -286,7 +302,10 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     setError(null)
     try {
       const updated = await medicosApi.validarDocumento(medico.id, doc.id, { statusValidacao: 'APROVADO' })
-      setDocs(d => ({ ...d, [doc.tipo]: updated }))
+      setDocs(d => ({
+        ...d,
+        [doc.tipo]: (d[doc.tipo] ?? []).map(x => x.id === updated.id ? updated : x),
+      }))
       onDocumentosChange?.()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao aprovar documento')
@@ -297,7 +316,9 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
 
   async function handleConfirmarReprovacao() {
     if (!rejectingDocId) return
-    const tipo = Object.keys(docs).find(k => docs[k as TipoDocumentoMedico]?.id === rejectingDocId) as TipoDocumentoMedico | undefined
+    const tipo = (Object.keys(docs) as TipoDocumentoMedico[]).find(k =>
+      docs[k]?.some(d => d.id === rejectingDocId)
+    )
     if (!tipo) return
     setValidating(rejectingDocId)
     setError(null)
@@ -306,7 +327,10 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
         statusValidacao: 'REPROVADO',
         motivoReprovacao: rejectReason.trim(),
       })
-      setDocs(d => ({ ...d, [tipo]: updated }))
+      setDocs(d => ({
+        ...d,
+        [tipo]: (d[tipo] ?? []).map(x => x.id === updated.id ? updated : x),
+      }))
       setRejectingDocId(null)
       setRejectReason('')
       onDocumentosChange?.()
@@ -326,8 +350,9 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     }
   }
 
-  const totalEnviados = TODOS_TIPOS.filter(t => docs[t]).length
-  const aprovados = TODOS_TIPOS.filter(t => docs[t]?.statusValidacao === 'APROVADO').length
+  const allDocs = TODOS_TIPOS.flatMap(t => docs[t] ?? [])
+  const totalEnviados = allDocs.length
+  const aprovados     = allDocs.filter(d => d.statusValidacao === 'APROVADO').length
 
   return (
     <Modal open onClose={onClose} title="" size="lg">
@@ -404,7 +429,7 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
           <input ref={fileInputRef} type="file" accept={ACCEPT} className="hidden" onChange={handleFileInputChange} />
         </div>
 
-        {/* Lista de documentos */}
+        {/* Lista de documentos por tipo */}
         <div className="border border-ds-border rounded-xl overflow-hidden">
           <div className="px-4 py-2 border-b border-ds-border bg-ds-input">
             <p className="text-xs font-semibold text-ds-mid">Documentos enviados</p>
@@ -417,10 +442,10 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
                 <DocumentoRow
                   key={tipo}
                   tipo={tipo}
-                  doc={docs[tipo] ?? null}
-                  preview={previews[tipo] ?? null}
-                  uploading={uploading === tipo}
-                  validating={validating === docs[tipo]?.id}
+                  docs={docs[tipo] ?? []}
+                  previews={previews}
+                  uploadingThisTipo={uploading === tipo}
+                  validating={validating}
                   canValidate={canValidate}
                   rejectingDocId={rejectingDocId}
                   rejectReason={rejectReason}
@@ -430,7 +455,7 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
                   onCancelarReprovacao={() => { setRejectingDocId(null); setRejectReason('') }}
                   onRejectReasonChange={setRejectReason}
                   onVerArquivo={handleVerArquivo}
-                  onReenviar={handleReenviar}
+                  onAdicionarMais={handleAdicionarMais}
                 />
               ))}
             </div>

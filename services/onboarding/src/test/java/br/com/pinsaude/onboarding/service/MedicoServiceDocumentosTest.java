@@ -6,11 +6,9 @@ import br.com.pinsaude.onboarding.dto.ValidarDocumentoRequest;
 import br.com.pinsaude.onboarding.repository.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -56,43 +54,40 @@ class MedicoServiceDocumentosTest {
         return d;
     }
 
-    // ─── uploadDocumento — substitui existente ────────────────────────────────
+    // ─── uploadDocumento — adiciona (não substitui) ───────────────────────────
 
     @Test
-    void upload_substituiDocumentoExistente_deletaArquivoAntigoECriaNovo() {
+    void upload_adicionaNovoDocumento_semDeletarExistentes() {
         UUID medicoId = UUID.randomUUID();
-        var medico   = medicoExistente(medicoId);
-        var existing = docExistente(medicoId, TipoDocumentoMedico.CRM, StatusValidacaoDocumento.PENDENTE);
-
-        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medico));
-        when(documentoRepo.findByMedicoIdAndTipo(medicoId, TipoDocumentoMedico.CRM))
-            .thenReturn(Optional.of(existing));
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medicoExistente(medicoId)));
         when(storageService.upload(any(), any(), any())).thenReturn("novo/caminho.pdf");
         when(documentoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var arquivo = new MockMultipartFile("arquivo", "novo.pdf", "application/pdf", new byte[]{1, 2, 3});
         service.uploadDocumento(medicoId, TipoDocumentoMedico.CRM, arquivo);
 
-        verify(storageService).delete(existing.getCaminhoStorage());
-        verify(documentoRepo).delete(existing);
+        verify(storageService, never()).delete(any());
+        verify(documentoRepo, never()).delete(any(DocumentoMedico.class));
         verify(documentoRepo).save(any(DocumentoMedico.class));
     }
 
     @Test
-    void upload_semDocumentoAnterior_criaNovoDiretamente() {
+    void upload_multiplosArquivosDoMesmoTipo_todosPersistidos() {
         UUID medicoId = UUID.randomUUID();
         when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medicoExistente(medicoId)));
-        when(documentoRepo.findByMedicoIdAndTipo(medicoId, TipoDocumentoMedico.DIPLOMA))
-            .thenReturn(Optional.empty());
-        when(storageService.upload(any(), any(), any())).thenReturn("novo/diploma.pdf");
+        when(storageService.upload(any(), any(), any()))
+            .thenReturn("contrato1.pdf")
+            .thenReturn("contrato2.pdf");
         when(documentoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        var arquivo = new MockMultipartFile("arquivo", "diploma.pdf", "application/pdf", new byte[]{1});
-        service.uploadDocumento(medicoId, TipoDocumentoMedico.DIPLOMA, arquivo);
+        var a1 = new MockMultipartFile("arquivo", "contrato1.pdf", "application/pdf", new byte[]{1});
+        var a2 = new MockMultipartFile("arquivo", "contrato2.pdf", "application/pdf", new byte[]{2});
+        service.uploadDocumento(medicoId, TipoDocumentoMedico.CONTRATO, a1);
+        service.uploadDocumento(medicoId, TipoDocumentoMedico.CONTRATO, a2);
 
         verify(storageService, never()).delete(any());
         verify(documentoRepo, never()).delete(any(DocumentoMedico.class));
-        verify(documentoRepo).save(any(DocumentoMedico.class));
+        verify(documentoRepo, times(2)).save(any(DocumentoMedico.class));
     }
 
     @Test

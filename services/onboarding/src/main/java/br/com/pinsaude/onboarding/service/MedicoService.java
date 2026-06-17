@@ -217,12 +217,6 @@ public class MedicoService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Arquivo não pode estar vazio");
         }
 
-        // Substitui documento existente do mesmo tipo sem criar duplicata
-        documentoRepo.findByMedicoIdAndTipo(medicoId, tipo).ifPresent(existing -> {
-            storageService.delete(existing.getCaminhoStorage());
-            documentoRepo.delete(existing);
-        });
-
         String caminho = storageService.upload(medicoId, tipo.name(), arquivo);
 
         var doc = new DocumentoMedico();
