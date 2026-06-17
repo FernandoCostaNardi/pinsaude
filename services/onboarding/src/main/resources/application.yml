@@ -19,6 +19,15 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/pinsaude
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
 server:
   port: 8085
   servlet:
@@ -34,17 +43,6 @@ minio:
   access-key: ${MINIO_ACCESS_KEY:minioadmin}
   secret-key: ${MINIO_SECRET_KEY:minioadmin}
   bucket: ${MINIO_BUCKET:pinsaude-documentos}
-
-spring:
-  mail:
-    host: ${SMTP_HOST:localhost}
-    port: ${SMTP_PORT:1025}
-    properties:
-      mail:
-        smtp:
-          auth: false
-          starttls:
-            enable: false
 
 app:
   base-url: ${APP_BASE_URL:http://localhost:3000}
