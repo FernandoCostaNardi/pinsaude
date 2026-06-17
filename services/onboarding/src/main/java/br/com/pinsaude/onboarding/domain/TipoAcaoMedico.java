@@ -1,0 +1,13 @@
+package br.com.pinsaude.onboarding.domain;
+
+public enum TipoAcaoMedico {
+    CADASTRO,
+    ATIVACAO,
+    INATIVACAO,
+    ATUALIZACAO_DADOS,
+    ATUALIZACAO_DADOS_BANCARIOS,
+    UPLOAD_DOCUMENTO,
+    VALIDACAO_DOCUMENTO,
+    EXCLUSAO_DOCUMENTO,
+    ATUALIZACAO_CHECKLIST
+}

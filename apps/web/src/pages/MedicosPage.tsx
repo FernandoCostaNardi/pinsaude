@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Plus, Search, Pencil, UserX, Stethoscope,
-  UserCheck, UserCircle, CircleDot, CheckCircle2, FolderOpen,
+  UserCheck, UserCircle, CircleDot, CheckCircle2, FolderOpen, FileText,
 } from 'lucide-react'
 import { Button, Spinner, Alert, Table, THead, TBody, TRow, TH, TD } from '@pinsaude/ui'
 import { Medico, StatusMedico, medicosApi } from '../api/medicosApi'
@@ -110,6 +111,7 @@ const PAGE_SIZES = [10, 25, 50]
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export function MedicosPage() {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const isGestao   = user?.realm_access?.roles.includes('gestao') ?? false
   const isOperacao = user?.realm_access?.roles.includes('operacao') ?? false
@@ -320,7 +322,12 @@ export function MedicosPage() {
                     <div className="flex items-start gap-3 min-w-0">
                       <MedicoAvatar nome={m.nome} size="md" />
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-ds-text truncate">{m.nome}</p>
+                        <button
+                          onClick={() => navigate(`/medicos/${m.id}`)}
+                          className="text-sm font-semibold text-ds-text hover:text-primary transition-colors truncate text-left"
+                        >
+                          {m.nome}
+                        </button>
                         <p className="mt-0.5 font-mono text-xs text-ds-light">CPF {m.cpf ? formatCpf(m.cpf).slice(0, 7) + '***.***-**' : '—'}</p>
                       </div>
                     </div>
@@ -341,6 +348,13 @@ export function MedicosPage() {
                     </div>
                   </div>
                   <div className="mt-3 flex items-center gap-1 border-t border-ds-border pt-3">
+                    <button
+                      onClick={() => navigate(`/medicos/${m.id}`)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-ds-mid hover:bg-primary-50 hover:text-primary transition-colors"
+                      title="Ver perfil"
+                    >
+                      <UserCircle size={13} /> Perfil
+                    </button>
                     {canEdit && (m.status === 'RASCUNHO' || m.status === 'INATIVO') && (
                       <button
                         onClick={() => handleAtivar(m)}
@@ -350,6 +364,13 @@ export function MedicosPage() {
                         <UserCheck size={13} /> {m.status === 'INATIVO' ? 'Reativar' : 'Ativar'}
                       </button>
                     )}
+                    <button
+                      onClick={() => navigate(`/notas?medicoId=${m.id}`)}
+                      className="p-1.5 rounded-lg text-ds-light hover:bg-primary-50 hover:text-primary transition-colors"
+                      title="Ver Notas"
+                    >
+                      <FileText size={14} />
+                    </button>
                     <button
                       onClick={() => setViewingDocs(m)}
                       className="p-1.5 rounded-lg text-ds-light hover:bg-primary-50 hover:text-primary transition-colors"
@@ -401,7 +422,12 @@ export function MedicosPage() {
                       <TD>
                         <div className="flex items-center gap-3">
                           <MedicoAvatar nome={m.nome} />
-                          <span className="font-semibold text-ds-text">{m.nome}</span>
+                          <button
+                            onClick={() => navigate(`/medicos/${m.id}`)}
+                            className="font-semibold text-ds-text hover:text-primary transition-colors text-left"
+                          >
+                            {m.nome}
+                          </button>
                         </div>
                       </TD>
                       <TD className="font-mono text-xs">
@@ -423,6 +449,13 @@ export function MedicosPage() {
                               <UserCheck size={15} />
                             </button>
                           )}
+                          <button
+                            onClick={() => navigate(`/notas?medicoId=${m.id}`)}
+                            className="p-1.5 rounded hover:bg-primary-50 text-ds-light hover:text-primary transition-colors"
+                            title="Ver Notas"
+                          >
+                            <FileText size={15} />
+                          </button>
                           <button
                             onClick={() => setViewingDocs(m)}
                             className="p-1.5 rounded hover:bg-primary-50 text-ds-light hover:text-primary transition-colors"

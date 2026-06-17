@@ -120,6 +120,12 @@ public class MedicoController {
         return ResponseEntity.ok(java.util.Map.of("url", service.getDocumentoUrl(id, docId)));
     }
 
+    @GetMapping("/{id}/historico")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil')")
+    public ResponseEntity<List<HistoricoMedicoResponse>> listarHistorico(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarHistorico(id));
+    }
+
     @PutMapping("/{id}/checklist")
     @PreAuthorize("hasAnyRole('gestao','operacao')")
     public ResponseEntity<ChecklistCondutaResponse> atualizarChecklist(
