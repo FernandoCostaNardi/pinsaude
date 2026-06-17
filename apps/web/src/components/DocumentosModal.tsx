@@ -13,7 +13,6 @@ import { useAuth } from '../auth/useAuth'
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const TODOS_TIPOS: TipoDocumentoMedico[] = ['CRM', 'DIPLOMA', 'IDENTIDADE', 'RESIDENCIA', 'CONTRATO']
-const OBRIGATORIOS: TipoDocumentoMedico[] = ['CRM', 'DIPLOMA', 'IDENTIDADE', 'RESIDENCIA']
 
 const TIPO_INFO: Record<TipoDocumentoMedico, { label: string; Icon: React.ElementType }> = {
   CRM:        { label: 'Registro CRM',               Icon: Award },
@@ -68,7 +67,6 @@ function DocumentoRow({
   const { Icon, label } = TIPO_INFO[tipo]
   const statusCfg = doc ? STATUS_CONFIG[doc.statusValidacao] : null
   const isRejecting = !!(doc && rejectingDocId === doc.id)
-  const obrigatorio = OBRIGATORIOS.includes(tipo)
 
   return (
     <div className="flex flex-col gap-0">
@@ -78,12 +76,7 @@ function DocumentoRow({
           <Icon size={15} className="text-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-ds-text">{label}</span>
-            {obrigatorio && (
-              <span className="text-[10px] text-ds-light border border-ds-border rounded px-1">obrigatório</span>
-            )}
-          </div>
+          <span className="text-sm font-semibold text-ds-text">{label}</span>
           {doc ? (
             <p className="text-[11px] text-ds-light truncate">{doc.nomeArquivo}</p>
           ) : uploading ? (
@@ -333,7 +326,8 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     }
   }
 
-  const aprovados = OBRIGATORIOS.filter(t => docs[t]?.statusValidacao === 'APROVADO').length
+  const totalEnviados = TODOS_TIPOS.filter(t => docs[t]).length
+  const aprovados = TODOS_TIPOS.filter(t => docs[t]?.statusValidacao === 'APROVADO').length
 
   return (
     <Modal open onClose={onClose} title="" size="lg">
@@ -346,13 +340,13 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
             <p className="text-xs text-ds-light mt-0.5">{medico.nome} · CRM {medico.crm}/{medico.crmUf.trim()}</p>
           </div>
           <div className="shrink-0 flex flex-col items-end gap-1">
-            <span className={`px-3 py-1 rounded-full text-sm font-bold ${aprovados === 4 ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-700'}`}>
-              {aprovados}/4 obrigatórios aprovados
+            <span className={`px-3 py-1 rounded-full text-sm font-bold ${totalEnviados > 0 && aprovados === totalEnviados ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-700'}`}>
+              {aprovados} de {totalEnviados} aprovados
             </span>
             <div className="w-28 h-1.5 rounded-full bg-ds-border overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${aprovados === 4 ? 'bg-green-500' : 'bg-amber-400'}`}
-                style={{ width: `${(aprovados / 4) * 100}%` }}
+                className={`h-full rounded-full transition-all duration-500 ${totalEnviados > 0 && aprovados === totalEnviados ? 'bg-green-500' : 'bg-amber-400'}`}
+                style={{ width: `${totalEnviados > 0 ? (aprovados / totalEnviados) * 100 : 0}%` }}
               />
             </div>
           </div>
