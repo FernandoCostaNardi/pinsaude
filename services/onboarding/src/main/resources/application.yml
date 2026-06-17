@@ -19,6 +19,15 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/pinsaude
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
 server:
   port: 8085
   servlet:
@@ -34,6 +43,18 @@ minio:
   access-key: ${MINIO_ACCESS_KEY:minioadmin}
   secret-key: ${MINIO_SECRET_KEY:minioadmin}
   bucket: ${MINIO_BUCKET:pinsaude-documentos}
+
+app:
+  base-url: ${APP_BASE_URL:http://localhost:3000}
+  email-from: ${EMAIL_FROM:noreply@pinsaude.com.br}
+  convite:
+    expiracao-horas: ${CONVITE_EXPIRACAO_HORAS:168}
+
+clicksign:
+  enabled: ${CLICKSIGN_ENABLED:false}
+  base-url: ${CLICKSIGN_BASE_URL:https://sandbox.clicksign.com}
+  access-token: ${CLICKSIGN_ACCESS_TOKEN:}
+  template-key: ${CLICKSIGN_TEMPLATE_KEY:}
 
 management:
   endpoints:

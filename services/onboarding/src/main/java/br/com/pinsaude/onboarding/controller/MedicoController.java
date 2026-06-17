@@ -68,6 +68,26 @@ public class MedicoController {
         return ResponseEntity.ok(service.inativar(id));
     }
 
+    @PostMapping("/{id}/convite")
+    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    public ResponseEntity<EnviarConviteResponse> enviarConvite(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.enviarConvite(id));
+    }
+
+    @PostMapping("/{id}/contrato/enviar")
+    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    public ResponseEntity<ContratoAssinaturaResponse> enviarContrato(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.enviarContrato(id));
+    }
+
+    @PutMapping("/{id}/junta-comercial")
+    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    public ResponseEntity<MedicoResponse> atualizarJuntaComercial(
+            @PathVariable UUID id,
+            @Valid @RequestBody AtualizarJuntaComercialRequest request) {
+        return ResponseEntity.ok(service.atualizarJuntaComercial(id, request));
+    }
+
     @PutMapping("/{id}/dados-bancarios")
     @PreAuthorize("hasAnyRole('gestao','operacao')")
     public ResponseEntity<DadosBancariosMedicoResponse> atualizarDadosBancarios(

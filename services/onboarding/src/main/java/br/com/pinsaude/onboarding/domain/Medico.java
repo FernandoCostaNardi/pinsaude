@@ -45,6 +45,9 @@ public class Medico {
     @ColumnTransformer(write = "?::onboarding.status_medico_enum")
     private StatusMedico status = StatusMedico.RASCUNHO;
 
+    @Column(name = "status_junta_comercial", nullable = false, length = 20)
+    private String statusJuntaComercial = "AGUARDANDO";
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -79,6 +82,9 @@ public class Medico {
 
     public StatusMedico getStatus() { return status; }
     public void setStatus(StatusMedico status) { this.status = status; }
+
+    public String getStatusJuntaComercial() { return statusJuntaComercial; }
+    public void setStatusJuntaComercial(String statusJuntaComercial) { this.statusJuntaComercial = statusJuntaComercial; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }

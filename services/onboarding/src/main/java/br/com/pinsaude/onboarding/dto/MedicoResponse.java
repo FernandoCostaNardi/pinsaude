@@ -17,10 +17,13 @@ public record MedicoResponse(
     String email,
     String telefone,
     StatusMedico status,
+    String statusJuntaComercial,
     UUID empresaId,
     DadosBancariosMedicoResponse dadosBancarios,
     List<DocumentoMedicoResponse> documentos,
     ChecklistCondutaResponse checklist,
+    ContratoAssinaturaResponse contratoAssinatura,
+    EnviarConviteResponse ultimoConvite,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
 ) {
@@ -30,12 +33,16 @@ public record MedicoResponse(
             UUID empresaId,
             DadosBancariosMedicoResponse dadosBancarios,
             List<DocumentoMedicoResponse> documentos,
-            ChecklistCondutaResponse checklist) {
+            ChecklistCondutaResponse checklist,
+            ContratoAssinaturaResponse contratoAssinatura,
+            EnviarConviteResponse ultimoConvite) {
         return new MedicoResponse(
             m.getId(), cpfDecriptografado, m.getNome(),
             m.getCrm(), m.getCrmUf(), m.getEspecialidade(),
-            m.getEmail(), m.getTelefone(), m.getStatus(), empresaId,
-            dadosBancarios, documentos, checklist,
+            m.getEmail(), m.getTelefone(), m.getStatus(),
+            m.getStatusJuntaComercial(),
+            empresaId, dadosBancarios, documentos, checklist,
+            contratoAssinatura, ultimoConvite,
             m.getCreatedAt(), m.getUpdatedAt()
         );
     }

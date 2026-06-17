@@ -3,6 +3,7 @@ package br.com.pinsaude.onboarding.service;
 import br.com.pinsaude.onboarding.domain.*;
 import br.com.pinsaude.onboarding.dto.DocumentoMedicoResponse;
 import br.com.pinsaude.onboarding.dto.ValidarDocumentoRequest;
+import br.com.pinsaude.onboarding.port.ContratoAssinaturaPort;
 import br.com.pinsaude.onboarding.repository.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,13 +24,18 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class MedicoServiceDocumentosTest {
 
-    @Mock MedicoRepository             medicoRepo;
+    @Mock MedicoRepository               medicoRepo;
     @Mock VinculoMedicoEmpresaRepository vinculoRepo;
     @Mock DadosBancariosMedicoRepository dadosBancariosRepo;
-    @Mock DocumentoMedicoRepository    documentoRepo;
-    @Mock ChecklistCondutaRepository   checklistRepo;
-    @Mock CryptoService                cryptoService;
-    @Mock StorageService               storageService;
+    @Mock DocumentoMedicoRepository      documentoRepo;
+    @Mock ChecklistCondutaRepository     checklistRepo;
+    @Mock HistoricoMedicoRepository      historicoRepo;
+    @Mock ConviteMedicoRepository        conviteRepo;
+    @Mock ContratoAssinaturaRepository   contratoRepo;
+    @Mock CryptoService                  cryptoService;
+    @Mock StorageService                 storageService;
+    @Mock ConviteService                 conviteService;
+    @Mock ContratoAssinaturaPort         contratoPort;
 
     @InjectMocks MedicoService service;
 

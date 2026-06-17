@@ -3,6 +3,7 @@ package br.com.pinsaude.onboarding.service;
 import br.com.pinsaude.onboarding.domain.*;
 import br.com.pinsaude.onboarding.dto.DadosBancariosMedicoRequest;
 import br.com.pinsaude.onboarding.dto.DadosBancariosMedicoResponse;
+import br.com.pinsaude.onboarding.port.ContratoAssinaturaPort;
 import br.com.pinsaude.onboarding.repository.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,13 +24,18 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class MedicoServiceDadosBancariosTest {
 
-    @Mock MedicoRepository medicoRepo;
+    @Mock MedicoRepository               medicoRepo;
     @Mock VinculoMedicoEmpresaRepository vinculoRepo;
     @Mock DadosBancariosMedicoRepository dadosBancariosRepo;
-    @Mock DocumentoMedicoRepository documentoRepo;
-    @Mock ChecklistCondutaRepository checklistRepo;
-    @Mock CryptoService cryptoService;
-    @Mock StorageService storageService;
+    @Mock DocumentoMedicoRepository      documentoRepo;
+    @Mock ChecklistCondutaRepository     checklistRepo;
+    @Mock HistoricoMedicoRepository      historicoRepo;
+    @Mock ConviteMedicoRepository        conviteRepo;
+    @Mock ContratoAssinaturaRepository   contratoRepo;
+    @Mock CryptoService                  cryptoService;
+    @Mock StorageService                 storageService;
+    @Mock ConviteService                 conviteService;
+    @Mock ContratoAssinaturaPort         contratoPort;
 
     @InjectMocks MedicoService service;
 
@@ -50,7 +56,7 @@ class MedicoServiceDadosBancariosTest {
 
     @Test
     void atualizarDadosBancarios_ted_persisteCamposTed() {
-        when(medicoRepo.findByIdAndStatusNot(MEDICO_ID, StatusMedico.INATIVO.name()))
+        when(medicoRepo.findById(MEDICO_ID))
             .thenReturn(Optional.of(medicoAtivo()));
         when(dadosBancariosRepo.findByMedicoId(MEDICO_ID)).thenReturn(Optional.empty());
         when(dadosBancariosRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -80,7 +86,7 @@ class MedicoServiceDadosBancariosTest {
         existente.setTipoPix(TipoPix.CPF);
         existente.setChavePIXCriptografada(new byte[]{1});
 
-        when(medicoRepo.findByIdAndStatusNot(MEDICO_ID, StatusMedico.INATIVO.name()))
+        when(medicoRepo.findById(MEDICO_ID))
             .thenReturn(Optional.of(medicoAtivo()));
         when(dadosBancariosRepo.findByMedicoId(MEDICO_ID)).thenReturn(Optional.of(existente));
         when(dadosBancariosRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -109,7 +115,7 @@ class MedicoServiceDadosBancariosTest {
     void atualizarDadosBancarios_pix_persisteChavePix() {
         when(cryptoService.encrypt(any())).thenReturn(new byte[]{9, 9});
         when(cryptoService.decrypt(any())).thenReturn("medico@exemplo.com");
-        when(medicoRepo.findByIdAndStatusNot(MEDICO_ID, StatusMedico.INATIVO.name()))
+        when(medicoRepo.findById(MEDICO_ID))
             .thenReturn(Optional.of(medicoAtivo()));
         when(dadosBancariosRepo.findByMedicoId(MEDICO_ID)).thenReturn(Optional.empty());
         when(dadosBancariosRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -140,7 +146,7 @@ class MedicoServiceDadosBancariosTest {
         existente.setConta("56789-0");
         existente.setTipoConta("CORRENTE");
 
-        when(medicoRepo.findByIdAndStatusNot(MEDICO_ID, StatusMedico.INATIVO.name()))
+        when(medicoRepo.findById(MEDICO_ID))
             .thenReturn(Optional.of(medicoAtivo()));
         when(dadosBancariosRepo.findByMedicoId(MEDICO_ID)).thenReturn(Optional.of(existente));
         when(dadosBancariosRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -180,7 +186,7 @@ class MedicoServiceDadosBancariosTest {
 
     @Test
     void atualizarDadosBancarios_medicoInexistente_lancaNotFound() {
-        when(medicoRepo.findByIdAndStatusNot(MEDICO_ID, StatusMedico.INATIVO.name()))
+        when(medicoRepo.findById(MEDICO_ID))
             .thenReturn(Optional.empty());
 
         DadosBancariosMedicoRequest req = new DadosBancariosMedicoRequest(

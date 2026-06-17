@@ -3,13 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Pencil, UserCheck, UserX, FileText,
   User, Building2, CreditCard, Clock, CheckCircle2,
-  XCircle, AlertCircle,
+  XCircle, AlertCircle, Mail, Send, Landmark,
   Award, GraduationCap, Home, BookOpen,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import {
-  Medico, StatusMedico, TipoDocumentoMedico,
-  StatusValidacaoDocumento, HistoricoMedico,
+  Medico, StatusMedico, StatusJuntaComercial, StatusContrato,
+  TipoDocumentoMedico, StatusValidacaoDocumento, HistoricoMedico,
   medicosApi,
 } from '../api/medicosApi'
 import { empresasApi, Empresa } from '../api/empresasApi'
@@ -38,15 +38,36 @@ const STATUS_LABELS: Record<StatusMedico, string> = {
 // ─── Tipos de ação (ícone + cor) ──────────────────────────────────────────────
 
 const ACAO_CONFIG: Record<string, { label: string; cls: string; Icon: React.ElementType }> = {
-  CADASTRO:                   { label: 'Cadastro',             cls: 'bg-primary-50 text-primary',     Icon: User },
-  ATIVACAO:                   { label: 'Ativação',             cls: 'bg-green-50 text-green-600',     Icon: CheckCircle2 },
-  INATIVACAO:                 { label: 'Inativação',           cls: 'bg-gray-100 text-gray-500',      Icon: XCircle },
-  ATUALIZACAO_DADOS:          { label: 'Dados atualizados',    cls: 'bg-blue-50 text-blue-600',       Icon: Pencil },
-  ATUALIZACAO_DADOS_BANCARIOS:{ label: 'Dados bancários',      cls: 'bg-purple-50 text-purple-600',   Icon: CreditCard },
-  UPLOAD_DOCUMENTO:           { label: 'Documento enviado',    cls: 'bg-amber-50 text-amber-600',     Icon: FileText },
-  VALIDACAO_DOCUMENTO:        { label: 'Documento validado',   cls: 'bg-teal-50 text-teal-600',       Icon: CheckCircle2 },
-  EXCLUSAO_DOCUMENTO:         { label: 'Documento removido',   cls: 'bg-red-50 text-red-500',         Icon: XCircle },
-  ATUALIZACAO_CHECKLIST:      { label: 'Checklist',            cls: 'bg-indigo-50 text-indigo-600',   Icon: BookOpen },
+  CADASTRO:                    { label: 'Cadastro',             cls: 'bg-primary-50 text-primary',     Icon: User },
+  ATIVACAO:                    { label: 'Ativação',             cls: 'bg-green-50 text-green-600',     Icon: CheckCircle2 },
+  ATIVACAO_AUTOMATICA:         { label: 'Ativação automática',  cls: 'bg-green-50 text-green-600',     Icon: CheckCircle2 },
+  INATIVACAO:                  { label: 'Inativação',           cls: 'bg-gray-100 text-gray-500',      Icon: XCircle },
+  ATUALIZACAO_DADOS:           { label: 'Dados atualizados',    cls: 'bg-blue-50 text-blue-600',       Icon: Pencil },
+  ATUALIZACAO_DADOS_BANCARIOS: { label: 'Dados bancários',      cls: 'bg-purple-50 text-purple-600',   Icon: CreditCard },
+  UPLOAD_DOCUMENTO:            { label: 'Documento enviado',    cls: 'bg-amber-50 text-amber-600',     Icon: FileText },
+  VALIDACAO_DOCUMENTO:         { label: 'Documento validado',   cls: 'bg-teal-50 text-teal-600',       Icon: CheckCircle2 },
+  EXCLUSAO_DOCUMENTO:          { label: 'Documento removido',   cls: 'bg-red-50 text-red-500',         Icon: XCircle },
+  ATUALIZACAO_CHECKLIST:       { label: 'Checklist',            cls: 'bg-indigo-50 text-indigo-600',   Icon: BookOpen },
+  ENVIO_CONVITE:               { label: 'Convite enviado',      cls: 'bg-blue-50 text-blue-600',       Icon: Mail },
+  ENVIO_CONTRATO:              { label: 'Contrato Clicksign',   cls: 'bg-violet-50 text-violet-600',   Icon: Send },
+  ATUALIZACAO_JUNTA_COMERCIAL: { label: 'Junta Comercial',      cls: 'bg-amber-50 text-amber-700',     Icon: Landmark },
+}
+
+// ─── Junta + Contrato badges ──────────────────────────────────────────────────
+
+const JUNTA_CONFIG: Record<StatusJuntaComercial, { label: string; cls: string }> = {
+  AGUARDANDO: { label: 'Aguardando',  cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+  EM_ANALISE: { label: 'Em análise',  cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
+  APROVADO:   { label: 'Aprovado',    cls: 'bg-green-50 text-green-700 border border-green-200' },
+  RECUSADO:   { label: 'Recusado',    cls: 'bg-red-50 text-red-700 border border-red-200' },
+}
+
+const CONTRATO_CONFIG: Record<StatusContrato, { label: string; cls: string }> = {
+  AGUARDANDO_ENVIO: { label: 'Aguardando envio', cls: 'bg-gray-100 text-gray-500 border border-gray-200' },
+  ENVIADO:          { label: 'Enviado',           cls: 'bg-amber-50 text-amber-700 border border-amber-200' },
+  VISUALIZADO:      { label: 'Visualizado',       cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
+  ASSINADO:         { label: 'Assinado',          cls: 'bg-green-50 text-green-700 border border-green-200' },
+  RECUSADO:         { label: 'Recusado',          cls: 'bg-red-50 text-red-700 border border-red-200' },
 }
 
 // ─── Documento row (inline no perfil) ────────────────────────────────────────
@@ -90,7 +111,7 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'dados' | 'bancarios' | 'documentos' | 'historico'
+type Tab = 'dados' | 'bancarios' | 'documentos' | 'onboarding' | 'historico'
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -110,10 +131,15 @@ export function MedicoPerfilPage() {
   const [error,     setError]     = useState<string | null>(null)
   const [tab,       setTab]       = useState<Tab>('dados')
 
-  const [showEdit,    setShowEdit]    = useState(false)
-  const [inativando,  setInativando]  = useState(false)
-  const [showDocs,    setShowDocs]    = useState(false)
-  const [activating,  setActivating]  = useState(false)
+  const [showEdit,         setShowEdit]         = useState(false)
+  const [inativando,       setInativando]       = useState(false)
+  const [showDocs,         setShowDocs]         = useState(false)
+  const [activating,       setActivating]       = useState(false)
+  const [enviandoConvite,  setEnviandoConvite]  = useState(false)
+  const [enviandoContrato, setEnviandoContrato] = useState(false)
+  const [novoStatusJunta,  setNovoStatusJunta]  = useState<StatusJuntaComercial | ''>('')
+  const [obsJunta,         setObsJunta]         = useState('')
+  const [atualizandoJunta, setAtualizandoJunta] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -147,6 +173,52 @@ export function MedicoPerfilPage() {
       setError(e instanceof Error ? e.message : 'Erro ao ativar médico')
     } finally {
       setActivating(false)
+    }
+  }
+
+  async function handleEnviarConvite() {
+    if (!medico) return
+    setEnviandoConvite(true)
+    setError(null)
+    try {
+      const convite = await medicosApi.enviarConvite(medico.id)
+      setMedico(prev => prev ? { ...prev, ultimoConvite: convite } : prev)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao enviar convite')
+    } finally {
+      setEnviandoConvite(false)
+    }
+  }
+
+  async function handleEnviarContrato() {
+    if (!medico) return
+    setEnviandoContrato(true)
+    setError(null)
+    try {
+      const contrato = await medicosApi.enviarContrato(medico.id)
+      setMedico(prev => prev ? { ...prev, contratoAssinatura: contrato } : prev)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao enviar contrato ao Clicksign')
+    } finally {
+      setEnviandoContrato(false)
+    }
+  }
+
+  async function handleAtualizarJunta() {
+    if (!medico || !novoStatusJunta) return
+    setAtualizandoJunta(true)
+    setError(null)
+    try {
+      const updated = await medicosApi.atualizarJuntaComercial(medico.id, novoStatusJunta, obsJunta || undefined)
+      setMedico(updated)
+      setNovoStatusJunta('')
+      setObsJunta('')
+      const h = await medicosApi.listarHistorico(medico.id).catch(() => [] as HistoricoMedico[])
+      setHistorico(h)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao atualizar status da Junta Comercial')
+    } finally {
+      setAtualizandoJunta(false)
     }
   }
 
@@ -249,10 +321,11 @@ export function MedicoPerfilPage() {
       <div className="bg-white rounded-xl border border-ds-border shadow-sm overflow-hidden">
         <div className="flex border-b border-ds-border overflow-x-auto">
           {([
-            { key: 'dados',      label: 'Dados Pessoais',   Icon: User },
-            { key: 'bancarios',  label: 'Dados Bancários',  Icon: CreditCard },
-            { key: 'documentos', label: 'Documentos',        Icon: FileText },
-            { key: 'historico',  label: 'Histórico',         Icon: Clock },
+            { key: 'dados',       label: 'Dados Pessoais',  Icon: User },
+            { key: 'bancarios',   label: 'Dados Bancários', Icon: CreditCard },
+            { key: 'documentos',  label: 'Documentos',      Icon: FileText },
+            { key: 'onboarding',  label: 'Onboarding',      Icon: Send },
+            { key: 'historico',   label: 'Histórico',       Icon: Clock },
           ] as { key: Tab; label: string; Icon: React.ElementType }[]).map(({ key, label, Icon }) => (
             <button
               key={key}
@@ -398,6 +471,192 @@ export function MedicoPerfilPage() {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* ── Onboarding ── */}
+        {tab === 'onboarding' && (
+          <div className="p-6 flex flex-col gap-6">
+
+            {/* Convite por e-mail */}
+            <div className="border border-ds-border rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <Mail size={16} className="text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-ds-text">Convite por E-mail</p>
+                  <p className="text-xs text-ds-light">Link de autoatendimento enviado ao médico</p>
+                </div>
+              </div>
+              {medico.ultimoConvite ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                    medico.ultimoConvite.status === 'ENVIADO' ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                    : medico.ultimoConvite.status === 'UTILIZADO' ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-gray-100 text-gray-500 border border-gray-200'
+                  }`}>
+                    {medico.ultimoConvite.status}
+                  </span>
+                  {medico.ultimoConvite.emailDestino && (
+                    <span className="text-xs text-ds-mid">{medico.ultimoConvite.emailDestino}</span>
+                  )}
+                  {medico.ultimoConvite.enviadoEm && (
+                    <span className="text-xs text-ds-light">Enviado {formatDateTime(medico.ultimoConvite.enviadoEm)}</span>
+                  )}
+                  {medico.ultimoConvite.expiraEm && (
+                    <span className="text-xs text-ds-light">· Expira {formatDateTime(medico.ultimoConvite.expiraEm)}</span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-ds-light mb-3">Nenhum convite enviado ainda.</p>
+              )}
+              {canEdit && (
+                <div className="mt-3">
+                  <Button
+                    size="sm"
+                    onClick={handleEnviarConvite}
+                    disabled={enviandoConvite || !medico.email}
+                  >
+                    <Mail size={13} />
+                    {enviandoConvite ? 'Enviando...' : medico.ultimoConvite ? 'Reenviar Convite' : 'Enviar Convite'}
+                  </Button>
+                  {!medico.email && (
+                    <p className="text-xs text-amber-600 mt-1.5">Cadastre um e-mail no médico para enviar o convite.</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Contrato Clicksign */}
+            <div className="border border-ds-border rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center">
+                  <Send size={16} className="text-violet-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-ds-text">Contrato de Adesão (Clicksign)</p>
+                  <p className="text-xs text-ds-light">Assinatura eletrônica do contrato médico</p>
+                </div>
+              </div>
+              {medico.contratoAssinatura ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${CONTRATO_CONFIG[medico.contratoAssinatura.status].cls}`}>
+                      {CONTRATO_CONFIG[medico.contratoAssinatura.status].label}
+                    </span>
+                    {medico.contratoAssinatura.enviadoEm && (
+                      <span className="text-xs text-ds-light">Enviado {formatDateTime(medico.contratoAssinatura.enviadoEm)}</span>
+                    )}
+                    {medico.contratoAssinatura.assinadoEm && (
+                      <span className="text-xs text-ds-light">· Assinado {formatDateTime(medico.contratoAssinatura.assinadoEm)}</span>
+                    )}
+                  </div>
+                  {medico.contratoAssinatura.linkAssinatura && medico.contratoAssinatura.status !== 'ASSINADO' && (
+                    <a
+                      href={medico.contratoAssinatura.linkAssinatura}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline flex items-center gap-1 w-fit"
+                    >
+                      <Send size={11} /> Abrir link de assinatura
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-ds-light mb-3">Contrato ainda não enviado ao Clicksign.</p>
+              )}
+              {canEdit && medico.contratoAssinatura?.status !== 'ASSINADO' && (
+                <div className="mt-3">
+                  <Button
+                    size="sm"
+                    onClick={handleEnviarContrato}
+                    disabled={enviandoContrato}
+                  >
+                    <Send size={13} />
+                    {enviandoContrato ? 'Enviando...' : medico.contratoAssinatura ? 'Reenviar ao Clicksign' : 'Enviar ao Clicksign'}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Junta Comercial */}
+            <div className="border border-ds-border rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                  <Landmark size={16} className="text-amber-700" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-ds-text">Junta Comercial</p>
+                  <p className="text-xs text-ds-light">Status do registro societário</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${JUNTA_CONFIG[medico.statusJuntaComercial ?? 'AGUARDANDO'].cls}`}>
+                  {JUNTA_CONFIG[medico.statusJuntaComercial ?? 'AGUARDANDO'].label}
+                </span>
+              </div>
+              {canEdit && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-semibold text-ds-mid">Atualizar status:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['AGUARDANDO', 'EM_ANALISE', 'APROVADO', 'RECUSADO'] as StatusJuntaComercial[]).map(s => (
+                      <button
+                        key={s}
+                        onClick={() => setNovoStatusJunta(novoStatusJunta === s ? '' : s)}
+                        className={[
+                          'px-3 py-1 rounded-full text-xs font-semibold border transition-colors',
+                          novoStatusJunta === s
+                            ? JUNTA_CONFIG[s].cls + ' ring-2 ring-offset-1 ring-primary'
+                            : 'border-ds-border text-ds-mid hover:border-primary hover:text-primary'
+                        ].join(' ')}
+                      >
+                        {JUNTA_CONFIG[s].label}
+                      </button>
+                    ))}
+                  </div>
+                  {novoStatusJunta && (
+                    <div className="flex flex-col gap-2 mt-1">
+                      <input
+                        type="text"
+                        placeholder="Observação (opcional)"
+                        value={obsJunta}
+                        onChange={e => setObsJunta(e.target.value)}
+                        className="text-sm border border-ds-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleAtualizarJunta} disabled={atualizandoJunta}>
+                          {atualizandoJunta ? 'Salvando...' : 'Confirmar'}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => { setNovoStatusJunta(''); setObsJunta('') }}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Resumo de requisitos */}
+            <div className="border border-ds-border rounded-xl p-5 bg-ds-surface">
+              <p className="text-xs font-semibold text-ds-mid uppercase tracking-wide mb-3">Requisitos para Ativação</p>
+              {[
+                { label: 'Checklist de conduta completo',   ok: medico.checklist?.completo ?? false },
+                { label: 'Documentos obrigatórios aprovados', ok: (['CRM','DIPLOMA','IDENTIDADE','RESIDENCIA'] as TipoDocumentoMedico[]).every(t =>
+                    (medico.documentos ?? []).some(d => d.tipo === t && d.statusValidacao === 'APROVADO'))
+                },
+                { label: 'Contrato Clicksign assinado',     ok: medico.contratoAssinatura?.status === 'ASSINADO' },
+                { label: 'Junta Comercial aprovada',         ok: medico.statusJuntaComercial === 'APROVADO' },
+              ].map(({ label, ok }) => (
+                <div key={label} className="flex items-center gap-2 py-1">
+                  {ok
+                    ? <CheckCircle2 size={14} className="text-green-500 shrink-0" />
+                    : <XCircle size={14} className="text-gray-300 shrink-0" />}
+                  <span className={`text-sm ${ok ? 'text-ds-text font-medium' : 'text-ds-light'}`}>{label}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
