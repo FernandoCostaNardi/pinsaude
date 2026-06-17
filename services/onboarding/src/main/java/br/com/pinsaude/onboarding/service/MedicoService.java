@@ -2,7 +2,10 @@ package br.com.pinsaude.onboarding.service;
 
 import br.com.pinsaude.onboarding.domain.*;
 import br.com.pinsaude.onboarding.dto.*;
+import br.com.pinsaude.onboarding.port.ContratoAssinaturaPort;
 import br.com.pinsaude.onboarding.repository.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -21,14 +24,20 @@ import java.util.stream.Collectors;
 @Service
 public class MedicoService {
 
+    private static final Logger log = LoggerFactory.getLogger(MedicoService.class);
+
     private final MedicoRepository medicoRepo;
     private final VinculoMedicoEmpresaRepository vinculoRepo;
     private final DadosBancariosMedicoRepository dadosBancariosRepo;
     private final DocumentoMedicoRepository documentoRepo;
     private final ChecklistCondutaRepository checklistRepo;
     private final HistoricoMedicoRepository historicoRepo;
+    private final ConviteMedicoRepository conviteRepo;
+    private final ContratoAssinaturaRepository contratoRepo;
     private final CryptoService cryptoService;
     private final StorageService storageService;
+    private final ConviteService conviteService;
+    private final ContratoAssinaturaPort contratoPort;
 
     public MedicoService(
             MedicoRepository medicoRepo,
@@ -37,16 +46,24 @@ public class MedicoService {
             DocumentoMedicoRepository documentoRepo,
             ChecklistCondutaRepository checklistRepo,
             HistoricoMedicoRepository historicoRepo,
+            ConviteMedicoRepository conviteRepo,
+            ContratoAssinaturaRepository contratoRepo,
             CryptoService cryptoService,
-            StorageService storageService) {
+            StorageService storageService,
+            ConviteService conviteService,
+            ContratoAssinaturaPort contratoPort) {
         this.medicoRepo = medicoRepo;
         this.vinculoRepo = vinculoRepo;
         this.dadosBancariosRepo = dadosBancariosRepo;
         this.documentoRepo = documentoRepo;
         this.checklistRepo = checklistRepo;
         this.historicoRepo = historicoRepo;
+        this.conviteRepo = conviteRepo;
+        this.contratoRepo = contratoRepo;
         this.cryptoService = cryptoService;
         this.storageService = storageService;
+        this.conviteService = conviteService;
+        this.contratoPort = contratoPort;
     }
 
     public MedicoListResponse listar(int page, int size, String status) {
@@ -132,32 +149,10 @@ public class MedicoService {
     @Transactional
     public MedicoResponse ativar(UUID id) {
         Medico medico = findOrThrow(id);
-        ChecklistConduta checklist = checklistRepo.findById(id)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Checklist de conduta não encontrado"));
-
-        if (!checklist.isCompleto()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Ativação bloqueada: checklist de conduta incompleto. " +
-                "Verifique: número do conselho, registros disciplinares e processos médicos.");
-        }
-
-        List<TipoDocumentoMedico> obrigatorios = List.of(
-            TipoDocumentoMedico.CRM, TipoDocumentoMedico.DIPLOMA,
-            TipoDocumentoMedico.IDENTIDADE, TipoDocumentoMedico.RESIDENCIA);
-        List<DocumentoMedico> documentos = documentoRepo.findByMedicoId(id);
-        boolean docsAprovados = obrigatorios.stream().allMatch(tipo ->
-            documentos.stream().anyMatch(d ->
-                d.getTipo() == tipo && StatusValidacaoDocumento.APROVADO == d.getStatusValidacao()));
-        if (!docsAprovados) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Ativação bloqueada: todos os documentos obrigatórios (CRM, Diploma, " +
-                "Identidade e Comprovante de residência) devem estar aprovados.");
-        }
-
+        validarPreRequisitosAtivacao(id, medico);
         medico.setStatus(StatusMedico.ATIVO);
         var saved = toFullResponse(medicoRepo.save(medico));
-        registrarHistorico(id, TipoAcaoMedico.ATIVACAO, "Médico ativado no sistema");
+        registrarHistorico(id, TipoAcaoMedico.ATIVACAO, "Médico ativado manualmente");
         return saved;
     }
 
@@ -168,6 +163,88 @@ public class MedicoService {
         var saved = toFullResponse(medicoRepo.save(medico));
         registrarHistorico(id, TipoAcaoMedico.INATIVACAO, "Médico inativado");
         return saved;
+    }
+
+    @Transactional
+    public EnviarConviteResponse enviarConvite(UUID medicoId) {
+        Medico medico = findOrThrow(medicoId);
+        var convite = conviteService.enviarConvite(medico);
+        registrarHistorico(medicoId, TipoAcaoMedico.ENVIO_CONVITE,
+            "Convite enviado para " + medico.getEmail());
+        return EnviarConviteResponse.from(convite);
+    }
+
+    @Transactional
+    public ContratoAssinaturaResponse enviarContrato(UUID medicoId) {
+        Medico medico = findOrThrow(medicoId);
+        String emailMedico = medico.getEmail();
+        if (emailMedico == null || emailMedico.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Médico não possui e-mail cadastrado para envio do contrato");
+        }
+
+        ContratoAssinatura contrato;
+        try {
+            contrato = contratoPort.enviar(medico, emailMedico);
+        } catch (ResponseStatusException rse) {
+            throw rse;
+        } catch (Exception e) {
+            log.error("Erro ao enviar contrato ao Clicksign para medico={}: {}", medicoId, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                "Falha na comunicação com o Clicksign: " + e.getMessage());
+        }
+
+        contrato = contratoRepo.save(contrato);
+        registrarHistorico(medicoId, TipoAcaoMedico.ENVIO_CONTRATO,
+            "Contrato enviado ao Clicksign (doc=" + contrato.getDocumentoKey() + ")");
+        return ContratoAssinaturaResponse.from(contrato);
+    }
+
+    @Transactional
+    public MedicoResponse atualizarJuntaComercial(UUID medicoId, AtualizarJuntaComercialRequest req) {
+        Medico medico = findOrThrow(medicoId);
+        String statusAnterior = medico.getStatusJuntaComercial();
+        medico.setStatusJuntaComercial(req.status());
+        medico = medicoRepo.save(medico);
+
+        String descricao = "Status Junta Comercial: " + statusAnterior + " → " + req.status();
+        if (req.observacao() != null && !req.observacao().isBlank()) {
+            descricao += " | " + req.observacao();
+        }
+        registrarHistorico(medicoId, TipoAcaoMedico.ATUALIZACAO_JUNTA_COMERCIAL, descricao);
+
+        if ("APROVADO".equals(req.status())) {
+            verificarAtivacaoAutomatica(medico);
+        }
+
+        return toFullResponse(medico);
+    }
+
+    @Transactional
+    public void processarWebhookClicksign(String documentoKey, String eventoNome) {
+        var contratoOpt = contratoRepo.findByDocumentoKey(documentoKey);
+        if (contratoOpt.isEmpty()) {
+            log.warn("Webhook Clicksign recebido para documentoKey={} sem contrato cadastrado", documentoKey);
+            return;
+        }
+
+        ContratoAssinatura contrato = contratoOpt.get();
+        String novoStatus = mapearStatusClicksign(eventoNome);
+        contrato.setStatus(novoStatus);
+        if ("ASSINADO".equals(novoStatus)) {
+            contrato.setAssinadoEm(OffsetDateTime.now());
+        }
+        contratoRepo.save(contrato);
+
+        registrarHistorico(contrato.getMedicoId(), TipoAcaoMedico.ENVIO_CONTRATO,
+            "Webhook Clicksign: contrato " + novoStatus + " (doc=" + documentoKey + ")");
+
+        if ("ASSINADO".equals(novoStatus)) {
+            Medico medico = medicoRepo.findById(contrato.getMedicoId()).orElse(null);
+            if (medico != null) {
+                verificarAtivacaoAutomatica(medico);
+            }
+        }
     }
 
     @Transactional
@@ -315,6 +392,73 @@ public class MedicoService {
             .toList();
     }
 
+    // ---- Auto-ativação ----
+
+    private void verificarAtivacaoAutomatica(Medico medico) {
+        if (medico.getStatus() == StatusMedico.ATIVO) return;
+
+        try {
+            validarPreRequisitosAtivacao(medico.getId(), medico);
+            medico.setStatus(StatusMedico.ATIVO);
+            medicoRepo.save(medico);
+            registrarHistorico(medico.getId(), TipoAcaoMedico.ATIVACAO_AUTOMATICA,
+                "Médico ativado automaticamente — todos os requisitos de onboarding cumpridos");
+            log.info("Médico {} ativado automaticamente", medico.getId());
+        } catch (ResponseStatusException e) {
+            log.debug("Auto-ativação não disparada para médico {}: {}", medico.getId(), e.getReason());
+        }
+    }
+
+    private void validarPreRequisitosAtivacao(UUID id, Medico medico) {
+        ChecklistConduta checklist = checklistRepo.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Checklist de conduta não encontrado"));
+        if (!checklist.isCompleto()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ativação bloqueada: checklist de conduta incompleto. " +
+                "Verifique: número do conselho, registros disciplinares e processos médicos.");
+        }
+
+        List<TipoDocumentoMedico> obrigatorios = List.of(
+            TipoDocumentoMedico.CRM, TipoDocumentoMedico.DIPLOMA,
+            TipoDocumentoMedico.IDENTIDADE, TipoDocumentoMedico.RESIDENCIA);
+        List<DocumentoMedico> documentos = documentoRepo.findByMedicoId(id);
+        boolean docsAprovados = obrigatorios.stream().allMatch(tipo ->
+            documentos.stream().anyMatch(d ->
+                d.getTipo() == tipo && StatusValidacaoDocumento.APROVADO == d.getStatusValidacao()));
+        if (!docsAprovados) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ativação bloqueada: todos os documentos obrigatórios (CRM, Diploma, " +
+                "Identidade e Comprovante de residência) devem estar aprovados.");
+        }
+
+        boolean contratoAssinado = contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(id)
+            .map(c -> "ASSINADO".equals(c.getStatus()))
+            .orElse(false);
+        if (!contratoAssinado) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ativação bloqueada: contrato de adesão ainda não foi assinado.");
+        }
+
+        if (!"APROVADO".equals(medico.getStatusJuntaComercial())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ativação bloqueada: registro na Junta Comercial ainda não aprovado " +
+                "(status atual: " + medico.getStatusJuntaComercial() + ").");
+        }
+    }
+
+    private String mapearStatusClicksign(String eventoNome) {
+        return switch (eventoNome != null ? eventoNome.toLowerCase() : "") {
+            case "sign", "signed"     -> "ASSINADO";
+            case "view", "viewed"     -> "VISUALIZADO";
+            case "refuse", "refused"  -> "RECUSADO";
+            case "upload", "uploaded" -> "ENVIADO";
+            default                   -> "ENVIADO";
+        };
+    }
+
+    // ---- Helpers ----
+
     private void registrarHistorico(UUID medicoId, TipoAcaoMedico tipo, String descricao) {
         var h = new HistoricoMedico();
         h.setMedicoId(medicoId);
@@ -366,6 +510,17 @@ public class MedicoService {
             .map(ChecklistCondutaResponse::from)
             .orElse(null);
 
-        return MedicoResponse.from(medico, cpfDecriptografado, empresaId, dadosBancarios, documentos, checklist);
+        ContratoAssinaturaResponse contratoAssinatura = contratoRepo
+            .findTopByMedicoIdOrderByCreatedAtDesc(medico.getId())
+            .map(ContratoAssinaturaResponse::from)
+            .orElse(null);
+
+        EnviarConviteResponse ultimoConvite = conviteRepo
+            .findTopByMedicoIdOrderByCreatedAtDesc(medico.getId())
+            .map(EnviarConviteResponse::from)
+            .orElse(null);
+
+        return MedicoResponse.from(medico, cpfDecriptografado, empresaId,
+            dadosBancarios, documentos, checklist, contratoAssinatura, ultimoConvite);
     }
 }

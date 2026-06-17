@@ -7,6 +7,8 @@ function getAccessToken(): string {
 }
 
 export type StatusMedico = 'RASCUNHO' | 'ATIVO' | 'INATIVO' | 'SUSPENSO'
+export type StatusJuntaComercial = 'AGUARDANDO' | 'EM_ANALISE' | 'APROVADO' | 'RECUSADO'
+export type StatusContrato = 'AGUARDANDO_ENVIO' | 'ENVIADO' | 'VISUALIZADO' | 'ASSINADO' | 'RECUSADO'
 export type TipoPix = 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA'
 export type TipoRecebimento = 'PIX' | 'TED'
 export type TipoConta = 'CORRENTE' | 'POUPANCA'
@@ -56,10 +58,13 @@ export interface Medico {
   email?: string
   telefone?: string
   status: StatusMedico
+  statusJuntaComercial: StatusJuntaComercial
   empresaId?: string
   dadosBancarios?: DadosBancariosMedico
   documentos?: DocumentoMedico[]
   checklist?: ChecklistConduta
+  contratoAssinatura?: ContratoAssinatura
+  ultimoConvite?: ConviteMedico
   createdAt: string
   updatedAt: string
 }
@@ -88,6 +93,22 @@ export interface DadosBancariosMedicoRequest {
   conta: string | null
   tipoConta: TipoConta | null
   confirmarAlteracao: true
+}
+
+export interface ConviteMedico {
+  id: string
+  emailDestino?: string
+  status: string
+  enviadoEm?: string
+  expiraEm?: string
+}
+
+export interface ContratoAssinatura {
+  id: string
+  status: StatusContrato
+  linkAssinatura?: string
+  enviadoEm?: string
+  assinadoEm?: string
 }
 
 export interface HistoricoMedico {
@@ -230,4 +251,38 @@ async function deletarDocumento(medicoId: string, docId: string): Promise<void> 
   return handleResponse<void>(res)
 }
 
-export const medicosApi = { listar, buscarPorId, criar, atualizar, ativar, inativar, atualizarDadosBancarios, listarDocumentos, uploadDocumento, validarDocumento, getDocumentoUrl, deletarDocumento, listarHistorico }
+async function enviarConvite(medicoId: string): Promise<ConviteMedico> {
+  const res = await fetch(`/api/medicos/${medicoId}/convite`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return handleResponse<ConviteMedico>(res)
+}
+
+async function enviarContrato(medicoId: string): Promise<ContratoAssinatura> {
+  const res = await fetch(`/api/medicos/${medicoId}/contrato/enviar`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return handleResponse<ContratoAssinatura>(res)
+}
+
+async function atualizarJuntaComercial(
+  medicoId: string,
+  status: StatusJuntaComercial,
+  observacao?: string
+): Promise<Medico> {
+  const res = await fetch(`/api/medicos/${medicoId}/junta-comercial`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify({ status, observacao }),
+  })
+  return handleResponse<Medico>(res)
+}
+
+export const medicosApi = {
+  listar, buscarPorId, criar, atualizar, ativar, inativar,
+  atualizarDadosBancarios, listarDocumentos, uploadDocumento,
+  validarDocumento, getDocumentoUrl, deletarDocumento, listarHistorico,
+  enviarConvite, enviarContrato, atualizarJuntaComercial,
+}

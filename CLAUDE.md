@@ -854,6 +854,150 @@ headers: { Authorization: `...`, 'Content-Type': 'multipart/form-data' },
 
 ---
 
+## Envio de E-mail com Spring Mail (EPIC-03.6)
+
+### Dependência e configuração mínima para Mailhog
+```xml
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-mail</artifactId>
+</dependency>
+```
+```yaml
+spring:
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}  # porta do Mailhog
+    properties:
+      mail.smtp.auth: false
+      mail.smtp.starttls.enable: false
+```
+O Mailhog roda dentro do Docker mas o serviço Spring acessa em `localhost:1025` (host port mapeado).
+Usar `SimpleMailMessage` para e-mails sem template HTML. Capturar exceção de envio para torná-la não-fatal:
+```java
+try {
+    mailSender.send(msg);
+    convite.setStatus("ENVIADO");
+} catch (Exception e) {
+    log.error("Falha ao enviar e-mail de convite", e);
+    convite.setStatus("PENDENTE");
+}
+```
+
+### Injeção de valores simples via @Value no construtor
+Para `ConviteService`, os parâmetros `emailFrom`, `baseUrl` e `expiracaoHoras` vêm via `@Value`:
+```java
+public ConviteService(
+    ConviteMedicoRepository repo,
+    JavaMailSender mailSender,
+    @Value("${app.email-from}") String emailFrom,
+    @Value("${app.base-url}") String baseUrl,
+    @Value("${app.convite.expiracao-horas:168}") Long expiracaoHoras
+) { ... }
+```
+
+---
+
+## Integração com Clicksign — Port/Adapter Pattern (EPIC-03.6)
+
+### Interface + Adapter com feature flag
+Usar Port/Adapter para isolar a integração de assinatura digital.
+O Adapter lança `503 SERVICE_UNAVAILABLE` quando não configurado — nunca `NullPointerException`:
+```java
+// Port
+public interface ContratoAssinaturaPort {
+    ContratoAssinatura enviar(Medico medico, String emailMedico) throws Exception;
+}
+
+// Adapter
+@Component
+@ConfigurationProperties(prefix = "clicksign")
+public class ClicksignAdapter implements ContratoAssinaturaPort {
+    private boolean enabled;
+    private String accessToken;
+    ...
+    @Override
+    public ContratoAssinatura enviar(Medico medico, String emailMedico) {
+        if (!enabled || accessToken.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "Integração Clicksign não configurada");
+        }
+        // chamadas reais à API Clicksign
+    }
+}
+```
+```yaml
+clicksign:
+  enabled: ${CLICKSIGN_ENABLED:false}
+  base-url: ${CLICKSIGN_BASE_URL:https://sandbox.clicksign.com}
+  access-token: ${CLICKSIGN_ACCESS_TOKEN:}
+  template-key: ${CLICKSIGN_TEMPLATE_KEY:}
+```
+Nos testes, usar `@Mock ContratoAssinaturaPort contratoPort` — o Adapter real nunca é invocado.
+
+### Webhook sem autenticação
+O endpoint de webhook do Clicksign deve ser liberado no SecurityConfig:
+```java
+.requestMatchers("/api/onboarding/webhooks/**").permitAll()
+```
+O webhook sempre retorna `200 OK` independente do resultado (Clicksign retransmite até receber 200).
+
+---
+
+## Auto-ativação de Médico (EPIC-03.6)
+
+### Quatro condições necessárias
+A ativação automática ocorre quando **todas** as condições são satisfeitas simultaneamente:
+1. Checklist de conduta completo (`numeroConselhoVerificado` + `registrosDisciplinares` + `processosMedicos` = true)
+2. 4 documentos obrigatórios com `statusValidacao = APROVADO` (CRM, DIPLOMA, IDENTIDADE, RESIDENCIA)
+3. Contrato com `status = "ASSINADO"` (via webhook Clicksign ou atualização manual)
+4. Junta comercial com `statusJuntaComercial = "APROVADO"` (atualizado pelo operador)
+
+Disparadores da verificação:
+- `atualizarJuntaComercial(id, req)` quando status = "APROVADO"
+- `processarWebhookClicksign(docKey, "sign")` quando evento = "sign"
+
+```java
+private void verificarAtivacaoAutomatica(Medico medico) {
+    try {
+        validarPreRequisitosAtivacao(medico.getId(), medico);
+        medico.setStatus(StatusMedico.ATIVO);
+        medicoRepo.save(medico);
+        historicoRepo.save(new HistoricoMedico(medico.getId(), TipoAcaoMedico.ATIVACAO_AUTOMATICA, "..."));
+    } catch (ResponseStatusException e) {
+        // pré-requisitos não cumpridos — silencioso, sem log de erro
+    }
+}
+```
+
+---
+
+## Mockito — Armadilhas com Múltiplos Mocks do Mesmo Tipo
+
+### Dois `@Mock` do mesmo tipo causam injeção ambígua
+Se uma classe de teste declara dois campos `@Mock` do mesmo tipo, o Mockito injeta um deles de forma
+imprevisível no `@InjectMocks`. Stubs configurados no mock "errado" nunca são invocados → `UnnecessaryStubbing`.
+
+**Regra:** nunca declarar dois `@Mock` do mesmo tipo na mesma classe de teste.
+
+**Solução para testes que precisam testar um serviço diretamente E injeta-lo via InjectMocks:**
+```java
+@Mock ConviteMedicoRepository conviteRepo;  // único mock do tipo — injetado no MedicoService
+@Mock JavaMailSender mailSender;            // único mock do tipo
+
+@InjectMocks MedicoService medicoService;
+
+@Test
+void testaConviteService_diretamente() {
+    // Criar ConviteService manualmente usando os MESMOS mocks
+    var svc = new ConviteService(conviteRepo, mailSender, "from@x.com", "http://x", 168L);
+    // ... testar svc diretamente
+}
+```
+Isso garante que o mock injetado no MedicoService e o usado no ConviteService manual são o mesmo objeto.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
