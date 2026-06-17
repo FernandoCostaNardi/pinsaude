@@ -5,6 +5,8 @@ import br.com.pinsaude.onboarding.dto.*;
 import br.com.pinsaude.onboarding.repository.*;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -24,6 +26,7 @@ public class MedicoService {
     private final DadosBancariosMedicoRepository dadosBancariosRepo;
     private final DocumentoMedicoRepository documentoRepo;
     private final ChecklistCondutaRepository checklistRepo;
+    private final HistoricoMedicoRepository historicoRepo;
     private final CryptoService cryptoService;
     private final StorageService storageService;
 
@@ -33,6 +36,7 @@ public class MedicoService {
             DadosBancariosMedicoRepository dadosBancariosRepo,
             DocumentoMedicoRepository documentoRepo,
             ChecklistCondutaRepository checklistRepo,
+            HistoricoMedicoRepository historicoRepo,
             CryptoService cryptoService,
             StorageService storageService) {
         this.medicoRepo = medicoRepo;
@@ -40,6 +44,7 @@ public class MedicoService {
         this.dadosBancariosRepo = dadosBancariosRepo;
         this.documentoRepo = documentoRepo;
         this.checklistRepo = checklistRepo;
+        this.historicoRepo = historicoRepo;
         this.cryptoService = cryptoService;
         this.storageService = storageService;
     }
@@ -89,6 +94,7 @@ public class MedicoService {
         vinculoRepo.save(new VinculoMedicoEmpresa(vinculoId, StatusSocietario.ATIVO));
 
         checklistRepo.save(new ChecklistConduta(medico.getId()));
+        registrarHistorico(medico.getId(), TipoAcaoMedico.CADASTRO, "Médico cadastrado no sistema");
 
         return toFullResponse(medico);
     }
@@ -118,7 +124,9 @@ public class MedicoService {
                 new VinculoMedicoEmpresaId(id, req.empresaId()), StatusSocietario.ATIVO));
         }
 
-        return toFullResponse(medicoRepo.save(medico));
+        var saved = toFullResponse(medicoRepo.save(medico));
+        registrarHistorico(id, TipoAcaoMedico.ATUALIZACAO_DADOS, "Dados pessoais atualizados");
+        return saved;
     }
 
     @Transactional
@@ -148,14 +156,18 @@ public class MedicoService {
         }
 
         medico.setStatus(StatusMedico.ATIVO);
-        return toFullResponse(medicoRepo.save(medico));
+        var saved = toFullResponse(medicoRepo.save(medico));
+        registrarHistorico(id, TipoAcaoMedico.ATIVACAO, "Médico ativado no sistema");
+        return saved;
     }
 
     @Transactional
     public MedicoResponse inativar(UUID id) {
         Medico medico = findOrThrow(id);
         medico.setStatus(StatusMedico.INATIVO);
-        return toFullResponse(medicoRepo.save(medico));
+        var saved = toFullResponse(medicoRepo.save(medico));
+        registrarHistorico(id, TipoAcaoMedico.INATIVACAO, "Médico inativado");
+        return saved;
     }
 
     @Transactional
@@ -197,6 +209,7 @@ public class MedicoService {
             dados.setTipoConta(null);
         }
         dados = dadosBancariosRepo.save(dados);
+        registrarHistorico(medicoId, TipoAcaoMedico.ATUALIZACAO_DADOS_BANCARIOS, "Dados bancários atualizados");
 
         String chavePIXDecriptografada = dados.getChavePIXCriptografada() != null
             ? cryptoService.decrypt(dados.getChavePIXCriptografada()) : null;
@@ -226,6 +239,8 @@ public class MedicoService {
         doc.setCaminhoStorage(caminho);
         doc.setStatusValidacao(StatusValidacaoDocumento.PENDENTE);
         doc = documentoRepo.save(doc);
+        registrarHistorico(medicoId, TipoAcaoMedico.UPLOAD_DOCUMENTO,
+            "Documento enviado: " + tipo.name());
 
         return DocumentoMedicoResponse.from(doc);
     }
@@ -245,7 +260,10 @@ public class MedicoService {
         doc.setStatusValidacao(req.statusValidacao());
         doc.setMotivoReprovacao(StatusValidacaoDocumento.REPROVADO == req.statusValidacao()
             ? req.motivoReprovacao() : null);
-        return DocumentoMedicoResponse.from(documentoRepo.save(doc));
+        var saved = DocumentoMedicoResponse.from(documentoRepo.save(doc));
+        registrarHistorico(medicoId, TipoAcaoMedico.VALIDACAO_DOCUMENTO,
+            "Documento " + req.statusValidacao().name() + ": " + doc.getTipo().name());
+        return saved;
     }
 
     @Transactional
@@ -257,6 +275,8 @@ public class MedicoService {
                 "Documento não encontrado: " + docId));
         storageService.delete(doc.getCaminhoStorage());
         documentoRepo.delete(doc);
+        registrarHistorico(medicoId, TipoAcaoMedico.EXCLUSAO_DOCUMENTO,
+            "Documento removido: " + doc.getTipo().name());
     }
 
     public String getDocumentoUrl(UUID medicoId, UUID docId) {
@@ -282,7 +302,37 @@ public class MedicoService {
             checklist.setVerificadoEm(OffsetDateTime.now());
         }
 
-        return ChecklistCondutaResponse.from(checklistRepo.save(checklist));
+        var saved = ChecklistCondutaResponse.from(checklistRepo.save(checklist));
+        registrarHistorico(medicoId, TipoAcaoMedico.ATUALIZACAO_CHECKLIST,
+            "Checklist de conduta atualizado");
+        return saved;
+    }
+
+    public List<HistoricoMedicoResponse> listarHistorico(UUID medicoId) {
+        findOrThrow(medicoId);
+        return historicoRepo.findByMedicoIdOrderByCreatedAtDesc(medicoId).stream()
+            .map(HistoricoMedicoResponse::from)
+            .toList();
+    }
+
+    private void registrarHistorico(UUID medicoId, TipoAcaoMedico tipo, String descricao) {
+        var h = new HistoricoMedico();
+        h.setMedicoId(medicoId);
+        h.setTipoAcao(tipo.name());
+        h.setDescricao(descricao);
+        h.setUsuario(getCurrentUser());
+        historicoRepo.save(h);
+    }
+
+    private String getCurrentUser() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth instanceof JwtAuthenticationToken jwt) {
+            String email = jwt.getToken().getClaimAsString("email");
+            if (email != null) return email;
+            String preferred = jwt.getToken().getClaimAsString("preferred_username");
+            if (preferred != null) return preferred;
+        }
+        return auth != null ? auth.getName() : "sistema";
     }
 
     private Medico findOrThrow(UUID id) {

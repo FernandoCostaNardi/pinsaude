@@ -90,6 +90,14 @@ export interface DadosBancariosMedicoRequest {
   confirmarAlteracao: true
 }
 
+export interface HistoricoMedico {
+  id: string
+  tipoAcao: string
+  descricao: string
+  usuario?: string
+  createdAt: string
+}
+
 export interface MedicoPage {
   content: Medico[]
   page: number
@@ -209,6 +217,11 @@ async function getDocumentoUrl(medicoId: string, docId: string): Promise<string>
   return data.url
 }
 
+async function listarHistorico(medicoId: string): Promise<HistoricoMedico[]> {
+  const res = await fetch(`/api/medicos/${medicoId}/historico`, { headers: authHeaders() })
+  return handleResponse<HistoricoMedico[]>(res)
+}
+
 async function deletarDocumento(medicoId: string, docId: string): Promise<void> {
   const res = await fetch(`/api/medicos/${medicoId}/documentos/${docId}`, {
     method: 'DELETE',
@@ -217,4 +230,4 @@ async function deletarDocumento(medicoId: string, docId: string): Promise<void> 
   return handleResponse<void>(res)
 }
 
-export const medicosApi = { listar, buscarPorId, criar, atualizar, ativar, inativar, atualizarDadosBancarios, listarDocumentos, uploadDocumento, validarDocumento, getDocumentoUrl, deletarDocumento }
+export const medicosApi = { listar, buscarPorId, criar, atualizar, ativar, inativar, atualizarDadosBancarios, listarDocumentos, uploadDocumento, validarDocumento, getDocumentoUrl, deletarDocumento, listarHistorico }
