@@ -643,8 +643,9 @@ export function MedicoPerfilPage() {
               <p className="text-xs font-semibold text-ds-mid uppercase tracking-wide mb-3">Requisitos para Ativação</p>
               {[
                 { label: 'Checklist de conduta completo',   ok: medico.checklist?.completo ?? false },
-                { label: 'Documentos obrigatórios aprovados', ok: (['CRM','DIPLOMA','IDENTIDADE','RESIDENCIA'] as TipoDocumentoMedico[]).every(t =>
-                    (medico.documentos ?? []).some(d => d.tipo === t && d.statusValidacao === 'APROVADO'))
+                { label: 'Documentos enviados aprovados',
+                  ok: (medico.documentos ?? []).length > 0 &&
+                      (medico.documentos ?? []).every(d => d.statusValidacao === 'APROVADO')
                 },
                 { label: 'Contrato Clicksign assinado',     ok: medico.contratoAssinatura?.status === 'ASSINADO' },
                 { label: 'Junta Comercial aprovada',         ok: medico.statusJuntaComercial === 'APROVADO' },

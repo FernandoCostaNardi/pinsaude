@@ -280,9 +280,23 @@ async function atualizarJuntaComercial(
   return handleResponse<Medico>(res)
 }
 
+async function assinarContratoManual(medicoId: string): Promise<ContratoAssinatura> {
+  const res = await fetch(`/api/medicos/${medicoId}/contrato/assinar`, {
+    method: 'PUT',
+    headers: authHeaders(),
+  })
+  return handleResponse<ContratoAssinatura>(res)
+}
+
+async function listarFilaAprovacao(): Promise<Medico[]> {
+  const res = await fetch('/api/medicos/fila-aprovacao', { headers: authHeaders() })
+  return handleResponse<Medico[]>(res)
+}
+
 export const medicosApi = {
   listar, buscarPorId, criar, atualizar, ativar, inativar,
   atualizarDadosBancarios, listarDocumentos, uploadDocumento,
   validarDocumento, getDocumentoUrl, deletarDocumento, listarHistorico,
   enviarConvite, enviarContrato, atualizarJuntaComercial,
+  assinarContratoManual, listarFilaAprovacao,
 }

@@ -36,6 +36,7 @@ class MedicoServiceDocumentosTest {
     @Mock StorageService                 storageService;
     @Mock ConviteService                 conviteService;
     @Mock ContratoAssinaturaPort         contratoPort;
+    @Mock NotificacaoService             notificacaoService;
 
     @InjectMocks MedicoService service;
 
