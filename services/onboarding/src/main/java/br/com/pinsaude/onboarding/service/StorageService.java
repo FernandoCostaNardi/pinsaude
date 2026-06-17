@@ -2,6 +2,7 @@ package br.com.pinsaude.onboarding.service;
 
 import io.minio.*;
 import io.minio.errors.MinioException;
+import io.minio.http.Method;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class StorageService {
@@ -54,6 +56,32 @@ public class StorageService {
         } catch (MinioException | IOException | InvalidKeyException | NoSuchAlgorithmException e) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                 "Storage indisponível: " + e.getMessage());
+        }
+    }
+
+    public void delete(String objectName) {
+        try {
+            minioClient.removeObject(RemoveObjectArgs.builder()
+                .bucket(bucket)
+                .object(objectName)
+                .build());
+        } catch (Exception ignored) {
+            // objeto órfão — não bloqueia a operação
+        }
+    }
+
+    public String getPresignedUrl(String objectName) {
+        ensureBucket();
+        try {
+            return minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+                .method(Method.GET)
+                .bucket(bucket)
+                .object(objectName)
+                .expiry(1, TimeUnit.HOURS)
+                .build());
+        } catch (MinioException | IOException | InvalidKeyException | NoSuchAlgorithmException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Não foi possível gerar URL de download: " + e.getMessage());
         }
     }
 

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Search, Pencil, UserX, Stethoscope,
-  UserCheck, UserCircle, CircleDot, CheckCircle2,
+  UserCheck, UserCircle, CircleDot, CheckCircle2, FolderOpen,
 } from 'lucide-react'
 import { Button, Spinner, Alert, Table, THead, TBody, TRow, TH, TD } from '@pinsaude/ui'
 import { Medico, StatusMedico, medicosApi } from '../api/medicosApi'
 import { MedicoWizardModal, maskPixKey } from '../components/MedicoWizardModal'
 import { BancoAvatar, bancos } from '../components/BancoSelect'
 import { MedicoInativarModal } from '../components/MedicoInativarModal'
+import { DocumentosModal } from '../components/DocumentosModal'
 import { formatCpf } from '../utils/cpf'
 import { useAuth } from '../auth/useAuth'
 
@@ -130,6 +131,7 @@ export function MedicosPage() {
   const [loadingEdit, setLoadingEdit]     = useState<string | null>(null)
   const [inativando, setInativando]       = useState<Medico | null>(null)
   const [activatingId, setActivatingId]   = useState<string | null>(null)
+  const [viewingDocs, setViewingDocs]     = useState<Medico | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search), 300)
@@ -348,11 +350,18 @@ export function MedicosPage() {
                         <UserCheck size={13} /> {m.status === 'INATIVO' ? 'Reativar' : 'Ativar'}
                       </button>
                     )}
+                    <button
+                      onClick={() => setViewingDocs(m)}
+                      className="p-1.5 rounded-lg text-ds-light hover:bg-primary-50 hover:text-primary transition-colors"
+                      title="Documentos"
+                    >
+                      <FolderOpen size={14} />
+                    </button>
                     {canEdit && (
                       <button
                         onClick={() => handleEditar(m)}
                         disabled={loadingEdit === m.id}
-                        className="ml-auto p-1.5 rounded-lg text-ds-light hover:bg-ds-input hover:text-primary transition-colors disabled:opacity-50"
+                        className="p-1.5 rounded-lg text-ds-light hover:bg-ds-input hover:text-primary transition-colors disabled:opacity-50"
                         title="Editar"
                       >
                         <Pencil size={14} />
@@ -414,6 +423,13 @@ export function MedicosPage() {
                               <UserCheck size={15} />
                             </button>
                           )}
+                          <button
+                            onClick={() => setViewingDocs(m)}
+                            className="p-1.5 rounded hover:bg-primary-50 text-ds-light hover:text-primary transition-colors"
+                            title="Documentos"
+                          >
+                            <FolderOpen size={15} />
+                          </button>
                           {canEdit && (
                             <button
                               onClick={() => handleEditar(m)}
@@ -496,6 +512,12 @@ export function MedicosPage() {
           medico={inativando}
           onClose={() => setInativando(null)}
           onInativado={handleInativado}
+        />
+      )}
+      {viewingDocs && (
+        <DocumentosModal
+          medico={viewingDocs}
+          onClose={() => setViewingDocs(null)}
         />
       )}
     </div>
