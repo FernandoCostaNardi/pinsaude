@@ -94,6 +94,15 @@ public class MedicoController {
         return ResponseEntity.created(location).body(response);
     }
 
+    @DeleteMapping("/{id}/documentos/{docId}")
+    @PreAuthorize("hasAnyRole('gestao','operacao','medico')")
+    public ResponseEntity<Void> deletarDocumento(
+            @PathVariable UUID id,
+            @PathVariable UUID docId) {
+        service.deletarDocumento(id, docId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/{id}/documentos/{docId}/validar")
     @PreAuthorize("hasAnyRole('gestao','operacao')")
     public ResponseEntity<DocumentoMedicoResponse> validarDocumento(

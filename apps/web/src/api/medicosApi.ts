@@ -209,4 +209,12 @@ async function getDocumentoUrl(medicoId: string, docId: string): Promise<string>
   return data.url
 }
 
-export const medicosApi = { listar, buscarPorId, criar, atualizar, ativar, inativar, atualizarDadosBancarios, listarDocumentos, uploadDocumento, validarDocumento, getDocumentoUrl }
+async function deletarDocumento(medicoId: string, docId: string): Promise<void> {
+  const res = await fetch(`/api/medicos/${medicoId}/documentos/${docId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<void>(res)
+}
+
+export const medicosApi = { listar, buscarPorId, criar, atualizar, ativar, inativar, atualizarDadosBancarios, listarDocumentos, uploadDocumento, validarDocumento, getDocumentoUrl, deletarDocumento }

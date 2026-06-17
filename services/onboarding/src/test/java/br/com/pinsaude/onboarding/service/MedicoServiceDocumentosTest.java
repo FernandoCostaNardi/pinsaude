@@ -177,6 +177,40 @@ class MedicoServiceDocumentosTest {
             .isEqualTo(org.springframework.http.HttpStatusCode.valueOf(404));
     }
 
+    // ─── deletarDocumento ─────────────────────────────────────────────────────
+
+    @Test
+    void deletar_documentoDoMedico_deletaArquivoERegistro() {
+        UUID medicoId = UUID.randomUUID();
+        UUID docId    = UUID.randomUUID();
+        var doc = docExistente(medicoId, TipoDocumentoMedico.CONTRATO, StatusValidacaoDocumento.PENDENTE);
+        doc.setId(docId);
+
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medicoExistente(medicoId)));
+        when(documentoRepo.findById(docId)).thenReturn(Optional.of(doc));
+
+        service.deletarDocumento(medicoId, docId);
+
+        verify(storageService).delete(doc.getCaminhoStorage());
+        verify(documentoRepo).delete(doc);
+    }
+
+    @Test
+    void deletar_documentoDeOutroMedico_lancaNotFound() {
+        UUID medicoId = UUID.randomUUID();
+        UUID docId    = UUID.randomUUID();
+        var doc = docExistente(UUID.randomUUID(), TipoDocumentoMedico.CRM, StatusValidacaoDocumento.PENDENTE);
+        doc.setId(docId);
+
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medicoExistente(medicoId)));
+        when(documentoRepo.findById(docId)).thenReturn(Optional.of(doc));
+
+        assertThatThrownBy(() -> service.deletarDocumento(medicoId, docId))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(org.springframework.http.HttpStatusCode.valueOf(404));
+    }
+
     // ─── ativar — bloqueia sem docs aprovados ─────────────────────────────────
 
     @Test

@@ -248,6 +248,17 @@ public class MedicoService {
         return DocumentoMedicoResponse.from(documentoRepo.save(doc));
     }
 
+    @Transactional
+    public void deletarDocumento(UUID medicoId, UUID docId) {
+        findOrThrow(medicoId);
+        DocumentoMedico doc = documentoRepo.findById(docId)
+            .filter(d -> medicoId.equals(d.getMedicoId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Documento não encontrado: " + docId));
+        storageService.delete(doc.getCaminhoStorage());
+        documentoRepo.delete(doc);
+    }
+
     public String getDocumentoUrl(UUID medicoId, UUID docId) {
         findOrThrow(medicoId);
         DocumentoMedico doc = documentoRepo.findById(docId)

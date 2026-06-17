@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Award, GraduationCap, CreditCard, Home, FileText,
-  Upload, CheckCircle2, XCircle, Clock, Eye, Plus,
+  Upload, CheckCircle2, XCircle, Clock, Eye, Plus, Trash2,
 } from 'lucide-react'
 import { Modal, Button, Alert, Spinner } from '@pinsaude/ui'
 import {
@@ -55,6 +55,7 @@ interface RowProps {
   onCancelarReprovacao: () => void
   onRejectReasonChange: (v: string) => void
   onVerArquivo: (doc: DocumentoMedico) => void
+  onDeletar: (doc: DocumentoMedico) => void
   onAdicionarMais: (tipo: TipoDocumentoMedico) => void
 }
 
@@ -62,7 +63,7 @@ function DocumentoRow({
   tipo, docs, previews, uploadingThisTipo, validating, canValidate,
   rejectingDocId, rejectReason,
   onAprovar, onIniciarReprovacao, onConfirmarReprovacao,
-  onCancelarReprovacao, onRejectReasonChange, onVerArquivo, onAdicionarMais,
+  onCancelarReprovacao, onRejectReasonChange, onVerArquivo, onDeletar, onAdicionarMais,
 }: RowProps) {
   const { Icon, label } = TIPO_INFO[tipo]
 
@@ -130,6 +131,13 @@ function DocumentoRow({
                     title="Ver arquivo"
                   >
                     <Eye size={13} />
+                  </button>
+                  <button
+                    onClick={() => onDeletar(doc)}
+                    className="p-1 rounded text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors"
+                    title="Remover arquivo"
+                  >
+                    <Trash2 size={13} />
                   </button>
                   {canValidate && doc.statusValidacao !== 'APROVADO' && (
                     <button
@@ -341,6 +349,26 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     }
   }
 
+  async function handleDeletar(doc: DocumentoMedico) {
+    setError(null)
+    try {
+      await medicosApi.deletarDocumento(medico.id, doc.id)
+      setPreviews(p => {
+        const n = { ...p }
+        if (n[doc.id]?.startsWith('blob:')) URL.revokeObjectURL(n[doc.id])
+        delete n[doc.id]
+        return n
+      })
+      setDocs(d => ({
+        ...d,
+        [doc.tipo]: (d[doc.tipo] ?? []).filter(x => x.id !== doc.id),
+      }))
+      onDocumentosChange?.()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao remover arquivo')
+    }
+  }
+
   async function handleVerArquivo(doc: DocumentoMedico) {
     try {
       const url = await medicosApi.getDocumentoUrl(medico.id, doc.id)
@@ -455,6 +483,7 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
                   onCancelarReprovacao={() => { setRejectingDocId(null); setRejectReason('') }}
                   onRejectReasonChange={setRejectReason}
                   onVerArquivo={handleVerArquivo}
+                  onDeletar={handleDeletar}
                   onAdicionarMais={handleAdicionarMais}
                 />
               ))}
