@@ -293,10 +293,26 @@ async function listarFilaAprovacao(): Promise<Medico[]> {
   return handleResponse<Medico[]>(res)
 }
 
+export interface ChecklistCondutaRequest {
+  numeroConselhoVerificado: boolean
+  registrosDisciplinares: boolean
+  processosMedicos: boolean
+  verificadoPor?: string
+}
+
+async function atualizarChecklist(medicoId: string, data: ChecklistCondutaRequest): Promise<ChecklistConduta> {
+  const res = await fetch(`/api/medicos/${medicoId}/checklist`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  })
+  return handleResponse<ChecklistConduta>(res)
+}
+
 export const medicosApi = {
   listar, buscarPorId, criar, atualizar, ativar, inativar,
   atualizarDadosBancarios, listarDocumentos, uploadDocumento,
   validarDocumento, getDocumentoUrl, deletarDocumento, listarHistorico,
   enviarConvite, enviarContrato, atualizarJuntaComercial,
-  assinarContratoManual, listarFilaAprovacao,
+  assinarContratoManual, listarFilaAprovacao, atualizarChecklist,
 }
