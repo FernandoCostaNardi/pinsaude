@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: "optional:classpath:application-local.yml"
   datasource:
     url: jdbc:postgresql://localhost:5433/pinsaude
     username: svc_faturamento
@@ -12,7 +14,8 @@ spring:
   flyway:
     schemas: faturamento
     default-schema: faturamento
-    enabled: false
+    locations: classpath:db/migration
+    enabled: true
   security:
     oauth2:
       resourceserver:
