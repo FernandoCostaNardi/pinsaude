@@ -16,6 +16,10 @@ spring:
     default-schema: faturamento
     locations: classpath:db/migration
     enabled: true
+crypto:
+  key: ${CRYPTO_KEY:pinsaude-dev-key-change-in-prod}
+receita-federal:
+  base-url: ${RECEITA_FEDERAL_URL:https://brasilapi.com.br}
   security:
     oauth2:
       resourceserver:
