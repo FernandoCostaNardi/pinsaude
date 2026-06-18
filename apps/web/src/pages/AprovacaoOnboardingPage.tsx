@@ -216,9 +216,10 @@ function DetalhePanel({
   medico: Medico
   onRefresh: (updated: Medico) => void
 }) {
-  const [activating,      setActivating]      = useState(false)
-  const [signingContract, setSigningContract]  = useState(false)
-  const [enviandoConvite, setEnviandoConvite]  = useState(false)
+  const [activating,       setActivating]       = useState(false)
+  const [signingContract,  setSigningContract]   = useState(false)
+  const [enviandoConvite,  setEnviandoConvite]   = useState(false)
+  const [enviandoClicksign, setEnviandoClicksign] = useState(false)
   const [novoStatusJunta, setNovoStatusJunta]  = useState<StatusJuntaComercial | ''>('')
   const [obsJunta,        setObsJunta]         = useState('')
   const [updatingJunta,   setUpdatingJunta]    = useState(false)
@@ -431,8 +432,25 @@ function DetalhePanel({
         </div>
         <div className="flex gap-2 flex-wrap">
           {medico.contratoAssinatura?.status !== 'ASSINADO' && (
-            <Button size="sm" variant="outline" onClick={() => medicosApi.enviarContrato(medico.id).catch(() => {})}>
-              <Send size={12} /> Enviar Clicksign
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={enviandoClicksign}
+              onClick={async () => {
+                setEnviandoClicksign(true)
+                setError(null)
+                try {
+                  await medicosApi.enviarContrato(medico.id)
+                  const updated = await medicosApi.buscarPorId(medico.id)
+                  onRefresh(updated)
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Erro ao enviar para o Clicksign')
+                } finally {
+                  setEnviandoClicksign(false)
+                }
+              }}
+            >
+              <Send size={12} /> {enviandoClicksign ? 'Enviando...' : 'Enviar Clicksign'}
             </Button>
           )}
           {medico.contratoAssinatura && medico.contratoAssinatura.status !== 'ASSINADO' && (
