@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: "optional:classpath:application-local.yml"
   datasource:
     url: jdbc:postgresql://localhost:5433/pinsaude
     username: svc_onboarding

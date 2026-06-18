@@ -6,6 +6,10 @@ spring:
           uri: http://localhost:8185
           predicates:
             - Path=/api/onboarding/**
+        - id: medicos
+          uri: http://localhost:8185
+          predicates:
+            - Path=/api/medicos/**
         - id: empresas
           uri: http://localhost:8185
           predicates:
