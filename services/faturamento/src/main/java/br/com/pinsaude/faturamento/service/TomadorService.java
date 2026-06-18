@@ -73,6 +73,7 @@ public class TomadorService {
         t.setTipo(tipo);
         t.setCnpjCpfTomadorCriptografado(crypto.encrypt(cnpjCpfLimpo));
         t.setRazaoSocialNome(req.razaoSocialNome());
+        t.setMunicipio(req.municipio());
         t.setInscricaoMunicipal(req.inscricaoMunicipal());
         t.setIndicadorRetencaoFederal(req.indicadorRetencaoFederal());
         t.setIndicadorRetencaoIss(req.indicadorRetencaoIss());
@@ -91,11 +92,20 @@ public class TomadorService {
         t.setTipo(tipo);
         t.setCnpjCpfTomadorCriptografado(crypto.encrypt(cnpjCpfLimpo));
         t.setRazaoSocialNome(req.razaoSocialNome());
+        t.setMunicipio(req.municipio());
         t.setInscricaoMunicipal(req.inscricaoMunicipal());
         t.setIndicadorRetencaoFederal(req.indicadorRetencaoFederal());
         t.setIndicadorRetencaoIss(req.indicadorRetencaoIss());
 
         return toResponse(repo.save(t));
+    }
+
+    @Transactional
+    public void deletar(UUID id) {
+        if (!repo.existsById(id)) {
+            throw new EntityNotFoundException("Tomador não encontrado: " + id);
+        }
+        repo.deleteById(id);
     }
 
     public Optional<ReceitaFederalResponse> consultarReceita(String cnpj) {
@@ -141,6 +151,7 @@ public class TomadorService {
             t.getTipo().name(),
             cnpjCpf,
             t.getRazaoSocialNome(),
+            t.getMunicipio(),
             t.getInscricaoMunicipal(),
             t.isIndicadorRetencaoFederal(),
             t.isIndicadorRetencaoIss()
