@@ -19,6 +19,7 @@ dist/
 # Env
 .env
 .env.local
+application-local.yml
 
 # Secrets / certs
 *.p12

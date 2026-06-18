@@ -11,8 +11,9 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'keycloak')
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Permite que svc_onboarding crie extensões trusted via Flyway (PostgreSQL 13+)
+-- Permite que svc_onboarding e svc_faturamento criem extensões trusted via Flyway (PostgreSQL 13+)
 GRANT CREATE ON DATABASE pinsaude TO svc_onboarding;
+GRANT CREATE ON DATABASE pinsaude TO svc_faturamento;
 
 
 -- Schemas de domínio (6 serviços)

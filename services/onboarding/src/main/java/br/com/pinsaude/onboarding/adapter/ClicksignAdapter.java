@@ -64,7 +64,10 @@ public class ClicksignAdapter implements ContratoAssinaturaPort {
     private String criarDocumento(Medico medico) throws Exception {
         String path = "/contratos/medico-" + medico.getId() + ".docx";
         Map<String, Object> body = Map.of(
-            "document", Map.of("path", path)
+            "document", Map.of(
+                "path", path,
+                "template", Map.of("data", Map.of())
+            )
         );
         String json = objectMapper.writeValueAsString(body);
 
