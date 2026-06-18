@@ -16,15 +16,15 @@ spring:
     default-schema: faturamento
     locations: classpath:db/migration
     enabled: true
-crypto:
-  key: ${CRYPTO_KEY:pinsaude-dev-key-change-in-prod}
-receita-federal:
-  base-url: ${RECEITA_FEDERAL_URL:https://brasilapi.com.br}
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/pinsaude
+crypto:
+  key: ${CRYPTO_KEY:pinsaude-dev-key-change-in-prod}
+receita-federal:
+  base-url: ${RECEITA_FEDERAL_URL:https://brasilapi.com.br}
 server:
   port: 8082
 management:
