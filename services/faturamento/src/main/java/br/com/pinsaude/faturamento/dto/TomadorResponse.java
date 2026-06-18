@@ -7,6 +7,7 @@ public record TomadorResponse(
     String tipo,
     String cnpjCpf,
     String razaoSocialNome,
+    String municipio,
     String inscricaoMunicipal,
     boolean indicadorRetencaoFederal,
     boolean indicadorRetencaoIss

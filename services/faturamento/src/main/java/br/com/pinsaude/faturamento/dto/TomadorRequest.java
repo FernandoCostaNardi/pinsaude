@@ -7,6 +7,7 @@ public record TomadorRequest(
     @NotBlank String tipo,
     @NotBlank String cnpjCpf,
     @NotBlank String razaoSocialNome,
+    String municipio,
     String inscricaoMunicipal,
     @NotNull Boolean indicadorRetencaoFederal,
     @NotNull Boolean indicadorRetencaoIss

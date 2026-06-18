@@ -37,6 +37,9 @@ public class Tomador {
     @Column(name = "indicador_retencao_iss", nullable = false)
     private boolean indicadorRetencaoIss;
 
+    @Column(name = "municipio", length = 100)
+    private String municipio;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -61,5 +64,7 @@ public class Tomador {
     public void setIndicadorRetencaoFederal(boolean v) { this.indicadorRetencaoFederal = v; }
     public boolean isIndicadorRetencaoIss() { return indicadorRetencaoIss; }
     public void setIndicadorRetencaoIss(boolean v) { this.indicadorRetencaoIss = v; }
+    public String getMunicipio() { return municipio; }
+    public void setMunicipio(String municipio) { this.municipio = municipio; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

@@ -1,0 +1,287 @@
+import { useEffect, useRef, useState } from 'react'
+import { Loader2, CheckCircle, Info } from 'lucide-react'
+import { Modal, Input, Button, Alert } from '@pinsaude/ui'
+import { CnpjInput } from './CnpjInput'
+import { CpfInput } from './CpfInput'
+import { isValidCnpj } from '../utils/cnpj'
+import { Tomador, TomadorRequest, TipoTomador, tomadoresApi } from '../api/tomadoresApi'
+
+const TIPO_OPTIONS: { value: TipoTomador; label: string; desc: string }[] = [
+  { value: 'HOSPITAL',    label: 'Hospital',    desc: 'CNPJ' },
+  { value: 'CLINICA',     label: 'Clínica',     desc: 'CNPJ' },
+  { value: 'OPERADORA',   label: 'Operadora',   desc: 'CNPJ' },
+  { value: 'PACIENTE_PF', label: 'Paciente PF', desc: 'CPF'  },
+]
+
+const TIPO_COLORS: Record<TipoTomador, string> = {
+  HOSPITAL:    'border-primary bg-primary-50 text-primary',
+  CLINICA:     'border-green-500 bg-green-50 text-green-700',
+  OPERADORA:   'border-violet-500 bg-violet-50 text-violet-700',
+  PACIENTE_PF: 'border-orange-400 bg-orange-50 text-orange-700',
+}
+
+interface Props {
+  tomador: Tomador | null
+  onClose: () => void
+  onSaved: (t: Tomador) => void
+}
+
+const emptyForm = (): TomadorRequest => ({
+  tipo: 'HOSPITAL',
+  cnpjCpf: '',
+  razaoSocialNome: '',
+  municipio: '',
+  inscricaoMunicipal: '',
+  indicadorRetencaoFederal: false,
+  indicadorRetencaoIss: false,
+})
+
+export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
+  const isEditing = tomador !== null
+  const [form, setForm] = useState<TomadorRequest>(emptyForm)
+  const [errors, setErrors] = useState<Partial<Record<keyof TomadorRequest, string>>>({})
+  const [apiError, setApiError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [receitaLoading, setReceitaLoading] = useState(false)
+  const [receitaOk, setReceitaOk] = useState(false)
+  const receitaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (tomador) {
+      setForm({
+        tipo: tomador.tipo,
+        cnpjCpf: tomador.cnpjCpf,
+        razaoSocialNome: tomador.razaoSocialNome,
+        municipio: tomador.municipio ?? '',
+        inscricaoMunicipal: tomador.inscricaoMunicipal ?? '',
+        indicadorRetencaoFederal: tomador.indicadorRetencaoFederal,
+        indicadorRetencaoIss: tomador.indicadorRetencaoIss,
+      })
+    } else {
+      setForm(emptyForm())
+    }
+    setErrors({})
+    setApiError(null)
+    setReceitaOk(false)
+  }, [tomador])
+
+  // Auto-fill from Receita Federal when CNPJ is valid
+  useEffect(() => {
+    if (form.tipo === 'PACIENTE_PF') return
+    const digits = form.cnpjCpf.replace(/\D/g, '')
+    if (digits.length !== 14 || !isValidCnpj(form.cnpjCpf)) return
+    if (receitaTimer.current) clearTimeout(receitaTimer.current)
+    receitaTimer.current = setTimeout(async () => {
+      setReceitaLoading(true)
+      setReceitaOk(false)
+      try {
+        const data = await tomadoresApi.consultarReceita(digits)
+        if (data) {
+          setForm(f => ({
+            ...f,
+            razaoSocialNome: f.razaoSocialNome || (data.razaoSocial ?? ''),
+            municipio: f.municipio || (data.municipio ?? ''),
+          }))
+          setReceitaOk(true)
+        }
+      } catch { /* silent fail */ } finally {
+        setReceitaLoading(false)
+      }
+    }, 600)
+    return () => { if (receitaTimer.current) clearTimeout(receitaTimer.current) }
+  }, [form.cnpjCpf, form.tipo])
+
+  function set<K extends keyof TomadorRequest>(key: K, val: TomadorRequest[K]) {
+    setForm(f => ({ ...f, [key]: val }))
+    setErrors(e => ({ ...e, [key]: undefined }))
+  }
+
+  function handleTipoChange(tipo: TipoTomador) {
+    setForm(f => ({ ...f, tipo, cnpjCpf: '' }))
+    setErrors(e => ({ ...e, tipo: undefined, cnpjCpf: undefined }))
+    setReceitaOk(false)
+  }
+
+  function validate(): boolean {
+    const errs: Partial<Record<keyof TomadorRequest, string>> = {}
+    if (!form.cnpjCpf) errs.cnpjCpf = 'Campo obrigatório'
+    if (!form.razaoSocialNome.trim()) errs.razaoSocialNome = 'Campo obrigatório'
+    setErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validate()) return
+    setLoading(true)
+    setApiError(null)
+    try {
+      const saved = isEditing
+        ? await tomadoresApi.atualizar(tomador!.id, form)
+        : await tomadoresApi.criar(form)
+      onSaved(saved)
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Erro ao salvar')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const isPf = form.tipo === 'PACIENTE_PF'
+
+  return (
+    <Modal open title={isEditing ? 'Editar Tomador' : 'Novo Tomador'} onClose={onClose} size="lg">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+
+        {apiError && (
+          <Alert variant="error" onClose={() => setApiError(null)}>{apiError}</Alert>
+        )}
+
+        {/* ── Tipo ── */}
+        <div>
+          <p className="text-xs font-semibold text-ds-mid mb-2 uppercase tracking-wide">Tipo *</p>
+          <div className="flex flex-wrap gap-2">
+            {TIPO_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => handleTipoChange(opt.value)}
+                className={[
+                  'px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all',
+                  form.tipo === opt.value
+                    ? TIPO_COLORS[opt.value]
+                    : 'border-ds-border text-ds-mid hover:border-ds-mid',
+                ].join(' ')}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Documento ── */}
+        <div>
+          {isPf ? (
+            <CpfInput
+              label="CPF *"
+              value={form.cnpjCpf}
+              onChange={v => set('cnpjCpf', v)}
+              error={errors.cnpjCpf}
+            />
+          ) : (
+            <div>
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <CnpjInput
+                    label="CNPJ *"
+                    value={form.cnpjCpf}
+                    onChange={v => set('cnpjCpf', v)}
+                    error={errors.cnpjCpf}
+                  />
+                </div>
+                <div className="pb-0.5 shrink-0 flex items-center h-9">
+                  {receitaLoading && <Loader2 size={18} className="animate-spin text-primary" />}
+                  {receitaOk && !receitaLoading && (
+                    <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                      <CheckCircle size={14} /> Receita preenchida
+                    </span>
+                  )}
+                </div>
+              </div>
+              <p className="mt-1 text-[11px] text-ds-light">
+                Digite o CNPJ completo para buscar dados na Receita Federal automaticamente
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Dados básicos ── */}
+        <div className="grid grid-cols-1 gap-4">
+          <Input
+            label={isPf ? 'Nome Completo *' : 'Razão Social *'}
+            value={form.razaoSocialNome}
+            onChange={e => set('razaoSocialNome', e.target.value)}
+            placeholder={isPf ? 'Nome do paciente' : 'Razão social da empresa'}
+            error={errors.razaoSocialNome}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            {!isPf && (
+              <Input
+                label="Município"
+                value={form.municipio}
+                onChange={e => set('municipio', e.target.value)}
+                placeholder="Cidade"
+              />
+            )}
+            <Input
+              label="Inscrição Municipal"
+              value={form.inscricaoMunicipal}
+              onChange={e => set('inscricaoMunicipal', e.target.value)}
+              placeholder="N.º inscrição"
+              className={isPf ? 'col-span-2' : ''}
+            />
+          </div>
+        </div>
+
+        {/* ── Dados fiscais ── */}
+        <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
+          <p className="text-xs font-semibold text-ds-mid mb-3 uppercase tracking-wide">Retenções na Fonte</p>
+          <div className="flex flex-col gap-3">
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={form.indicadorRetencaoFederal}
+                onChange={e => set('indicadorRetencaoFederal', e.target.checked)}
+                className="mt-0.5 rounded border-ds-border text-primary focus:ring-primary"
+              />
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-ds-text">Retenção Federal</span>
+                  <span
+                    className="cursor-help text-ds-light hover:text-primary transition-colors"
+                    title="Retém IR, CSLL, PIS e COFINS sobre o valor do serviço na emissão da nota fiscal"
+                  >
+                    <Info size={13} />
+                  </span>
+                </div>
+                <p className="text-xs text-ds-light mt-0.5">IR, CSLL, PIS e COFINS retidos na fonte</p>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={form.indicadorRetencaoIss}
+                onChange={e => set('indicadorRetencaoIss', e.target.checked)}
+                className="mt-0.5 rounded border-ds-border text-primary focus:ring-primary"
+              />
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-ds-text">Retenção de ISS</span>
+                  <span
+                    className="cursor-help text-ds-light hover:text-primary transition-colors"
+                    title="ISS retido na fonte pelo tomador — a nota fiscal não destaca o ISS a pagar"
+                  >
+                    <Info size={13} />
+                  </span>
+                </div>
+                <p className="text-xs text-ds-light mt-0.5">ISS retido na fonte pelo tomador</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* ── Ações ── */}
+        <div className="flex justify-end gap-3 pt-1 border-t border-ds-border">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
+            Cancelar
+          </Button>
+          <Button type="submit" loading={loading}>
+            {isEditing ? 'Salvar alterações' : 'Cadastrar tomador'}
+          </Button>
+        </div>
+
+      </form>
+    </Modal>
+  )
+}

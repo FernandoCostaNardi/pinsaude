@@ -51,6 +51,13 @@ public class TomadorController {
         return ResponseEntity.ok(service.atualizar(id, req));
     }
 
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> deletar(@PathVariable UUID id) {
+        service.deletar(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/receita/{cnpj}")
     @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
     public ResponseEntity<ReceitaFederalResponse> consultarReceita(@PathVariable String cnpj) {
