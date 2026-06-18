@@ -41,7 +41,8 @@ public class SecurityUtils {
     public static String currentCnpjTenant() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth instanceof JwtAuthenticationToken token) {
-            return token.getToken().getClaimAsString("cnpj_id");
+            String cnpj = token.getToken().getClaimAsString("cnpj_id");
+            return cnpj != null ? cnpj.replaceAll("\\D", "") : null;
         }
         return null;
     }

@@ -39,6 +39,6 @@ public class TenantFilter extends OncePerRequestFilter {
             return "";
         }
         String cnpj = jwtToken.getToken().getClaimAsString("cnpj_id");
-        return cnpj != null ? cnpj : "";
+        return cnpj != null ? cnpj.replaceAll("\\D", "") : "";
     }
 }
