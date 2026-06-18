@@ -38,6 +38,7 @@ public class MedicoService {
     private final StorageService storageService;
     private final ConviteService conviteService;
     private final ContratoAssinaturaPort contratoPort;
+    private final NotificacaoService notificacaoService;
 
     public MedicoService(
             MedicoRepository medicoRepo,
@@ -51,7 +52,8 @@ public class MedicoService {
             CryptoService cryptoService,
             StorageService storageService,
             ConviteService conviteService,
-            ContratoAssinaturaPort contratoPort) {
+            ContratoAssinaturaPort contratoPort,
+            NotificacaoService notificacaoService) {
         this.medicoRepo = medicoRepo;
         this.vinculoRepo = vinculoRepo;
         this.dadosBancariosRepo = dadosBancariosRepo;
@@ -64,6 +66,16 @@ public class MedicoService {
         this.storageService = storageService;
         this.conviteService = conviteService;
         this.contratoPort = contratoPort;
+        this.notificacaoService = notificacaoService;
+    }
+
+    public List<MedicoResponse> listarFilaAprovacao() {
+        var pageable = org.springframework.data.domain.Pageable.unpaged();
+        return medicoRepo.findAllByStatus(StatusMedico.RASCUNHO.name(), pageable)
+            .getContent().stream()
+            .sorted(java.util.Comparator.comparing(Medico::getCreatedAt))
+            .map(this::toFullResponse)
+            .toList();
     }
 
     public MedicoListResponse listar(int page, int size, String status) {
@@ -151,9 +163,25 @@ public class MedicoService {
         Medico medico = findOrThrow(id);
         validarPreRequisitosAtivacao(id, medico);
         medico.setStatus(StatusMedico.ATIVO);
-        var saved = toFullResponse(medicoRepo.save(medico));
+        medicoRepo.save(medico);
         registrarHistorico(id, TipoAcaoMedico.ATIVACAO, "Médico ativado manualmente");
-        return saved;
+        notificacaoService.notificarMedicoAtivado(medico);
+        return toFullResponse(medico);
+    }
+
+    @Transactional
+    public ContratoAssinaturaResponse assinarContratoManual(UUID medicoId) {
+        Medico medico = findOrThrow(medicoId);
+        ContratoAssinatura contrato = contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Nenhum contrato encontrado para este médico"));
+        contrato.setStatus("ASSINADO");
+        contrato.setAssinadoEm(OffsetDateTime.now());
+        contratoRepo.save(contrato);
+        registrarHistorico(medicoId, TipoAcaoMedico.ENVIO_CONTRATO,
+            "Contrato marcado como assinado manualmente");
+        verificarAtivacaoAutomatica(medico);
+        return ContratoAssinaturaResponse.from(contrato);
     }
 
     @Transactional
@@ -334,12 +362,16 @@ public class MedicoService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Motivo de reprovação é obrigatório ao reprovar um documento");
         }
+        boolean reprovado = StatusValidacaoDocumento.REPROVADO == req.statusValidacao();
         doc.setStatusValidacao(req.statusValidacao());
-        doc.setMotivoReprovacao(StatusValidacaoDocumento.REPROVADO == req.statusValidacao()
-            ? req.motivoReprovacao() : null);
+        doc.setMotivoReprovacao(reprovado ? req.motivoReprovacao() : null);
         var saved = DocumentoMedicoResponse.from(documentoRepo.save(doc));
         registrarHistorico(medicoId, TipoAcaoMedico.VALIDACAO_DOCUMENTO,
             "Documento " + req.statusValidacao().name() + ": " + doc.getTipo().name());
+        if (reprovado) {
+            Medico medico = findOrThrow(medicoId);
+            notificacaoService.notificarDocumentoReprovado(medico, doc.getTipo().name(), req.motivoReprovacao());
+        }
         return saved;
     }
 
@@ -419,17 +451,16 @@ public class MedicoService {
                 "Verifique: número do conselho, registros disciplinares e processos médicos.");
         }
 
-        List<TipoDocumentoMedico> obrigatorios = List.of(
-            TipoDocumentoMedico.CRM, TipoDocumentoMedico.DIPLOMA,
-            TipoDocumentoMedico.IDENTIDADE, TipoDocumentoMedico.RESIDENCIA);
         List<DocumentoMedico> documentos = documentoRepo.findByMedicoId(id);
-        boolean docsAprovados = obrigatorios.stream().allMatch(tipo ->
-            documentos.stream().anyMatch(d ->
-                d.getTipo() == tipo && StatusValidacaoDocumento.APROVADO == d.getStatusValidacao()));
-        if (!docsAprovados) {
+        if (documentos.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Ativação bloqueada: todos os documentos obrigatórios (CRM, Diploma, " +
-                "Identidade e Comprovante de residência) devem estar aprovados.");
+                "Ativação bloqueada: nenhum documento foi enviado.");
+        }
+        boolean todosAprovados = documentos.stream()
+            .allMatch(d -> StatusValidacaoDocumento.APROVADO == d.getStatusValidacao());
+        if (!todosAprovados) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ativação bloqueada: todos os documentos enviados devem estar aprovados.");
         }
 
         boolean contratoAssinado = contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(id)

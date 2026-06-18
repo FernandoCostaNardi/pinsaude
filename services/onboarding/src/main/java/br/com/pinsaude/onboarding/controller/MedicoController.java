@@ -2,6 +2,7 @@ package br.com.pinsaude.onboarding.controller;
 
 import br.com.pinsaude.onboarding.domain.TipoDocumentoMedico;
 import br.com.pinsaude.onboarding.dto.*;
+import java.util.List;
 import br.com.pinsaude.onboarding.service.MedicoService;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
@@ -22,6 +23,12 @@ public class MedicoController {
 
     public MedicoController(MedicoService service) {
         this.service = service;
+    }
+
+    @GetMapping("/fila-aprovacao")
+    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    public ResponseEntity<List<MedicoResponse>> listarFilaAprovacao() {
+        return ResponseEntity.ok(service.listarFilaAprovacao());
     }
 
     @GetMapping
@@ -78,6 +85,12 @@ public class MedicoController {
     @PreAuthorize("hasAnyRole('gestao','operacao')")
     public ResponseEntity<ContratoAssinaturaResponse> enviarContrato(@PathVariable UUID id) {
         return ResponseEntity.ok(service.enviarContrato(id));
+    }
+
+    @PutMapping("/{id}/contrato/assinar")
+    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    public ResponseEntity<ContratoAssinaturaResponse> assinarContratoManual(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.assinarContratoManual(id));
     }
 
     @PutMapping("/{id}/junta-comercial")
