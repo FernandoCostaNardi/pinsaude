@@ -79,8 +79,8 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
         if (data) {
           setForm(f => ({
             ...f,
-            razaoSocialNome: f.razaoSocialNome || (data.razaoSocial ?? ''),
-            municipio: f.municipio || (data.municipio ?? ''),
+            razaoSocialNome: data.razaoSocial ?? f.razaoSocialNome,
+            municipio: data.municipio ?? f.municipio,
           }))
           setReceitaOk(true)
         }

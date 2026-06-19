@@ -998,6 +998,70 @@ Isso garante que o mock injetado no MedicoService e o usado no ConviteService ma
 
 ---
 
+## Produção Médica — Padrões e Armadilhas (EPIC-04.4)
+
+### Fetch LAZY em associações ManyToOne — @Transactional(readOnly = true) obrigatório
+Entidades como `Producao` usam `@ManyToOne(fetch = FetchType.LAZY)` para `tomador` e `servico`.
+Acessar essas associações fora de uma transação ativa causa `LazyInitializationException`.
+
+**Regra:** todo método de serviço que lê e projeta associações lazy DEVE ser `@Transactional(readOnly = true)`:
+```java
+@Transactional(readOnly = true)
+public List<ProducaoResponse> listar(...) { ... }
+```
+Apenas os métodos de escrita usam `@Transactional` (sem readOnly).
+
+### Preview de cálculo — lógica de centavos com BigDecimal
+Todos os valores monetários estão em centavos (BIGINT). O preview usa `BigDecimal` para evitar
+perda de precisão ao calcular percentuais:
+```java
+// aliquota vem como 5.0000 (percent) → dividir por 100 para obter 0.05 (decimal)
+BigDecimal fator = aliquota.divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP);
+long resultado = valorCentavos.multiply(fator).setScale(0, RoundingMode.HALF_UP).longValue();
+```
+Taxa Pin Saúde = 15% do valor bruto. Retenções fiscais só aplicam quando `indicadorRetencaoIss` ou
+`indicadorRetencaoFederal` do tomador = true.
+
+### Inner records em ProducaoResponse — sem crypto no contexto de listagem
+`ProducaoResponse` usa inner records `TomadorResumo` e `ServicoResumo` ao invés de reusar
+`TomadorResponse` completo. Razão: `TomadorResponse` inclui `cnpjCpf` que requer o `CryptoService`
+para decifrar — não disponível em métodos estáticos (`from()`). Na listagem de produções só precisamos
+de nome e cidade, então os resumos são suficientes.
+
+### Catálogo de serviços LC 116 — seed em V4 migration
+A tabela `faturamento.servicos` é compartilhada entre todos os tenants (sem RLS).
+Os 15 serviços médicos mais comuns foram inseridos na migration `V4__seed_servicos_lc116.sql`.
+Alíquotas padrão: ISS 5%, IR 1,5%, CSLL 1%, PIS 0,65%, COFINS 3%.
+Ajustes por competência/empresa são feitos via `aliquotas_competencia` (EPIC-02.4).
+
+### Autocomplete no frontend — debounce de preview com setTimeout/useRef
+O preview de cálculo fiscal é disparado com debounce de 400ms após qualquer mudança em
+`servicoId`, `tomadorId` ou `valorBruto`. O timer é armazenado em `useRef` para evitar
+race conditions quando o usuário digita rápido:
+```tsx
+const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+// cancela o timer anterior antes de agendar novo
+if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
+previewTimerRef.current = setTimeout(() => { /* chamar API */ }, 400)
+```
+
+### Máscara de moeda em centavos no React — pattern correto
+Para campos de valor monetário, sempre armazenar em centavos e exibir com máscara:
+```tsx
+// input: armazena apenas os dígitos e recomputa centavos
+const raw = e.target.value.replace(/\D/g, '')
+const cents = parseInt(raw || '0', 10)
+setValorStr(maskBRL(cents))  // exibe "1.500,00"
+
+// parsear de volta: mesma estratégia
+function parseBRL(str: string): number {
+  return parseInt(str.replace(/\D/g, '') || '0', 10)
+}
+```
+Isso evita problemas com separadores de milhar e vírgula decimal do pt-BR.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

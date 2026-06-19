@@ -8,3 +8,14 @@ KC_DB_PASS=TROCAR_POR_SENHA_FORTE
 
 # Onboarding service
 DB_PASSWORD_ONBOARDING=TROCAR_POR_SENHA_FORTE
+
+# MinIO — armazenamento de documentos
+# ATENÇÃO: MINIO_ENDPOINT deve ser o IP/domínio público do servidor, não localhost.
+# As URLs pré-assinadas geradas pelo Java usam esse endereço → browser precisa acessar.
+MINIO_ENDPOINT=http://212.85.12.228:9000
+MINIO_ACCESS_KEY=TROCAR_POR_USUARIO_FORTE
+MINIO_SECRET_KEY=TROCAR_POR_SENHA_FORTE_MIN_8_CHARS
+MINIO_BUCKET=pinsaude-documentos
+
+# Criptografia de dados sensíveis (CPF, chave PIX) — pgcrypto
+CRYPTO_KEY=TROCAR_POR_CHAVE_FORTE_32_CHARS

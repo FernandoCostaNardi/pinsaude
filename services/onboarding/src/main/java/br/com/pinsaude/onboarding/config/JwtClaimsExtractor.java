@@ -13,7 +13,8 @@ public class JwtClaimsExtractor {
 
     public String extractCnpjId(Authentication authentication) {
         if (authentication instanceof JwtAuthenticationToken token) {
-            return token.getToken().getClaimAsString("cnpj_id");
+            String cnpj = token.getToken().getClaimAsString("cnpj_id");
+            return cnpj != null ? cnpj.replaceAll("\\D", "") : null;
         }
         return null;
     }
