@@ -1227,6 +1227,46 @@ No cenário A (PJ com retenção), ISS permanece separado mesmo quando `ibsCbsAt
 
 ---
 
+## Configuração Fiscal Backoffice — Padrões (EPIC-05.3)
+
+### Tabela `parametros_fiscais` V2 — append-only com sobreposição validada
+Alíquotas por tributo/competência são append-only: nunca atualizar registros existentes.
+O controller faz `requireCnpj()` para POST (requer tenant), mas `listar()` retorna `[]` quando
+não há tenant (gestao superuser) — evita 400 no RBAC test e nas telas cross-tenant.
+
+### `not()` do Mockito não aceita matchers de enum — usar `argThat`
+`not(eq(TipoTributo.ISS))` não compila; usar `argThat(t -> t != TipoTributo.ISS)`.
+Quando o service faz short-circuit (retorna ao achar ISS faltando), o stub do `argThat`
+nunca é invocado — marcar como `lenient()` para evitar `UnnecessaryStubbing`.
+
+### Histórico de alterações por campo (audit trail leve)
+Cada campo alterado em `RegraEquiparacao` gera uma linha em `historico_regras_equiparacao`
+com `campo_alterado`, `valor_anterior`, `valor_novo`, `alterado_por`, `alterado_em`.
+Padrão: compare via `!Objects.equals(antes, depois)` antes de salvar o histórico.
+
+### Entidades sem `setId()` em testes — usar reflection
+JPA entities com `@GeneratedValue` não expõem `setId()`. Para simular o mock do
+`repo.save()` retornando um objeto com ID, usar reflection no `thenAnswer`:
+```java
+when(repo.save(any())).thenAnswer(inv -> {
+    var r = inv.getArgument(0, MinhaEntidade.class);
+    var f = MinhaEntidade.class.getDeclaredField("id");
+    f.setAccessible(true); f.set(r, UUID.randomUUID()); return r;
+});
+```
+
+### Alíquotas no fiscal service são frações decimais (não percentual)
+`0.0200` = 2%. O frontend recebe `valorAliquota` (0.0200) e `valorAliquotaPct` (2.00).
+Na tela, o usuário digita em % e o `createParametroFiscal` divide por 100 antes de enviar.
+Ao exibir, usar `valorAliquota × 100` para mostrar em %.
+
+### Verificação da próxima competência — retorna false quando sem tenant
+`GET /api/fiscal/parametros/verificar-proxima-competencia` retorna
+`{ proximaCompetenciaConfigurada: false }` quando o usuário não tem CNPJ no JWT
+(gestao superuser). O frontend exibe o alerta amarelo nesse caso.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

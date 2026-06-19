@@ -18,11 +18,6 @@ public class FiscalController {
         return ResponseEntity.ok(Map.of("status", "ok", "service", "fiscal"));
     }
 
-    @GetMapping("/parametros")
-    public ResponseEntity<Map<String, Object>> getParametros() {
-        return ResponseEntity.ok(Map.of("status", "ok", "endpoint", "parametros"));
-    }
-
     @GetMapping("/notas")
     public ResponseEntity<Map<String, Object>> listNotas() {
         return ResponseEntity.ok(Map.of("status", "ok", "endpoint", "notas"));
