@@ -6,10 +6,12 @@ import { LoginPage }         from './pages/LoginPage'
 import { Dashboard }         from './pages/Dashboard'
 import { UsersPage }         from './pages/UsersPage'
 import { EmpresasPage }      from './pages/EmpresasPage'
-import { TomadoresPage }    from './pages/TomadoresPage'
+import { TomadoresPage }     from './pages/TomadoresPage'
 import { MedicosPage }              from './pages/MedicosPage'
 import { MedicoPerfilPage }         from './pages/MedicoPerfilPage'
 import { AprovacaoOnboardingPage }  from './pages/AprovacaoOnboardingPage'
+import { ProducoesPage }    from './pages/ProducoesPage'
+import { ProducaoNovaPage } from './pages/ProducaoNovaPage'
 import { UnderConstruction }        from './pages/UnderConstruction'
 
 export default function App() {
@@ -32,6 +34,8 @@ export default function App() {
             <Route path="/medicos/:id"        element={<MedicoPerfilPage />} />
             <Route path="/empresas"    element={<EmpresasPage />} />
             <Route path="/tomadores"   element={<TomadoresPage />} />
+            <Route path="/producao"      element={<ProducoesPage />} />
+            <Route path="/producao/nova" element={<ProducaoNovaPage />} />
             <Route path="/notas"       element={<UnderConstruction title="Notas"       epic="EPIC-05" />} />
             <Route path="/repasses"    element={<UnderConstruction title="Repasses"    epic="EPIC-09" />} />
             <Route path="/conciliacao" element={<UnderConstruction title="Conciliação" epic="EPIC-07" />} />

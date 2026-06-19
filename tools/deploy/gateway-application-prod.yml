@@ -22,15 +22,22 @@ spring:
           uri: http://localhost:8186
           predicates:
             - Path=/api/usuarios/**
-        # Rotas abaixo ativas quando os serviços forem implantados em produção:
-        # - id: faturamento
-        #   uri: http://localhost:8182
-        #   predicates:
-        #     - Path=/api/faturamento/**
-        # - id: tomadores
-        #   uri: http://localhost:8182
-        #   predicates:
-        #     - Path=/api/tomadores/**
+        - id: faturamento
+          uri: http://localhost:8182
+          predicates:
+            - Path=/api/faturamento/**
+        - id: tomadores
+          uri: http://localhost:8182
+          predicates:
+            - Path=/api/tomadores/**
+        - id: producoes
+          uri: http://localhost:8182
+          predicates:
+            - Path=/api/producoes/**
+        - id: servicos
+          uri: http://localhost:8182
+          predicates:
+            - Path=/api/servicos/**
         # - id: fiscal
         #   uri: http://localhost:8181
         #   predicates:
