@@ -4,6 +4,7 @@ import br.com.pinsaude.faturamento.domain.Producao;
 import br.com.pinsaude.faturamento.domain.Servico;
 import br.com.pinsaude.faturamento.domain.Tomador;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -26,9 +27,14 @@ public record ProducaoResponse(
         }
     }
 
-    public record ServicoResumo(UUID id, String codigoLc116, String descricaoPadrao) {
+    public record ServicoResumo(UUID id, String codigoLc116, String descricaoPadrao,
+                                BigDecimal aliquotaIss, BigDecimal aliquotaIr,
+                                BigDecimal aliquotaCsll, BigDecimal aliquotaPis,
+                                BigDecimal aliquotaCofins) {
         static ServicoResumo from(Servico s) {
-            return new ServicoResumo(s.getId(), s.getCodigoLc116(), s.getDescricaoPadrao());
+            return new ServicoResumo(s.getId(), s.getCodigoLc116(), s.getDescricaoPadrao(),
+                s.getAliquotaIss(), s.getAliquotaIr(), s.getAliquotaCsll(),
+                s.getAliquotaPis(), s.getAliquotaCofins());
         }
     }
 

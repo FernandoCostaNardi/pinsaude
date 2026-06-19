@@ -38,10 +38,14 @@ spring:
           uri: http://localhost:8182
           predicates:
             - Path=/api/servicos/**
-        # - id: fiscal
-        #   uri: http://localhost:8181
-        #   predicates:
-        #     - Path=/api/fiscal/**
+        - id: fiscal
+          uri: http://localhost:8181
+          predicates:
+            - Path=/api/fiscal/**
+        - id: parametros-fiscais
+          uri: http://localhost:8181
+          predicates:
+            - Path=/api/parametros-fiscais/**
   security:
     oauth2:
       resourceserver:

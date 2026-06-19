@@ -171,30 +171,41 @@ function PreviewCard({ preview, loading }: { preview: PreviewCalculoResponse | n
       )}
 
       {!loading && preview && (
-        <div className="space-y-2.5">
-          <PreviewRow label="Valor Bruto" value={formatBRL(preview.valorBruto)} bold />
-          <div className="border-t border-ds-border pt-2.5 space-y-2">
-            <p className="text-xs font-semibold text-ds-light uppercase tracking-wide">Deduções</p>
-            <PreviewRow label="Taxa Pin Saúde (15%)" value={formatBRL(preview.taxaPin)} negative />
-            {preview.issRetido > 0 && <PreviewRow label="ISS Retido" value={formatBRL(preview.issRetido)} negative />}
-            {preview.irRetido > 0 && <PreviewRow label="IR Retido" value={formatBRL(preview.irRetido)} negative />}
-            {preview.csllRetido > 0 && <PreviewRow label="CSLL Retido" value={formatBRL(preview.csllRetido)} negative />}
-            {preview.pisRetido > 0 && <PreviewRow label="PIS Retido" value={formatBRL(preview.pisRetido)} negative />}
-            {preview.cofinsRetido > 0 && <PreviewRow label="COFINS Retido" value={formatBRL(preview.cofinsRetido)} negative />}
-            {preview.totalRetencoes > 0 && (
-              <PreviewRow label="Total Retenções" value={formatBRL(preview.totalRetencoes)} negative sub />
-            )}
-          </div>
-          <div className="border-t-2 border-primary/30 pt-3">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-ds-mid text-sm">Valor Líquido Médico</span>
+        <div className="space-y-4">
+          {/* Seção 1 — repasse ao médico */}
+          <div>
+            <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Repasse ao Médico</p>
+            <div className="space-y-2">
+              <PreviewRow label="Valor Bruto (contrato)" value={formatBRL(preview.valorBruto)} bold />
+              <PreviewRow label="Taxa Pin Saúde (15%)" value={formatBRL(preview.taxaPin)} negative />
+            </div>
+            <div className="border-t-2 border-green-400/40 mt-3 pt-3 flex items-center justify-between">
+              <span className="font-bold text-ds-mid text-sm">Valor Líquido ao Médico</span>
               <span className="font-bold text-green-600 text-lg">{formatBRL(preview.valorLiquidoMedico)}</span>
             </div>
-            <p className="text-xs text-ds-light mt-1 text-right">
-              {preview.valorBruto > 0
-                ? `${((preview.valorLiquidoMedico / preview.valorBruto) * 100).toFixed(1)}% do bruto`
-                : '—'}
-            </p>
+            <p className="text-xs text-ds-light mt-1 text-right">Sempre 85% do valor bruto</p>
+          </div>
+
+          {/* Seção 2 — apuração fiscal da Pin */}
+          <div className="bg-ds-surface rounded-lg p-3">
+            <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Apuração Fiscal Pin Saúde</p>
+            <div className="space-y-1.5">
+              <PreviewRow label="Pin Saúde retém (15%)" value={formatBRL(preview.taxaPin)} />
+              {preview.issRetido > 0 && <PreviewRow label="ISS (tomador retém)" value={formatBRL(preview.issRetido)} negative sub />}
+              {preview.irRetido > 0 && <PreviewRow label="IR retido" value={formatBRL(preview.irRetido)} negative sub />}
+              {preview.csllRetido > 0 && <PreviewRow label="CSLL retido" value={formatBRL(preview.csllRetido)} negative sub />}
+              {preview.pisRetido > 0 && <PreviewRow label="PIS retido" value={formatBRL(preview.pisRetido)} negative sub />}
+              {preview.cofinsRetido > 0 && <PreviewRow label="COFINS retido" value={formatBRL(preview.cofinsRetido)} negative sub />}
+            </div>
+            <div className="border-t border-ds-border mt-2 pt-2 flex items-center justify-between">
+              <span className="text-sm font-semibold text-ds-mid">Resultado Pin Saúde</span>
+              <span className={`text-sm font-bold ${preview.resultadoPin >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                {formatBRL(preview.resultadoPin)}
+              </span>
+            </div>
+            {preview.totalRetencoes === 0 && (
+              <p className="text-xs text-ds-light mt-1">Tomador não faz retenções — Pin fica com os 15% integrais</p>
+            )}
           </div>
         </div>
       )}
