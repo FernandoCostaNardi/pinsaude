@@ -12,7 +12,8 @@ spring:
   flyway:
     schemas: fiscal
     default-schema: fiscal
-    enabled: false
+    enabled: true
+    locations: classpath:db/migration
   security:
     oauth2:
       resourceserver:

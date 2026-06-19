@@ -1141,6 +1141,47 @@ const issRetido = tomador.retencaoIss ? Math.round(valorBruto * servico.aliquota
 
 ---
 
+## Parâmetros Fiscais — IBS/CBS Reforma Tributária 2027 (TASK-04.5)
+
+### Convenção de alíquotas: fiscal service usa FRAÇÕES DECIMAIS
+O `fiscal service` (`services/fiscal/`) armazena alíquotas como **frações decimais**:
+- `0.0200` = 2% (ISS municipal)
+- `0.0100` = 1% (alíquota base IBS/CBS fase-teste 2027)
+
+O `faturamento service` usa **percentual inteiro com 4 casas**:
+- `5.0000` = 5% (ISS)
+- `1.5000` = 1,5% (IR)
+
+**Crítico ao integrar os dois serviços** — nunca tratar os valores da mesma forma.
+
+### Seleção de regime por competência — findFirst...LessThanEqual...Desc
+Para selecionar o parâmetro fiscal vigente em uma competência específica:
+```java
+Optional<ParametroFiscal> findFirstByCnpjIdAndVigenciaInicioLessThanEqualOrderByVigenciaInicioDesc(
+        String cnpjId, LocalDate dataReferencia);
+```
+- `dataReferencia` = `LocalDate.of(ano, mes, 1)` a partir de "YYYY-MM"
+- Retorna o parâmetro mais recente com `vigencia_inicio <= dataReferencia`
+- Um parâmetro de 2027-01-01 só é selecionado para competências >= 2027-01
+
+### Alíquota efetiva IBS/CBS saúde
+Calculada em `ParametroFiscalResponse.from()`:
+```java
+aliqIbsCbsEfetiva = aliqIbsCbs.multiply(BigDecimal.ONE.subtract(reducaoIbsCbsSaude))
+```
+Exemplo: 1% × (1 − 60%) = 0,4% efetivo — serviços de saúde têm redução de 60% (NBS 200029).
+
+### Homologação como fluxo de aprovação contábil
+Parâmetros criados via `POST /api/parametros-fiscais/ibs-cbs` começam com `homologado=false` (rascunho).
+A contabilidade deve chamar `PUT /api/parametros-fiscais/{id}/homologar` antes do go-live.
+O frontend exibe alerta de governança quando há parâmetros não homologados.
+
+### flyway-maven-plugin no fiscal service
+Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
+Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
