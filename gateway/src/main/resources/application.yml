@@ -6,6 +6,10 @@ spring:
           uri: http://localhost:8081
           predicates:
             - Path=/api/fiscal/**
+        - id: parametros-fiscais
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/parametros-fiscais/**
         - id: faturamento
           uri: http://localhost:8082
           predicates:

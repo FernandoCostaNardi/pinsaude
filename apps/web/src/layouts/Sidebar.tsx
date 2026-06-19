@@ -13,6 +13,7 @@ import {
   Settings,
   X,
   ClipboardCheck,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 
@@ -23,6 +24,7 @@ const navItems = [
   { to: '/empresas',          label: 'Empresas',   icon: Building2,       roles: ['gestao']              },
   { to: '/tomadores',         label: 'Tomadores',  icon: Hospital,        roles: ['operacao', 'gestao', 'financeiro', 'contabil'] },
   { to: '/producao',          label: 'Produção',   icon: ClipboardList,   roles: ['operacao', 'gestao', 'financeiro', 'contabil'] },
+  { to: '/parametros-fiscais', label: 'Parâm. Fiscais', icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'] },
   { to: '/notas',       label: 'Notas',        icon: FileText,        roles: null       },
   { to: '/repasses',    label: 'Repasses',     icon: Banknote,        roles: null       },
   { to: '/conciliacao', label: 'Conciliação',  icon: ArrowLeftRight,  roles: null       },
