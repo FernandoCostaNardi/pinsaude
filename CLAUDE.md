@@ -1182,6 +1182,51 @@ Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQL
 
 ---
 
+## Motor Fiscal — Cenários e Invariantes (EPIC-05.2)
+
+### Os 4 cenários do motor fiscal
+Derivados dos flags `tomadorPj`, `indicadorRetencaoFederal`, `equiparacaoHospitalar`:
+
+| Cenário | Condição | Retenções |
+|---------|----------|-----------|
+| A | PJ + retencaoFederal=true | IR/CSLL/PIS/COFINS retidos pelo tomador |
+| B | PJ + retencaoFederal=false | Pin paga todos por guia própria |
+| C | PF + equiparacaoHospitalar=true | Nota com tributos zerados |
+| D | PF + equiparacaoHospitalar=false | IR na fonte pelo tomador PF |
+
+**Invariante absoluta:** `valorLiquidoMedico = valorBruto − taxaPin` em QUALQUER cenário.
+Tributos saem dos 15% da Pin, nunca do repasse do médico.
+
+### Hierarquia de alíquotas (fallback)
+```
+1. parametros_fiscais (V2, EPIC-05.1) — per-tributo com competencia_inicio/fim
+   ↓ se não encontrar:
+2. parametro_fiscal (V1, TASK-04.5) — regime geral por vigencia_inicio
+   ↓ se não encontrar:
+3. Zeros (calcula, tributos = 0)
+```
+
+### jqwik — Property-based tests com Mockito
+**Import correto:** `@BeforeProperty` está em `net.jqwik.api.lifecycle.BeforeProperty`, não em `net.jqwik.api`.
+
+**Stubs lenient no setUp:** se um teste individual redefine um stub do `@BeforeEach`, Mockito strict mode lança `UnnecessaryStubbing`. Usar `Mockito.lenient().when(...)` no setUp para stubs que podem ser sobrepostos:
+```java
+org.mockito.Mockito.lenient()
+    .when(repo.findFirst...(anyString(), any()))
+    .thenReturn(Optional.of(padrao));
+```
+
+**Compatibilidade:** jqwik 1.8.3 + Spring Boot 3.2.5 (JUnit 5.10.x) — funciona via SPI sem configuração extra.
+Maven: `<dependency><groupId>net.jqwik</groupId><artifactId>jqwik</artifactId><version>1.8.3</version><scope>test</scope></dependency>`
+
+### ISS vs IBS/CBS na transição 2027
+No cenário A (PJ com retenção), ISS permanece separado mesmo quando `ibsCbsAtivo=true`:
+- `valorIss = aliqIss * valorBruto` (ISS municipal persiste na transição)
+- `valorIr = aliqIbsCbsEfetiva * valorBruto` (IBS/CBS substitui IR/CSLL/PIS/COFINS)
+- `valorCsll = valorPis = valorCofins = 0`
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
