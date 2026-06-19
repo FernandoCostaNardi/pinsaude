@@ -71,14 +71,15 @@ export function ProducaoDetalheModal({ producao, medicoNome, onClose }: Props) {
   const { tomador, servico, valorBruto, status } = producao
   const { label: statusLabel, cls: statusCls, Icon: StatusIcon } = STATUS_CFG[status]
 
-  const taxaPin       = calcPct(valorBruto, 15)
-  const issRetido     = tomador.retencaoIss      ? calcPct(valorBruto, servico.aliquotaIss)   : 0
-  const irRetido      = tomador.retencaoFederal  ? calcPct(valorBruto, servico.aliquotaIr)    : 0
-  const csllRetido    = tomador.retencaoFederal  ? calcPct(valorBruto, servico.aliquotaCsll)  : 0
-  const pisRetido     = tomador.retencaoFederal  ? calcPct(valorBruto, servico.aliquotaPis)   : 0
-  const cofinsRetido  = tomador.retencaoFederal  ? calcPct(valorBruto, servico.aliquotaCofins): 0
+  const taxaPin        = calcPct(valorBruto, 15)
+  const issRetido      = tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
+  const irRetido       = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
+  const csllRetido     = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
+  const pisRetido      = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
+  const cofinsRetido   = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
   const totalRetencoes = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
-  const valorLiquido  = valorBruto - taxaPin - totalRetencoes
+  const valorLiquido   = valorBruto - taxaPin          // médico sempre recebe 85%
+  const resultadoPin   = taxaPin - totalRetencoes      // lucro Pin após tributos
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -181,33 +182,49 @@ export function ProducaoDetalheModal({ producao, medicoNome, onClose }: Props) {
           </div>
 
           {/* Breakdown fiscal */}
-          <div>
+          <div className="space-y-3">
             <SectionTitle>Composição Fiscal</SectionTitle>
-            <div className="bg-ds-surface rounded-xl p-4 space-y-0.5">
-              <FiscalRow label="Valor Bruto" value={valorBruto} />
+
+            {/* Repasse ao médico */}
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+              <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-3">Repasse ao Médico</p>
+              <FiscalRow label="Valor Bruto (contrato)" value={valorBruto} />
               <FiscalRow label="Taxa Pin Saúde (15%)" value={taxaPin} indent negative />
+              <div className="border-t-2 border-green-300 mt-2 pt-2.5 flex items-center justify-between">
+                <span className="font-bold text-green-800 text-sm">Valor Líquido ao Médico</span>
+                <span className="font-bold text-green-700 text-base">{formatBRL(valorLiquido)}</span>
+              </div>
+              <p className="text-right text-xs text-green-600 mt-1">Sempre 85% do valor bruto</p>
+            </div>
+
+            {/* Apuração fiscal Pin */}
+            <div className="bg-ds-surface rounded-xl p-4">
+              <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-3">Apuração Fiscal Pin Saúde</p>
+              <FiscalRow label="Pin Saúde retém (15%)" value={taxaPin} />
               {issRetido > 0 && (
-                <FiscalRow label={`ISS Retido (${Number(servico.aliquotaIss).toFixed(2)}%)`} value={issRetido} indent negative />
+                <FiscalRow label={`ISS (${Number(servico.aliquotaIss).toFixed(2)}%)`} value={issRetido} indent negative />
               )}
               {irRetido > 0 && (
-                <FiscalRow label={`IR Retido (${Number(servico.aliquotaIr).toFixed(2)}%)`} value={irRetido} indent negative />
+                <FiscalRow label={`IR (${Number(servico.aliquotaIr).toFixed(2)}%)`} value={irRetido} indent negative />
               )}
               {csllRetido > 0 && (
-                <FiscalRow label={`CSLL Retido (${Number(servico.aliquotaCsll).toFixed(2)}%)`} value={csllRetido} indent negative />
+                <FiscalRow label={`CSLL (${Number(servico.aliquotaCsll).toFixed(2)}%)`} value={csllRetido} indent negative />
               )}
               {pisRetido > 0 && (
-                <FiscalRow label={`PIS Retido (${Number(servico.aliquotaPis).toFixed(2)}%)`} value={pisRetido} indent negative />
+                <FiscalRow label={`PIS (${Number(servico.aliquotaPis).toFixed(2)}%)`} value={pisRetido} indent negative />
               )}
               {cofinsRetido > 0 && (
-                <FiscalRow label={`COFINS Retido (${Number(servico.aliquotaCofins).toFixed(2)}%)`} value={cofinsRetido} indent negative />
+                <FiscalRow label={`COFINS (${Number(servico.aliquotaCofins).toFixed(2)}%)`} value={cofinsRetido} indent negative />
               )}
-              {totalRetencoes > 0 && (
-                <div className="flex justify-between py-1 text-xs text-ds-light border-t border-dashed border-ds-border mt-1">
-                  <span>Total de retenções</span>
-                  <span className="text-red-500">({formatBRL(totalRetencoes)})</span>
-                </div>
+              <div className="border-t border-ds-border mt-2 pt-2.5 flex items-center justify-between">
+                <span className="font-semibold text-ds-mid text-sm">Resultado Pin Saúde</span>
+                <span className={`font-bold text-sm ${resultadoPin >= 0 ? 'text-primary' : 'text-red-600'}`}>
+                  {formatBRL(resultadoPin)}
+                </span>
+              </div>
+              {totalRetencoes === 0 && (
+                <p className="text-xs text-ds-light mt-1">Tomador não faz retenções — Pin fica com os 15% integrais</p>
               )}
-              <FiscalRow label="Valor Líquido ao Médico" value={valorLiquido} bold />
             </div>
           </div>
         </div>

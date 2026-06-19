@@ -118,13 +118,14 @@ public class ProducaoService {
         long cofinsRetido = tomador.isIndicadorRetencaoFederal()
             ? pct(bruto, pct(servico.getAliquotaCofins())) : 0L;
 
-        long totalRetencoes = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido;
-        long valorLiquido   = valorBruto - taxaPin - totalRetencoes;
+        long totalRetencoes    = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido;
+        long valorLiquidoMedico = valorBruto - taxaPin;   // médico sempre recebe 85%
+        long resultadoPin       = taxaPin - totalRetencoes; // lucro Pin após tributos
 
         return new PreviewCalculoResponse(
             valorBruto, taxaPin,
             issRetido, irRetido, csllRetido, pisRetido, cofinsRetido,
-            totalRetencoes, valorLiquido
+            totalRetencoes, valorLiquidoMedico, resultadoPin
         );
     }
 

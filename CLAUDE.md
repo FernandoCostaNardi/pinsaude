@@ -1034,6 +1034,29 @@ Os 15 serviços médicos mais comuns foram inseridos na migration `V4__seed_serv
 Alíquotas padrão: ISS 5%, IR 1,5%, CSLL 1%, PIS 0,65%, COFINS 3%.
 Ajustes por competência/empresa são feitos via `aliquotas_competencia` (EPIC-02.4).
 
+### Modelo de negócio — médico sempre recebe 85%, impostos saem dos 15% da Pin
+**REGRA FUNDAMENTAL:** A Pin Saúde retém 15% do valor bruto pago pelo tomador ao médico.
+O médico **sempre** recebe exatamente 85%, independente de quais impostos são retidos.
+Os impostos (ISS, IR, CSLL, PIS, COFINS) são custo fiscal da **Pin**, não do médico.
+
+```
+Valor Bruto (do tomador):        R$ 10.000
+− Taxa Pin Saúde (15%):          R$  1.500
+= Valor Líquido ao Médico:       R$  8.500  ← sempre 85%
+
+Pin Saúde retém:                 R$  1.500
+− Impostos pagos/retidos:        R$  (815)
+= Resultado Pin Saúde:           R$    685  ← lucro da Pin
+```
+
+O negócio da Pin é conseguir pagar menos impostos para maximizar o resultado dentro dos 15%.
+Nunca deduzir tributos do valor líquido do médico — só deduzir `taxaPin` (15%):
+```java
+long valorLiquidoMedico = valorBruto - taxaPin;   // CORRETO — sempre 85%
+long resultadoPin       = taxaPin - totalRetencoes; // resultado da Pin após tributos
+// ERRADO: valorLiquidoMedico = valorBruto - taxaPin - totalRetencoes
+```
+
 ### Autocomplete no frontend — debounce de preview com setTimeout/useRef
 O preview de cálculo fiscal é disparado com debounce de 400ms após qualquer mudança em
 `servicoId`, `tomadorId` ou `valorBruto`. O timer é armazenado em `useRef` para evitar

@@ -1,8 +1,9 @@
 package br.com.pinsaude.faturamento.dto;
 
 // Todos os valores em centavos (long).
-// taxaPin = 15% do valorBruto (comissão da plataforma Pin Saúde).
-// Retenções apenas quando o tomador tem indicadorRetencao* = true.
+// valorLiquidoMedico = valorBruto - taxaPin (sempre 85% — médico não absorve impostos).
+// Os impostos saem da taxaPin (15% da Pin Saúde).
+// resultadoPin = taxaPin - totalRetencoes (lucro líquido da Pin após tributos).
 public record PreviewCalculoResponse(
     long valorBruto,
     long taxaPin,
@@ -12,5 +13,6 @@ public record PreviewCalculoResponse(
     long pisRetido,
     long cofinsRetido,
     long totalRetencoes,
-    long valorLiquidoMedico
+    long valorLiquidoMedico,
+    long resultadoPin
 ) {}

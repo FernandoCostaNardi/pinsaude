@@ -61,7 +61,8 @@ export interface PreviewCalculoResponse {
   pisRetido: number
   cofinsRetido: number
   totalRetencoes: number
-  valorLiquidoMedico: number
+  valorLiquidoMedico: number  // sempre 85% do bruto — não afetado por impostos
+  resultadoPin: number        // taxaPin - totalRetencoes (lucro Pin após tributos)
 }
 
 function authHeaders(): HeadersInit {

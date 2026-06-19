@@ -310,11 +310,11 @@ export function ProducoesPage() {
           </div>
           <div className="w-px h-10 bg-primary/20" />
           <div>
-            <p className="text-xs text-primary/70 font-medium uppercase tracking-wide">Estimativa Líquido (−15%)</p>
+            <p className="text-xs text-primary/70 font-medium uppercase tracking-wide">Total Repasse Médicos (85%)</p>
             <p className="text-xl font-bold text-primary">{formatBRL(totalFiltradoLiq)}</p>
           </div>
           <div className="ml-auto text-xs text-primary/60 italic">
-            * Estimativa sem considerar retenções tributárias individuais
+            * Médico sempre recebe 85% do bruto; impostos saem dos 15% da Pin
           </div>
         </div>
       )}
