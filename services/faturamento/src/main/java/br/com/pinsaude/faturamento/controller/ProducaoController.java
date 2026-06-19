@@ -29,8 +29,11 @@ public class ProducaoController {
     public ResponseEntity<List<ProducaoResponse>> listar(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String competencia,
-            @RequestParam(required = false) UUID medicoId) {
-        return ResponseEntity.ok(service.listar(status, competencia, medicoId));
+            @RequestParam(required = false) UUID medicoId,
+            @RequestParam(required = false) UUID tomadorId,
+            @RequestParam(required = false) String periodoInicio,
+            @RequestParam(required = false) String periodoFim) {
+        return ResponseEntity.ok(service.listar(status, competencia, medicoId, tomadorId, periodoInicio, periodoFim));
     }
 
     @GetMapping("/{id}")

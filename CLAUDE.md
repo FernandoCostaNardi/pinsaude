@@ -1062,6 +1062,62 @@ Isso evita problemas com separadores de milhar e vírgula decimal do pt-BR.
 
 ---
 
+## Consulta e Exportação de Produção — Padrões (EPIC-04.5)
+
+### Filtros combinados via stream — nunca if-branches mutuamente exclusivos
+Quando o service precisa suportar múltiplos filtros opcionais simultaneamente, usar stream com predicados independentes:
+```java
+return producaoRepo.findAllByOrderByCreatedAtDesc().stream()
+    .filter(p -> statusEnum == null || p.getStatus() == statusEnum)
+    .filter(p -> medicoId == null || medicoId.equals(p.getMedicoId()))
+    .filter(p -> tomadorId == null || tomadorId.equals(p.getTomador().getId()))
+    .filter(p -> periodoInicio == null || p.getCompetencia().compareTo(periodoInicio) >= 0)
+    .filter(p -> periodoFim   == null || p.getCompetencia().compareTo(periodoFim)   <= 0)
+    .map(ProducaoResponse::from).toList();
+```
+Comparação lexicográfica de `String` funciona corretamente para competência no formato `YYYY-MM` (ordem ISO = ordem cronológica).
+
+### Export CSV pt-BR no browser — BOM + ponto-e-vírgula
+Para abrir corretamente no Excel em pt-BR, o CSV deve usar ponto-e-vírgula como separador e incluir o BOM UTF-8:
+```typescript
+const csv = rows.map(r => r.map(c => `"${c}"`).join(';')).join('\n')
+const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })  // '﻿' = BOM
+const url = URL.createObjectURL(blob)
+const a = document.createElement('a'); a.href = url; a.download = 'arquivo.csv'; a.click()
+URL.revokeObjectURL(url)
+```
+Sem o BOM, caracteres especiais (acentos) aparecem errados no Excel Windows.
+
+### Totalizadores condicionais — mostrar só com filtro ativo
+O painel de totalizadores (quantidade, bruto, líquido estimado) deve aparecer apenas quando um filtro está ativo,
+para não confundir com as stats globais do header:
+```typescript
+const temFiltroAtivo = q || filtroStatus || filtroMedico || filtroTomador || periodoInicio || periodoFim
+{temFiltroAtivo && (
+  <div className="bg-primary-50 ...">
+    <p>Registros: {filtered.length}</p>
+    <p>Valor Bruto: {formatBRL(totalFiltradoBruto)}</p>
+    <p>Estimativa Líquido (−15%): {formatBRL(Math.round(totalFiltradoBruto * 0.85))}</p>
+  </div>
+)}
+```
+
+### Enriquecimento do DTO para modal de detalhe — adicionar alíquotas ao ServicoResumo
+Para exibir o breakdown fiscal completo no modal sem fazer uma chamada extra ao servidor,
+adicionar as alíquotas ao inner record `ServicoResumo` do `ProducaoResponse`:
+```java
+public record ServicoResumo(UUID id, String codigoLc116, String descricaoPadrao,
+                             BigDecimal aliquotaIss, BigDecimal aliquotaIr,
+                             BigDecimal aliquotaCsll, BigDecimal aliquotaPis,
+                             BigDecimal aliquotaCofins) { ... }
+```
+O cálculo fiscal no frontend repete a lógica do backend:
+```typescript
+const issRetido = tomador.retencaoIss ? Math.round(valorBruto * servico.aliquotaIss / 100) : 0
+```
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

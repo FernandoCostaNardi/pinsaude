@@ -41,22 +41,18 @@ public class ProducaoService {
     }
 
     @Transactional(readOnly = true)
-    public List<ProducaoResponse> listar(String status, String competencia, UUID medicoId) {
-        if (status != null && !status.isBlank()) {
-            StatusProducao s = parseStatus(status);
-            return producaoRepo.findByStatusOrderByCreatedAtDesc(s).stream()
-                .map(ProducaoResponse::from).toList();
-        }
-        if (competencia != null && !competencia.isBlank()) {
-            return producaoRepo.findByCompetenciaOrderByCreatedAtDesc(competencia).stream()
-                .map(ProducaoResponse::from).toList();
-        }
-        if (medicoId != null) {
-            return producaoRepo.findByMedicoIdOrderByCreatedAtDesc(medicoId).stream()
-                .map(ProducaoResponse::from).toList();
-        }
+    public List<ProducaoResponse> listar(String status, String competencia, UUID medicoId,
+                                         UUID tomadorId, String periodoInicio, String periodoFim) {
+        StatusProducao statusEnum = (status != null && !status.isBlank()) ? parseStatus(status) : null;
         return producaoRepo.findAllByOrderByCreatedAtDesc().stream()
-            .map(ProducaoResponse::from).toList();
+            .filter(p -> statusEnum == null || p.getStatus() == statusEnum)
+            .filter(p -> competencia == null || competencia.isBlank() || competencia.equals(p.getCompetencia()))
+            .filter(p -> medicoId == null || medicoId.equals(p.getMedicoId()))
+            .filter(p -> tomadorId == null || tomadorId.equals(p.getTomador().getId()))
+            .filter(p -> periodoInicio == null || periodoInicio.isBlank() || p.getCompetencia().compareTo(periodoInicio) >= 0)
+            .filter(p -> periodoFim == null || periodoFim.isBlank() || p.getCompetencia().compareTo(periodoFim) <= 0)
+            .map(ProducaoResponse::from)
+            .toList();
     }
 
     @Transactional(readOnly = true)
