@@ -1034,6 +1034,29 @@ Os 15 serviços médicos mais comuns foram inseridos na migration `V4__seed_serv
 Alíquotas padrão: ISS 5%, IR 1,5%, CSLL 1%, PIS 0,65%, COFINS 3%.
 Ajustes por competência/empresa são feitos via `aliquotas_competencia` (EPIC-02.4).
 
+### Modelo de negócio — médico sempre recebe 85%, impostos saem dos 15% da Pin
+**REGRA FUNDAMENTAL:** A Pin Saúde retém 15% do valor bruto pago pelo tomador ao médico.
+O médico **sempre** recebe exatamente 85%, independente de quais impostos são retidos.
+Os impostos (ISS, IR, CSLL, PIS, COFINS) são custo fiscal da **Pin**, não do médico.
+
+```
+Valor Bruto (do tomador):        R$ 10.000
+− Taxa Pin Saúde (15%):          R$  1.500
+= Valor Líquido ao Médico:       R$  8.500  ← sempre 85%
+
+Pin Saúde retém:                 R$  1.500
+− Impostos pagos/retidos:        R$  (815)
+= Resultado Pin Saúde:           R$    685  ← lucro da Pin
+```
+
+O negócio da Pin é conseguir pagar menos impostos para maximizar o resultado dentro dos 15%.
+Nunca deduzir tributos do valor líquido do médico — só deduzir `taxaPin` (15%):
+```java
+long valorLiquidoMedico = valorBruto - taxaPin;   // CORRETO — sempre 85%
+long resultadoPin       = taxaPin - totalRetencoes; // resultado da Pin após tributos
+// ERRADO: valorLiquidoMedico = valorBruto - taxaPin - totalRetencoes
+```
+
 ### Autocomplete no frontend — debounce de preview com setTimeout/useRef
 O preview de cálculo fiscal é disparado com debounce de 400ms após qualquer mudança em
 `servicoId`, `tomadorId` ou `valorBruto`. O timer é armazenado em `useRef` para evitar
@@ -1059,6 +1082,62 @@ function parseBRL(str: string): number {
 }
 ```
 Isso evita problemas com separadores de milhar e vírgula decimal do pt-BR.
+
+---
+
+## Consulta e Exportação de Produção — Padrões (EPIC-04.5)
+
+### Filtros combinados via stream — nunca if-branches mutuamente exclusivos
+Quando o service precisa suportar múltiplos filtros opcionais simultaneamente, usar stream com predicados independentes:
+```java
+return producaoRepo.findAllByOrderByCreatedAtDesc().stream()
+    .filter(p -> statusEnum == null || p.getStatus() == statusEnum)
+    .filter(p -> medicoId == null || medicoId.equals(p.getMedicoId()))
+    .filter(p -> tomadorId == null || tomadorId.equals(p.getTomador().getId()))
+    .filter(p -> periodoInicio == null || p.getCompetencia().compareTo(periodoInicio) >= 0)
+    .filter(p -> periodoFim   == null || p.getCompetencia().compareTo(periodoFim)   <= 0)
+    .map(ProducaoResponse::from).toList();
+```
+Comparação lexicográfica de `String` funciona corretamente para competência no formato `YYYY-MM` (ordem ISO = ordem cronológica).
+
+### Export CSV pt-BR no browser — BOM + ponto-e-vírgula
+Para abrir corretamente no Excel em pt-BR, o CSV deve usar ponto-e-vírgula como separador e incluir o BOM UTF-8:
+```typescript
+const csv = rows.map(r => r.map(c => `"${c}"`).join(';')).join('\n')
+const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })  // '﻿' = BOM
+const url = URL.createObjectURL(blob)
+const a = document.createElement('a'); a.href = url; a.download = 'arquivo.csv'; a.click()
+URL.revokeObjectURL(url)
+```
+Sem o BOM, caracteres especiais (acentos) aparecem errados no Excel Windows.
+
+### Totalizadores condicionais — mostrar só com filtro ativo
+O painel de totalizadores (quantidade, bruto, líquido estimado) deve aparecer apenas quando um filtro está ativo,
+para não confundir com as stats globais do header:
+```typescript
+const temFiltroAtivo = q || filtroStatus || filtroMedico || filtroTomador || periodoInicio || periodoFim
+{temFiltroAtivo && (
+  <div className="bg-primary-50 ...">
+    <p>Registros: {filtered.length}</p>
+    <p>Valor Bruto: {formatBRL(totalFiltradoBruto)}</p>
+    <p>Estimativa Líquido (−15%): {formatBRL(Math.round(totalFiltradoBruto * 0.85))}</p>
+  </div>
+)}
+```
+
+### Enriquecimento do DTO para modal de detalhe — adicionar alíquotas ao ServicoResumo
+Para exibir o breakdown fiscal completo no modal sem fazer uma chamada extra ao servidor,
+adicionar as alíquotas ao inner record `ServicoResumo` do `ProducaoResponse`:
+```java
+public record ServicoResumo(UUID id, String codigoLc116, String descricaoPadrao,
+                             BigDecimal aliquotaIss, BigDecimal aliquotaIr,
+                             BigDecimal aliquotaCsll, BigDecimal aliquotaPis,
+                             BigDecimal aliquotaCofins) { ... }
+```
+O cálculo fiscal no frontend repete a lógica do backend:
+```typescript
+const issRetido = tomador.retencaoIss ? Math.round(valorBruto * servico.aliquotaIss / 100) : 0
+```
 
 ---
 

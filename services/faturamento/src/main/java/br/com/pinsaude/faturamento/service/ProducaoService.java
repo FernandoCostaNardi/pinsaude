@@ -41,22 +41,18 @@ public class ProducaoService {
     }
 
     @Transactional(readOnly = true)
-    public List<ProducaoResponse> listar(String status, String competencia, UUID medicoId) {
-        if (status != null && !status.isBlank()) {
-            StatusProducao s = parseStatus(status);
-            return producaoRepo.findByStatusOrderByCreatedAtDesc(s).stream()
-                .map(ProducaoResponse::from).toList();
-        }
-        if (competencia != null && !competencia.isBlank()) {
-            return producaoRepo.findByCompetenciaOrderByCreatedAtDesc(competencia).stream()
-                .map(ProducaoResponse::from).toList();
-        }
-        if (medicoId != null) {
-            return producaoRepo.findByMedicoIdOrderByCreatedAtDesc(medicoId).stream()
-                .map(ProducaoResponse::from).toList();
-        }
+    public List<ProducaoResponse> listar(String status, String competencia, UUID medicoId,
+                                         UUID tomadorId, String periodoInicio, String periodoFim) {
+        StatusProducao statusEnum = (status != null && !status.isBlank()) ? parseStatus(status) : null;
         return producaoRepo.findAllByOrderByCreatedAtDesc().stream()
-            .map(ProducaoResponse::from).toList();
+            .filter(p -> statusEnum == null || p.getStatus() == statusEnum)
+            .filter(p -> competencia == null || competencia.isBlank() || competencia.equals(p.getCompetencia()))
+            .filter(p -> medicoId == null || medicoId.equals(p.getMedicoId()))
+            .filter(p -> tomadorId == null || tomadorId.equals(p.getTomador().getId()))
+            .filter(p -> periodoInicio == null || periodoInicio.isBlank() || p.getCompetencia().compareTo(periodoInicio) >= 0)
+            .filter(p -> periodoFim == null || periodoFim.isBlank() || p.getCompetencia().compareTo(periodoFim) <= 0)
+            .map(ProducaoResponse::from)
+            .toList();
     }
 
     @Transactional(readOnly = true)
@@ -122,13 +118,14 @@ public class ProducaoService {
         long cofinsRetido = tomador.isIndicadorRetencaoFederal()
             ? pct(bruto, pct(servico.getAliquotaCofins())) : 0L;
 
-        long totalRetencoes = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido;
-        long valorLiquido   = valorBruto - taxaPin - totalRetencoes;
+        long totalRetencoes    = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido;
+        long valorLiquidoMedico = valorBruto - taxaPin;   // médico sempre recebe 85%
+        long resultadoPin       = taxaPin - totalRetencoes; // lucro Pin após tributos
 
         return new PreviewCalculoResponse(
             valorBruto, taxaPin,
             issRetido, irRetido, csllRetido, pisRetido, cofinsRetido,
-            totalRetencoes, valorLiquido
+            totalRetencoes, valorLiquidoMedico, resultadoPin
         );
     }
 

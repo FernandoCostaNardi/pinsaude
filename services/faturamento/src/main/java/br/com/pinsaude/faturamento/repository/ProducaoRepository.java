@@ -16,4 +16,6 @@ public interface ProducaoRepository extends JpaRepository<Producao, UUID> {
     List<Producao> findByMedicoIdOrderByCreatedAtDesc(UUID medicoId);
 
     List<Producao> findByCompetenciaOrderByCreatedAtDesc(String competencia);
+
+    List<Producao> findByTomadorIdOrderByCreatedAtDesc(UUID tomadorId);
 }
