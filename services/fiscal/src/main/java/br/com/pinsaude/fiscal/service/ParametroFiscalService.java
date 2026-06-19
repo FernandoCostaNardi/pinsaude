@@ -124,7 +124,8 @@ public class ParametroFiscalService {
 
     private String currentCnpj() {
         String cnpj = SecurityUtils.currentCnpjTenant();
-        return cnpj != null ? cnpj : "";
+        if (cnpj == null || cnpj.isBlank()) return "";
+        return cnpj.replaceAll("\\D", "");
     }
 
     private String requireCnpj() {
