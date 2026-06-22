@@ -255,15 +255,17 @@ export function NfseEmissaoPage() {
   }
 
   const { tomador, servico, valorBruto } = producao
-  const taxaPin        = calcPct(valorBruto, 15)
+  const taxaPin        = calcPct(valorBruto, 15)           // apenas para cálculo de repasse (EPIC-09)
   const issRetido      = tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
   const irRetido       = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
   const csllRetido     = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
   const pisRetido      = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
   const cofinsRetido   = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
-  const totalRetencoes = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
-  const valorLiquido   = valorBruto - taxaPin
-  const resultadoPin   = taxaPin - totalRetencoes
+  const totalRetidos   = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
+  // Valor líquido da nota = o que o tomador efetivamente deposita à Pin
+  const valorLiquidoNota = valorBruto - totalRetidos
+  // Repasse ao médico = sempre 85% do bruto (calculado internamente, não aparece na NFS-e)
+  const valorRepasse   = valorBruto - taxaPin
 
   const currentStatus  = nota?.status ?? null
   const meta           = currentStatus ? STATUS_META[currentStatus] : null
@@ -317,35 +319,38 @@ export function NfseEmissaoPage() {
 
           {/* Breakdown fiscal */}
           <div className="bg-white rounded-2xl border border-ds-border p-5">
-            <h2 className="text-sm font-bold text-ds-mid uppercase tracking-wider mb-4">Composição Fiscal</h2>
+            <h2 className="text-sm font-bold text-ds-mid uppercase tracking-wider mb-4">Composição da NFS-e</h2>
 
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-3">
-              <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Repasse ao Médico</p>
-              <FiscalRow label="Valor Bruto" value={valorBruto} />
-              <FiscalRow label="Taxa Pin Saúde (15%)" value={taxaPin} indent negative />
-              <div className="border-t-2 border-green-300 mt-2 pt-2.5 flex justify-between">
-                <span className="font-bold text-green-800 text-sm">Líquido ao Médico</span>
-                <span className="font-bold text-green-700">{formatBRL(valorLiquido)}</span>
+            {/* Valores da nota — o que o tomador vê */}
+            <div className="bg-primary-50 border border-primary-100 rounded-xl p-4 mb-3">
+              <p className="text-xs font-semibold text-primary-700 uppercase tracking-wide mb-2">Nota Fiscal ao Tomador</p>
+              <FiscalRow label="Valor dos Serviços" value={valorBruto} />
+              {issRetido   > 0 && <FiscalRow label={`ISS retido pelo tomador (${servico.aliquotaIss}%)`}    value={issRetido}   indent negative />}
+              {irRetido    > 0 && <FiscalRow label={`IR retido pelo tomador (${servico.aliquotaIr}%)`}       value={irRetido}    indent negative />}
+              {csllRetido  > 0 && <FiscalRow label={`CSLL retido pelo tomador (${servico.aliquotaCsll}%)`}  value={csllRetido}  indent negative />}
+              {pisRetido   > 0 && <FiscalRow label={`PIS retido pelo tomador (${servico.aliquotaPis}%)`}    value={pisRetido}   indent negative />}
+              {cofinsRetido > 0 && <FiscalRow label={`COFINS retido pelo tomador (${servico.aliquotaCofins}%)`} value={cofinsRetido} indent negative />}
+              <div className="border-t-2 border-primary-200 mt-2 pt-2.5 flex justify-between">
+                <span className="font-bold text-primary-800 text-sm">Valor Líquido da Nota</span>
+                <span className="font-bold text-primary">{formatBRL(valorLiquidoNota)}</span>
               </div>
+              {totalRetidos === 0 && (
+                <p className="text-xs text-primary-600 mt-1 italic">
+                  Sem retenções — tributos recolhidos pela Pin Saúde via guia própria.
+                </p>
+              )}
             </div>
 
+            {/* Distribuição interna — para controle de repasse */}
             <div className="bg-ds-surface rounded-xl p-4">
-              <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Apuração Pin Saúde</p>
-              <FiscalRow label="Pin retém (15%)" value={taxaPin} />
-              {issRetido   > 0 && <FiscalRow label={`ISS (${servico.aliquotaIss}%)`}    value={issRetido}   indent negative />}
-              {irRetido    > 0 && <FiscalRow label={`IR (${servico.aliquotaIr}%)`}       value={irRetido}    indent negative />}
-              {csllRetido  > 0 && <FiscalRow label={`CSLL (${servico.aliquotaCsll}%)`}  value={csllRetido}  indent negative />}
-              {pisRetido   > 0 && <FiscalRow label={`PIS (${servico.aliquotaPis}%)`}    value={pisRetido}   indent negative />}
-              {cofinsRetido > 0 && <FiscalRow label={`COFINS (${servico.aliquotaCofins}%)`} value={cofinsRetido} indent negative />}
+              <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-1">Controle Interno — Repasse</p>
+              <p className="text-[10px] text-ds-light mb-2">Não consta na NFS-e. Processado no módulo de Repasses.</p>
+              <FiscalRow label="Valor Bruto" value={valorBruto} />
+              <FiscalRow label="Taxa Pin Saúde (15%)" value={taxaPin} indent negative />
               <div className="border-t border-ds-border mt-2 pt-2.5 flex justify-between">
-                <span className="font-semibold text-ds-mid text-sm">Resultado Pin</span>
-                <span className={`font-bold text-sm ${resultadoPin >= 0 ? 'text-primary' : 'text-red-600'}`}>
-                  {formatBRL(resultadoPin)}
-                </span>
+                <span className="font-semibold text-ds-mid text-sm">Repasse ao Médico (85%)</span>
+                <span className="font-bold text-sm text-green-700">{formatBRL(valorRepasse)}</span>
               </div>
-              {totalRetencoes === 0 && (
-                <p className="text-xs text-ds-light mt-1">Sem retenções pelo tomador</p>
-              )}
             </div>
           </div>
         </div>

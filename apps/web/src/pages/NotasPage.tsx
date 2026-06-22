@@ -215,18 +215,21 @@ function DetalhePanel({ nota, onClose, onAprovar, onCancelar, onRejeitar, isGest
         {/* Valores */}
         {nota.valorBruto != null && (
           <div className="space-y-2">
-            <p className="text-xs text-ds-light font-medium uppercase tracking-wide">Valores</p>
+            <p className="text-xs text-ds-light font-medium uppercase tracking-wide">Valores da Nota</p>
             <div className="bg-ds-surface rounded-xl p-4 space-y-2">
               <div className="flex justify-between">
-                <span className="text-xs text-ds-light">Bruto</span>
+                <span className="text-xs text-ds-light">Valor dos Serviços</span>
                 <span className="text-sm font-semibold text-ds-mid">{formatBRL(nota.valorBruto)}</span>
               </div>
+            </div>
+            <p className="text-xs text-ds-light font-medium uppercase tracking-wide mt-2">Repasse (controle interno)</p>
+            <div className="bg-ds-surface rounded-xl p-4 space-y-2">
               <div className="flex justify-between">
                 <span className="text-xs text-ds-light">Taxa Pin (15%)</span>
                 <span className="text-sm text-orange-600">({formatBRL(nota.taxaPin)})</span>
               </div>
               <div className="flex justify-between border-t border-ds-border pt-2 mt-1">
-                <span className="text-xs font-semibold text-ds-mid">Líquido Médico</span>
+                <span className="text-xs font-semibold text-ds-mid">Repasse ao Médico (85%)</span>
                 <span className="text-sm font-bold text-green-700">{formatBRL(nota.valorLiquidoMedico)}</span>
               </div>
             </div>
