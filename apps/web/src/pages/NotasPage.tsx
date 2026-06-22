@@ -367,7 +367,7 @@ export function NotasPage() {
     if (!notaSelecionada) return
     const updated = notas.find(n => n.notaId === notaSelecionada.notaId)
     if (updated) setNotaSelecionada(updated)
-  }, [notas]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notas]) // notaSelecionada omitida intencionalmente para evitar loop
 
   // ─── Filtros ─────────────────────────────────────────────────────────────────
 
