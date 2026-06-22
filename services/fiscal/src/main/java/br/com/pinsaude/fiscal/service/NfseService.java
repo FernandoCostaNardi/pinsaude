@@ -10,6 +10,7 @@ import br.com.pinsaude.fiscal.messaging.NfseEmissaoProducer;
 import br.com.pinsaude.fiscal.port.DadosNota;
 import br.com.pinsaude.fiscal.port.EmissaoNfsePort;
 import br.com.pinsaude.fiscal.port.ResultadoEmissao;
+import br.com.pinsaude.fiscal.repository.LoteEmissaoRepository;
 import br.com.pinsaude.fiscal.repository.NotaFiscalRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,14 +28,17 @@ public class NfseService {
 
     private static final Logger log = LoggerFactory.getLogger(NfseService.class);
 
-    private final NotaFiscalRepository notaRepo;
+    private final NotaFiscalRepository  notaRepo;
+    private final LoteEmissaoRepository loteRepo;
     private final EmissaoNfsePort emissaoPort;
     private final NfseEmissaoProducer producer;
 
     public NfseService(NotaFiscalRepository notaRepo,
+                       LoteEmissaoRepository loteRepo,
                        EmissaoNfsePort emissaoPort,
                        NfseEmissaoProducer producer) {
         this.notaRepo = notaRepo;
+        this.loteRepo = loteRepo;
         this.emissaoPort = emissaoPort;
         this.producer = producer;
     }
@@ -129,6 +133,17 @@ public class NfseService {
 
         notaRepo.save(nota);
         log.info("NotaFiscal {} atualizada para status={}", notaId, nota.getStatus());
+
+        atualizarContadoresLote(nota.getCompetencia(), nota.getStatus());
+    }
+
+    // Atualiza contadores do lote EM_ANDAMENTO atomicamente (se houver lote ativo para a competência)
+    private void atualizarContadoresLote(String competencia, StatusNota statusFinal) {
+        if (statusFinal == StatusNota.EMITIDA) {
+            loteRepo.incrementarEmitida(competencia);
+        } else if (statusFinal == StatusNota.ERRO || statusFinal == StatusNota.AGUARDANDO_EMISSAO_MANUAL) {
+            loteRepo.incrementarFalha(competencia);
+        }
     }
 
     /**

@@ -8,6 +8,7 @@ import br.com.pinsaude.fiscal.messaging.NfseEmissaoMessage;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoProducer;
 import br.com.pinsaude.fiscal.port.EmissaoNfsePort;
 import br.com.pinsaude.fiscal.port.ResultadoEmissao;
+import br.com.pinsaude.fiscal.repository.LoteEmissaoRepository;
 import br.com.pinsaude.fiscal.repository.NotaFiscalRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +34,7 @@ import static org.mockito.Mockito.*;
 class NfseServiceTest {
 
     @Mock NotaFiscalRepository notaRepo;
+    @Mock LoteEmissaoRepository loteRepo;
     @Mock EmissaoNfsePort emissaoPort;
     @Mock NfseEmissaoProducer producer;
 

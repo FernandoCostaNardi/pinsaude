@@ -1421,6 +1421,75 @@ Notas antigas (antes do EPIC-05.6) terão `tomadorNome = null` — o frontend ex
 
 ---
 
+## Processamento em Lote — Padrões (EPIC-05.7)
+
+### Lock distribuído via banco — existsByCompetenciaAndStatus
+Para garantir que apenas um lote por competência esteja EM_ANDAMENTO, verificar antes de criar:
+```java
+if (loteRepo.existsByCompetenciaAndStatus(competencia, "EM_ANDAMENTO")) {
+    throw new ResponseStatusException(HttpStatus.CONFLICT, "Lote já em andamento...");
+}
+```
+Não usar UNIQUE constraint na tabela pois permite reprocessar a mesma competência (CONCLUIDO → novo lote).
+
+### Contadores atômicos com native SQL + GREATEST()
+Para evitar race condition em processamento paralelo (consumer RabbitMQ processa múltiplas notas em paralelo):
+```java
+@Modifying
+@Query(value = """
+    UPDATE fiscal.lotes_emissao
+       SET emitidas = emitidas + 1,
+           em_processamento = GREATEST(em_processamento - 1, 0)
+     WHERE competencia = :comp AND status = 'EM_ANDAMENTO'
+    """, nativeQuery = true)
+int incrementarEmitida(@Param("comp") String competencia);
+```
+`GREATEST(em_processamento - 1, 0)` evita valores negativos sem lock de aplicação.
+Chamar `loteRepo.incrementarEmitida()` / `incrementarFalha()` no final de `NfseService.processarEmissao()`.
+
+### Finalização lazy do lote
+O status do lote (CONCLUIDO/FALHA) é atualizado on-demand quando `getProgresso()` é chamado:
+```java
+if ("EM_ANDAMENTO".equals(lote.getStatus()) && lote.getTotal() > 0
+        && lote.getEmitidas() + lote.getFalhas() >= lote.getTotal()) {
+    lote.setStatus(lote.getFalhas() > 0 ? "FALHA" : "CONCLUIDO");
+    lote.setConcluidoEm(OffsetDateTime.now());
+    loteRepo.save(lote);
+}
+```
+Evita complexidade de verificar conclusão após cada nota processada.
+
+### Resetar ERRO para PENDENTE no início do lote
+Notas que falharam em lotes anteriores devem ser resetadas antes de enfileirar:
+```java
+if (nota.getStatus() == StatusNota.ERRO) {
+    nota.setStatus(StatusNota.PENDENTE);
+    notaRepo.save(nota);
+}
+producer.enviar(new NfseEmissaoMessage(nota.getId()));
+```
+Garante que o consumer (`processarEmissao()`) aceite a nota (exige status == PENDENTE).
+
+### Job agendado — YearMonth para competência anterior
+```java
+@Scheduled(cron = "0 0 2 1 * *")  // Dia 1 de cada mês às 02:00
+public void executarEmissaoMensal() {
+    String competencia = YearMonth.now().minusMonths(1).toString(); // "2026-05"
+    // ...
+}
+```
+`@EnableScheduling` já está em `FiscalApplication.java`.
+
+### Percentual calculado no DTO — não armazenar no banco
+```java
+double pct = l.getTotal() > 0
+    ? Math.min(100.0, (double)(l.getEmitidas() + l.getFalhas()) / l.getTotal() * 100)
+    : 0.0;
+```
+`Math.min(100.0, ...)` evita exibir >100% em edge cases de race condition.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
