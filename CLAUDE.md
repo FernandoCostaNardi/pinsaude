@@ -1267,6 +1267,110 @@ Ao exibir, usar `valorAliquota × 100` para mostrar em %.
 
 ---
 
+## Integração NFS-e — Padrões e Armadilhas (EPIC-05.4)
+
+### Resilience4j 2.x — `registry.retry("name")` usa config DEFAULT, não a config nomeada
+`RetryRegistry.of(Map.of("minha-config", config))` armazena como NAMED config.
+`retryRegistry.retry("instancia")` cria com DEFAULT config (Resilience4j built-in), ignorando a config nomeada.
+**Solução:** usar a sobrecarga de dois argumentos: `retryRegistry.retry("instancia", "minha-config")`.
+Idem para CircuitBreaker: `cbRegistry.circuitBreaker("instancia", "minha-config")`.
+O mapa de configs deve usar "default" como chave para ser usado automaticamente pelo `retry("name")`.
+
+### Resilience4j 2.x — `enableExponentialBackoff()` não existe; usar `intervalFunction`
+Em Resilience4j 2.x, o builder de `RetryConfig` não tem `enableExponentialBackoff()` nem `exponentialBackoffMultiplier()`.
+**Solução:** usar `intervalFunction(IntervalFunction.ofExponentialBackoff(Duration, multiplier))`:
+```java
+import io.github.resilience4j.core.IntervalFunction;
+RetryConfig config = RetryConfig.custom()
+    .maxAttempts(3)
+    .intervalFunction(IntervalFunction.ofExponentialBackoff(Duration.ofSeconds(1), 2.0))
+    .retryExceptions(IOException.class, HttpServerErrorException.class)
+    .build();
+```
+
+### CircuitBreaker + Retry aninhados — CB vê um evento por chamada (não por tentativa)
+```java
+CircuitBreaker.decorateCheckedSupplier(cb,
+    Retry.decorateCheckedSupplier(retry, () -> doEmitir(dados)));
+```
+O CB registra **um** evento por `decorated.get()` (sucesso ou falha final após retries).
+Com `slidingWindowSize=5, minimumNumberOfCalls=5, failureRateThreshold=100%`: o CB abre após 5 chamadas todas falhando.
+Nas chamadas seguintes, `CallNotPermittedException` é lançada sem executar nenhuma tentativa.
+
+### `onStatus` com `RestClientException` não é capturada pelo Retry
+`RestClient.retrieve().onStatus(pred, (req,res) -> { throw new RestClientException(...); })` —
+`RestClientException` é a superclasse, mas não está na lista de `retryExceptions`.
+**Regra:** não usar `onStatus` customizado quando retries são necessários para 5xx.
+Sem `onStatus`, o `RestClient` lança `HttpServerErrorException` para 5xx automaticamente — que JÁ está no `retryExceptions`.
+
+### ArgumentCaptor com mesmo objeto entre saves — capturar estado no momento da chamada
+Quando o service chama `repo.save(entity)` duas vezes com o mesmo objeto (status muda entre saves),
+o `ArgumentCaptor` captura a REFERÊNCIA, não o estado. Na hora de verificar, o objeto já foi mutado.
+**Solução:** usar `thenAnswer` para capturar o estado imediatamente:
+```java
+List<StatusNota> statusNaSalva = new ArrayList<>();
+when(repo.save(any())).thenAnswer(inv -> {
+    statusNaSalva.add(inv.getArgument(0, MinhaEntidade.class).getStatus());
+    return inv.getArgument(0);
+});
+// depois:
+assertThat(statusNaSalva).containsExactly(StatusNota.PROCESSANDO, StatusNota.EMITIDA);
+```
+
+### Flyway: DROP TYPE falha quando coluna tem DEFAULT que referencia o enum
+`ALTER COLUMN status TYPE varchar(40)` tem sucesso, mas `DROP TYPE status_enum` falha com:
+`cannot drop type status_nota_enum because other objects depend on it — default value for column status`
+**Solução:** remover o DEFAULT antes, converter, remover o tipo, restaurar DEFAULT:
+```sql
+ALTER TABLE t ALTER COLUMN status DROP DEFAULT;
+ALTER TABLE t ALTER COLUMN status TYPE varchar(40) USING status::text;
+DROP TYPE meu_enum;
+ALTER TABLE t ALTER COLUMN status SET DEFAULT 'VALOR';
+ALTER TABLE t ADD CONSTRAINT t_status_check CHECK (status IN (...));
+```
+
+### Spring Cloud Vault — `optional:vault://` sem bootstrap.yml (Config Data API)
+```yaml
+spring:
+  config:
+    import: "optional:vault://"
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://localhost:8200}
+      token: ${VAULT_TOKEN:root}
+      kv:
+        enabled: true
+        application-name: pinsaude/fiscal  # path no Vault KV
+      fail-fast: false  # não falha se Vault indisponível
+```
+Chaves no Vault em `pinsaude/fiscal` (ex: `nfse.api-token`) são injetadas como properties Spring.
+`optional:` evita falha de startup quando Vault não está disponível (dev local).
+
+### RabbitMQ DLQ — rejeição após 3 tentativas de consumer
+Configurar no queue args `x-dead-letter-exchange` + `spring.rabbitmq.listener.simple.retry.*`:
+```yaml
+spring.rabbitmq.listener.simple:
+  default-requeue-rejected: false
+  retry:
+    enabled: true
+    max-attempts: 3
+```
+Após 3 falhas de consumer, a mensagem vai para a DLQ (não reencaminhada).
+Este é o retry de **mensagem** (AMQP), diferente do retry de **HTTP** (Resilience4j).
+
+### Outbox Pattern — save + publish na mesma transação `@Transactional`
+```java
+@Transactional
+public void emitir(Request req) {
+    var nota = notaRepo.save(buildNota(req));
+    producer.enviar(new NfseMessage(nota.getId())); // dentro da mesma transação
+}
+```
+Se o publish falhar (RabbitMQ down), a transação faz rollback e a nota NÃO é salva.
+Se o save falhar, a mensagem NÃO é publicada. Consistência garantida sem saga.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

@@ -1,7 +1,6 @@
 package br.com.pinsaude.fiscal.domain;
 
 import jakarta.persistence.*;
-import org.hibernate.annotations.ColumnTransformer;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -61,8 +60,7 @@ public class NotaFiscal {
     private Long valorLiquidoMedico;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
-    @ColumnTransformer(write = "?::fiscal.status_nota_enum")
+    @Column(name = "status", nullable = false, length = 40)
     private StatusNota status = StatusNota.PENDENTE;
 
     @Column(name = "xml_nota", columnDefinition = "text")

@@ -1,7 +1,6 @@
 package br.com.pinsaude.fiscal.domain;
 
 import jakarta.persistence.*;
-import org.hibernate.annotations.ColumnTransformer;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -26,8 +25,7 @@ public class ParametrosFiscais {
     private String competenciaFim;      // nullable
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "tipo_tributo", nullable = false)
-    @ColumnTransformer(write = "?::fiscal.tipo_tributo_enum")
+    @Column(name = "tipo_tributo", nullable = false, length = 20)
     private TipoTributo tipoTributo;
 
     @Column(name = "valor_aliquota", nullable = false, precision = 8, scale = 4)
