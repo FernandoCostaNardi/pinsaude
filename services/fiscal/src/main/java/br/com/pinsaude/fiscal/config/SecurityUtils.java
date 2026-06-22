@@ -41,7 +41,9 @@ public class SecurityUtils {
     public static String currentCnpjTenant() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth instanceof JwtAuthenticationToken token) {
-            return token.getToken().getClaimAsString("cnpj_id");
+            String raw = token.getToken().getClaimAsString("cnpj_id");
+            // JWT pode conter CNPJ formatado (12.345.678/0001-95); armazenamos apenas os 14 dígitos
+            return raw != null ? raw.replaceAll("[^0-9]", "") : null;
         }
         return null;
     }
