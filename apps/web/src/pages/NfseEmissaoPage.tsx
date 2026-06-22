@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Send, CheckCircle2, Clock, XCircle, AlertTriangle,
-  FileDown, FileText, RotateCcw, ShieldCheck, Loader2,
+  ArrowLeft, CheckCircle2, Clock, XCircle, AlertTriangle,
+  FileDown, FileText, RotateCcw, ShieldCheck, Loader2, Eye,
 } from 'lucide-react'
 import { Spinner, Alert } from '@pinsaude/ui'
 import { useAuth } from '../auth/useAuth'
@@ -11,6 +11,7 @@ import {
   emitirNfse, getNotaStatus, aprovarNota, downloadComAuth, downloadXmlUrl, downloadPdfUrl,
   NotaFiscal, StatusNota,
 } from '../api/nfseApi'
+import { NfsePreviewModal } from './NfsePreviewModal'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -129,6 +130,7 @@ export function NfseEmissaoPage() {
   const [aprovando, setAprovando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [primeiraNotaMedico, setPrimeiraNotaMedico] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -265,6 +267,7 @@ export function NfseEmissaoPage() {
   const currentStatus  = nota?.status ?? null
   const meta           = currentStatus ? STATUS_META[currentStatus] : null
   const isGestaoOrContabil = user?.realm_access?.roles.some(r => r === 'gestao' || r === 'contabil') ?? false
+  const cnpjPrestador  = user?.cnpj_id?.replace(/\D/g, '') ?? null
 
   return (
     <div className="flex-1 overflow-auto bg-ds-surface">
@@ -361,21 +364,23 @@ export function NfseEmissaoPage() {
                 <FileText size={40} className="mx-auto text-ds-light mb-3" />
                 <p className="text-ds-mid font-medium mb-1">NFS-e não emitida</p>
                 <p className="text-ds-light text-sm mb-5">
-                  Clique em "Emitir NFS-e" para iniciar o processo.
+                  Revise o preview da nota antes de enviar para emissão.
                 </p>
-                <button
-                  onClick={handleEmitir}
-                  disabled={emitindo || producao.status !== 'CONFIRMADA'}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white font-semibold text-sm hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {emitindo ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                  {emitindo ? 'Emitindo...' : 'Emitir NFS-e'}
-                </button>
-                {producao.status !== 'CONFIRMADA' && (
-                  <p className="text-xs text-orange-600 mt-2">
-                    Produção precisa estar CONFIRMADA para emitir NFS-e.
-                  </p>
-                )}
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={() => setShowPreview(true)}
+                    disabled={producao.status !== 'CONFIRMADA'}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 border-primary text-primary font-semibold text-sm hover:bg-primary-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Eye size={16} />
+                    Revisar e Emitir
+                  </button>
+                  {producao.status !== 'CONFIRMADA' && (
+                    <p className="text-xs text-orange-600">
+                      Produção precisa estar CONFIRMADA para emitir NFS-e.
+                    </p>
+                  )}
+                </div>
               </div>
             ) : (
               /* Nota existe — mostrar status */
@@ -514,6 +519,20 @@ export function NfseEmissaoPage() {
           )}
         </div>
       </div>
+
+      {/* Modal de preview */}
+      {showPreview && producao && (
+        <NfsePreviewModal
+          producao={producao}
+          cnpjPrestador={cnpjPrestador}
+          onClose={() => setShowPreview(false)}
+          onConfirmar={() => {
+            setShowPreview(false)
+            handleEmitir()
+          }}
+          emitindo={emitindo}
+        />
+      )}
     </div>
   )
 }
