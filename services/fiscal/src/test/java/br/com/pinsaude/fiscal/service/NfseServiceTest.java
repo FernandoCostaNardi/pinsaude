@@ -282,6 +282,35 @@ class NfseServiceTest {
             .hasMessageContaining("409");
     }
 
+    // --- reprocessarNota: ERRO → PENDENTE + enfileira ---
+
+    @Test
+    void reprocessarNota_notaErro_mudaParaPendenteEEnfileira() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        NotaFiscal nota = notaFiscalComId(notaId, StatusNota.ERRO, UUID.randomUUID());
+        when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
+        when(notaRepo.save(any())).thenReturn(nota);
+
+        nfseService.reprocessarNota(notaId);
+
+        assertThat(nota.getStatus()).isEqualTo(StatusNota.PENDENTE);
+        ArgumentCaptor<NfseEmissaoMessage> captor = ArgumentCaptor.forClass(NfseEmissaoMessage.class);
+        verify(producer).enviar(captor.capture());
+        assertThat(captor.getValue().notaId()).isEqualTo(notaId);
+    }
+
+    @Test
+    void reprocessarNota_statusInvalido_lanca409() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        NotaFiscal nota = notaFiscalComId(notaId, StatusNota.EMITIDA, UUID.randomUUID());
+        when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
+
+        assertThatThrownBy(() -> nfseService.reprocessarNota(notaId))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("409");
+        verify(producer, never()).enviar(any());
+    }
+
     // --- listarExcecoes: retorna apenas AGUARDANDO_VALIDACAO ---
 
     @Test

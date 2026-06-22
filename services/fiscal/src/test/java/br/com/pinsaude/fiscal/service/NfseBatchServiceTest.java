@@ -215,6 +215,38 @@ class NfseBatchServiceTest {
         assertThat(lista.get(1).status()).isEqualTo("EM_ANDAMENTO");
     }
 
+    // --- listarErros: retorna notas ERRO e AGUARDANDO_EMISSAO_MANUAL do lote ---
+
+    @Test
+    void listarErros_retornaNotasErroEAguardandoManual() throws Exception {
+        UUID loteId = UUID.randomUUID();
+        LoteEmissao lote = loteComId(loteId, "EM_ANDAMENTO", 10, 7, 2, 1);
+
+        UUID n1Id = UUID.randomUUID();
+        UUID n2Id = UUID.randomUUID();
+        NotaFiscal n1 = notaComStatus(n1Id, StatusNota.ERRO);
+        NotaFiscal n2 = notaComStatus(n2Id, StatusNota.AGUARDANDO_EMISSAO_MANUAL);
+
+        when(loteRepo.findById(loteId)).thenReturn(Optional.of(lote));
+        when(notaRepo.findByCompetenciaAndStatusIn(eq(COMPETENCIA), anyList()))
+            .thenReturn(List.of(n1, n2));
+
+        var result = batchService.listarErros(loteId);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.stream().map(r -> r.status()).toList())
+            .containsExactlyInAnyOrder(StatusNota.ERRO, StatusNota.AGUARDANDO_EMISSAO_MANUAL);
+    }
+
+    @Test
+    void listarErros_loteNaoEncontrado_lanca404() {
+        when(loteRepo.findById(any())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> batchService.listarErros(UUID.randomUUID()))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("404");
+    }
+
     // --- helpers ---
 
     private NotaFiscal notaComStatus(UUID id, StatusNota status) throws Exception {

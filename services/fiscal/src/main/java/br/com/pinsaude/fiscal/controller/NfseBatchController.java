@@ -2,6 +2,7 @@ package br.com.pinsaude.fiscal.controller;
 
 import br.com.pinsaude.fiscal.dto.EmitirLoteRequest;
 import br.com.pinsaude.fiscal.dto.LoteProgressoResponse;
+import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
 import br.com.pinsaude.fiscal.service.NfseBatchService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -56,5 +57,15 @@ public class NfseBatchController {
     @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro')")
     public ResponseEntity<List<LoteProgressoResponse>> listarLotes() {
         return ResponseEntity.ok(batchService.listarLotes());
+    }
+
+    /**
+     * Lista notas ERRO e AGUARDANDO_EMISSAO_MANUAL da competência do lote.
+     * Permite reprocessamento individual via POST /api/nfse/{notaId}/reprocessar.
+     */
+    @GetMapping("/{loteId}/erros")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro')")
+    public ResponseEntity<List<NotaFiscalStatusResponse>> listarErros(@PathVariable UUID loteId) {
+        return ResponseEntity.ok(batchService.listarErros(loteId));
     }
 }

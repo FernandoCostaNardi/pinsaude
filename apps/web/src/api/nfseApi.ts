@@ -136,6 +136,65 @@ export function downloadPdfUrl(notaId: string): string {
   return `/api/nfse/${notaId}/download/pdf`
 }
 
+export async function reprocessarNota(notaId: string): Promise<void> {
+  const r = await fetch(`/api/nfse/${notaId}/reprocessar`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '')
+    throw new Error(txt || `Erro ${r.status}`)
+  }
+}
+
+// ─── Lote (EPIC-05.7 / 05.8) ──────────────────────────────────────────────────
+
+export type StatusLote = 'EM_ANDAMENTO' | 'CONCLUIDO' | 'FALHA'
+
+export interface LoteProgressoResponse {
+  loteId: string
+  competencia: string
+  total: number
+  emitidas: number
+  falhas: number
+  emProcessamento: number
+  status: StatusLote
+  percentualConcluido: number
+  iniciadoEm: string
+  concluidoEm: string | null
+}
+
+export async function emitirLote(competencia: string): Promise<LoteProgressoResponse> {
+  const r = await fetch('/api/nfse/lote/emitir', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ competencia }),
+  })
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '')
+    throw new Error(txt || `Erro ${r.status}`)
+  }
+  return r.json()
+}
+
+export async function getProgressoLote(loteId: string): Promise<LoteProgressoResponse> {
+  const r = await fetch(`/api/nfse/lote/${loteId}/progresso`, { headers: authHeaders() })
+  if (!r.ok) throw new Error(`Erro ao buscar progresso: ${r.status}`)
+  return r.json()
+}
+
+export async function listarLotes(): Promise<LoteProgressoResponse[]> {
+  const r = await fetch('/api/nfse/lote', { headers: authHeaders() })
+  if (!r.ok) throw new Error(`Erro ao listar lotes: ${r.status}`)
+  return r.json()
+}
+
+export async function listarErrosLote(loteId: string): Promise<NotaFiscal[]> {
+  const r = await fetch(`/api/nfse/lote/${loteId}/erros`, { headers: authHeaders() })
+  if (!r.ok) throw new Error(`Erro ao buscar erros do lote: ${r.status}`)
+  return r.json()
+}
+
 export async function downloadComAuth(url: string, filename: string): Promise<void> {
   const r = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } })
   if (!r.ok) throw new Error(`Erro ao baixar arquivo: ${r.status}`)

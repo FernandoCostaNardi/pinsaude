@@ -255,4 +255,22 @@ public class NfseService {
             .map(NotaFiscalStatusResponse::from)
             .toList();
     }
+
+    /**
+     * Reprocessa uma nota individual com status ERRO ou AGUARDANDO_EMISSAO_MANUAL.
+     * Reset para PENDENTE e republica na fila — idempotente pelo consumer.
+     */
+    @Transactional
+    public void reprocessarNota(UUID notaId) {
+        var nota = notaRepo.findById(notaId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+        if (nota.getStatus() != StatusNota.ERRO && nota.getStatus() != StatusNota.AGUARDANDO_EMISSAO_MANUAL) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Apenas notas ERRO ou AGUARDANDO_EMISSAO_MANUAL podem ser reprocessadas (status: " + nota.getStatus() + ")");
+        }
+        nota.setStatus(StatusNota.PENDENTE);
+        notaRepo.save(nota);
+        producer.enviar(new NfseEmissaoMessage(nota.getId()));
+        log.info("NotaFiscal {} reenfileirada para reprocessamento", notaId);
+    }
 }

@@ -123,4 +123,15 @@ public class NfseController {
         nfseService.rejeitar(notaId, body.motivo());
         return ResponseEntity.noContent().build();
     }
+
+    /**
+     * Reprocessa nota individual com status ERRO ou AGUARDANDO_EMISSAO_MANUAL.
+     * Reseta para PENDENTE e republica na fila RabbitMQ.
+     */
+    @PostMapping("/{notaId}/reprocessar")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao')")
+    public ResponseEntity<Void> reprocessar(@PathVariable UUID notaId) {
+        nfseService.reprocessarNota(notaId);
+        return ResponseEntity.noContent().build();
+    }
 }
