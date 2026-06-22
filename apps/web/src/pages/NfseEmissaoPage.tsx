@@ -255,17 +255,23 @@ export function NfseEmissaoPage() {
   }
 
   const { tomador, servico, valorBruto } = producao
-  const taxaPin        = calcPct(valorBruto, 15)           // apenas para cálculo de repasse (EPIC-09)
+  const taxaPin        = calcPct(valorBruto, 15)
   const issRetido      = tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
   const irRetido       = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
   const csllRetido     = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
   const pisRetido      = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
   const cofinsRetido   = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
   const totalRetidos   = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
-  // Valor líquido da nota = o que o tomador efetivamente deposita à Pin
   const valorLiquidoNota = valorBruto - totalRetidos
-  // Repasse ao médico = sempre 85% do bruto (calculado internamente, não aparece na NFS-e)
   const valorRepasse   = valorBruto - taxaPin
+  // Totais brutos de cada tributo — retido ou não, sempre custo fiscal da Pin
+  const issTotal    = calcPct(valorBruto, servico.aliquotaIss)
+  const irTotal     = calcPct(valorBruto, servico.aliquotaIr)
+  const csllTotal   = calcPct(valorBruto, servico.aliquotaCsll)
+  const pisTotal    = calcPct(valorBruto, servico.aliquotaPis)
+  const cofinsTotal = calcPct(valorBruto, servico.aliquotaCofins)
+  const totalTributos = issTotal + irTotal + csllTotal + pisTotal + cofinsTotal
+  const resultadoPin  = taxaPin - totalTributos
 
   const currentStatus  = nota?.status ?? null
   const meta           = currentStatus ? STATUS_META[currentStatus] : null
@@ -344,12 +350,48 @@ export function NfseEmissaoPage() {
             {/* Distribuição interna — para controle de repasse */}
             <div className="bg-ds-surface rounded-xl p-4">
               <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-1">Controle Interno — Repasse</p>
-              <p className="text-[10px] text-ds-light mb-2">Não consta na NFS-e. Processado no módulo de Repasses.</p>
-              <FiscalRow label="Valor Bruto" value={valorBruto} />
-              <FiscalRow label="Taxa Pin Saúde (15%)" value={taxaPin} indent negative />
-              <div className="border-t border-ds-border mt-2 pt-2.5 flex justify-between">
-                <span className="font-semibold text-ds-mid text-sm">Repasse ao Médico (85%)</span>
-                <span className="font-bold text-sm text-green-700">{formatBRL(valorRepasse)}</span>
+              <p className="text-[10px] text-ds-light mb-3">Não consta na NFS-e. Base para o módulo de Repasses (EPIC-09).</p>
+
+              {/* Distribuição do bruto */}
+              <div className="mb-3">
+                <FiscalRow label="Valor Bruto" value={valorBruto} />
+                <FiscalRow label="Repasse ao Médico (85%)" value={valorRepasse} indent />
+                <FiscalRow label="Taxa Pin Saúde (15%)" value={taxaPin} indent />
+              </div>
+
+              {/* Apuração real da Pin — o que sobra dos 15% após tributos */}
+              <div className="border-t border-ds-border pt-3">
+                <p className="text-[10px] font-semibold text-ds-mid uppercase tracking-wide mb-2">Apuração Pin Saúde</p>
+                <FiscalRow label="Pin retém (15% do bruto)" value={taxaPin} />
+                <FiscalRow
+                  label={`ISS (${servico.aliquotaIss}%) ${issRetido > 0 ? '— retido pelo tomador' : '— a recolher via guia'}`}
+                  value={issTotal} indent negative
+                />
+                <FiscalRow
+                  label={`IR (${servico.aliquotaIr}%) ${irRetido > 0 ? '— retido pelo tomador' : '— a recolher via guia'}`}
+                  value={irTotal} indent negative
+                />
+                <FiscalRow
+                  label={`CSLL (${servico.aliquotaCsll}%) ${csllRetido > 0 ? '— retido' : '— via guia'}`}
+                  value={csllTotal} indent negative
+                />
+                <FiscalRow
+                  label={`PIS (${servico.aliquotaPis}%) ${pisRetido > 0 ? '— retido' : '— via guia'}`}
+                  value={pisTotal} indent negative
+                />
+                <FiscalRow
+                  label={`COFINS (${servico.aliquotaCofins}%) ${cofinsRetido > 0 ? '— retido' : '— via guia'}`}
+                  value={cofinsTotal} indent negative
+                />
+                <div className="border-t-2 border-ds-border mt-2 pt-2.5 flex justify-between">
+                  <span className="font-bold text-ds-mid text-sm">Resultado Pin Saúde</span>
+                  <span className={`font-bold text-sm ${resultadoPin >= 0 ? 'text-primary' : 'text-red-600'}`}>
+                    {formatBRL(resultadoPin)}
+                  </span>
+                </div>
+                <p className="text-[10px] text-ds-light mt-2 italic">
+                  O médico sempre recebe 85% do bruto. Os tributos saem dos 15% da Pin, retidos ou não.
+                </p>
               </div>
             </div>
           </div>
