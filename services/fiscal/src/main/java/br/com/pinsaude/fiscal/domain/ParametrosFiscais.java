@@ -36,6 +36,9 @@ public class ParametrosFiscais {
     @Column(name = "descricao")
     private String descricao;
 
+    @Column(name = "created_by", length = 100)
+    private String createdBy;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -57,5 +60,7 @@ public class ParametrosFiscais {
     public void setValorAliquota(BigDecimal v)    { this.valorAliquota = v; }
     public String getDescricao()                  { return descricao; }
     public void setDescricao(String v)            { this.descricao = v; }
+    public String getCreatedBy()                  { return createdBy; }
+    public void setCreatedBy(String v)            { this.createdBy = v; }
     public OffsetDateTime getCreatedAt()          { return createdAt; }
 }
