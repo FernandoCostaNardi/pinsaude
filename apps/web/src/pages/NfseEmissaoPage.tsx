@@ -195,6 +195,7 @@ export function NfseEmissaoPage() {
         competencia, valorBruto, taxaPin,
         valorIss: issRetido, valorIr: irRetido, valorCsll: csllRetido,
         valorPis: pisRetido, valorCofins: cofinsRetido,
+        tomadorNome: tomador.razaoSocialNome ?? null,
       })
       setPrimeiraNotaMedico(res.primeiraNotaMedico)
       await atualizarStatus()

@@ -226,6 +226,78 @@ class NfseServiceTest {
 
     // --- helpers ---
 
+    // --- cancelar: EMITIDA → CANCELADA com motivo ---
+
+    @Test
+    void cancelar_notaEmitida_mudaParaCancelada() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        NotaFiscal nota = notaFiscalComId(notaId, StatusNota.EMITIDA, UUID.randomUUID());
+        when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
+        when(notaRepo.save(any())).thenReturn(nota);
+
+        nfseService.cancelar(notaId, "Duplicidade detectada");
+
+        assertThat(nota.getStatus()).isEqualTo(StatusNota.CANCELADA);
+        assertThat(nota.getObservacoes()).contains("Duplicidade detectada");
+        verify(notaRepo).save(nota);
+    }
+
+    @Test
+    void cancelar_notaNaoEmitida_lanca409() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        NotaFiscal nota = notaFiscalComId(notaId, StatusNota.PENDENTE, UUID.randomUUID());
+        when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
+
+        assertThatThrownBy(() -> nfseService.cancelar(notaId, "motivo"))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("409");
+    }
+
+    // --- rejeitar: AGUARDANDO_VALIDACAO → CANCELADA com motivo ---
+
+    @Test
+    void rejeitar_notaAguardandoValidacao_mudaParaCancelada() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        NotaFiscal nota = notaFiscalComId(notaId, StatusNota.AGUARDANDO_VALIDACAO, UUID.randomUUID());
+        when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
+        when(notaRepo.save(any())).thenReturn(nota);
+
+        nfseService.rejeitar(notaId, "Médico sem vínculo ativo");
+
+        assertThat(nota.getStatus()).isEqualTo(StatusNota.CANCELADA);
+        assertThat(nota.getObservacoes()).contains("Médico sem vínculo ativo");
+        verify(notaRepo).save(nota);
+    }
+
+    @Test
+    void rejeitar_notaEmStatusErrado_lanca409() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        NotaFiscal nota = notaFiscalComId(notaId, StatusNota.PENDENTE, UUID.randomUUID());
+        when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
+
+        assertThatThrownBy(() -> nfseService.rejeitar(notaId, "motivo"))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("409");
+    }
+
+    // --- listarExcecoes: retorna apenas AGUARDANDO_VALIDACAO ---
+
+    @Test
+    void listarExcecoes_retornaApenasAguardandoValidacao() throws Exception {
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        NotaFiscal n1 = notaFiscalComId(id1, StatusNota.AGUARDANDO_VALIDACAO, UUID.randomUUID());
+        NotaFiscal n2 = notaFiscalComId(id2, StatusNota.AGUARDANDO_VALIDACAO, UUID.randomUUID());
+        when(notaRepo.findAllByStatus(StatusNota.AGUARDANDO_VALIDACAO)).thenReturn(List.of(n1, n2));
+
+        var result = nfseService.listarExcecoes();
+
+        assertThat(result).hasSize(2);
+        assertThat(result).allMatch(r -> r.status() == StatusNota.AGUARDANDO_VALIDACAO);
+    }
+
+    // --- helpers ---
+
     private EmitirNfseRequest requestFor(UUID producaoId) {
         return requestFor(producaoId, UUID.randomUUID());
     }
@@ -234,7 +306,7 @@ class NfseServiceTest {
         return new EmitirNfseRequest(
             producaoId, medicoId, UUID.randomUUID(),
             "2026-06", 1000000L, 150000L,
-            50000L, 15000L, 10000L, 6500L, 30000L
+            50000L, 15000L, 10000L, 6500L, 30000L, "Clínica Exemplo"
         );
     }
 

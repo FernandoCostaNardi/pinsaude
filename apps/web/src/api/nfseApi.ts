@@ -24,11 +24,16 @@ export interface NotaFiscal {
   notaId: string
   producaoId: string
   medicoId: string
+  tomadorId: string
+  tomadorNome: string | null
   competencia: string
   status: StatusNota
   numeroNota: string | null
   protocolo: string | null
   observacoes: string | null
+  valorBruto: number | null
+  taxaPin: number | null
+  valorLiquidoMedico: number | null
   emitidaAt: string | null
   createdAt: string
 }
@@ -45,6 +50,7 @@ export interface EmitirNfseRequest {
   valorCsll: number
   valorPis: number
   valorCofins: number
+  tomadorNome: string | null
 }
 
 export interface EmitirNfseResponse {
@@ -90,6 +96,36 @@ export async function aprovarNota(notaId: string): Promise<void> {
     const txt = await r.text().catch(() => '')
     throw new Error(txt || `Erro ${r.status}`)
   }
+}
+
+export async function cancelarNota(notaId: string, motivo: string): Promise<void> {
+  const r = await fetch(`/api/nfse/${notaId}/cancelar`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify({ motivo }),
+  })
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '')
+    throw new Error(txt || `Erro ${r.status}`)
+  }
+}
+
+export async function rejeitarNota(notaId: string, motivo: string): Promise<void> {
+  const r = await fetch(`/api/nfse/${notaId}/rejeitar`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify({ motivo }),
+  })
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '')
+    throw new Error(txt || `Erro ${r.status}`)
+  }
+}
+
+export async function listarExcecoes(): Promise<NotaFiscal[]> {
+  const r = await fetch('/api/nfse/excecoes', { headers: authHeaders() })
+  if (!r.ok) throw new Error(`Erro ao listar exceções: ${r.status}`)
+  return r.json()
 }
 
 export function downloadXmlUrl(notaId: string): string {

@@ -27,6 +27,9 @@ public class NotaFiscal {
     @Column(name = "tomador_id", nullable = false)
     private UUID tomadorId;
 
+    @Column(name = "tomador_nome", length = 200)
+    private String tomadorNome;
+
     @Column(name = "numero_nota", length = 20)
     private String numeroNota;
 
@@ -99,6 +102,8 @@ public class NotaFiscal {
     public void setMedicoId(UUID v)                  { this.medicoId = v; }
     public UUID getTomadorId()                       { return tomadorId; }
     public void setTomadorId(UUID v)                 { this.tomadorId = v; }
+    public String getTomadorNome()                   { return tomadorNome; }
+    public void setTomadorNome(String v)             { this.tomadorNome = v; }
     public String getNumeroNota()                    { return numeroNota; }
     public void setNumeroNota(String v)              { this.numeroNota = v; }
     public String getCompetencia()                   { return competencia; }

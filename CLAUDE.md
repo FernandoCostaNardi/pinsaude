@@ -1371,6 +1371,56 @@ Se o save falhar, a mensagem NÃO é publicada. Consistência garantida sem saga
 
 ---
 
+## Listagem de Notas com Painel Lateral — Padrões (EPIC-05.6)
+
+### Layout de painel lateral deslizante em React/Tailwind
+Para implementar uma tabela + painel lateral que abrem ao clicar numa linha:
+```tsx
+{/* Container body — NUNCA usar overflow-auto aqui */}
+<div className="flex-1 overflow-hidden flex">
+  {/* Conteúdo principal — scroll vertical independente */}
+  <div className="flex-1 overflow-auto p-5">
+    ...table ou cards...
+  </div>
+  {/* Painel lateral — largura fixa, scroll interno próprio */}
+  {selecionado && (
+    <div className="w-96 bg-white border-l border-ds-border flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto">...detalhe...</div>
+      <div className="p-4 border-t">...ações...</div>
+    </div>
+  )}
+</div>
+```
+O `overflow-hidden` no container impede que o conteúdo principal vaze; cada filho controla seu próprio scroll.
+
+### TypeScript: `as const` com objetos de formas diferentes
+`[{ id: 'a', count: 1 }, { id: 'b', count: 2, alert: true }] as const` cria um tipo union onde
+TypeScript não consegue narrowar `alert` (não existe em todos). Solução: mover o valor variant para
+um campo presente em todos os objetos (ex: `badgeCls`):
+```tsx
+// ERRADO — alert não narrowa
+tabs.map(tab => tab.alert && ...)
+
+// CORRETO — campo normalizado presente em todos
+[
+  { id: 'todas',    label: 'Todas',  badgeCls: 'bg-ds-surface text-ds-light' },
+  { id: 'excecoes', label: 'Fila',   badgeCls: 'bg-yellow-100 text-yellow-700' },
+].map(tab => <span className={tab.badgeCls}>...</span>)
+```
+
+### Denormalização de nome do tomador em NFS-e
+`notas_fiscais` armazena `tomador_nome VARCHAR(200)` para exibição em listagens sem join cross-service.
+O nome é passado pelo frontend no momento da emissão via `EmitirNfseRequest.tomadorNome`.
+Notas antigas (antes do EPIC-05.6) terão `tomadorNome = null` — o frontend exibe o UUID truncado nesse caso.
+
+### Endpoints de cancelamento e rejeição com motivo
+- `PUT /api/nfse/{id}/cancelar` — EMITIDA → CANCELADA; requer role `gestao|contabil|financeiro`
+- `PUT /api/nfse/{id}/rejeitar` — AGUARDANDO_VALIDACAO → CANCELADA; requer role `gestao|contabil`
+- Ambos persistem o motivo em `observacoes` com prefixo ("Cancelada: " / "Rejeitada: ")
+- Sem coluna `motivo_cancelamento` separada — `observacoes` já supre para auditoria leve
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

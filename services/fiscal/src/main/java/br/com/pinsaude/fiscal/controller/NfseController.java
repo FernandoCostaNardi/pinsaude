@@ -3,6 +3,7 @@ package br.com.pinsaude.fiscal.controller;
 import br.com.pinsaude.fiscal.config.SecurityUtils;
 import br.com.pinsaude.fiscal.dto.EmitirNfseRequest;
 import br.com.pinsaude.fiscal.dto.EmitirNfseResponse;
+import br.com.pinsaude.fiscal.dto.MotivoRequest;
 import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
 import br.com.pinsaude.fiscal.service.NfseService;
 import jakarta.validation.Valid;
@@ -89,6 +90,37 @@ public class NfseController {
     @PreAuthorize("hasAnyRole('gestao', 'contabil')")
     public ResponseEntity<Void> aprovar(@PathVariable UUID notaId) {
         nfseService.aprovar(notaId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Lista notas na fila de exceções (AGUARDANDO_VALIDACAO — 1ª nota de cada médico).
+     */
+    @GetMapping("/excecoes")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro')")
+    public ResponseEntity<List<NotaFiscalStatusResponse>> listarExcecoes() {
+        return ResponseEntity.ok(nfseService.listarExcecoes());
+    }
+
+    /**
+     * Cancela uma nota emitida com registro de motivo para auditoria.
+     */
+    @PutMapping("/{notaId}/cancelar")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'financeiro')")
+    public ResponseEntity<Void> cancelar(@PathVariable UUID notaId,
+                                         @Valid @RequestBody MotivoRequest body) {
+        nfseService.cancelar(notaId, body.motivo());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Rejeita nota na fila de exceções (AGUARDANDO_VALIDACAO → CANCELADA) com motivo.
+     */
+    @PutMapping("/{notaId}/rejeitar")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil')")
+    public ResponseEntity<Void> rejeitar(@PathVariable UUID notaId,
+                                          @Valid @RequestBody MotivoRequest body) {
+        nfseService.rejeitar(notaId, body.motivo());
         return ResponseEntity.noContent().build();
     }
 }
