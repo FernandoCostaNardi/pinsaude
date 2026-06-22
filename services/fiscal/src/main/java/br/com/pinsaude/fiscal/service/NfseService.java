@@ -4,6 +4,7 @@ import br.com.pinsaude.fiscal.domain.NotaFiscal;
 import br.com.pinsaude.fiscal.domain.StatusNota;
 import br.com.pinsaude.fiscal.dto.EmitirNfseRequest;
 import br.com.pinsaude.fiscal.dto.EmitirNfseResponse;
+import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoMessage;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoProducer;
 import br.com.pinsaude.fiscal.port.DadosNota;
@@ -12,10 +13,13 @@ import br.com.pinsaude.fiscal.port.ResultadoEmissao;
 import br.com.pinsaude.fiscal.repository.NotaFiscalRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -36,18 +40,21 @@ public class NfseService {
     }
 
     /**
-     * Cria NotaFiscal PENDENTE e publica na fila — ambos na mesma transação (outbox pattern).
+     * Cria NotaFiscal e publica na fila — ambos na mesma transação (outbox pattern).
      * Idempotente: mesma producaoId retorna a nota existente sem reemitir.
+     * 1ª nota de um médico: fica em AGUARDANDO_VALIDACAO até aprovação manual.
      */
     @Transactional
     public EmitirNfseResponse emitir(EmitirNfseRequest req, String cnpjTenant) {
-        // Idempotência: mesma producaoId não cria duplicata
         if (notaRepo.existsByProducaoId(req.producaoId())) {
             log.info("Nota já existente para producaoId={}, retornando existente", req.producaoId());
             return notaRepo.findByProducaoId(req.producaoId())
-                .map(EmitirNfseResponse::from)
+                .map(n -> EmitirNfseResponse.from(n, false))
                 .orElseThrow();
         }
+
+        boolean primeiraNotaMedico = !notaRepo.existsByMedicoIdAndStatus(req.medicoId(), StatusNota.EMITIDA);
+        StatusNota statusInicial = primeiraNotaMedico ? StatusNota.AGUARDANDO_VALIDACAO : StatusNota.PENDENTE;
 
         var nota = new NotaFiscal();
         nota.setCnpjIdTenant(cnpjTenant);
@@ -63,15 +70,18 @@ public class NfseService {
         nota.setValorCsll(req.valorCsll() != null ? req.valorCsll() : 0L);
         nota.setValorPis(req.valorPis() != null ? req.valorPis() : 0L);
         nota.setValorCofins(req.valorCofins() != null ? req.valorCofins() : 0L);
-        nota.setStatus(StatusNota.PENDENTE);
+        nota.setStatus(statusInicial);
 
         nota = notaRepo.save(nota);
 
-        // Outbox: enfileira na mesma transação → consistência garantida
-        producer.enviar(new NfseEmissaoMessage(nota.getId()));
+        if (statusInicial == StatusNota.PENDENTE) {
+            producer.enviar(new NfseEmissaoMessage(nota.getId()));
+            log.info("NotaFiscal criada id={} producaoId={} — enfileirada para processamento", nota.getId(), nota.getProducaoId());
+        } else {
+            log.info("NotaFiscal criada id={} producaoId={} — aguardando validação (1ª nota do médico)", nota.getId(), nota.getProducaoId());
+        }
 
-        log.info("NotaFiscal criada id={} producaoId={}", nota.getId(), nota.getProducaoId());
-        return EmitirNfseResponse.from(nota);
+        return EmitirNfseResponse.from(nota, primeiraNotaMedico);
     }
 
     /**
@@ -118,5 +128,70 @@ public class NfseService {
 
         notaRepo.save(nota);
         log.info("NotaFiscal {} atualizada para status={}", notaId, nota.getStatus());
+    }
+
+    /**
+     * Retorna o status atual de uma nota pelo producaoId — usado para polling do frontend.
+     */
+    @Transactional(readOnly = true)
+    public NotaFiscalStatusResponse getStatus(UUID producaoId) {
+        return notaRepo.findByProducaoId(producaoId)
+            .map(NotaFiscalStatusResponse::from)
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND, "Nota não encontrada para producaoId: " + producaoId));
+    }
+
+    /**
+     * Lista todas as notas fiscais ordenadas por criação (mais recentes primeiro).
+     */
+    @Transactional(readOnly = true)
+    public List<NotaFiscalStatusResponse> listar() {
+        return notaRepo.findAllByOrderByCreatedAtDesc()
+            .stream()
+            .map(NotaFiscalStatusResponse::from)
+            .toList();
+    }
+
+    /**
+     * Retorna o XML da nota para download.
+     */
+    @Transactional(readOnly = true)
+    public String getXml(UUID notaId) {
+        var nota = notaRepo.findById(notaId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+        if (nota.getXmlNota() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "XML não disponível — nota ainda não emitida");
+        }
+        return nota.getXmlNota();
+    }
+
+    /**
+     * Retorna o PDF da nota (DANFSE) para download.
+     */
+    @Transactional(readOnly = true)
+    public byte[] getPdf(UUID notaId) {
+        var nota = notaRepo.findById(notaId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+        if (nota.getPdfNota() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "PDF não disponível — nota ainda não emitida");
+        }
+        return nota.getPdfNota();
+    }
+
+    /**
+     * Aprova a 1ª nota de um médico (AGUARDANDO_VALIDACAO → PENDENTE + enfileira).
+     */
+    @Transactional
+    public void aprovar(UUID notaId) {
+        var nota = notaRepo.findById(notaId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+        if (nota.getStatus() != StatusNota.AGUARDANDO_VALIDACAO) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Nota não está aguardando validação (status atual: " + nota.getStatus() + ")");
+        }
+        nota.setStatus(StatusNota.PENDENTE);
+        notaRepo.save(nota);
+        producer.enviar(new NfseEmissaoMessage(nota.getId()));
+        log.info("1ª nota do médico aprovada — enfileirada: notaId={}", notaId);
     }
 }

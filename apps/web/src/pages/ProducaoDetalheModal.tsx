@@ -1,4 +1,5 @@
-import { X, CheckCircle2, Clock, FileText, XCircle, Building2, Stethoscope, Tag, Calendar } from 'lucide-react'
+import { X, CheckCircle2, Clock, FileText, XCircle, Building2, Stethoscope, Tag, Calendar, Send } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Producao } from '../api/producoesApi'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -66,6 +67,7 @@ interface Props {
 }
 
 export function ProducaoDetalheModal({ producao, medicoNome, onClose }: Props) {
+  const navigate = useNavigate()
   if (!producao) return null
 
   const { tomador, servico, valorBruto, status } = producao
@@ -102,6 +104,15 @@ export function ProducaoDetalheModal({ producao, medicoNome, onClose }: Props) {
               <StatusIcon size={12} />
               {statusLabel}
             </span>
+            {status === 'CONFIRMADA' && (
+              <button
+                onClick={() => { onClose(); navigate(`/notas/emitir/${producao.id}`) }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-600 transition-colors"
+              >
+                <Send size={12} />
+                Emitir NFS-e
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-ds-light hover:text-ds-mid hover:bg-ds-input transition-colors"

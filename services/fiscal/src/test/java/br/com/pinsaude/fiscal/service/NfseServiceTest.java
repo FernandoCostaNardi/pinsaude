@@ -15,6 +15,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -23,7 +24,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,7 +40,7 @@ class NfseServiceTest {
 
     private static final String CNPJ_TENANT = "12345678000195";
 
-    // --- Critério 6: idempotência — mesma producaoId não emite duas vezes ---
+    // --- Critério: idempotência — mesma producaoId não emite duas vezes ---
 
     @Test
     void emitir_producaoIdJaExiste_retornaNotaExistente() {
@@ -52,32 +55,89 @@ class NfseServiceTest {
 
         assertThat(response.notaId()).isEqualTo(notaExistenteId);
         assertThat(response.status()).isEqualTo(StatusNota.EMITIDA);
+        assertThat(response.primeiraNotaMedico()).isFalse();
         verify(notaRepo, never()).save(any());
         verify(producer, never()).enviar(any());
     }
 
-    // --- Outbox: nota criada PENDENTE + mensagem enfileirada na mesma transação ---
+    // --- Outbox: médico com notas anteriores emitidas → PENDENTE + enfileirado ---
 
     @Test
-    void emitir_producaoIdNova_criaNovaNota_publicaMensagem() throws Exception {
+    void emitir_medicoComNotasAnteriores_criaNovaNota_publicaMensagem() throws Exception {
         UUID producaoId = UUID.randomUUID();
         UUID notaId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
 
         when(notaRepo.existsByProducaoId(producaoId)).thenReturn(false);
+        when(notaRepo.existsByMedicoIdAndStatus(medicoId, StatusNota.EMITIDA)).thenReturn(true);
         when(notaRepo.save(any())).thenAnswer(inv -> {
             NotaFiscal n = inv.getArgument(0, NotaFiscal.class);
             setId(n, notaId);
             return n;
         });
 
-        EmitirNfseResponse response = nfseService.emitir(requestFor(producaoId), CNPJ_TENANT);
+        EmitirNfseResponse response = nfseService.emitir(requestFor(producaoId, medicoId), CNPJ_TENANT);
 
         assertThat(response.notaId()).isEqualTo(notaId);
         assertThat(response.status()).isEqualTo(StatusNota.PENDENTE);
+        assertThat(response.primeiraNotaMedico()).isFalse();
 
         ArgumentCaptor<NfseEmissaoMessage> msgCaptor = ArgumentCaptor.forClass(NfseEmissaoMessage.class);
         verify(producer).enviar(msgCaptor.capture());
         assertThat(msgCaptor.getValue().notaId()).isEqualTo(notaId);
+    }
+
+    // --- Critério 4: 1ª nota de médico → AGUARDANDO_VALIDACAO, não enfileirada ---
+
+    @Test
+    void emitir_primeiraNota_ficaAguardandoValidacao_semEnfila() throws Exception {
+        UUID producaoId = UUID.randomUUID();
+        UUID notaId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+
+        when(notaRepo.existsByProducaoId(producaoId)).thenReturn(false);
+        when(notaRepo.existsByMedicoIdAndStatus(medicoId, StatusNota.EMITIDA)).thenReturn(false);
+        when(notaRepo.save(any())).thenAnswer(inv -> {
+            NotaFiscal n = inv.getArgument(0, NotaFiscal.class);
+            setId(n, notaId);
+            return n;
+        });
+
+        EmitirNfseResponse response = nfseService.emitir(requestFor(producaoId, medicoId), CNPJ_TENANT);
+
+        assertThat(response.status()).isEqualTo(StatusNota.AGUARDANDO_VALIDACAO);
+        assertThat(response.primeiraNotaMedico()).isTrue();
+        verify(producer, never()).enviar(any());
+    }
+
+    // --- Critério: aprovação de 1ª nota muda para PENDENTE e enfileira ---
+
+    @Test
+    void aprovar_notaAguardandoValidacao_mudaParaPendenteEEnfileira() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        NotaFiscal nota = notaFiscalComId(notaId, StatusNota.AGUARDANDO_VALIDACAO, UUID.randomUUID());
+
+        when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
+        when(notaRepo.save(any())).thenReturn(nota);
+
+        nfseService.aprovar(notaId);
+
+        assertThat(nota.getStatus()).isEqualTo(StatusNota.PENDENTE);
+        ArgumentCaptor<NfseEmissaoMessage> captor = ArgumentCaptor.forClass(NfseEmissaoMessage.class);
+        verify(producer).enviar(captor.capture());
+        assertThat(captor.getValue().notaId()).isEqualTo(notaId);
+    }
+
+    @Test
+    void aprovar_notaEmStatusErrado_lanca409() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        NotaFiscal nota = notaFiscalComId(notaId, StatusNota.EMITIDA, UUID.randomUUID());
+
+        when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
+
+        assertThatThrownBy(() -> nfseService.aprovar(notaId))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("409");
     }
 
     // --- processarEmissao: sucesso — nota marcada EMITIDA com XML e PDF ---
@@ -87,7 +147,6 @@ class NfseServiceTest {
         UUID notaId = UUID.randomUUID();
         NotaFiscal nota = notaFiscalPendente(notaId);
 
-        // Captura o status no momento exato de cada save (mesmo objeto, status muda entre saves)
         List<StatusNota> statusNaSalva = new ArrayList<>();
         when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
         when(notaRepo.save(any())).thenAnswer(inv -> {
@@ -129,7 +188,7 @@ class NfseServiceTest {
         assertThat(statusNaSalva).containsExactly(StatusNota.PROCESSANDO, StatusNota.AGUARDANDO_EMISSAO_MANUAL);
     }
 
-    // --- Critério 7: falha definitiva → nota marcada ERRO ---
+    // --- Critério 5: falha definitiva → nota marcada ERRO com motivo ---
 
     @Test
     void processarEmissao_erroDefinitivo_marcaStatusErro() throws Exception {
@@ -147,6 +206,7 @@ class NfseServiceTest {
         nfseService.processarEmissao(notaId);
 
         assertThat(statusNaSalva).containsExactly(StatusNota.PROCESSANDO, StatusNota.ERRO);
+        assertThat(nota.getObservacoes()).isEqualTo("Falha definitiva após 3 tentativas");
     }
 
     // --- Idempotência no consumer: nota não-PENDENTE é ignorada silenciosamente ---
@@ -167,14 +227,18 @@ class NfseServiceTest {
     // --- helpers ---
 
     private EmitirNfseRequest requestFor(UUID producaoId) {
+        return requestFor(producaoId, UUID.randomUUID());
+    }
+
+    private EmitirNfseRequest requestFor(UUID producaoId, UUID medicoId) {
         return new EmitirNfseRequest(
-            producaoId, UUID.randomUUID(), UUID.randomUUID(),
+            producaoId, medicoId, UUID.randomUUID(),
             "2026-06", 1000000L, 150000L,
             50000L, 15000L, 10000L, 6500L, 30000L
         );
     }
 
-    private NotaFiscal notaFiscalPendente(UUID id) throws Exception {
+    private NotaFiscal notaFiscalPendente(UUID id) {
         return notaFiscalComId(id, StatusNota.PENDENTE, UUID.randomUUID());
     }
 
