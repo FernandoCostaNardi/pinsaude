@@ -17,5 +17,6 @@ public record EmitirNfseRequest(
     Long valorIr,
     Long valorCsll,
     Long valorPis,
-    Long valorCofins
+    Long valorCofins,
+    String tomadorNome
 ) {}

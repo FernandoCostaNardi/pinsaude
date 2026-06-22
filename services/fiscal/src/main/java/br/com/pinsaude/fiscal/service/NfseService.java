@@ -70,6 +70,7 @@ public class NfseService {
         nota.setValorCsll(req.valorCsll() != null ? req.valorCsll() : 0L);
         nota.setValorPis(req.valorPis() != null ? req.valorPis() : 0L);
         nota.setValorCofins(req.valorCofins() != null ? req.valorCofins() : 0L);
+        nota.setTomadorNome(req.tomadorNome());
         nota.setStatus(statusInicial);
 
         nota = notaRepo.save(nota);
@@ -193,5 +194,50 @@ public class NfseService {
         notaRepo.save(nota);
         producer.enviar(new NfseEmissaoMessage(nota.getId()));
         log.info("1ª nota do médico aprovada — enfileirada: notaId={}", notaId);
+    }
+
+    /**
+     * Cancela uma nota emitida (EMITIDA → CANCELADA). Registra motivo em observacoes.
+     */
+    @Transactional
+    public void cancelar(UUID notaId, String motivo) {
+        var nota = notaRepo.findById(notaId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+        if (nota.getStatus() != StatusNota.EMITIDA) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Apenas notas EMITIDAS podem ser canceladas (status atual: " + nota.getStatus() + ")");
+        }
+        nota.setStatus(StatusNota.CANCELADA);
+        nota.setObservacoes("Cancelada: " + motivo);
+        notaRepo.save(nota);
+        log.info("NotaFiscal {} cancelada. Motivo: {}", notaId, motivo);
+    }
+
+    /**
+     * Rejeita uma nota na fila de exceções (AGUARDANDO_VALIDACAO → CANCELADA). Registra motivo.
+     */
+    @Transactional
+    public void rejeitar(UUID notaId, String motivo) {
+        var nota = notaRepo.findById(notaId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+        if (nota.getStatus() != StatusNota.AGUARDANDO_VALIDACAO) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Apenas notas AGUARDANDO_VALIDACAO podem ser rejeitadas (status atual: " + nota.getStatus() + ")");
+        }
+        nota.setStatus(StatusNota.CANCELADA);
+        nota.setObservacoes("Rejeitada: " + motivo);
+        notaRepo.save(nota);
+        log.info("NotaFiscal {} rejeitada (fila de exceções). Motivo: {}", notaId, motivo);
+    }
+
+    /**
+     * Lista notas na fila de exceções (AGUARDANDO_VALIDACAO — 1ª nota de médico pendente validação).
+     */
+    @Transactional(readOnly = true)
+    public List<NotaFiscalStatusResponse> listarExcecoes() {
+        return notaRepo.findAllByStatus(StatusNota.AGUARDANDO_VALIDACAO)
+            .stream()
+            .map(NotaFiscalStatusResponse::from)
+            .toList();
     }
 }

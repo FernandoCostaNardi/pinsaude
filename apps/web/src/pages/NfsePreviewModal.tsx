@@ -28,13 +28,19 @@ function calcPct(valorCentavos: number, aliquotaPct: number): number {
 
 // ─── Linha de valor fiscal ────────────────────────────────────────────────────
 
-function ValorRow({ label, value, destaque }: { label: string; value: number; destaque?: boolean }) {
+function ValorRow({ label, value, destaque, sub }: {
+  label: string; value: number; destaque?: boolean; sub?: boolean
+}) {
   return (
-    <tr className={destaque ? 'bg-primary-50' : ''}>
-      <td className={`px-3 py-1.5 text-xs border-b border-r border-gray-200 ${destaque ? 'font-bold text-primary' : 'text-gray-600'}`}>
+    <tr className={destaque ? 'bg-primary-50' : sub ? 'bg-gray-50' : ''}>
+      <td className={`px-3 py-1.5 text-xs border-b border-r border-gray-200 ${
+        destaque ? 'font-bold text-primary' : sub ? 'pl-5 text-gray-500 italic' : 'text-gray-600'
+      }`}>
         {label}
       </td>
-      <td className={`px-3 py-1.5 text-xs text-right border-b border-gray-200 tabular-nums ${destaque ? 'font-bold text-primary' : 'text-gray-800'}`}>
+      <td className={`px-3 py-1.5 text-xs text-right border-b border-gray-200 tabular-nums ${
+        destaque ? 'font-bold text-primary' : sub ? 'text-gray-500' : 'text-gray-800'
+      }`}>
         {formatBRL(value)}
       </td>
     </tr>
@@ -90,27 +96,38 @@ export function NfsePreviewModal({ producao, cnpjPrestador, onClose, onConfirmar
   }, [producao.tomador.id])
 
   const { servico, valorBruto, competencia } = producao
-  const taxaPin        = calcPct(valorBruto, 15)
-  const valorLiquido   = valorBruto - taxaPin
+
+  // Tributos retidos PELO TOMADOR (esses reduzem o valor que o tomador paga à Pin)
   const issRetido      = producao.tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
   const irRetido       = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
   const csllRetido     = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
   const pisRetido      = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
   const cofinsRetido   = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
-  const totalRetencoes = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
+  const totalRetidos   = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
 
-  const discriminacao = [
-    `PRESTAÇÃO DE SERVIÇOS MÉDICOS - COMPETÊNCIA ${formatCompetencia(competencia).toUpperCase()}`,
-    `SERVIÇO: ${servico.codigoLc116} - ${servico.descricaoPadrao}`,
+  // Valor líquido da NOTA = o que o tomador efetivamente deposita à Pin
+  const valorLiquidoNota = valorBruto - totalRetidos
+
+  // Discriminação — apenas dados fiscais (sem menção à taxa interna da Pin)
+  const linhasDiscriminacao = [
+    `PRESTAÇÃO DE SERVIÇOS MÉDICOS — COMPETÊNCIA ${formatCompetencia(competencia).toUpperCase()}`,
+    `SERVIÇO: ${servico.codigoLc116} — ${servico.descricaoPadrao}`,
     '',
-    `VALOR BRUTO DO SERVIÇO: ${formatBRL(valorBruto)}`,
-    `TAXA DE ADMINISTRAÇÃO PIN SAÚDE (15%): (${formatBRL(taxaPin)})`,
-    `VALOR LÍQUIDO AO MÉDICO: ${formatBRL(valorLiquido)}`,
+    `VALOR DOS SERVIÇOS: ${formatBRL(valorBruto)}`,
     '',
-    totalRetencoes > 0
-      ? `TRIBUTOS RETIDOS PELO TOMADOR: ${formatBRL(totalRetencoes)}`
-      : 'TRIBUTOS: RECOLHIDOS PELA PRESTADORA (SEM RETENÇÃO NA FONTE)',
-  ].filter(Boolean).join('\n')
+    `ISS (${Number(servico.aliquotaIss).toFixed(2)}%): ${formatBRL(calcPct(valorBruto, servico.aliquotaIss))} — ${issRetido > 0 ? 'RETIDO PELO TOMADOR' : 'A RECOLHER PELA PRESTADORA'}`,
+    `IR (${Number(servico.aliquotaIr).toFixed(2)}%): ${formatBRL(calcPct(valorBruto, servico.aliquotaIr))} — ${irRetido > 0 ? 'RETIDO PELO TOMADOR' : 'A RECOLHER PELA PRESTADORA'}`,
+    `CSLL (${Number(servico.aliquotaCsll).toFixed(2)}%): ${formatBRL(calcPct(valorBruto, servico.aliquotaCsll))} — ${csllRetido > 0 ? 'RETIDO PELO TOMADOR' : 'A RECOLHER PELA PRESTADORA'}`,
+    `PIS (${Number(servico.aliquotaPis).toFixed(2)}%): ${formatBRL(calcPct(valorBruto, servico.aliquotaPis))} — ${pisRetido > 0 ? 'RETIDO PELO TOMADOR' : 'A RECOLHER PELA PRESTADORA'}`,
+    `COFINS (${Number(servico.aliquotaCofins).toFixed(2)}%): ${formatBRL(calcPct(valorBruto, servico.aliquotaCofins))} — ${cofinsRetido > 0 ? 'RETIDO PELO TOMADOR' : 'A RECOLHER PELA PRESTADORA'}`,
+    '',
+    totalRetidos > 0
+      ? `TOTAL RETIDO PELO TOMADOR: ${formatBRL(totalRetidos)}`
+      : '',
+    `VALOR LÍQUIDO DA NOTA: ${formatBRL(valorLiquidoNota)}`,
+  ]
+
+  const discriminacao = linhasDiscriminacao.filter(l => l !== null && l !== undefined).join('\n')
 
   const handlePrint = () => {
     const content = documentRef.current?.innerHTML
@@ -252,8 +269,8 @@ export function NfsePreviewModal({ producao, cnpjPrestador, onClose, onConfirmar
                     <Campo label="Inscrição Municipal" value={tomador?.inscricaoMunicipal || '—'} />
                     <Campo label="Razão Social / Nome" value={producao.tomador.razaoSocialNome} fullWidth />
                     <Campo label="Município"           value={producao.tomador.municipio || tomador?.municipio || '—'} />
-                    <Campo label="Retenção Federal"    value={producao.tomador.retencaoFederal ? 'Sim — retém IR, CSLL, PIS, COFINS' : 'Não'} />
-                    <Campo label="Retenção ISS"        value={producao.tomador.retencaoIss ? 'Sim — retém na fonte' : 'Não'} />
+                    <Campo label="Retenção Federal"    value={producao.tomador.retencaoFederal ? 'Sim — retém IR, CSLL, PIS, COFINS' : 'Não (pagos pela prestadora)'} />
+                    <Campo label="Retenção ISS"        value={producao.tomador.retencaoIss ? 'Sim — retém na fonte' : 'Não (pago pela prestadora)'} />
                   </>
                 )}
               </Secao>
@@ -275,7 +292,7 @@ export function NfsePreviewModal({ producao, cnpjPrestador, onClose, onConfirmar
                 </div>
               </div>
 
-              {/* Valores */}
+              {/* Valores e Tributos */}
               <div className="border border-gray-300 rounded overflow-hidden">
                 <div className="bg-primary px-3 py-1">
                   <p className="text-[10px] font-bold text-white uppercase tracking-wider">Valores e Tributos</p>
@@ -291,81 +308,58 @@ export function NfsePreviewModal({ producao, cnpjPrestador, onClose, onConfirmar
                         </tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td className="px-3 py-1.5 text-xs text-gray-600 border-b border-r border-gray-200">
-                            ISS ({Number(servico.aliquotaIss).toFixed(2)}%)
-                            {issRetido > 0 && <span className="ml-1 text-[9px] text-orange-600 font-semibold">RETIDO</span>}
-                          </td>
-                          <td className="px-3 py-1.5 text-xs text-right border-b border-gray-200 tabular-nums text-gray-800">
-                            {formatBRL(calcPct(valorBruto, servico.aliquotaIss))}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-1.5 text-xs text-gray-600 border-b border-r border-gray-200">
-                            IR ({Number(servico.aliquotaIr).toFixed(2)}%)
-                            {irRetido > 0 && <span className="ml-1 text-[9px] text-orange-600 font-semibold">RETIDO</span>}
-                          </td>
-                          <td className="px-3 py-1.5 text-xs text-right border-b border-gray-200 tabular-nums text-gray-800">
-                            {formatBRL(calcPct(valorBruto, servico.aliquotaIr))}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-1.5 text-xs text-gray-600 border-b border-r border-gray-200">
-                            CSLL ({Number(servico.aliquotaCsll).toFixed(2)}%)
-                            {csllRetido > 0 && <span className="ml-1 text-[9px] text-orange-600 font-semibold">RETIDO</span>}
-                          </td>
-                          <td className="px-3 py-1.5 text-xs text-right border-b border-gray-200 tabular-nums text-gray-800">
-                            {formatBRL(calcPct(valorBruto, servico.aliquotaCsll))}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-1.5 text-xs text-gray-600 border-b border-r border-gray-200">
-                            PIS ({Number(servico.aliquotaPis).toFixed(2)}%)
-                            {pisRetido > 0 && <span className="ml-1 text-[9px] text-orange-600 font-semibold">RETIDO</span>}
-                          </td>
-                          <td className="px-3 py-1.5 text-xs text-right border-b border-gray-200 tabular-nums text-gray-800">
-                            {formatBRL(calcPct(valorBruto, servico.aliquotaPis))}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-1.5 text-xs text-gray-600 border-r border-gray-200">
-                            COFINS ({Number(servico.aliquotaCofins).toFixed(2)}%)
-                            {cofinsRetido > 0 && <span className="ml-1 text-[9px] text-orange-600 font-semibold">RETIDO</span>}
-                          </td>
-                          <td className="px-3 py-1.5 text-xs text-right tabular-nums text-gray-800">
-                            {formatBRL(calcPct(valorBruto, servico.aliquotaCofins))}
-                          </td>
-                        </tr>
+                        {([
+                          { nome: 'ISS', aliq: servico.aliquotaIss, retido: issRetido > 0 },
+                          { nome: 'IR',  aliq: servico.aliquotaIr,  retido: irRetido > 0  },
+                          { nome: 'CSLL',aliq: servico.aliquotaCsll,retido: csllRetido > 0 },
+                          { nome: 'PIS', aliq: servico.aliquotaPis, retido: pisRetido > 0  },
+                          { nome: 'COFINS',aliq: servico.aliquotaCofins, retido: cofinsRetido > 0 },
+                        ]).map((t, i, arr) => (
+                          <tr key={t.nome}>
+                            <td className={`px-3 py-1.5 text-xs text-gray-600 border-r border-gray-200 ${i < arr.length - 1 ? 'border-b' : ''}`}>
+                              {t.nome} ({Number(t.aliq).toFixed(2)}%)
+                              {t.retido
+                                ? <span className="ml-1 text-[9px] bg-orange-100 text-orange-700 font-semibold px-1 rounded">RETIDO</span>
+                                : <span className="ml-1 text-[9px] bg-blue-50 text-blue-600 font-semibold px-1 rounded">PRESTADORA</span>
+                              }
+                            </td>
+                            <td className={`px-3 py-1.5 text-xs text-right tabular-nums text-gray-800 ${i < arr.length - 1 ? 'border-b border-gray-200' : ''}`}>
+                              {formatBRL(calcPct(valorBruto, t.aliq))}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
 
-                  {/* Coluna direita: resumo financeiro */}
+                  {/* Coluna direita: resumo da nota */}
                   <div>
                     <table className="w-full">
                       <thead>
                         <tr className="bg-gray-50">
-                          <th className="px-3 py-1.5 text-[9px] font-bold text-gray-500 uppercase text-left border-b border-r border-gray-200">Composição</th>
+                          <th className="px-3 py-1.5 text-[9px] font-bold text-gray-500 uppercase text-left border-b border-r border-gray-200">Resumo da Nota</th>
                           <th className="px-3 py-1.5 text-[9px] font-bold text-gray-500 uppercase text-right border-b border-gray-200">Valor</th>
                         </tr>
                       </thead>
                       <tbody>
-                        <ValorRow label="Valor Bruto dos Serviços" value={valorBruto} />
-                        {totalRetencoes > 0 && (
-                          <ValorRow label={`Deduções / Retenções na Fonte`} value={totalRetencoes} />
+                        <ValorRow label="Valor dos Serviços" value={valorBruto} />
+                        {totalRetidos > 0 && (
+                          <ValorRow label="(−) Retenções pelo Tomador" value={totalRetidos} sub />
                         )}
-                        <ValorRow label="Taxa Pin Saúde (15%)" value={taxaPin} />
-                        <ValorRow label="Valor Líquido ao Médico (85%)" value={valorLiquido} destaque />
+                        <ValorRow
+                          label={totalRetidos > 0 ? 'Valor Líquido da Nota' : 'Valor Líquido da Nota (sem retenções)'}
+                          value={valorLiquidoNota}
+                          destaque
+                        />
                       </tbody>
                     </table>
 
-                    {/* Resumo de repasse */}
-                    <div className="border-t-2 border-primary mx-2 my-2 pt-2">
-                      <div className="bg-green-50 rounded p-2 text-center">
-                        <p className="text-[9px] text-green-700 font-bold uppercase">Repasse Garantido ao Médico</p>
-                        <p className="text-base font-black text-green-800 mt-0.5">{formatBRL(valorLiquido)}</p>
-                        <p className="text-[9px] text-green-600 mt-0.5">Sempre 85% do valor bruto</p>
-                      </div>
+                    <div className="border-t-2 border-primary-100 mx-2 my-2 pt-2">
+                      <p className="text-[9px] text-gray-400 leading-4 px-1">
+                        O Valor Líquido da Nota corresponde ao montante que o tomador deposita ao
+                        prestador após as retenções na fonte. Os tributos marcados como "PRESTADORA"
+                        são de responsabilidade da Pin Saúde e recolhidos via guia própria.
+                      </p>
                     </div>
                   </div>
                 </div>
