@@ -30,6 +30,14 @@
         <dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-test</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.wiremock</groupId><artifactId>wiremock-standalone</artifactId><scope>test</scope></dependency>
         <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>net.jqwik</groupId><artifactId>jqwik</artifactId><version>1.8.3</version><scope>test</scope></dependency>
+
+        <!-- Resilience4j: retry + circuit breaker (programático, sem AOP) -->
+        <dependency><groupId>io.github.resilience4j</groupId><artifactId>resilience4j-circuitbreaker</artifactId><version>2.2.0</version></dependency>
+        <dependency><groupId>io.github.resilience4j</groupId><artifactId>resilience4j-retry</artifactId><version>2.2.0</version></dependency>
+
+        <!-- Spring Cloud Vault: credenciais injetadas do Vault, não do application.yml -->
+        <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-vault-config</artifactId></dependency>
     </dependencies>
 
     <build>

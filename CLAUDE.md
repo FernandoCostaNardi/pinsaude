@@ -1182,6 +1182,195 @@ Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQL
 
 ---
 
+## Motor Fiscal — Cenários e Invariantes (EPIC-05.2)
+
+### Os 4 cenários do motor fiscal
+Derivados dos flags `tomadorPj`, `indicadorRetencaoFederal`, `equiparacaoHospitalar`:
+
+| Cenário | Condição | Retenções |
+|---------|----------|-----------|
+| A | PJ + retencaoFederal=true | IR/CSLL/PIS/COFINS retidos pelo tomador |
+| B | PJ + retencaoFederal=false | Pin paga todos por guia própria |
+| C | PF + equiparacaoHospitalar=true | Nota com tributos zerados |
+| D | PF + equiparacaoHospitalar=false | IR na fonte pelo tomador PF |
+
+**Invariante absoluta:** `valorLiquidoMedico = valorBruto − taxaPin` em QUALQUER cenário.
+Tributos saem dos 15% da Pin, nunca do repasse do médico.
+
+### Hierarquia de alíquotas (fallback)
+```
+1. parametros_fiscais (V2, EPIC-05.1) — per-tributo com competencia_inicio/fim
+   ↓ se não encontrar:
+2. parametro_fiscal (V1, TASK-04.5) — regime geral por vigencia_inicio
+   ↓ se não encontrar:
+3. Zeros (calcula, tributos = 0)
+```
+
+### jqwik — Property-based tests com Mockito
+**Import correto:** `@BeforeProperty` está em `net.jqwik.api.lifecycle.BeforeProperty`, não em `net.jqwik.api`.
+
+**Stubs lenient no setUp:** se um teste individual redefine um stub do `@BeforeEach`, Mockito strict mode lança `UnnecessaryStubbing`. Usar `Mockito.lenient().when(...)` no setUp para stubs que podem ser sobrepostos:
+```java
+org.mockito.Mockito.lenient()
+    .when(repo.findFirst...(anyString(), any()))
+    .thenReturn(Optional.of(padrao));
+```
+
+**Compatibilidade:** jqwik 1.8.3 + Spring Boot 3.2.5 (JUnit 5.10.x) — funciona via SPI sem configuração extra.
+Maven: `<dependency><groupId>net.jqwik</groupId><artifactId>jqwik</artifactId><version>1.8.3</version><scope>test</scope></dependency>`
+
+### ISS vs IBS/CBS na transição 2027
+No cenário A (PJ com retenção), ISS permanece separado mesmo quando `ibsCbsAtivo=true`:
+- `valorIss = aliqIss * valorBruto` (ISS municipal persiste na transição)
+- `valorIr = aliqIbsCbsEfetiva * valorBruto` (IBS/CBS substitui IR/CSLL/PIS/COFINS)
+- `valorCsll = valorPis = valorCofins = 0`
+
+---
+
+## Configuração Fiscal Backoffice — Padrões (EPIC-05.3)
+
+### Tabela `parametros_fiscais` V2 — append-only com sobreposição validada
+Alíquotas por tributo/competência são append-only: nunca atualizar registros existentes.
+O controller faz `requireCnpj()` para POST (requer tenant), mas `listar()` retorna `[]` quando
+não há tenant (gestao superuser) — evita 400 no RBAC test e nas telas cross-tenant.
+
+### `not()` do Mockito não aceita matchers de enum — usar `argThat`
+`not(eq(TipoTributo.ISS))` não compila; usar `argThat(t -> t != TipoTributo.ISS)`.
+Quando o service faz short-circuit (retorna ao achar ISS faltando), o stub do `argThat`
+nunca é invocado — marcar como `lenient()` para evitar `UnnecessaryStubbing`.
+
+### Histórico de alterações por campo (audit trail leve)
+Cada campo alterado em `RegraEquiparacao` gera uma linha em `historico_regras_equiparacao`
+com `campo_alterado`, `valor_anterior`, `valor_novo`, `alterado_por`, `alterado_em`.
+Padrão: compare via `!Objects.equals(antes, depois)` antes de salvar o histórico.
+
+### Entidades sem `setId()` em testes — usar reflection
+JPA entities com `@GeneratedValue` não expõem `setId()`. Para simular o mock do
+`repo.save()` retornando um objeto com ID, usar reflection no `thenAnswer`:
+```java
+when(repo.save(any())).thenAnswer(inv -> {
+    var r = inv.getArgument(0, MinhaEntidade.class);
+    var f = MinhaEntidade.class.getDeclaredField("id");
+    f.setAccessible(true); f.set(r, UUID.randomUUID()); return r;
+});
+```
+
+### Alíquotas no fiscal service são frações decimais (não percentual)
+`0.0200` = 2%. O frontend recebe `valorAliquota` (0.0200) e `valorAliquotaPct` (2.00).
+Na tela, o usuário digita em % e o `createParametroFiscal` divide por 100 antes de enviar.
+Ao exibir, usar `valorAliquota × 100` para mostrar em %.
+
+### Verificação da próxima competência — retorna false quando sem tenant
+`GET /api/fiscal/parametros/verificar-proxima-competencia` retorna
+`{ proximaCompetenciaConfigurada: false }` quando o usuário não tem CNPJ no JWT
+(gestao superuser). O frontend exibe o alerta amarelo nesse caso.
+
+---
+
+## Integração NFS-e — Padrões e Armadilhas (EPIC-05.4)
+
+### Resilience4j 2.x — `registry.retry("name")` usa config DEFAULT, não a config nomeada
+`RetryRegistry.of(Map.of("minha-config", config))` armazena como NAMED config.
+`retryRegistry.retry("instancia")` cria com DEFAULT config (Resilience4j built-in), ignorando a config nomeada.
+**Solução:** usar a sobrecarga de dois argumentos: `retryRegistry.retry("instancia", "minha-config")`.
+Idem para CircuitBreaker: `cbRegistry.circuitBreaker("instancia", "minha-config")`.
+O mapa de configs deve usar "default" como chave para ser usado automaticamente pelo `retry("name")`.
+
+### Resilience4j 2.x — `enableExponentialBackoff()` não existe; usar `intervalFunction`
+Em Resilience4j 2.x, o builder de `RetryConfig` não tem `enableExponentialBackoff()` nem `exponentialBackoffMultiplier()`.
+**Solução:** usar `intervalFunction(IntervalFunction.ofExponentialBackoff(Duration, multiplier))`:
+```java
+import io.github.resilience4j.core.IntervalFunction;
+RetryConfig config = RetryConfig.custom()
+    .maxAttempts(3)
+    .intervalFunction(IntervalFunction.ofExponentialBackoff(Duration.ofSeconds(1), 2.0))
+    .retryExceptions(IOException.class, HttpServerErrorException.class)
+    .build();
+```
+
+### CircuitBreaker + Retry aninhados — CB vê um evento por chamada (não por tentativa)
+```java
+CircuitBreaker.decorateCheckedSupplier(cb,
+    Retry.decorateCheckedSupplier(retry, () -> doEmitir(dados)));
+```
+O CB registra **um** evento por `decorated.get()` (sucesso ou falha final após retries).
+Com `slidingWindowSize=5, minimumNumberOfCalls=5, failureRateThreshold=100%`: o CB abre após 5 chamadas todas falhando.
+Nas chamadas seguintes, `CallNotPermittedException` é lançada sem executar nenhuma tentativa.
+
+### `onStatus` com `RestClientException` não é capturada pelo Retry
+`RestClient.retrieve().onStatus(pred, (req,res) -> { throw new RestClientException(...); })` —
+`RestClientException` é a superclasse, mas não está na lista de `retryExceptions`.
+**Regra:** não usar `onStatus` customizado quando retries são necessários para 5xx.
+Sem `onStatus`, o `RestClient` lança `HttpServerErrorException` para 5xx automaticamente — que JÁ está no `retryExceptions`.
+
+### ArgumentCaptor com mesmo objeto entre saves — capturar estado no momento da chamada
+Quando o service chama `repo.save(entity)` duas vezes com o mesmo objeto (status muda entre saves),
+o `ArgumentCaptor` captura a REFERÊNCIA, não o estado. Na hora de verificar, o objeto já foi mutado.
+**Solução:** usar `thenAnswer` para capturar o estado imediatamente:
+```java
+List<StatusNota> statusNaSalva = new ArrayList<>();
+when(repo.save(any())).thenAnswer(inv -> {
+    statusNaSalva.add(inv.getArgument(0, MinhaEntidade.class).getStatus());
+    return inv.getArgument(0);
+});
+// depois:
+assertThat(statusNaSalva).containsExactly(StatusNota.PROCESSANDO, StatusNota.EMITIDA);
+```
+
+### Flyway: DROP TYPE falha quando coluna tem DEFAULT que referencia o enum
+`ALTER COLUMN status TYPE varchar(40)` tem sucesso, mas `DROP TYPE status_enum` falha com:
+`cannot drop type status_nota_enum because other objects depend on it — default value for column status`
+**Solução:** remover o DEFAULT antes, converter, remover o tipo, restaurar DEFAULT:
+```sql
+ALTER TABLE t ALTER COLUMN status DROP DEFAULT;
+ALTER TABLE t ALTER COLUMN status TYPE varchar(40) USING status::text;
+DROP TYPE meu_enum;
+ALTER TABLE t ALTER COLUMN status SET DEFAULT 'VALOR';
+ALTER TABLE t ADD CONSTRAINT t_status_check CHECK (status IN (...));
+```
+
+### Spring Cloud Vault — `optional:vault://` sem bootstrap.yml (Config Data API)
+```yaml
+spring:
+  config:
+    import: "optional:vault://"
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://localhost:8200}
+      token: ${VAULT_TOKEN:root}
+      kv:
+        enabled: true
+        application-name: pinsaude/fiscal  # path no Vault KV
+      fail-fast: false  # não falha se Vault indisponível
+```
+Chaves no Vault em `pinsaude/fiscal` (ex: `nfse.api-token`) são injetadas como properties Spring.
+`optional:` evita falha de startup quando Vault não está disponível (dev local).
+
+### RabbitMQ DLQ — rejeição após 3 tentativas de consumer
+Configurar no queue args `x-dead-letter-exchange` + `spring.rabbitmq.listener.simple.retry.*`:
+```yaml
+spring.rabbitmq.listener.simple:
+  default-requeue-rejected: false
+  retry:
+    enabled: true
+    max-attempts: 3
+```
+Após 3 falhas de consumer, a mensagem vai para a DLQ (não reencaminhada).
+Este é o retry de **mensagem** (AMQP), diferente do retry de **HTTP** (Resilience4j).
+
+### Outbox Pattern — save + publish na mesma transação `@Transactional`
+```java
+@Transactional
+public void emitir(Request req) {
+    var nota = notaRepo.save(buildNota(req));
+    producer.enviar(new NfseMessage(nota.getId())); // dentro da mesma transação
+}
+```
+Se o publish falhar (RabbitMQ down), a transação faz rollback e a nota NÃO é salva.
+Se o save falhar, a mensagem NÃO é publicada. Consistência garantida sem saga.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

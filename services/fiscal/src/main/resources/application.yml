@@ -19,10 +19,45 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/pinsaude
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2.0
+  # Credenciais do agregador fiscal lidas do Vault (EPIC-05.4)
+  # Vault injeta nfse.api-token e nfse.base-url no contexto Spring
+  config:
+    import: "optional:vault://"
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://localhost:8200}
+      token: ${VAULT_TOKEN:root}
+      kv:
+        enabled: true
+        application-name: pinsaude/fiscal
+      fail-fast: false
+
 server:
   port: 8081
+
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+
+# Configuração do agregador fiscal (NFS-e)
+# Valores sobrescritos pelo Vault em produção — env vars para desenvolvimento local
+nfse:
+  enabled: ${NFSE_ENABLED:false}
+  api-token: ${NFSE_API_TOKEN:dev-mock-token}
+  base-url: ${NFSE_BASE_URL:https://api.plugnotas.com.br}
+  timeout-segundos: ${NFSE_TIMEOUT_SEGUNDOS:30}
