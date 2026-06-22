@@ -10,10 +10,11 @@ public record EmitirNfseResponse(
     UUID producaoId,
     StatusNota status,
     String numeroNota,
-    String competencia
+    String competencia,
+    boolean primeiraNotaMedico
 ) {
-    public static EmitirNfseResponse from(NotaFiscal n) {
+    public static EmitirNfseResponse from(NotaFiscal n, boolean primeiraNotaMedico) {
         return new EmitirNfseResponse(n.getId(), n.getProducaoId(), n.getStatus(),
-                                      n.getNumeroNota(), n.getCompetencia());
+                                      n.getNumeroNota(), n.getCompetencia(), primeiraNotaMedico);
     }
 }

@@ -14,5 +14,9 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, UUID> {
 
     boolean existsByProducaoId(UUID producaoId);
 
+    boolean existsByMedicoIdAndStatus(UUID medicoId, StatusNota status);
+
     List<NotaFiscal> findAllByStatus(StatusNota status);
+
+    List<NotaFiscal> findAllByOrderByCreatedAtDesc();
 }
