@@ -87,7 +87,7 @@ export interface MedicoRequest {
   especialidade: string
   email: string
   telefone: string
-  empresaId: string
+  empresaId?: string
 }
 
 export interface DadosBancariosMedicoRequest {

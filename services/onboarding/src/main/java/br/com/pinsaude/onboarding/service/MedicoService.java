@@ -122,8 +122,10 @@ public class MedicoService {
         medico.setStatus(StatusMedico.RASCUNHO);
         medico = medicoRepo.save(medico);
 
-        var vinculoId = new VinculoMedicoEmpresaId(medico.getId(), req.empresaId());
-        vinculoRepo.save(new VinculoMedicoEmpresa(vinculoId, StatusSocietario.ATIVO));
+        if (req.empresaId() != null) {
+            var vinculoId = new VinculoMedicoEmpresaId(medico.getId(), req.empresaId());
+            vinculoRepo.save(new VinculoMedicoEmpresa(vinculoId, StatusSocietario.ATIVO));
+        }
 
         checklistRepo.save(new ChecklistConduta(medico.getId()));
         registrarHistorico(medico.getId(), TipoAcaoMedico.CADASTRO, "Médico cadastrado no sistema");
