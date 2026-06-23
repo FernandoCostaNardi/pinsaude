@@ -4,6 +4,7 @@ import br.com.pinsaude.fiscal.domain.LoteEmissao;
 import br.com.pinsaude.fiscal.domain.NotaFiscal;
 import br.com.pinsaude.fiscal.domain.StatusNota;
 import br.com.pinsaude.fiscal.dto.LoteProgressoResponse;
+import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoMessage;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoProducer;
 import br.com.pinsaude.fiscal.repository.LoteEmissaoRepository;
@@ -108,6 +109,23 @@ public class NfseBatchService {
     public List<LoteProgressoResponse> listarLotes() {
         return loteRepo.findAllByOrderByIniciadoEmDesc().stream()
             .map(LoteProgressoResponse::from)
+            .toList();
+    }
+
+    /**
+     * Lista notas ERRO e AGUARDANDO_EMISSAO_MANUAL da competência do lote.
+     * Usado pelo frontend para exibir a lista de erros com opção de reprocessamento.
+     */
+    @Transactional(readOnly = true)
+    public List<NotaFiscalStatusResponse> listarErros(UUID loteId) {
+        LoteEmissao lote = loteRepo.findById(loteId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Lote não encontrado: " + loteId));
+        return notaRepo.findByCompetenciaAndStatusIn(
+                lote.getCompetencia(),
+                List.of(StatusNota.ERRO, StatusNota.AGUARDANDO_EMISSAO_MANUAL))
+            .stream()
+            .map(NotaFiscalStatusResponse::from)
             .toList();
     }
 }

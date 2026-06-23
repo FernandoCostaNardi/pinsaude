@@ -10,7 +10,7 @@ import { Button, Spinner, Alert } from '@pinsaude/ui'
 import {
   Medico, StatusMedico, StatusJuntaComercial, StatusContrato,
   TipoDocumentoMedico, StatusValidacaoDocumento, HistoricoMedico,
-  medicosApi,
+  VinculoEmpresa, medicosApi,
 } from '../api/medicosApi'
 import { empresasApi, Empresa } from '../api/empresasApi'
 import { MedicoWizardModal, maskPixKey } from '../components/MedicoWizardModal'
@@ -73,11 +73,12 @@ const CONTRATO_CONFIG: Record<StatusContrato, { label: string; cls: string }> = 
 // ─── Documento row (inline no perfil) ────────────────────────────────────────
 
 const DOC_TIPO_INFO: Record<TipoDocumentoMedico, { label: string; Icon: React.ElementType }> = {
-  CRM:        { label: 'Registro CRM',             Icon: Award },
-  DIPLOMA:    { label: 'Diploma Médico',            Icon: GraduationCap },
-  IDENTIDADE: { label: 'Identidade (CNH ou RG)',    Icon: CreditCard },
-  RESIDENCIA: { label: 'Comprovante de Residência', Icon: Home },
-  CONTRATO:   { label: 'Contrato',                  Icon: FileText },
+  CRM:           { label: 'Registro CRM',               Icon: Award         },
+  DIPLOMA:       { label: 'Diploma Médico',              Icon: GraduationCap },
+  IDENTIDADE:    { label: 'Identidade (CNH ou RG)',      Icon: CreditCard    },
+  RESIDENCIA:    { label: 'Comprovante de Residência',   Icon: Home          },
+  CONTRATO:      { label: 'Contrato',                    Icon: FileText      },
+  ESPECIALIDADES:{ label: 'Certificado de Especialidades', Icon: BookOpen   },
 }
 const DOC_STATUS_CONFIG: Record<StatusValidacaoDocumento, { label: string; cls: string; Icon: React.ElementType }> = {
   PENDENTE:  { label: 'Aguardando', cls: 'bg-gray-100 text-gray-500',  Icon: Clock },
@@ -237,6 +238,13 @@ export function MedicoPerfilPage() {
   const [error,     setError]     = useState<string | null>(null)
   const [tab,       setTab]       = useState<Tab>('dados')
 
+  // Multi-empresa (gestão)
+  const [todasEmpresas,       setTodasEmpresas]       = useState<Empresa[]>([])
+  const [addEmpresaId,        setAddEmpresaId]        = useState('')
+  const [addingVinculo,       setAddingVinculo]       = useState(false)
+  const [removingVinculoId,   setRemovingVinculoId]   = useState<string | null>(null)
+  const [vinculoError,        setVinculoError]        = useState<string | null>(null)
+
   const [showEdit,         setShowEdit]         = useState(false)
   const [inativando,       setInativando]       = useState(false)
   const [showDocs,         setShowDocs]         = useState(false)
@@ -258,8 +266,13 @@ export function MedicoPerfilPage() {
         setHistorico(h)
         if (m.empresaId) {
           empresasApi.listar(0, 200)
-            .then(p => setEmpresa(p.content.find(e => e.id === m.empresaId) ?? null))
+            .then(p => {
+              setEmpresa(p.content.find(e => e.id === m.empresaId) ?? null)
+              if (isGestao) setTodasEmpresas(p.content)
+            })
             .catch(() => {})
+        } else if (isGestao) {
+          empresasApi.listar(0, 200).then(p => setTodasEmpresas(p.content)).catch(() => {})
         }
       })
       .catch(() => setError('Erro ao carregar dados do médico'))
@@ -328,6 +341,35 @@ export function MedicoPerfilPage() {
     }
   }
 
+  async function handleAdicionarVinculo() {
+    if (!medico || !addEmpresaId) return
+    setAddingVinculo(true)
+    setVinculoError(null)
+    try {
+      const novoVinculo = await medicosApi.adicionarVinculo(medico.id, addEmpresaId)
+      setMedico(m => m ? { ...m, empresas: [...(m.empresas ?? []), novoVinculo] } : m)
+      setAddEmpresaId('')
+    } catch (e) {
+      setVinculoError(e instanceof Error ? e.message : 'Erro ao adicionar vínculo')
+    } finally {
+      setAddingVinculo(false)
+    }
+  }
+
+  async function handleRemoverVinculo(empresaId: string) {
+    if (!medico) return
+    setRemovingVinculoId(empresaId)
+    setVinculoError(null)
+    try {
+      await medicosApi.removerVinculo(medico.id, empresaId)
+      setMedico(m => m ? { ...m, empresas: (m.empresas ?? []).filter(v => v.empresaId !== empresaId) } : m)
+    } catch (e) {
+      setVinculoError(e instanceof Error ? e.message : 'Erro ao remover vínculo')
+    } finally {
+      setRemovingVinculoId(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-32">
@@ -386,11 +428,17 @@ export function MedicoPerfilPage() {
                 {medico.especialidade && (
                   <span className="text-sm text-ds-mid">· {medico.especialidade}</span>
                 )}
-                {empresa && (
+                {(medico.empresas && medico.empresas.length > 0) ? (
+                  medico.empresas.map(v => (
+                    <span key={v.empresaId} className="text-sm text-ds-mid flex items-center gap-1">
+                      · <Building2 size={12} /> {v.razaoSocial}
+                    </span>
+                  ))
+                ) : empresa ? (
                   <span className="text-sm text-ds-mid flex items-center gap-1">
                     · <Building2 size={12} /> {empresa.razaoSocial}
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
 
@@ -453,16 +501,82 @@ export function MedicoPerfilPage() {
         {tab === 'dados' && (
           <div className="p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              <InfoRow label="Nome completo"   value={medico.nome} />
-              <InfoRow label="CPF"             value={medico.cpf ? formatCpf(medico.cpf) : '—'} />
-              <InfoRow label="CRM"             value={`${medico.crm} / ${medico.crmUf.trim()}`} />
-              <InfoRow label="Especialidade"   value={medico.especialidade} />
-              <InfoRow label="E-mail"          value={medico.email} />
-              <InfoRow label="Telefone"        value={medico.telefone} />
-              <InfoRow label="Empresa vinculada" value={empresa?.razaoSocial} />
-              <InfoRow label="Status"          value={STATUS_LABELS[medico.status]} />
-              <InfoRow label="Cadastrado em"   value={formatDate(medico.createdAt)} />
+              <InfoRow label="Nome completo"      value={medico.nome} />
+              <InfoRow label="CPF"                value={medico.cpf ? formatCpf(medico.cpf) : '—'} />
+              <InfoRow label="CRM"                value={`${medico.crm} / ${medico.crmUf.trim()}`} />
+              <InfoRow label="Especialidade"      value={medico.especialidade} />
+              <InfoRow label="E-mail"             value={medico.email} />
+              <InfoRow label="Telefone"           value={medico.telefone} />
+              <InfoRow label="Status"             value={STATUS_LABELS[medico.status]} />
+              <InfoRow label="Cadastrado em"      value={formatDate(medico.createdAt)} />
               <InfoRow label="Última atualização" value={formatDate(medico.updatedAt)} />
+            </div>
+
+            {/* Empresas Associadas */}
+            <div className="mt-6 pt-6 border-t border-ds-border">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-ds-mid uppercase tracking-wide">Empresas Associadas</p>
+                <span className="text-xs text-ds-light">{(medico.empresas ?? []).length} empresa(s)</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {(medico.empresas ?? [empresa ? { empresaId: medico.empresaId ?? '', cnpj: '', razaoSocial: empresa.razaoSocial, createdAt: '' } as VinculoEmpresa : null]).filter(Boolean).map(v => (
+                  <div key={(v as VinculoEmpresa).empresaId}
+                    className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-ds-input border border-ds-border">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Building2 size={15} className="text-primary shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-ds-text truncate">{(v as VinculoEmpresa).razaoSocial}</p>
+                        {(v as VinculoEmpresa).cnpj && (
+                          <p className="text-xs text-ds-light">{(v as VinculoEmpresa).cnpj}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {(v as VinculoEmpresa).statusSocietario && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-50 text-green-700 border border-green-200">
+                          {(v as VinculoEmpresa).statusSocietario}
+                        </span>
+                      )}
+                      {isGestao && (medico.empresas ?? []).length > 1 && (
+                        <button
+                          onClick={() => handleRemoverVinculo((v as VinculoEmpresa).empresaId)}
+                          disabled={removingVinculoId === (v as VinculoEmpresa).empresaId}
+                          className="p-1 rounded text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                          title="Remover vínculo"
+                        >
+                          <XCircle size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {isGestao && (
+                <div className="mt-3 flex gap-2">
+                  <select
+                    value={addEmpresaId}
+                    onChange={e => setAddEmpresaId(e.target.value)}
+                    className="flex-1 text-sm border border-ds-border rounded-lg px-3 py-1.5 bg-white text-ds-text focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
+                  >
+                    <option value="">Adicionar empresa...</option>
+                    {todasEmpresas
+                      .filter(e => !(medico.empresas ?? []).some(v => v.empresaId === e.id))
+                      .map(e => (
+                        <option key={e.id} value={e.id}>{e.razaoSocial}</option>
+                      ))
+                    }
+                  </select>
+                  <Button
+                    size="sm"
+                    onClick={handleAdicionarVinculo}
+                    disabled={!addEmpresaId || addingVinculo}
+                  >
+                    {addingVinculo ? 'Adicionando...' : 'Adicionar'}
+                  </Button>
+                </div>
+              )}
+              {vinculoError && <p className="mt-2 text-xs text-red-600">{vinculoError}</p>}
             </div>
 
             {/* Checklist */}

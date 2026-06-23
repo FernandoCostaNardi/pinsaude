@@ -7,7 +7,7 @@ import {
   Medico, MedicoRequest, DadosBancariosMedicoRequest,
   TipoPix, TipoRecebimento, TipoConta, medicosApi,
 } from '../api/medicosApi'
-import { Empresa, empresasApi } from '../api/empresasApi'
+
 import { isValidCpf, formatCpf } from '../utils/cpf'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ interface Props {
 
 const emptyMedico = (): MedicoRequest => ({
   cpf: '', nome: '', crm: '', crmUf: '', especialidade: '',
-  email: '', telefone: '', empresaId: '',
+  email: '', telefone: '',
 })
 
 const emptyBank = (): BankForm => ({
@@ -100,11 +100,6 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
   const [errors, setErrors]         = useState<Partial<Record<string, string>>>({})
   const [apiError, setApiError]     = useState<string | null>(null)
   const [loading, setLoading]       = useState(false)
-  const [empresas, setEmpresas]     = useState<Empresa[]>([])
-
-  useEffect(() => {
-    empresasApi.listar(0, 1000).then(p => setEmpresas(p.content)).catch(() => {})
-  }, [])
 
   useEffect(() => {
     if (medico) {
@@ -116,7 +111,6 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
         especialidade: medico.especialidade ?? '',
         email:         medico.email ?? '',
         telefone:      medico.telefone ?? '',
-        empresaId:     medico.empresaId ?? '',
       })
       const db = medico.dadosBancarios
       setBank({
@@ -160,7 +154,6 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
     if (s === 1) {
       if (!form.crm.trim()) errs.crm = 'Obrigatório'
       if (!form.crmUf)       errs.crmUf = 'Obrigatório'
-      if (!form.empresaId)   errs.empresaId = 'Obrigatório'
     }
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -238,7 +231,6 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
             <StepDadosProfissionais
               form={form}
               errors={errors}
-              empresas={empresas}
               onChange={setField}
             />
           )}
@@ -399,17 +391,15 @@ function StepDadosPessoais({
 function StepDadosProfissionais({
   form,
   errors,
-  empresas,
   onChange,
 }: {
   form: MedicoRequest
   errors: Partial<Record<string, string>>
-  empresas: Empresa[]
   onChange: <K extends keyof MedicoRequest>(k: K, v: MedicoRequest[K]) => void
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-gray-500">Informe os dados profissionais e o vínculo com a empresa.</p>
+      <p className="text-sm text-gray-500">Informe os dados profissionais do médico.</p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Input
           label="CRM *"
@@ -435,19 +425,6 @@ function StepDadosProfissionais({
             error={errors.especialidade}
             placeholder="Ex: Cardiologia"
           />
-        </div>
-        <div className="sm:col-span-2">
-          <SelectField
-            label="Empresa vinculada *"
-            value={form.empresaId}
-            onChange={v => onChange('empresaId', v)}
-            error={errors.empresaId}
-            placeholder="Selecione a empresa"
-            >
-            {empresas.map(e => (
-              <option key={e.id} value={e.id}>{e.razaoSocial}</option>
-            ))}
-          </SelectField>
         </div>
       </div>
     </div>

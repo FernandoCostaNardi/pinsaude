@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   FileText, CheckCircle2, Clock, XCircle, AlertTriangle, ShieldCheck,
   Loader2, Search, RefreshCw, Download, X, ChevronRight, Send,
-  Ban, Filter, FileX, ThumbsUp, ThumbsDown,
+  Ban, FileX, ThumbsUp, ThumbsDown,
 } from 'lucide-react'
 import { Spinner, Alert } from '@pinsaude/ui'
 import {
@@ -32,6 +32,32 @@ function formatDate(iso: string | null): string {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+// ─── Stat card (igual ao design de EmpresasPage) ─────────────────────────────
+
+interface StatCardProps {
+  icon: React.ElementType
+  label: string
+  value: number
+  sub: string
+  iconBg: string
+  iconColor: string
+}
+
+function StatCard({ icon: Icon, label, value, sub, iconBg, iconColor }: StatCardProps) {
+  return (
+    <div className="bg-white rounded-xl border border-ds-border shadow-sm p-4 flex items-center gap-4">
+      <div className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
+        <Icon size={20} className={iconColor} />
+      </div>
+      <div>
+        <p className="text-2xl font-black text-ds-text leading-none">{value}</p>
+        <p className="text-xs font-semibold text-ds-mid mt-0.5">{label}</p>
+        <p className="text-[11px] text-ds-light">{sub}</p>
+      </div>
+    </div>
+  )
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -428,269 +454,314 @@ export function NotasPage() {
 
   // ─── Render ───────────────────────────────────────────────────────────────────
 
+  const temFiltro = !!(q || filtroStatus || filtroCompInicio || filtroCompFim)
+
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
       {/* Header */}
-      <div className="bg-white border-b border-ds-border px-6 py-5 shrink-0">
+      <div className="bg-white border-b border-ds-border px-6 py-4 shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-ds-mid">Notas Fiscais</h1>
-            <p className="text-sm text-ds-light mt-0.5">NFS-e emitidas e fila de exceções</p>
+            <h1 className="text-xl font-bold text-ds-text">Notas Fiscais</h1>
+            <p className="text-xs text-ds-light mt-0.5">NFS-e emitidas e fila de exceções</p>
           </div>
           <button
             onClick={carregar}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-ds-border text-ds-light hover:text-ds-mid hover:bg-ds-surface transition-colors text-sm"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-ds-border text-ds-light hover:text-ds-mid hover:bg-ds-input transition-colors text-sm"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Atualizar
           </button>
         </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-3 mt-4">
-          {[
-            { label: 'Total',        value: stats.total,    cls: 'text-ds-mid'    },
-            { label: 'Emitidas',     value: stats.emitidas, cls: 'text-green-700' },
-            { label: 'Em andamento', value: stats.fila,     cls: 'text-primary'   },
-            { label: 'Atenção',      value: stats.atencao,  cls: 'text-orange-600'},
-          ].map(({ label, value, cls }) => (
-            <div key={label} className="bg-ds-surface rounded-xl px-4 py-3 text-center">
-              <p className={`text-xl font-bold ${cls}`}>{value}</p>
-              <p className="text-xs text-ds-light mt-0.5">{label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Abas */}
-        <div className="flex gap-1 mt-4 border-b border-ds-border">
-          {([
-            { id: 'todas' as AbaAtiva,    label: 'Todas',            count: notas.length,     badgeCls: 'bg-ds-surface text-ds-light'       },
-            { id: 'excecoes' as AbaAtiva, label: 'Fila de Exceções', count: excecoes.length,  badgeCls: 'bg-yellow-100 text-yellow-700' },
-          ]).map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => { setAba(tab.id); setNotaSelecionada(null) }}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                aba === tab.id
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-ds-light hover:text-ds-mid'
-              }`}
-            >
-              {tab.label}
-              {tab.count > 0 && (
-                <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${tab.badgeCls}`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Body */}
       <div className="flex-1 overflow-hidden flex">
-        {/* Conteúdo principal */}
-        <div className="flex-1 overflow-auto p-5 space-y-4">
-          {erro && <Alert variant="error">{erro}</Alert>}
+        {/* Scrollable main area */}
+        <div className="flex-1 overflow-auto p-5 space-y-5">
+
+          {/* Stats cards */}
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+            <StatCard
+              icon={FileText}
+              label="Total de Notas"
+              value={stats.total}
+              sub="registradas no sistema"
+              iconBg="bg-primary-50"
+              iconColor="text-primary"
+            />
+            <StatCard
+              icon={CheckCircle2}
+              label="Emitidas"
+              value={stats.emitidas}
+              sub="com sucesso"
+              iconBg="bg-green-50"
+              iconColor="text-green-600"
+            />
+            <StatCard
+              icon={Clock}
+              label="Em andamento"
+              value={stats.fila}
+              sub="na fila de emissão"
+              iconBg="bg-blue-50"
+              iconColor="text-blue-600"
+            />
+            <StatCard
+              icon={AlertTriangle}
+              label="Atenção"
+              value={stats.atencao}
+              sub="requerem ação"
+              iconBg="bg-orange-50"
+              iconColor="text-orange-500"
+            />
+          </div>
+
+          {erro    && <Alert variant="error">{erro}</Alert>}
           {acaoErro && <Alert variant="error">{acaoErro}</Alert>}
 
-          {/* ─── ABA TODAS ─── */}
-          {aba === 'todas' && (
-            <>
-              {/* Filtros */}
-              <div className="flex flex-wrap gap-2 items-center">
-                <div className="relative flex-1 min-w-48">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-light" />
-                  <input
-                    type="text"
-                    placeholder="Tomador, número, observação..."
-                    value={q}
-                    onChange={e => setQ(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-ds-border bg-white text-sm text-ds-mid placeholder:text-ds-light focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Filter size={13} className="text-ds-light" />
+          {/* Main card */}
+          <div className="bg-white rounded-xl border border-ds-border shadow-sm overflow-hidden">
+
+            {/* Tab bar */}
+            <div className="flex items-center px-5 border-b border-ds-border">
+              {([
+                { id: 'todas'    as AbaAtiva, label: 'Todas',            count: notas.length,    badgeCls: 'bg-ds-surface text-ds-light'   },
+                { id: 'excecoes' as AbaAtiva, label: 'Fila de Exceções', count: excecoes.length, badgeCls: 'bg-yellow-100 text-yellow-700'  },
+              ]).map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => { setAba(tab.id); setNotaSelecionada(null) }}
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                    aba === tab.id
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-ds-light hover:text-ds-mid'
+                  }`}
+                >
+                  {tab.label}
+                  {tab.count > 0 && (
+                    <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${tab.badgeCls}`}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* ─── ABA TODAS ─── */}
+            {aba === 'todas' && (
+              <>
+                {/* Filter bar */}
+                <div className="flex flex-wrap gap-3 items-center px-5 py-3 border-b border-ds-border bg-ds-input">
+                  <div className="relative flex-1 min-w-[180px] max-w-xs">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-light pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Tomador, número, observação..."
+                      value={q}
+                      onChange={e => setQ(e.target.value)}
+                      className="block w-full pl-9 pr-3 py-1.5 text-sm border border-ds-border rounded-lg bg-white text-ds-text placeholder-ds-light focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
+                    />
+                  </div>
                   <select
                     value={filtroStatus}
                     onChange={e => setFiltroStatus(e.target.value as StatusNota | '')}
-                    className="px-3 py-2 rounded-lg border border-ds-border bg-white text-sm text-ds-mid focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    className="py-1.5 px-3 text-sm border border-ds-border rounded-lg bg-white text-ds-mid focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
                   >
                     <option value="">Todos os status</option>
                     {Object.entries(STATUS_CFG).map(([k, v]) => (
                       <option key={k} value={k}>{v.label}</option>
                     ))}
                   </select>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="month"
-                    value={filtroCompInicio}
-                    onChange={e => setFiltroCompInicio(e.target.value)}
-                    title="Competência início"
-                    className="px-3 py-2 rounded-lg border border-ds-border bg-white text-sm text-ds-mid focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                  <span className="text-ds-light text-xs">até</span>
-                  <input
-                    type="month"
-                    value={filtroCompFim}
-                    onChange={e => setFiltroCompFim(e.target.value)}
-                    title="Competência fim"
-                    className="px-3 py-2 rounded-lg border border-ds-border bg-white text-sm text-ds-mid focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                  {(filtroStatus || filtroCompInicio || filtroCompFim || q) && (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="month"
+                      value={filtroCompInicio}
+                      onChange={e => setFiltroCompInicio(e.target.value)}
+                      title="Competência início"
+                      className="py-1.5 px-3 text-sm border border-ds-border rounded-lg bg-white text-ds-mid focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
+                    />
+                    <span className="text-ds-light text-xs">até</span>
+                    <input
+                      type="month"
+                      value={filtroCompFim}
+                      onChange={e => setFiltroCompFim(e.target.value)}
+                      title="Competência fim"
+                      className="py-1.5 px-3 text-sm border border-ds-border rounded-lg bg-white text-ds-mid focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
+                    />
+                  </div>
+                  {temFiltro && (
                     <button
                       onClick={() => { setQ(''); setFiltroStatus(''); setFiltroCompInicio(''); setFiltroCompFim('') }}
-                      className="p-2 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors"
-                      title="Limpar filtros"
+                      className="px-3 py-1.5 text-xs font-medium text-ds-mid border border-ds-border rounded-lg bg-white hover:bg-ds-hover transition-colors"
                     >
-                      <X size={13} />
+                      Limpar filtros
                     </button>
                   )}
                 </div>
-              </div>
 
-              {loading ? (
-                <div className="flex items-center justify-center py-16"><Spinner /></div>
-              ) : filtradas.length === 0 ? (
-                <div className="text-center py-16">
-                  <FileText size={40} className="mx-auto text-ds-light mb-3" />
-                  <p className="text-ds-mid font-medium">Nenhuma nota encontrada</p>
-                  <p className="text-ds-light text-sm mt-1">
-                    {q || filtroStatus ? 'Tente ajustar os filtros.' : 'Vá em Produções e clique em "Emitir NFS-e".'}
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-white rounded-2xl border border-ds-border overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-ds-surface border-b border-ds-border">
-                      <tr>
-                        {['Tomador','Competência','Bruto','Líquido','Status','Emitida em','Nº Nota',''].map(h => (
-                          <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ds-light uppercase tracking-wide whitespace-nowrap">
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-ds-border">
-                      {filtradas.map(nota => (
-                        <tr
-                          key={nota.notaId}
-                          onClick={() => setNotaSelecionada(prev => prev?.notaId === nota.notaId ? null : nota)}
-                          className={`cursor-pointer transition-colors ${
-                            notaSelecionada?.notaId === nota.notaId
-                              ? 'bg-primary-50'
-                              : 'hover:bg-ds-surface'
-                          }`}
-                        >
-                          <td className="px-4 py-3 font-medium text-ds-mid max-w-48 truncate" title={nota.tomadorNome ?? ''}>
-                            {nota.tomadorNome ?? <span className="text-ds-light font-mono text-xs">{nota.tomadorId.substring(0, 8)}…</span>}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-sm">{formatCompetencia(nota.competencia)}</td>
-                          <td className="px-4 py-3 font-medium">{formatBRL(nota.valorBruto)}</td>
-                          <td className="px-4 py-3 text-green-700 font-medium">{formatBRL(nota.valorLiquidoMedico)}</td>
-                          <td className="px-4 py-3"><StatusBadge status={nota.status} /></td>
-                          <td className="px-4 py-3 text-xs text-ds-light whitespace-nowrap">{formatDate(nota.emitidaAt)}</td>
-                          <td className="px-4 py-3 font-mono text-xs font-semibold">{nota.numeroNota ?? '—'}</td>
-                          <td className="px-4 py-3">
-                            <ChevronRight size={14} className={`text-ds-light transition-transform ${notaSelecionada?.notaId === nota.notaId ? 'rotate-90 text-primary' : ''}`} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div className="px-4 py-2 border-t border-ds-border bg-ds-surface">
-                    <p className="text-xs text-ds-light">{filtradas.length} de {notas.length} notas</p>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* ─── ABA FILA DE EXCEÇÕES ─── */}
-          {aba === 'excecoes' && (
-            <>
-              {loading ? (
-                <div className="flex items-center justify-center py-16"><Spinner /></div>
-              ) : excecoes.length === 0 ? (
-                <div className="text-center py-16">
-                  <ShieldCheck size={40} className="mx-auto text-green-500 mb-3" />
-                  <p className="text-ds-mid font-semibold">Fila vazia!</p>
-                  <p className="text-ds-light text-sm mt-1">Nenhuma nota aguardando validação.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 flex items-start gap-2">
-                    <AlertTriangle size={15} className="text-yellow-600 mt-0.5 shrink-0" />
-                    <p className="text-xs text-yellow-800">
-                      Essas são as <strong>primeiras notas</strong> de cada médico — requerem validação antes de serem enfileiradas para emissão.
-                      Revise os dados e aprove ou rejeite com justificativa.
+                {/* Content */}
+                {loading ? (
+                  <div className="flex justify-center items-center py-20"><Spinner size="lg" /></div>
+                ) : filtradas.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-primary-50 flex items-center justify-center mb-4">
+                      <FileText size={28} className="text-primary-200" />
+                    </div>
+                    <p className="text-sm font-semibold text-ds-mid">Nenhuma nota encontrada</p>
+                    <p className="text-xs text-ds-light mt-1">
+                      {temFiltro ? 'Tente ajustar os filtros.' : 'Vá em Produções e clique em "Emitir NFS-e".'}
                     </p>
+                    {temFiltro && (
+                      <button
+                        onClick={() => { setQ(''); setFiltroStatus(''); setFiltroCompInicio(''); setFiltroCompFim('') }}
+                        className="mt-2 text-xs text-primary hover:underline"
+                      >
+                        Limpar filtros
+                      </button>
+                    )}
                   </div>
-
-                  {excecoes.map(nota => (
-                    <div
-                      key={nota.notaId}
-                      className={`bg-white rounded-2xl border p-4 cursor-pointer transition-all ${
-                        notaSelecionada?.notaId === nota.notaId
-                          ? 'border-primary ring-1 ring-primary/20'
-                          : 'border-ds-border hover:border-primary/30'
-                      }`}
-                      onClick={() => setNotaSelecionada(prev => prev?.notaId === nota.notaId ? null : nota)}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <StatusBadge status={nota.status} />
-                            <span className="text-xs text-ds-light">{formatDate(nota.createdAt)}</span>
-                          </div>
-                          <p className="font-semibold text-ds-mid truncate">
-                            {nota.tomadorNome ?? <span className="font-mono text-sm">{nota.tomadorId.substring(0, 8)}…</span>}
-                          </p>
-                          <p className="text-xs text-ds-light mt-0.5">
-                            Competência {formatCompetencia(nota.competencia)} · {formatBRL(nota.valorBruto)} bruto
-                          </p>
-                          <p className="text-xs text-ds-light font-mono mt-1">
-                            Médico: {nota.medicoId.substring(0, 8)}…
-                          </p>
-                        </div>
-                        <div className="flex gap-2 shrink-0">
-                          {isGestaoOrContabil && (
-                            <>
-                              <button
-                                onClick={e => { e.stopPropagation(); setRejeitarNota(nota) }}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs hover:bg-red-50 transition-colors"
-                              >
-                                <FileX size={12} /> Rejeitar
-                              </button>
-                              <button
-                                onClick={async e => { e.stopPropagation(); await handleAprovar(nota) }}
-                                disabled={aprovando === nota.notaId}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs hover:bg-green-700 transition-colors disabled:opacity-50"
-                              >
-                                {aprovando === nota.notaId
-                                  ? <Loader2 size={12} className="animate-spin" />
-                                  : <ThumbsUp size={12} />
-                                }
-                                Aprovar
-                              </button>
-                            </>
-                          )}
-                          <button
-                            onClick={e => { e.stopPropagation(); navigate(`/notas/emitir/${nota.producaoId}`) }}
-                            className="p-1.5 rounded-lg text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
-                            title="Ver emissão"
+                ) : (
+                  <div className="hidden sm:block">
+                    <table className="w-full text-sm">
+                      <thead className="bg-ds-input border-b border-ds-border">
+                        <tr>
+                          {['Tomador','Competência','Bruto','Líquido','Status','Emitida em','Nº Nota',''].map(h => (
+                            <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ds-light uppercase tracking-wide whitespace-nowrap">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-ds-border">
+                        {filtradas.map(nota => (
+                          <tr
+                            key={nota.notaId}
+                            onClick={() => setNotaSelecionada(prev => prev?.notaId === nota.notaId ? null : nota)}
+                            className={`cursor-pointer transition-colors ${
+                              notaSelecionada?.notaId === nota.notaId
+                                ? 'bg-primary-50'
+                                : 'hover:bg-ds-surface'
+                            }`}
                           >
-                            <Send size={13} />
-                          </button>
+                            <td className="px-4 py-3 font-semibold text-ds-text max-w-48 truncate" title={nota.tomadorNome ?? ''}>
+                              {nota.tomadorNome ?? <span className="text-ds-light font-mono text-xs">{nota.tomadorId.substring(0, 8)}…</span>}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-xs">{formatCompetencia(nota.competencia)}</td>
+                            <td className="px-4 py-3 font-medium">{formatBRL(nota.valorBruto)}</td>
+                            <td className="px-4 py-3 text-green-700 font-medium">{formatBRL(nota.valorLiquidoMedico)}</td>
+                            <td className="px-4 py-3"><StatusBadge status={nota.status} /></td>
+                            <td className="px-4 py-3 text-xs text-ds-light whitespace-nowrap">{formatDate(nota.emitidaAt)}</td>
+                            <td className="px-4 py-3 font-mono text-xs font-semibold">{nota.numeroNota ?? '—'}</td>
+                            <td className="px-4 py-3">
+                              <ChevronRight size={14} className={`text-ds-light transition-transform ${notaSelecionada?.notaId === nota.notaId ? 'rotate-90 text-primary' : ''}`} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Footer count */}
+                {filtradas.length > 0 && (
+                  <div className="flex items-center justify-between px-5 py-3 border-t border-ds-border text-xs text-ds-light">
+                    <span>
+                      Exibindo <strong className="text-ds-mid">{filtradas.length}</strong> de{' '}
+                      <strong className="text-ds-mid">{notas.length}</strong> notas
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ─── ABA FILA DE EXCEÇÕES ─── */}
+            {aba === 'excecoes' && (
+              <>
+                {loading ? (
+                  <div className="flex justify-center items-center py-20"><Spinner size="lg" /></div>
+                ) : excecoes.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mb-4">
+                      <ShieldCheck size={28} className="text-green-500" />
+                    </div>
+                    <p className="text-sm font-semibold text-ds-mid">Fila vazia!</p>
+                    <p className="text-xs text-ds-light mt-1">Nenhuma nota aguardando validação.</p>
+                  </div>
+                ) : (
+                  <div className="p-5 space-y-3">
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 flex items-start gap-2">
+                      <AlertTriangle size={15} className="text-yellow-600 mt-0.5 shrink-0" />
+                      <p className="text-xs text-yellow-800">
+                        Essas são as <strong>primeiras notas</strong> de cada médico — requerem validação antes de serem enfileiradas para emissão.
+                        Revise os dados e aprove ou rejeite com justificativa.
+                      </p>
+                    </div>
+
+                    {excecoes.map(nota => (
+                      <div
+                        key={nota.notaId}
+                        className={`bg-white rounded-xl border p-4 cursor-pointer transition-all shadow-sm ${
+                          notaSelecionada?.notaId === nota.notaId
+                            ? 'border-primary ring-1 ring-primary/20'
+                            : 'border-ds-border hover:border-primary/30'
+                        }`}
+                        onClick={() => setNotaSelecionada(prev => prev?.notaId === nota.notaId ? null : nota)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <StatusBadge status={nota.status} />
+                              <span className="text-xs text-ds-light">{formatDate(nota.createdAt)}</span>
+                            </div>
+                            <p className="font-semibold text-ds-text truncate">
+                              {nota.tomadorNome ?? <span className="font-mono text-sm">{nota.tomadorId.substring(0, 8)}…</span>}
+                            </p>
+                            <p className="text-xs text-ds-light mt-0.5">
+                              Competência {formatCompetencia(nota.competencia)} · {formatBRL(nota.valorBruto)} bruto
+                            </p>
+                            <p className="text-xs text-ds-light font-mono mt-1">
+                              Médico: {nota.medicoId.substring(0, 8)}…
+                            </p>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            {isGestaoOrContabil && (
+                              <>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setRejeitarNota(nota) }}
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs hover:bg-red-50 transition-colors"
+                                >
+                                  <FileX size={12} /> Rejeitar
+                                </button>
+                                <button
+                                  onClick={async e => { e.stopPropagation(); await handleAprovar(nota) }}
+                                  disabled={aprovando === nota.notaId}
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs hover:bg-green-700 transition-colors disabled:opacity-50"
+                                >
+                                  {aprovando === nota.notaId
+                                    ? <Loader2 size={12} className="animate-spin" />
+                                    : <ThumbsUp size={12} />
+                                  }
+                                  Aprovar
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={e => { e.stopPropagation(); navigate(`/notas/emitir/${nota.producaoId}`) }}
+                              className="p-1.5 rounded-lg text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
+                              title="Ver emissão"
+                            >
+                              <Send size={13} />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+          </div>
         </div>
 
         {/* Painel lateral de detalhe */}

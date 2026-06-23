@@ -16,6 +16,7 @@ import { ParametrosFiscaisPage }   from './pages/ParametrosFiscaisPage'
 import { ConfiguracaoFiscalPage }   from './pages/ConfiguracaoFiscalPage'
 import { NotasPage }               from './pages/NotasPage'
 import { NfseEmissaoPage }         from './pages/NfseEmissaoPage'
+import { LotePage }                from './pages/LotePage'
 import { UnderConstruction }        from './pages/UnderConstruction'
 
 export default function App() {
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/fiscal/config"      element={<ConfiguracaoFiscalPage />} />
             <Route path="/notas"                      element={<NotasPage />} />
             <Route path="/notas/emitir/:producaoId"   element={<NfseEmissaoPage />} />
+            <Route path="/notas/lote"                 element={<LotePage />} />
             <Route path="/repasses"    element={<UnderConstruction title="Repasses"    epic="EPIC-09" />} />
             <Route path="/conciliacao" element={<UnderConstruction title="Conciliação" epic="EPIC-07" />} />
             <Route path="/gestao"      element={<UnderConstruction title="Gestão"      epic="EPIC-10" />} />

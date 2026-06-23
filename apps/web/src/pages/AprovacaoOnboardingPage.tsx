@@ -38,11 +38,12 @@ const STAGE_CONFIG: Record<Stage, { label: string; cls: string; dot: string }> =
 }
 
 const DOC_TIPO_INFO: Record<TipoDocumentoMedico, { label: string; Icon: React.ElementType }> = {
-  CRM:        { label: 'Registro CRM',             Icon: Award },
-  DIPLOMA:    { label: 'Diploma Médico',            Icon: GraduationCap },
-  IDENTIDADE: { label: 'Identidade (CNH ou RG)',    Icon: CreditCard },
-  RESIDENCIA: { label: 'Comprovante de Residência', Icon: Home },
-  CONTRATO:   { label: 'Contrato',                  Icon: FileText },
+  CRM:           { label: 'Registro CRM',               Icon: Award         },
+  DIPLOMA:       { label: 'Diploma Médico',              Icon: GraduationCap },
+  IDENTIDADE:    { label: 'Identidade (CNH ou RG)',      Icon: CreditCard    },
+  RESIDENCIA:    { label: 'Comprovante de Residência',   Icon: Home          },
+  CONTRATO:      { label: 'Contrato',                    Icon: FileText      },
+  ESPECIALIDADES:{ label: 'Certificado de Especialidades', Icon: BookOpen   },
 }
 
 const JUNTA_CONFIG: Record<StatusJuntaComercial, { label: string; cls: string }> = {

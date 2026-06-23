@@ -2,7 +2,6 @@ package br.com.pinsaude.onboarding.controller;
 
 import br.com.pinsaude.onboarding.domain.TipoDocumentoMedico;
 import br.com.pinsaude.onboarding.dto.*;
-import java.util.List;
 import br.com.pinsaude.onboarding.service.MedicoService;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
@@ -165,5 +164,29 @@ public class MedicoController {
             @PathVariable UUID id,
             @RequestBody ChecklistCondutaRequest request) {
         return ResponseEntity.ok(service.atualizarChecklist(id, request));
+    }
+
+    @GetMapping("/{id}/vinculos")
+    @PreAuthorize("hasRole('gestao')")
+    public ResponseEntity<List<VinculoEmpresaResponse>> listarVinculos(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarVinculos(id));
+    }
+
+    @PostMapping("/{id}/vinculos")
+    @PreAuthorize("hasRole('gestao')")
+    public ResponseEntity<VinculoEmpresaResponse> adicionarVinculo(
+            @PathVariable UUID id,
+            @Valid @RequestBody VinculoEmpresaRequest request) {
+        VinculoEmpresaResponse created = service.adicionarVinculo(id, request.empresaId());
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED).body(created);
+    }
+
+    @DeleteMapping("/{id}/vinculos/{empresaId}")
+    @PreAuthorize("hasRole('gestao')")
+    public ResponseEntity<Void> removerVinculo(
+            @PathVariable UUID id,
+            @PathVariable UUID empresaId) {
+        service.removerVinculo(id, empresaId);
+        return ResponseEntity.noContent().build();
     }
 }

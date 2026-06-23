@@ -14,23 +14,25 @@ import {
   X,
   ClipboardCheck,
   SlidersHorizontal,
+  Layers,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 
 const navItems = [
-  { to: '/',            label: 'Dashboard',   icon: LayoutDashboard, roles: null       },
-  { to: '/medicos',           label: 'Médicos',    icon: Stethoscope,     roles: null                    },
-  { to: '/medicos/aprovacao', label: 'Aprovação',  icon: ClipboardCheck,  roles: ['gestao', 'operacao']  },
-  { to: '/empresas',          label: 'Empresas',   icon: Building2,       roles: ['gestao']              },
-  { to: '/tomadores',         label: 'Tomadores',  icon: Hospital,        roles: ['operacao', 'gestao', 'financeiro', 'contabil'] },
-  { to: '/producao',          label: 'Produção',   icon: ClipboardList,   roles: ['operacao', 'gestao', 'financeiro', 'contabil'] },
-  { to: '/parametros-fiscais', label: 'Parâm. Fiscais', icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'] },
-  { to: '/fiscal/config',      label: 'Config. Fiscal', icon: Settings,          roles: ['contabil', 'gestao'] },
-  { to: '/notas',       label: 'Notas',        icon: FileText,        roles: null       },
-  { to: '/repasses',    label: 'Repasses',     icon: Banknote,        roles: null       },
-  { to: '/conciliacao', label: 'Conciliação',  icon: ArrowLeftRight,  roles: null       },
-  { to: '/gestao',      label: 'Gestão',       icon: BarChart3,       roles: null       },
-  { to: '/usuarios',    label: 'Usuários',     icon: Users,           roles: ['gestao'] },
+  { to: '/',            label: 'Dashboard',    icon: LayoutDashboard,  roles: null,       end: true  },
+  { to: '/medicos',           label: 'Médicos',     icon: Stethoscope,      roles: null,       end: false },
+  { to: '/medicos/aprovacao', label: 'Aprovação',   icon: ClipboardCheck,   roles: ['gestao', 'operacao'],                         end: true },
+  { to: '/empresas',          label: 'Empresas',    icon: Building2,        roles: ['gestao'],                                     end: true },
+  { to: '/tomadores',         label: 'Tomadores',   icon: Hospital,         roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true },
+  { to: '/producao',          label: 'Produção',    icon: ClipboardList,    roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: false },
+  { to: '/parametros-fiscais', label: 'Parâm. Fiscais', icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'],      end: true },
+  { to: '/fiscal/config',      label: 'Config. Fiscal', icon: Settings,          roles: ['contabil', 'gestao'],                   end: true },
+  { to: '/notas',       label: 'Notas',         icon: FileText,         roles: null,       end: true  },
+  { to: '/notas/lote',  label: 'Lotes NFS-e',   icon: Layers,           roles: ['operacao', 'gestao', 'contabil', 'financeiro'], end: true },
+  { to: '/repasses',    label: 'Repasses',      icon: Banknote,         roles: null,       end: true  },
+  { to: '/conciliacao', label: 'Conciliação',   icon: ArrowLeftRight,   roles: null,       end: true  },
+  { to: '/gestao',      label: 'Gestão',        icon: BarChart3,        roles: null,       end: true  },
+  { to: '/usuarios',    label: 'Usuários',      icon: Users,            roles: ['gestao'], end: true  },
 ]
 
 interface SidebarProps {
@@ -68,11 +70,11 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
       {/* Nav items */}
       <div className="flex-1 overflow-y-auto py-2.5 px-2 space-y-0.5">
-        {visibleItems.map(({ to, label, icon: Icon }) => (
+        {visibleItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
-            end={to === '/'}
+            end={end}
             onClick={onMobileClose}
             className={({ isActive }) =>
               [

@@ -39,6 +39,7 @@ class OnboardingFluxoTest {
     @Mock ContratoAssinaturaPort         contratoPort;
     @Mock NotificacaoService             notificacaoService;
     @Mock JavaMailSender                 mailSender;
+    @Mock EmpresaRepository              empresaRepo;
 
     @InjectMocks MedicoService medicoService;
 

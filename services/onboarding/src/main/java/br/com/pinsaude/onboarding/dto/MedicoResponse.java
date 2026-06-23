@@ -19,6 +19,7 @@ public record MedicoResponse(
     StatusMedico status,
     String statusJuntaComercial,
     UUID empresaId,
+    List<VinculoEmpresaResponse> empresas,
     DadosBancariosMedicoResponse dadosBancarios,
     List<DocumentoMedicoResponse> documentos,
     ChecklistCondutaResponse checklist,
@@ -30,18 +31,19 @@ public record MedicoResponse(
     public static MedicoResponse from(
             Medico m,
             String cpfDecriptografado,
-            UUID empresaId,
+            List<VinculoEmpresaResponse> empresas,
             DadosBancariosMedicoResponse dadosBancarios,
             List<DocumentoMedicoResponse> documentos,
             ChecklistCondutaResponse checklist,
             ContratoAssinaturaResponse contratoAssinatura,
             EnviarConviteResponse ultimoConvite) {
+        UUID primeiraEmpresaId = empresas.isEmpty() ? null : empresas.get(0).empresaId();
         return new MedicoResponse(
             m.getId(), cpfDecriptografado, m.getNome(),
             m.getCrm(), m.getCrmUf(), m.getEspecialidade(),
             m.getEmail(), m.getTelefone(), m.getStatus(),
             m.getStatusJuntaComercial(),
-            empresaId, dadosBancarios, documentos, checklist,
+            primeiraEmpresaId, empresas, dadosBancarios, documentos, checklist,
             contratoAssinatura, ultimoConvite,
             m.getCreatedAt(), m.getUpdatedAt()
         );
