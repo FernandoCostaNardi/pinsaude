@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Award, GraduationCap, CreditCard, Home, FileText,
+  Award, GraduationCap, CreditCard, Home, FileText, BookOpen,
   Upload, CheckCircle2, XCircle, Clock, Eye, Plus, Trash2,
 } from 'lucide-react'
 import { Modal, Button, Alert, Spinner } from '@pinsaude/ui'
@@ -12,14 +12,15 @@ import { useAuth } from '../auth/useAuth'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const TODOS_TIPOS: TipoDocumentoMedico[] = ['CRM', 'DIPLOMA', 'IDENTIDADE', 'RESIDENCIA', 'CONTRATO']
+const TODOS_TIPOS: TipoDocumentoMedico[] = ['CRM', 'DIPLOMA', 'IDENTIDADE', 'RESIDENCIA', 'CONTRATO', 'ESPECIALIDADES']
 
 const TIPO_INFO: Record<TipoDocumentoMedico, { label: string; Icon: React.ElementType }> = {
-  CRM:        { label: 'Registro CRM',               Icon: Award },
-  DIPLOMA:    { label: 'Diploma Médico',              Icon: GraduationCap },
-  IDENTIDADE: { label: 'Identidade (CNH ou RG)',      Icon: CreditCard },
-  RESIDENCIA: { label: 'Comprovante de Residência',   Icon: Home },
-  CONTRATO:   { label: 'Contrato',                    Icon: FileText },
+  CRM:           { label: 'Registro CRM',               Icon: Award        },
+  DIPLOMA:       { label: 'Diploma Médico',              Icon: GraduationCap },
+  IDENTIDADE:    { label: 'Identidade (CNH ou RG)',      Icon: CreditCard   },
+  RESIDENCIA:    { label: 'Comprovante de Residência',   Icon: Home         },
+  CONTRATO:      { label: 'Contrato',                    Icon: FileText     },
+  ESPECIALIDADES:{ label: 'Certificado de Especialidades', Icon: BookOpen  },
 }
 
 const STATUS_CONFIG: Record<StatusValidacaoDocumento, { label: string; cls: string; Icon: React.ElementType }> = {

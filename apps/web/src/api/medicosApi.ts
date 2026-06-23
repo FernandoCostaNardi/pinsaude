@@ -12,7 +12,7 @@ export type StatusContrato = 'AGUARDANDO_ENVIO' | 'ENVIADO' | 'VISUALIZADO' | 'A
 export type TipoPix = 'CPF' | 'CNPJ' | 'EMAIL' | 'TELEFONE' | 'ALEATORIA'
 export type TipoRecebimento = 'PIX' | 'TED'
 export type TipoConta = 'CORRENTE' | 'POUPANCA'
-export type TipoDocumentoMedico = 'CRM' | 'DIPLOMA' | 'IDENTIDADE' | 'RESIDENCIA' | 'CONTRATO'
+export type TipoDocumentoMedico = 'CRM' | 'DIPLOMA' | 'IDENTIDADE' | 'RESIDENCIA' | 'CONTRATO' | 'ESPECIALIDADES'
 export type StatusValidacaoDocumento = 'PENDENTE' | 'APROVADO' | 'REPROVADO'
 
 export interface DadosBancariosMedico {

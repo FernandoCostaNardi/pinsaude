@@ -73,11 +73,12 @@ const CONTRATO_CONFIG: Record<StatusContrato, { label: string; cls: string }> = 
 // ─── Documento row (inline no perfil) ────────────────────────────────────────
 
 const DOC_TIPO_INFO: Record<TipoDocumentoMedico, { label: string; Icon: React.ElementType }> = {
-  CRM:        { label: 'Registro CRM',             Icon: Award },
-  DIPLOMA:    { label: 'Diploma Médico',            Icon: GraduationCap },
-  IDENTIDADE: { label: 'Identidade (CNH ou RG)',    Icon: CreditCard },
-  RESIDENCIA: { label: 'Comprovante de Residência', Icon: Home },
-  CONTRATO:   { label: 'Contrato',                  Icon: FileText },
+  CRM:           { label: 'Registro CRM',               Icon: Award         },
+  DIPLOMA:       { label: 'Diploma Médico',              Icon: GraduationCap },
+  IDENTIDADE:    { label: 'Identidade (CNH ou RG)',      Icon: CreditCard    },
+  RESIDENCIA:    { label: 'Comprovante de Residência',   Icon: Home          },
+  CONTRATO:      { label: 'Contrato',                    Icon: FileText      },
+  ESPECIALIDADES:{ label: 'Certificado de Especialidades', Icon: BookOpen   },
 }
 const DOC_STATUS_CONFIG: Record<StatusValidacaoDocumento, { label: string; cls: string; Icon: React.ElementType }> = {
   PENDENTE:  { label: 'Aguardando', cls: 'bg-gray-100 text-gray-500',  Icon: Clock },
