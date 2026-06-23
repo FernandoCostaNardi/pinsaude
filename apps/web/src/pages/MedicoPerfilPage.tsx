@@ -428,11 +428,17 @@ export function MedicoPerfilPage() {
                 {medico.especialidade && (
                   <span className="text-sm text-ds-mid">· {medico.especialidade}</span>
                 )}
-                {empresa && (
+                {(medico.empresas && medico.empresas.length > 0) ? (
+                  medico.empresas.map(v => (
+                    <span key={v.empresaId} className="text-sm text-ds-mid flex items-center gap-1">
+                      · <Building2 size={12} /> {v.razaoSocial}
+                    </span>
+                  ))
+                ) : empresa ? (
                   <span className="text-sm text-ds-mid flex items-center gap-1">
                     · <Building2 size={12} /> {empresa.razaoSocial}
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
 

@@ -160,7 +160,7 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
     if (s === 1) {
       if (!form.crm.trim()) errs.crm = 'Obrigatório'
       if (!form.crmUf)       errs.crmUf = 'Obrigatório'
-      if (!form.empresaId)   errs.empresaId = 'Obrigatório'
+      if (!isEditing && !form.empresaId) errs.empresaId = 'Obrigatório'
     }
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -239,6 +239,8 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
               form={form}
               errors={errors}
               empresas={empresas}
+              isEditing={isEditing}
+              medicoEmpresas={medico?.empresas}
               onChange={setField}
             />
           )}
@@ -400,11 +402,15 @@ function StepDadosProfissionais({
   form,
   errors,
   empresas,
+  isEditing,
+  medicoEmpresas,
   onChange,
 }: {
   form: MedicoRequest
   errors: Partial<Record<string, string>>
   empresas: Empresa[]
+  isEditing: boolean
+  medicoEmpresas?: import('../api/medicosApi').VinculoEmpresa[]
   onChange: <K extends keyof MedicoRequest>(k: K, v: MedicoRequest[K]) => void
 }) {
   return (
@@ -437,17 +443,37 @@ function StepDadosProfissionais({
           />
         </div>
         <div className="sm:col-span-2">
-          <SelectField
-            label="Empresa vinculada *"
-            value={form.empresaId}
-            onChange={v => onChange('empresaId', v)}
-            error={errors.empresaId}
-            placeholder="Selecione a empresa"
+          {isEditing ? (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-sm font-medium text-gray-700">Empresas vinculadas</p>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 flex flex-col gap-1.5">
+                {(medicoEmpresas ?? []).length > 0 ? (
+                  (medicoEmpresas ?? []).map(v => (
+                    <p key={v.empresaId} className="text-sm text-gray-700 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-primary inline-block shrink-0" />
+                      {v.razaoSocial}
+                      {v.cnpj && <span className="text-gray-400 text-xs">({v.cnpj})</span>}
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">Nenhuma empresa vinculada</p>
+                )}
+              </div>
+              <p className="text-xs text-gray-400">Gerencie os vínculos de empresa na aba Dados Pessoais do perfil do médico.</p>
+            </div>
+          ) : (
+            <SelectField
+              label="Empresa vinculada *"
+              value={form.empresaId}
+              onChange={v => onChange('empresaId', v)}
+              error={errors.empresaId}
+              placeholder="Selecione a empresa"
             >
-            {empresas.map(e => (
-              <option key={e.id} value={e.id}>{e.razaoSocial}</option>
-            ))}
-          </SelectField>
+              {empresas.map(e => (
+                <option key={e.id} value={e.id}>{e.razaoSocial}</option>
+              ))}
+            </SelectField>
+          )}
         </div>
       </div>
     </div>
