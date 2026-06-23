@@ -39,6 +39,7 @@ public class MedicoService {
     private final ConviteService conviteService;
     private final ContratoAssinaturaPort contratoPort;
     private final NotificacaoService notificacaoService;
+    private final EmpresaRepository empresaRepo;
 
     public MedicoService(
             MedicoRepository medicoRepo,
@@ -53,7 +54,8 @@ public class MedicoService {
             StorageService storageService,
             ConviteService conviteService,
             ContratoAssinaturaPort contratoPort,
-            NotificacaoService notificacaoService) {
+            NotificacaoService notificacaoService,
+            EmpresaRepository empresaRepo) {
         this.medicoRepo = medicoRepo;
         this.vinculoRepo = vinculoRepo;
         this.dadosBancariosRepo = dadosBancariosRepo;
@@ -67,6 +69,7 @@ public class MedicoService {
         this.conviteService = conviteService;
         this.contratoPort = contratoPort;
         this.notificacaoService = notificacaoService;
+        this.empresaRepo = empresaRepo;
     }
 
     public List<MedicoResponse> listarFilaAprovacao() {
@@ -146,12 +149,6 @@ public class MedicoService {
         medico.setEspecialidade(req.especialidade());
         medico.setEmail(req.email());
         medico.setTelefone(req.telefone());
-
-        if (req.empresaId() != null && !vinculoRepo.existsByIdMedicoIdAndIdEmpresaId(id, req.empresaId())) {
-            vinculoRepo.deleteByIdMedicoId(id);
-            vinculoRepo.save(new VinculoMedicoEmpresa(
-                new VinculoMedicoEmpresaId(id, req.empresaId()), StatusSocietario.ATIVO));
-        }
 
         var saved = toFullResponse(medicoRepo.save(medico));
         registrarHistorico(id, TipoAcaoMedico.ATUALIZACAO_DADOS, "Dados pessoais atualizados");
@@ -519,10 +516,18 @@ public class MedicoService {
     private MedicoResponse toFullResponse(Medico medico) {
         String cpfDecriptografado = cryptoService.decrypt(medico.getCpfCriptografado());
 
-        UUID empresaId = vinculoRepo.findByIdMedicoId(medico.getId()).stream()
-            .findFirst()
-            .map(v -> v.getId().getEmpresaId())
-            .orElse(null);
+        List<VinculoMedicoEmpresa> vinculos = vinculoRepo.findByIdMedicoId(medico.getId());
+        List<java.util.UUID> empresaIds = vinculos.stream()
+            .map(v -> v.getId().getEmpresaId()).toList();
+        Map<UUID, Empresa> empresaMap = empresaRepo.findAllById(empresaIds).stream()
+            .collect(Collectors.toMap(Empresa::getId, e -> e));
+        List<VinculoEmpresaResponse> empresas = vinculos.stream()
+            .map(v -> {
+                Empresa e = empresaMap.get(v.getId().getEmpresaId());
+                return e != null ? VinculoEmpresaResponse.from(v, e) : null;
+            })
+            .filter(java.util.Objects::nonNull)
+            .toList();
 
         DadosBancariosMedicoResponse dadosBancarios = dadosBancariosRepo
             .findByMedicoId(medico.getId())
@@ -551,7 +556,58 @@ public class MedicoService {
             .map(EnviarConviteResponse::from)
             .orElse(null);
 
-        return MedicoResponse.from(medico, cpfDecriptografado, empresaId,
+        return MedicoResponse.from(medico, cpfDecriptografado, empresas,
             dadosBancarios, documentos, checklist, contratoAssinatura, ultimoConvite);
+    }
+
+    @Transactional
+    public List<VinculoEmpresaResponse> listarVinculos(UUID medicoId) {
+        findOrThrow(medicoId);
+        List<VinculoMedicoEmpresa> vinculos = vinculoRepo.findByIdMedicoId(medicoId);
+        List<UUID> empresaIds = vinculos.stream().map(v -> v.getId().getEmpresaId()).toList();
+        Map<UUID, Empresa> empresaMap = empresaRepo.findAllById(empresaIds).stream()
+            .collect(Collectors.toMap(Empresa::getId, e -> e));
+        return vinculos.stream()
+            .map(v -> {
+                Empresa e = empresaMap.get(v.getId().getEmpresaId());
+                return e != null ? VinculoEmpresaResponse.from(v, e) : null;
+            })
+            .filter(java.util.Objects::nonNull)
+            .toList();
+    }
+
+    @Transactional
+    public VinculoEmpresaResponse adicionarVinculo(UUID medicoId, UUID empresaId) {
+        findOrThrow(medicoId);
+        Empresa empresa = empresaRepo.findById(empresaId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Empresa não encontrada: " + empresaId));
+        if (vinculoRepo.existsByIdMedicoIdAndIdEmpresaId(medicoId, empresaId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Médico já está vinculado a esta empresa");
+        }
+        var vinculo = vinculoRepo.save(new VinculoMedicoEmpresa(
+            new VinculoMedicoEmpresaId(medicoId, empresaId), StatusSocietario.ATIVO));
+        registrarHistorico(medicoId, TipoAcaoMedico.ATUALIZACAO_DADOS,
+            "Vínculo adicionado com empresa: " + empresa.getRazaoSocial());
+        return VinculoEmpresaResponse.from(vinculo, empresa);
+    }
+
+    @Transactional
+    public void removerVinculo(UUID medicoId, UUID empresaId) {
+        findOrThrow(medicoId);
+        if (!vinculoRepo.existsByIdMedicoIdAndIdEmpresaId(medicoId, empresaId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Vínculo não encontrado para este médico e empresa");
+        }
+        long total = vinculoRepo.findByIdMedicoId(medicoId).size();
+        if (total <= 1) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Não é possível remover o único vínculo de empresa do médico");
+        }
+        vinculoRepo.deleteById(new VinculoMedicoEmpresaId(medicoId, empresaId));
+        Empresa empresa = empresaRepo.findById(empresaId).orElse(null);
+        registrarHistorico(medicoId, TipoAcaoMedico.ATUALIZACAO_DADOS,
+            "Vínculo removido com empresa: " + (empresa != null ? empresa.getRazaoSocial() : empresaId));
     }
 }

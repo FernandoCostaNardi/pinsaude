@@ -48,6 +48,15 @@ export interface ChecklistConduta {
   verificadoEm?: string
 }
 
+export interface VinculoEmpresa {
+  empresaId: string
+  cnpj: string
+  razaoSocial: string
+  statusSocietario?: string
+  dataAtivacao?: string
+  createdAt: string
+}
+
 export interface Medico {
   id: string
   cpf: string
@@ -60,6 +69,7 @@ export interface Medico {
   status: StatusMedico
   statusJuntaComercial: StatusJuntaComercial
   empresaId?: string
+  empresas?: VinculoEmpresa[]
   dadosBancarios?: DadosBancariosMedico
   documentos?: DocumentoMedico[]
   checklist?: ChecklistConduta
@@ -309,10 +319,33 @@ async function atualizarChecklist(medicoId: string, data: ChecklistCondutaReques
   return handleResponse<ChecklistConduta>(res)
 }
 
+async function listarVinculos(medicoId: string): Promise<VinculoEmpresa[]> {
+  const res = await fetch(`/api/medicos/${medicoId}/vinculos`, { headers: authHeaders() })
+  return handleResponse<VinculoEmpresa[]>(res)
+}
+
+async function adicionarVinculo(medicoId: string, empresaId: string): Promise<VinculoEmpresa> {
+  const res = await fetch(`/api/medicos/${medicoId}/vinculos`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ empresaId }),
+  })
+  return handleResponse<VinculoEmpresa>(res)
+}
+
+async function removerVinculo(medicoId: string, empresaId: string): Promise<void> {
+  const res = await fetch(`/api/medicos/${medicoId}/vinculos/${empresaId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<void>(res)
+}
+
 export const medicosApi = {
   listar, buscarPorId, criar, atualizar, ativar, inativar,
   atualizarDadosBancarios, listarDocumentos, uploadDocumento,
   validarDocumento, getDocumentoUrl, deletarDocumento, listarHistorico,
   enviarConvite, enviarContrato, atualizarJuntaComercial,
   assinarContratoManual, listarFilaAprovacao, atualizarChecklist,
+  listarVinculos, adicionarVinculo, removerVinculo,
 }
