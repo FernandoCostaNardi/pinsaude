@@ -38,6 +38,14 @@ spring:
           uri: http://localhost:8182
           predicates:
             - Path=/api/servicos/**
+        - id: nfse
+          uri: http://localhost:8181
+          predicates:
+            - Path=/api/nfse/**
+        - id: motor-fiscal
+          uri: http://localhost:8181
+          predicates:
+            - Path=/api/motor-fiscal/**
         - id: fiscal
           uri: http://localhost:8181
           predicates:

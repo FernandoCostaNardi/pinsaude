@@ -1,0 +1,25 @@
+[Unit]
+Description=Pin Saude - Fiscal Service
+After=network.target postgresql.service pinsaude-rabbitmq.service
+
+[Service]
+Type=simple
+User=pinsaude
+Group=pinsaude
+WorkingDirectory=/home/pinsaude/apps/fiscal
+
+EnvironmentFile=/home/pinsaude/infra/.env
+
+ExecStart=/usr/bin/java \
+  -Xms256m -Xmx512m \
+  -Dspring.profiles.active=prod \
+  -Dspring.config.additional-location=file:/home/pinsaude/apps/fiscal/application-prod.yml \
+  -jar /home/pinsaude/apps/fiscal/app.jar
+
+Restart=on-failure
+RestartSec=15
+StandardOutput=append:/home/pinsaude/logs/fiscal.log
+StandardError=append:/home/pinsaude/logs/fiscal.log
+
+[Install]
+WantedBy=multi-user.target

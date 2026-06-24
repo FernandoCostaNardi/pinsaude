@@ -1,0 +1,25 @@
+[Unit]
+Description=Pin Saude - Faturamento Service
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=pinsaude
+Group=pinsaude
+WorkingDirectory=/home/pinsaude/apps/faturamento
+
+EnvironmentFile=/home/pinsaude/infra/.env
+
+ExecStart=/usr/bin/java \
+  -Xms256m -Xmx512m \
+  -Dspring.profiles.active=prod \
+  -Dspring.config.additional-location=file:/home/pinsaude/apps/faturamento/application-prod.yml \
+  -jar /home/pinsaude/apps/faturamento/app.jar
+
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/pinsaude/logs/faturamento.log
+StandardError=append:/home/pinsaude/logs/faturamento.log
+
+[Install]
+WantedBy=multi-user.target
