@@ -229,7 +229,7 @@ function DetalhePanel({ nota, onClose, onAprovar, onCancelar, onRejeitar, isGest
           <div className="space-y-1.5">
             <div className="flex justify-between gap-2">
               <span className="text-xs text-ds-light">Tomador</span>
-              <span className="text-sm text-ds-mid text-right">{nota.tomadorNome ?? <span className="font-mono text-xs">{nota.tomadorId.substring(0, 8)}...</span>}</span>
+              <span className="text-sm text-ds-mid text-right">{nota.tomadorNome ?? <span className="text-ds-light italic text-xs">—</span>}</span>
             </div>
             <div className="flex justify-between gap-2">
               <span className="text-xs text-ds-light">Médico ID</span>
@@ -626,7 +626,7 @@ export function NotasPage() {
                       <thead className="bg-ds-input border-b border-ds-border">
                         <tr>
                           {['Tomador','Competência','Bruto','Líquido','Status','Emitida em','Nº Nota',''].map(h => (
-                            <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-ds-light uppercase tracking-wide whitespace-nowrap">
+                            <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-ds-light uppercase tracking-wider whitespace-nowrap">
                               {h}
                             </th>
                           ))}
@@ -643,16 +643,16 @@ export function NotasPage() {
                                 : 'hover:bg-ds-surface'
                             }`}
                           >
-                            <td className="px-4 py-3 font-semibold text-ds-text max-w-48 truncate" title={nota.tomadorNome ?? ''}>
-                              {nota.tomadorNome ?? <span className="text-ds-light font-mono text-xs">{nota.tomadorId.substring(0, 8)}…</span>}
+                            <td className="px-3 py-2.5 font-medium text-ds-text max-w-[200px] truncate" title={nota.tomadorNome ?? ''}>
+                              {nota.tomadorNome ?? <span className="text-ds-light italic">—</span>}
                             </td>
-                            <td className="px-4 py-3 font-mono text-xs">{formatCompetencia(nota.competencia)}</td>
-                            <td className="px-4 py-3 font-medium">{formatBRL(nota.valorBruto)}</td>
-                            <td className="px-4 py-3 text-green-700 font-medium">{formatBRL(nota.valorLiquidoMedico)}</td>
-                            <td className="px-4 py-3"><StatusBadge status={nota.status} /></td>
-                            <td className="px-4 py-3 text-xs text-ds-light whitespace-nowrap">{formatDate(nota.emitidaAt)}</td>
-                            <td className="px-4 py-3 font-mono text-xs font-semibold">{nota.numeroNota ?? '—'}</td>
-                            <td className="px-4 py-3">
+                            <td className="px-3 py-2.5 text-xs text-ds-mid whitespace-nowrap">{formatCompetencia(nota.competencia)}</td>
+                            <td className="px-3 py-2.5 text-sm font-medium text-ds-mid">{formatBRL(nota.valorBruto)}</td>
+                            <td className="px-3 py-2.5 text-sm font-semibold text-green-700">{formatBRL(nota.valorLiquidoMedico)}</td>
+                            <td className="px-3 py-2.5"><StatusBadge status={nota.status} /></td>
+                            <td className="px-3 py-2.5 text-xs text-ds-light whitespace-nowrap">{formatDate(nota.emitidaAt)}</td>
+                            <td className="px-3 py-2.5 font-mono text-xs font-semibold text-ds-mid">{nota.numeroNota ?? '—'}</td>
+                            <td className="px-3 py-2.5">
                               <ChevronRight size={14} className={`text-ds-light transition-transform ${notaSelecionada?.notaId === nota.notaId ? 'rotate-90 text-primary' : ''}`} />
                             </td>
                           </tr>
@@ -714,7 +714,7 @@ export function NotasPage() {
                               <span className="text-xs text-ds-light">{formatDate(nota.createdAt)}</span>
                             </div>
                             <p className="font-semibold text-ds-text truncate">
-                              {nota.tomadorNome ?? <span className="font-mono text-sm">{nota.tomadorId.substring(0, 8)}…</span>}
+                              {nota.tomadorNome ?? <span className="text-ds-light italic font-normal">Não informado</span>}
                             </p>
                             <p className="text-xs text-ds-light mt-0.5">
                               Competência {formatCompetencia(nota.competencia)} · {formatBRL(nota.valorBruto)} bruto

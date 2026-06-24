@@ -14,6 +14,8 @@ public interface MedicoRepository extends JpaRepository<Medico, UUID> {
 
     boolean existsByCrmAndCrmUf(String crm, String crmUf);
 
+    boolean existsByCpfHash(String cpfHash);
+
     @Query(value = "SELECT * FROM onboarding.medicos WHERE status != CAST(:status AS onboarding.status_medico_enum) ORDER BY created_at DESC",
            countQuery = "SELECT COUNT(*) FROM onboarding.medicos WHERE status != CAST(:status AS onboarding.status_medico_enum)",
            nativeQuery = true)

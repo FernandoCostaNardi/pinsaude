@@ -15,7 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -106,13 +110,21 @@ public class MedicoService {
 
     @Transactional
     public MedicoResponse criar(MedicoRequest req) {
+        String cpfNormalizado = req.cpf().replaceAll("\\D", "");
+        String cpfHash = hashCpf(cpfNormalizado);
+
+        if (medicoRepo.existsByCpfHash(cpfHash)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Já existe um médico cadastrado com este CPF");
+        }
         if (medicoRepo.existsByCrmAndCrmUf(req.crm(), req.crmUf().toUpperCase())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Já existe um médico com este CRM para a UF informada");
         }
 
         var medico = new Medico();
-        medico.setCpfCriptografado(cryptoService.encrypt(req.cpf().replaceAll("\\D", "")));
+        medico.setCpfCriptografado(cryptoService.encrypt(cpfNormalizado));
+        medico.setCpfHash(cpfHash);
         medico.setNome(req.nome());
         medico.setCrm(req.crm());
         medico.setCrmUf(req.crmUf().toUpperCase());
@@ -137,6 +149,15 @@ public class MedicoService {
     public MedicoResponse atualizar(UUID id, MedicoRequest req) {
         Medico medico = findOrThrow(id);
 
+        String cpfNormalizado = req.cpf().replaceAll("\\D", "");
+        String cpfHash = hashCpf(cpfNormalizado);
+
+        boolean cpfMudou = !cpfHash.equals(medico.getCpfHash());
+        if (cpfMudou && medicoRepo.existsByCpfHash(cpfHash)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Já existe um médico cadastrado com este CPF");
+        }
+
         boolean crmMudou = !medico.getCrm().equals(req.crm())
             || !medico.getCrmUf().equalsIgnoreCase(req.crmUf());
         if (crmMudou && medicoRepo.existsByCrmAndCrmUf(req.crm(), req.crmUf().toUpperCase())) {
@@ -144,7 +165,8 @@ public class MedicoService {
                 "Já existe um médico com este CRM para a UF informada");
         }
 
-        medico.setCpfCriptografado(cryptoService.encrypt(req.cpf().replaceAll("\\D", "")));
+        medico.setCpfCriptografado(cryptoService.encrypt(cpfNormalizado));
+        medico.setCpfHash(cpfHash);
         medico.setNome(req.nome());
         medico.setCrm(req.crm());
         medico.setCrmUf(req.crmUf().toUpperCase());
@@ -513,6 +535,16 @@ public class MedicoService {
         return medicoRepo.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Médico não encontrado: " + id));
+    }
+
+    private String hashCpf(String cpfDigitsOnly) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(cpfDigitsOnly.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 não disponível", e);
+        }
     }
 
     private MedicoResponse toFullResponse(Medico medico) {

@@ -10,7 +10,7 @@ import {
   ArrowLeftRight,
   BarChart3,
   Users,
-  Settings,
+  BookOpen,
   X,
   ClipboardCheck,
   SlidersHorizontal,
@@ -25,8 +25,7 @@ const navItems = [
   { to: '/empresas',          label: 'Empresas',    icon: Building2,        roles: ['gestao'],                                     end: true },
   { to: '/tomadores',         label: 'Tomadores',   icon: Hospital,         roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true },
   { to: '/producao',          label: 'Produção',    icon: ClipboardList,    roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: false },
-  { to: '/parametros-fiscais', label: 'Parâm. Fiscais', icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'],      end: true },
-  { to: '/fiscal/config',      label: 'Config. Fiscal', icon: Settings,          roles: ['contabil', 'gestao'],                   end: true },
+  { to: '/fiscal/config', label: 'Fiscal', icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'], end: true },
   { to: '/notas',       label: 'Notas',         icon: FileText,         roles: null,       end: true  },
   { to: '/notas/lote',  label: 'Lotes NFS-e',   icon: Layers,           roles: ['operacao', 'gestao', 'contabil', 'financeiro'], end: true },
   { to: '/repasses',    label: 'Repasses',      icon: Banknote,         roles: null,       end: true  },
@@ -100,10 +99,15 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
       {/* Bottom */}
       <div className="px-2 py-3 border-t border-ds-border shrink-0">
-        <button className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-ds-nav hover:bg-ds-input hover:text-ds-mid transition-colors">
-          <Settings size={17} />
-          Configurações
-        </button>
+        <a
+          href="/docs/guia-cadastros.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-ds-nav hover:bg-ds-input hover:text-ds-mid transition-colors"
+        >
+          <BookOpen size={17} />
+          Documentação
+        </a>
         <div className="mt-2 px-3 py-1.5 text-[10px] text-ds-light text-center tracking-wide">
           v0.1.0 — MVP
         </div>

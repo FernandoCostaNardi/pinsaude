@@ -1490,6 +1490,51 @@ double pct = l.getTotal() > 0
 
 ---
 
+## Multi-empresa para Médicos — Padrões (EPIC-03.8)
+
+### Vínculos médico-empresa — gerenciamento via endpoints dedicados
+A tabela `vinculos_medico_empresa` é N:N. Ao editar dados pessoais de um médico (`PUT /api/medicos/{id}`),
+os vínculos NÃO devem ser tocados — `MedicoService.atualizar()` não chama nenhum método de vínculo.
+O gerenciamento de vínculos é feito exclusivamente pelos endpoints:
+- `GET /api/medicos/{id}/vinculos` — lista com dados enriquecidos da empresa
+- `POST /api/medicos/{id}/vinculos` — body `{ "empresaId": "uuid" }`
+- `DELETE /api/medicos/{id}/vinculos/{empresaId}`
+
+**Regra de negócio:** não é possível remover o único vínculo de um médico (422).
+
+### TenantFilter — CNPJ deve ser propagado SEM strip de formatação
+O claim `cnpj_id` do JWT contém o CNPJ com formatação (`XX.XXX.XXX/XXXX-XX`).
+A coluna `cnpj` da tabela `empresas` também armazena o CNPJ formatado.
+O RLS compara `cnpj = current_setting('app.current_tenant')` — portanto os valores devem bater.
+
+**NUNCA** fazer `replaceAll("\\D", "")` no CNPJ dentro do `TenantFilter`:
+```java
+// CORRETO
+String cnpj = jwtToken.getToken().getClaimAsString("cnpj_id");
+return cnpj != null ? cnpj : "";
+
+// ERRADO — quebra o RLS
+return cnpj != null ? cnpj.replaceAll("\\D", "") : "";
+```
+
+### MedicoResponse — backward compat com empresaId
+O campo `empresaId` (UUID do primeiro vínculo) é mantido para não quebrar clientes existentes.
+O campo `empresas` (lista completa) é a forma correta de consumir os vínculos:
+```java
+UUID primeiraEmpresaId = empresas.isEmpty() ? null : empresas.get(0).empresaId();
+```
+
+### Mock de EmpresaRepository em testes do MedicoService
+Sempre que um teste usa `@InjectMocks MedicoService`, o `EmpresaRepository` deve estar presente
+como `@Mock` — mesmo que o teste não chame métodos de empresa diretamente:
+```java
+@Mock EmpresaRepository empresaRepo; // obrigatório — usado por toFullResponse()
+```
+Quando `vinculoRepo.findByIdMedicoId()` retorna lista vazia, o `empresaRepo.findAllById(emptyList)`
+é chamado mas retorna lista vazia por padrão do Mockito (sem stub explícito necessário).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

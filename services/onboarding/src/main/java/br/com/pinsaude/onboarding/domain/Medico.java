@@ -21,6 +21,9 @@ public class Medico {
     @Column(name = "cpf_criptografado", nullable = false)
     private byte[] cpfCriptografado;
 
+    @Column(name = "cpf_hash", length = 64, unique = true)
+    private String cpfHash;
+
     @Column(name = "nome", nullable = false, length = 200)
     private String nome;
 
@@ -61,6 +64,9 @@ public class Medico {
 
     public byte[] getCpfCriptografado() { return cpfCriptografado; }
     public void setCpfCriptografado(byte[] cpfCriptografado) { this.cpfCriptografado = cpfCriptografado; }
+
+    public String getCpfHash() { return cpfHash; }
+    public void setCpfHash(String cpfHash) { this.cpfHash = cpfHash; }
 
     public String getNome() { return nome; }
     public void setNome(String nome) { this.nome = nome; }

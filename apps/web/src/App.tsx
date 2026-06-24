@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider }      from './auth/AuthContext'
 import { ProtectedRoute }    from './components/ProtectedRoute'
 import { Shell }             from './layouts/Shell'
@@ -12,7 +12,6 @@ import { MedicoPerfilPage }         from './pages/MedicoPerfilPage'
 import { AprovacaoOnboardingPage }  from './pages/AprovacaoOnboardingPage'
 import { ProducoesPage }    from './pages/ProducoesPage'
 import { ProducaoNovaPage } from './pages/ProducaoNovaPage'
-import { ParametrosFiscaisPage }   from './pages/ParametrosFiscaisPage'
 import { ConfiguracaoFiscalPage }   from './pages/ConfiguracaoFiscalPage'
 import { NotasPage }               from './pages/NotasPage'
 import { NfseEmissaoPage }         from './pages/NfseEmissaoPage'
@@ -41,7 +40,7 @@ export default function App() {
             <Route path="/tomadores"   element={<TomadoresPage />} />
             <Route path="/producao"          element={<ProducoesPage />} />
             <Route path="/producao/nova"     element={<ProducaoNovaPage />} />
-            <Route path="/parametros-fiscais" element={<ParametrosFiscaisPage />} />
+            <Route path="/parametros-fiscais" element={<Navigate replace to="/fiscal/config" />} />
             <Route path="/fiscal/config"      element={<ConfiguracaoFiscalPage />} />
             <Route path="/notas"                      element={<NotasPage />} />
             <Route path="/notas/emitir/:producaoId"   element={<NfseEmissaoPage />} />

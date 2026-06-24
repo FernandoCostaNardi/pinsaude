@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pin Saúde — Guia Operacional</title>
+  <style>
+    /* ── Fonts & Reset ────────────────────────────────────────── */
+    @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700;900&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary:      #02A9F7;
+      --primary-700:  #0069A0;
+      --primary-50:   #E6F6FF;
+      --secondary:    #8EDD65;
+      --secondary-700:#4aaa22;
+      --gray-mid:     #939598;
+      --gray-light:   #B7B9BC;
+      --border:       #E5E7EB;
+      --bg:           #F9FAFB;
+      --text:         #111827;
+      --text-mid:     #6B7280;
+      --danger:       #EF4444;
+      --amber:        #D97706;
+    }
+
+    body {
+      font-family: 'Source Sans Pro', 'Segoe UI', sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background: #fff;
+      line-height: 1.6;
+    }
+
+    /* ── Page layout ──────────────────────────────────────────── */
+    .page-wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 48px 60px;
+    }
+
+    /* ── Cover ────────────────────────────────────────────────── */
+    .cover {
+      text-align: center;
+      padding: 60px 0 50px;
+      border-bottom: 3px solid var(--primary);
+      margin-bottom: 48px;
+    }
+    .cover-logo {
+      width: 56px; height: 56px;
+      background: var(--primary);
+      border-radius: 16px;
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+    }
+    .cover-logo svg { width: 32px; height: 32px; fill: #fff; }
+    .cover h1 {
+      font-size: 32px; font-weight: 900;
+      color: var(--primary-700);
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+    }
+    .cover h1 span { color: var(--primary); }
+    .cover p {
+      margin-top: 12px;
+      color: var(--text-mid);
+      font-size: 15px;
+    }
+    .cover-meta {
+      display: flex; justify-content: center; gap: 24px;
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--gray-light);
+    }
+    .cover-meta span { font-weight: 600; color: var(--gray-mid); }
+
+    /* ── ToC ──────────────────────────────────────────────────── */
+    .toc {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+    }
+    .toc-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--text-mid); margin-bottom: 14px;
+    }
+    .toc ol { padding-left: 20px; }
+    .toc li { margin-bottom: 6px; }
+    .toc a { color: var(--primary-700); text-decoration: none; font-weight: 600; }
+    .toc a:hover { text-decoration: underline; }
+
+    /* ── Section ──────────────────────────────────────────────── */
+    .section { margin-bottom: 56px; }
+    .section-header {
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 2px solid var(--primary);
+      padding-bottom: 12px;
+      margin-bottom: 28px;
+    }
+    .section-icon {
+      width: 44px; height: 44px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .section-icon svg { width: 22px; height: 22px; }
+    .icon-blue  { background: var(--primary-50); }
+    .icon-blue svg  { color: var(--primary); stroke: var(--primary); }
+    .icon-green { background: #f0fdf4; }
+    .icon-green svg { color: #16a34a; stroke: #16a34a; }
+    .icon-violet { background: #f5f3ff; }
+    .icon-violet svg { color: #7c3aed; stroke: #7c3aed; }
+
+    .section-title { font-size: 22px; font-weight: 900; color: var(--primary-700); }
+    .section-subtitle { font-size: 13px; color: var(--text-mid); margin-top: 2px; }
+
+    /* ── Info box ─────────────────────────────────────────────── */
+    .info-box {
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      border-left: 4px solid;
+    }
+    .info-box.blue   { background: var(--primary-50); border-color: var(--primary); color: var(--primary-700); }
+    .info-box.amber  { background: #fffbeb; border-color: var(--amber); color: #92400e; }
+    .info-box.green  { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+    .info-box p { margin-top: 4px; line-height: 1.5; }
+    .info-box strong { font-weight: 700; }
+
+    /* ── Steps ────────────────────────────────────────────────── */
+    .steps { display: flex; flex-direction: column; gap: 28px; }
+    .step {
+      display: flex; gap: 18px;
+    }
+    .step-number {
+      flex-shrink: 0;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 900; font-size: 15px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .step-body { flex: 1; }
+    .step-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .step-desc  { color: var(--text-mid); font-size: 13px; margin-bottom: 10px; }
+
+    /* ── Fields table ─────────────────────────────────────────── */
+    .fields-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 8px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .fields-table th {
+      background: var(--bg);
+      padding: 8px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-mid);
+      border-bottom: 1px solid var(--border);
+    }
+    .fields-table td {
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .fields-table tr:last-child td { border-bottom: none; }
+    .fields-table tr:nth-child(even) td { background: #fafafa; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-req   { background: #fee2e2; color: #b91c1c; }
+    .badge-opt   { background: #f3f4f6; color: #6b7280; }
+
+    /* ── Connector line ───────────────────────────────────────── */
+    .step-connector {
+      margin-left: 17px;
+      border-left: 2px dashed var(--border);
+      height: 18px;
+    }
+
+    /* ── Result box ───────────────────────────────────────────── */
+    .result-box {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-top: 20px;
+      font-size: 13px;
+      color: #15803d;
+    }
+    .result-box strong { font-weight: 700; }
+
+    /* ── Sub-section ──────────────────────────────────────────── */
+    .sub-section { margin-top: 32px; }
+    .sub-title {
+      font-size: 15px; font-weight: 700;
+      color: var(--text);
+      border-left: 3px solid var(--secondary);
+      padding-left: 10px;
+      margin-bottom: 14px;
+    }
+
+    /* ── Warning ──────────────────────────────────────────────── */
+    .warn {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #92400e;
+      margin-top: 8px;
+    }
+
+    /* ── Glossary ─────────────────────────────────────────────── */
+    .glossary dt { font-weight: 700; color: var(--primary-700); margin-top: 10px; }
+    .glossary dd { color: var(--text-mid); font-size: 13px; margin-left: 16px; }
+
+    /* ── Footer ───────────────────────────────────────────────── */
+    .footer {
+      margin-top: 64px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 11px;
+      color: var(--gray-light);
+    }
+
+    /* ── Print ────────────────────────────────────────────────── */
+    @media print {
+      body { background: #fff; font-size: 12px; }
+      .page-wrap { padding: 24px 32px 40px; }
+      .section { page-break-inside: avoid; }
+      .cover { page-break-after: always; }
+      .toc  { page-break-after: always; }
+      a { color: inherit !important; text-decoration: none !important; }
+      @page {
+        size: A4;
+        margin: 18mm 20mm;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- ══════════════════ CAPA ═══════════════════════ -->
+  <div class="cover">
+    <div class="cover-logo">
+      <!-- Pin icon (SVG inline) -->
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/>
+      </svg>
+    </div>
+    <h1>Pin Saúde<br/><span>Guia Operacional</span></h1>
+    <p>Cadastros · Configuração Fiscal · Motor de Cálculo</p>
+    <div class="cover-meta">
+      <span>Versão 1.0</span>
+      <span>Junho / 2026</span>
+      <span>Pin Saúde MVP</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════ SUMÁRIO ════════════════════ -->
+  <div class="toc">
+    <p class="toc-title">Sumário</p>
+    <ol>
+      <li><a href="#sobre">Sobre este guia</a></li>
+      <li><a href="#empresa">Cadastro de Empresa</a>
+        <ol style="padding-left:18px; margin-top:4px;">
+          <li><a href="#empresa-step1">Passo 1 — Identificação</a></li>
+          <li><a href="#empresa-step2">Passo 2 — Dados Fiscais</a></li>
+          <li><a href="#empresa-step3">Passo 3 — Revisão e Confirmação</a></li>
+          <li><a href="#empresa-pos">Pós-cadastro</a></li>
+        </ol>
+      </li>
+      <li><a href="#medico">Cadastro de Médico</a>
+        <ol style="padding-left:18px; margin-top:4px;">
+          <li><a href="#medico-step1">Passo 1 — Dados Pessoais</a></li>
+          <li><a href="#medico-step2">Passo 2 — Dados Profissionais</a></li>
+          <li><a href="#medico-step3">Passo 3 — Dados Bancários</a></li>
+          <li><a href="#medico-vinculos">Vincular a Empresas</a></li>
+        </ol>
+      </li>
+      <li><a href="#tomador">Cadastro de Tomador</a></li>
+      <li><a href="#fiscal">Menu Fiscal</a>
+        <ol style="padding-left:18px; margin-top:4px;">
+          <li><a href="#fiscal-aliquotas">Aba: Alíquotas por Competência</a></li>
+          <li><a href="#fiscal-ibscbs">Aba: Parâm. IBS/CBS 2027</a></li>
+          <li><a href="#fiscal-equiparacao">Aba: Regras de Equiparação</a></li>
+          <li><a href="#fiscal-servicos">Aba: Serviços Cadastrados</a></li>
+          <li><a href="#fiscal-motor">Como o Motor Fiscal usa esses dados</a></li>
+        </ol>
+      </li>
+      <li><a href="#glossario">Glossário</a></li>
+    </ol>
+  </div>
+
+  <!-- ══════════════════ SOBRE ══════════════════════ -->
+  <div class="section" id="sobre">
+    <div class="section-header">
+      <div class="section-icon icon-blue">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="section-title">Sobre este guia</div>
+        <div class="section-subtitle">Contexto, pré-requisitos e ordem recomendada de cadastro</div>
+      </div>
+    </div>
+
+    <div class="info-box blue">
+      <strong>Objetivo</strong>
+      <p>Este guia descreve, passo a passo, como cadastrar uma <strong>Empresa</strong>, um <strong>Médico</strong>
+         e um <strong>Tomador de Serviço</strong> no sistema Pin Saúde. Cada tela segue um assistente (wizard)
+         que orienta o operador campo a campo.</p>
+    </div>
+
+    <div class="sub-section">
+      <p class="sub-title">Quem pode realizar os cadastros?</p>
+      <table class="fields-table">
+        <thead>
+          <tr><th>Perfil</th><th>Empresas</th><th>Médicos</th><th>Tomadores</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>gestao</strong></td><td>✔ Criar / Editar</td><td>✔ Criar / Editar</td><td>✔ Criar / Editar</td></tr>
+          <tr><td><strong>operacao</strong></td><td>Somente leitura</td><td>Somente leitura</td><td>✔ Criar / Editar</td></tr>
+          <tr><td><strong>financeiro / contabil</strong></td><td>Somente leitura</td><td>Somente leitura</td><td>Somente leitura</td></tr>
+          <tr><td><strong>medico</strong></td><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="sub-section">
+      <p class="sub-title">Ordem recomendada de cadastro</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <div class="step-title">Cadastre a Empresa primeiro</div>
+            <div class="step-desc">A empresa (CNPJ) é a âncora de multi-tenancy. Os médicos são vinculados a uma ou mais empresas após o cadastro.</div>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <div class="step-title">Cadastre os Médicos</div>
+            <div class="step-desc">Após o cadastro inicial, acesse o perfil do médico para vinculá-lo às empresas correspondentes.</div>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <div class="step-title">Cadastre os Tomadores</div>
+            <div class="step-desc">Hospitais, clínicas, operadoras ou pacientes PF que recebem serviços médicos. O cadastro pode ser feito a qualquer momento.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ EMPRESA ════════════════════ -->
+  <div class="section" id="empresa">
+    <div class="section-header">
+      <div class="section-icon icon-blue">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/>
+        </svg>
+      </div>
+      <div>
+        <div class="section-title">Cadastro de Empresa</div>
+        <div class="section-subtitle">Menu lateral → Empresas → botão <em>"+ Nova Empresa"</em></div>
+      </div>
+    </div>
+
+    <div class="info-box blue">
+      <strong>O que é uma Empresa no Pin Saúde?</strong>
+      <p>É a pessoa jurídica (PJ) que contrata os médicos e emite notas fiscais de serviço.
+         Cada empresa possui um CNPJ único, regime tributário e inscrição municipal próprios.
+         O médico recebe seus repasses associado a pelo menos uma empresa.</p>
+    </div>
+
+    <!-- Step 1 -->
+    <div id="empresa-step1" class="sub-section">
+      <p class="sub-title">Passo 1 — Identificação</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Informe os dados de identificação da empresa. O CNPJ é imutável após o cadastro.
+      </p>
+      <table class="fields-table">
+        <thead>
+          <tr><th>Campo</th><th>Obrigatório?</th><th>Observações</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>CNPJ</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>14 dígitos, validado automaticamente. Bloqueado na edição.</td>
+          </tr>
+          <tr>
+            <td><strong>Razão Social</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Nome completo da empresa conforme Receita Federal.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="warn">
+        ⚠️ O CNPJ não pode ser alterado após o cadastro. Verifique com atenção antes de avançar.
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div id="empresa-step2" class="sub-section">
+      <p class="sub-title">Passo 2 — Dados Fiscais</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Configure o regime tributário, inscrição municipal e localização da empresa.
+        Estes dados são utilizados no cálculo e emissão de NFS-e.
+      </p>
+      <table class="fields-table">
+        <thead>
+          <tr><th>Campo</th><th>Obrigatório?</th><th>Observações</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Regime Tributário</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Simples Nacional · Lucro Presumido · Lucro Real. Impacta as alíquotas fiscais aplicadas.</td>
+          </tr>
+          <tr>
+            <td><strong>Inscrição Municipal</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Número fornecido pela prefeitura. Necessário para emissão de NFS-e.</td>
+          </tr>
+          <tr>
+            <td><strong>Município</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Campo de busca com autocomplete. Preenche o código IBGE automaticamente.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Step 3 -->
+    <div id="empresa-step3" class="sub-section">
+      <p class="sub-title">Passo 3 — Revisão e Confirmação</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Confira todos os dados preenchidos. Clique em qualquer etapa da barra de progresso para voltar
+        e corrigir sem perder os dados já preenchidos.
+      </p>
+      <div class="info-box green">
+        <strong>Campos exibidos na revisão:</strong> CNPJ · Razão Social · Regime Tributário ·
+        Inscrição Municipal · Município (com código IBGE).
+      </div>
+      <p style="margin-top:12px;font-size:13px;color:var(--text-mid);">
+        Clique em <strong>"Cadastrar empresa"</strong> para salvar. A empresa estará imediatamente
+        disponível para vínculo com médicos.
+      </p>
+      <div class="result-box">
+        ✅ <strong>Cadastro concluído:</strong> a empresa aparece na listagem com seu regime tributário
+        e status <em>Ativa</em>.
+      </div>
+    </div>
+
+    <!-- Pós cadastro -->
+    <div id="empresa-pos" class="sub-section">
+      <p class="sub-title">Pós-cadastro — Ações disponíveis</p>
+      <table class="fields-table">
+        <thead>
+          <tr><th>Ação</th><th>Como acessar</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Editar empresa</strong></td>
+            <td>Ícone de lápis na linha da tabela. O CNPJ é somente-leitura.</td>
+          </tr>
+          <tr>
+            <td><strong>Contas Bancárias</strong></td>
+            <td>Ícone de banco (<em>Landmark</em>) → cadastrar contas de recebimento da empresa.</td>
+          </tr>
+          <tr>
+            <td><strong>Configuração Fiscal</strong></td>
+            <td>Ícone de documento → definir alíquotas por competência e certificado A1 para NFS-e.</td>
+          </tr>
+          <tr>
+            <td><strong>Excluir empresa</strong></td>
+            <td>Ícone de lixeira → confirmação antes de remover.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════ MÉDICO ═════════════════════ -->
+  <div class="section" id="medico">
+    <div class="section-header">
+      <div class="section-icon icon-green">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="section-title">Cadastro de Médico</div>
+        <div class="section-subtitle">Menu lateral → Médicos → botão <em>"+ Novo Médico"</em></div>
+      </div>
+    </div>
+
+    <div class="info-box blue">
+      <strong>Fluxo de onboarding do médico</strong>
+      <p>O cadastro inicial cria o médico com status <em>Rascunho</em>. A ativação ocorre automaticamente
+         quando checklist de conduta, documentos obrigatórios, contrato assinado e junta comercial
+         estiverem aprovados.</p>
+    </div>
+
+    <!-- Step 1 -->
+    <div id="medico-step1" class="sub-section">
+      <p class="sub-title">Passo 1 — Dados Pessoais</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Informe os dados pessoais de identificação do médico.
+      </p>
+      <table class="fields-table">
+        <thead>
+          <tr><th>Campo</th><th>Obrigatório?</th><th>Observações</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Nome Completo</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Nome completo conforme documento de identificação.</td>
+          </tr>
+          <tr>
+            <td><strong>CPF</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>
+              Validado e formatado automaticamente. O sistema <strong>bloqueia CPF duplicado</strong> —
+              um médico com o mesmo CPF não pode ser cadastrado duas vezes.
+              O CPF é armazenado criptografado (não é possível recuperá-lo em texto claro).
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Telefone</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Formato livre, ex: (11) 99999-9999.</td>
+          </tr>
+          <tr>
+            <td><strong>E-mail</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Usado para envio de convite e comunicações do sistema.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Step 2 -->
+    <div id="medico-step2" class="sub-section">
+      <p class="sub-title">Passo 2 — Dados Profissionais</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Informe os dados do registro profissional do médico.
+      </p>
+      <table class="fields-table">
+        <thead>
+          <tr><th>Campo</th><th>Obrigatório?</th><th>Observações</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>CRM</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Número do Conselho Regional de Medicina, ex: 123456.</td>
+          </tr>
+          <tr>
+            <td><strong>UF do CRM</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Estado onde o CRM foi emitido. Seleção de lista com todas as 27 UFs.</td>
+          </tr>
+          <tr>
+            <td><strong>Especialidade</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Ex: Cardiologia, Ortopedia, Clínica Geral.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="warn">
+        ⚠️ O par CRM + UF é único no sistema. Não é possível cadastrar dois médicos com o mesmo CRM na mesma UF.
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div id="medico-step3" class="sub-section">
+      <p class="sub-title">Passo 3 — Dados Bancários</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Configure a conta de recebimento para repasses financeiros. Este passo é opcional no cadastro
+        inicial e pode ser configurado depois no perfil do médico.
+      </p>
+
+      <p style="font-size:13px;color:var(--text);margin-bottom:10px;">
+        <strong>Escolha o tipo de recebimento:</strong>
+      </p>
+
+      <table class="fields-table">
+        <thead>
+          <tr><th>Tipo</th><th>Campos necessários</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>PIX</strong> (padrão)</td>
+            <td>
+              Tipo de chave (CPF · CNPJ · E-mail · Telefone · Chave Aleatória) + valor da chave.<br/>
+              <em>CPFs adicionais para split</em> (acima de R$ 40.000, separados por vírgula) — opcional.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>TED</strong></td>
+            <td>
+              Banco (busca por nome ou código COMPE) · Agência · Conta · Tipo de conta (Corrente / Poupança).
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="info-box amber" style="margin-top:14px;">
+        <strong>Segurança:</strong> A chave PIX é exibida mascarada após o salvamento
+        (ex: CPF → <code>123.***.***-45</code>). Para alterar os dados bancários de um médico já cadastrado,
+        um aviso de confirmação é exibido.
+      </div>
+
+      <p style="margin-top:14px;font-size:13px;color:var(--text-mid);">
+        Clique em <strong>"Cadastrar médico"</strong> para salvar. O médico é criado com status
+        <strong>Rascunho</strong>.
+      </p>
+
+      <div class="result-box">
+        ✅ <strong>Cadastro concluído:</strong> o médico aparece na listagem com badge
+        <em>Rascunho</em>. O processo de onboarding (checklist, documentos, contrato e
+        junta comercial) deve ser concluído para a ativação.
+      </div>
+    </div>
+
+    <!-- Vínculos -->
+    <div id="medico-vinculos" class="sub-section">
+      <p class="sub-title">Vinculando o Médico a Empresas</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Após o cadastro inicial, acesse o <strong>perfil do médico</strong> (clique no nome na listagem)
+        para gerenciar as empresas vinculadas. O gerenciamento de vínculos é exclusivo do perfil —
+        não faz parte do wizard de cadastro.
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <div class="step-title">Acesse o perfil do médico</div>
+            <div class="step-desc">Na listagem de médicos, clique no nome do médico para abrir seu perfil. Vá para a aba <strong>"Dados Pessoais"</strong> e role até a seção <em>"Empresas Associadas"</em>.</div>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <div class="step-title">Adicione uma empresa</div>
+            <div class="step-desc">
+              Selecione a empresa no dropdown (exibe apenas as empresas ainda não vinculadas)
+              e clique em <strong>"Vincular"</strong>.
+            </div>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <div class="step-title">Remova um vínculo (se necessário)</div>
+            <div class="step-desc">
+              Clique no <em>X</em> ao lado da empresa na lista de vínculos.<br/>
+              <strong>Restrição:</strong> não é possível remover o último vínculo de um médico.
+              O médico deve ter ao menos uma empresa associada.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-box blue" style="margin-top:20px;">
+        <strong>Isolamento por tenant:</strong> cada empresa possui seus próprios dados de médicos,
+        notas e produções. Um médico vinculado a duas empresas só é visível para os usuários de
+        cada empresa respectivamente.
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ TOMADOR ════════════════════ -->
+  <div class="section" id="tomador">
+    <div class="section-header">
+      <div class="section-icon icon-violet">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="section-title">Cadastro de Tomador</div>
+        <div class="section-subtitle">Menu lateral → Tomadores → botão <em>"+ Novo Tomador"</em></div>
+      </div>
+    </div>
+
+    <div class="info-box blue">
+      <strong>O que é um Tomador?</strong>
+      <p>É a entidade que contrata o serviço médico e para quem a NFS-e é emitida:
+         um hospital, clínica, operadora de saúde ou paciente pessoa física.
+         Os indicadores de retenção do tomador determinam qual cenário fiscal é aplicado
+         na emissão das notas.</p>
+    </div>
+
+    <div class="sub-section">
+      <p class="sub-title">Formulário único de cadastro</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:16px;">
+        O cadastro de tomador utiliza um formulário em tela única (sem wizard por etapas).
+        Preencha os campos e clique em <strong>"Cadastrar tomador"</strong>.
+      </p>
+
+      <!-- Campo: Tipo -->
+      <div style="margin-bottom:22px;">
+        <p style="font-weight:700;font-size:14px;margin-bottom:10px;">1. Tipo do Tomador</p>
+        <table class="fields-table">
+          <thead>
+            <tr><th>Tipo</th><th>Documento</th><th>Quando usar</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Hospital</strong></td>
+              <td>CNPJ</td>
+              <td>Hospitais e UPAs.</td>
+            </tr>
+            <tr>
+              <td><strong>Clínica</strong></td>
+              <td>CNPJ</td>
+              <td>Clínicas e consultórios pessoas jurídicas.</td>
+            </tr>
+            <tr>
+              <td><strong>Operadora</strong></td>
+              <td>CNPJ</td>
+              <td>Planos de saúde, cooperativas médicas.</td>
+            </tr>
+            <tr>
+              <td><strong>Paciente PF</strong></td>
+              <td>CPF</td>
+              <td>Atendimento particular de pessoa física. ISS e federais seguem regime especial.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Campo: Documento -->
+      <div style="margin-bottom:22px;">
+        <p style="font-weight:700;font-size:14px;margin-bottom:10px;">2. Documento (CNPJ ou CPF)</p>
+        <p style="color:var(--text-mid);font-size:13px;">
+          Para tomadores PJ (Hospital, Clínica, Operadora), o sistema busca automaticamente
+          os dados na <strong>Receita Federal</strong> após o CNPJ ser digitado completo
+          e válido. Os campos <em>Razão Social</em> e <em>Município</em> são preenchidos
+          automaticamente quando a consulta tem sucesso.
+        </p>
+        <div class="info-box green" style="margin-top:10px;">
+          <strong>Preenchimento automático pela Receita Federal:</strong> aguarde o indicador
+          <em>"Receita preenchida"</em> aparecer ao lado do campo CNPJ antes de avançar.
+          Você pode editar os campos preenchidos automaticamente se necessário.
+        </div>
+      </div>
+
+      <!-- Campos básicos -->
+      <div style="margin-bottom:22px;">
+        <p style="font-weight:700;font-size:14px;margin-bottom:10px;">3. Dados Básicos</p>
+        <table class="fields-table">
+          <thead>
+            <tr><th>Campo</th><th>Obrigatório?</th><th>Observações</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Razão Social / Nome</strong></td>
+              <td><span class="badge badge-req">Obrigatório</span></td>
+              <td>Nome da empresa ou nome completo do paciente PF.</td>
+            </tr>
+            <tr>
+              <td><strong>Município</strong></td>
+              <td><span class="badge badge-opt">Opcional</span></td>
+              <td>Não exibido para Paciente PF. Preenchido via Receita Federal quando disponível.</td>
+            </tr>
+            <tr>
+              <td><strong>Inscrição Municipal</strong></td>
+              <td><span class="badge badge-opt">Opcional</span></td>
+              <td>Número de inscrição municipal do tomador.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Retenções -->
+      <div style="margin-bottom:22px;">
+        <p style="font-weight:700;font-size:14px;margin-bottom:10px;">4. Retenções na Fonte</p>
+        <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+          Define se o tomador é responsável por reter tributos sobre os valores pagos ao médico.
+          Esta configuração impacta diretamente o motor fiscal e a emissão de NFS-e.
+        </p>
+        <table class="fields-table">
+          <thead>
+            <tr><th>Indicador</th><th>Tributos afetados</th><th>Cenário fiscal</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Retenção Federal</strong></td>
+              <td>IR · CSLL · PIS · COFINS</td>
+              <td>
+                <strong>Ativado:</strong> tomador PJ retém e recolhe os tributos federais (Cenário A).<br/>
+                <strong>Desativado:</strong> Pin Saúde recolhe por guia própria (Cenário B).
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Retenção de ISS</strong></td>
+              <td>ISS</td>
+              <td>
+                <strong>Ativado:</strong> tomador retém o ISS — a NFS-e não destaca ISS a pagar.<br/>
+                <strong>Desativado:</strong> ISS destacado na nota para recolhimento pela empresa.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="info-box amber" style="margin-top:12px;">
+          <strong>Atenção:</strong> em qualquer cenário, o médico sempre recebe exatamente
+          <strong>85% do valor bruto</strong>. Os tributos saem dos 15% retidos pela Pin Saúde,
+          nunca do repasse ao médico.
+        </div>
+      </div>
+
+      <div class="result-box">
+        ✅ <strong>Cadastro concluído:</strong> o tomador aparece na listagem com badge do tipo
+        (Hospital · Clínica · Operadora · Paciente PF) e os indicadores de retenção exibidos
+        como ícones na tabela.
+      </div>
+    </div>
+
+    <div class="sub-section">
+      <p class="sub-title">Pós-cadastro — Ações disponíveis</p>
+      <table class="fields-table">
+        <thead>
+          <tr><th>Ação</th><th>Como acessar</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Editar tomador</strong></td>
+            <td>Ícone de lápis na linha da tabela. Todos os campos são editáveis.</td>
+          </tr>
+          <tr>
+            <td><strong>Excluir tomador</strong></td>
+            <td>Ícone de lixeira → confirmação antes de remover. Registros de produção vinculados podem ser afetados.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════ FISCAL ════════════════════ -->
+  <div class="section" id="fiscal">
+    <div class="section-header">
+      <div class="section-icon" style="background:#f5f3ff;">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#7c3aed">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/>
+        </svg>
+      </div>
+      <div>
+        <div class="section-title" style="color:#5b21b6;">Menu Fiscal</div>
+        <div class="section-subtitle">Menu lateral → <em>Fiscal</em> (antes: "Parâm. Fiscais" + "Config. Fiscal")</div>
+      </div>
+    </div>
+
+    <div class="info-box" style="background:#f5f3ff;border-color:#8b5cf6;color:#4c1d95;">
+      <strong>Unificação dos menus</strong>
+      <p>Os antigos menus "Parâm. Fiscais" e "Config. Fiscal" foram consolidados em um único item
+         chamado <strong>Fiscal</strong>. O conteúdo é organizado em 4 abas dentro da mesma tela.
+         Isso facilita a navegação do time contábil, que antes precisava alternar entre dois menus
+         para uma tarefa relacionada.</p>
+    </div>
+
+    <div style="margin-bottom:20px;">
+      <table class="fields-table">
+        <thead><tr><th>Perfil</th><th>Acesso</th><th>O que pode fazer</th></tr></thead>
+        <tbody>
+          <tr><td><strong>gestao</strong></td><td>Completo</td><td>Criar, editar, homologar em todas as abas.</td></tr>
+          <tr><td><strong>contabil</strong></td><td>Completo</td><td>Criar, editar, homologar em todas as abas.</td></tr>
+          <tr><td><strong>financeiro</strong></td><td>Visualização + IBS/CBS</td><td>Pode criar e homologar parâmetros IBS/CBS 2027; outras abas são somente-leitura.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Aba Alíquotas -->
+    <div id="fiscal-aliquotas" class="sub-section">
+      <p class="sub-title">Aba 1 — Alíquotas por Competência</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Define as alíquotas de cada tributo separadamente, com vigência por período de competência
+        (YYYY-MM). Cada tributo tem seu próprio histórico de alíquotas — alterar a alíquota de
+        julho não retroage nos cálculos de junho.
+      </p>
+
+      <div class="info-box amber">
+        <strong>Alerta de competência futura:</strong> se o mês seguinte ainda não tiver alíquotas
+        configuradas para todos os 5 tributos, um aviso amarelo aparece no topo da aba.
+        Configure antes do fechamento mensal para evitar erros na emissão em lote.
+      </div>
+
+      <table class="fields-table" style="margin-top:14px;">
+        <thead>
+          <tr><th>Campo</th><th>Obrigatório?</th><th>Detalhes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Tributo</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>ISS · IR · CSLL · PIS · COFINS — um registro por tributo.</td>
+          </tr>
+          <tr>
+            <td><strong>Competência Início</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Formato YYYY-MM. Define a partir de qual mês a alíquota entra em vigor.</td>
+          </tr>
+          <tr>
+            <td><strong>Competência Fim</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Se omitido, a alíquota vale indefinidamente até ser sobrescrita por uma nova vigência.</td>
+          </tr>
+          <tr>
+            <td><strong>Alíquota %</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>
+              Digitada em percentual (ex: <code>2.00</code> = 2%). O sistema armazena internamente
+              como fração decimal (ex: <code>0.0200</code>).
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Descrição</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Observação para referência interna (ex: "Ajuste municipal ISS 2025").</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="sub-section">
+        <p style="font-weight:700;font-size:13px;margin-bottom:10px;">Impacto no sistema</p>
+        <table class="fields-table">
+          <thead><tr><th>Tributo</th><th>Onde é usado</th></tr></thead>
+          <tbody>
+            <tr><td><strong>ISS</strong></td><td>Base de cálculo do ISS na NFS-e. Pode ser retido pelo tomador (indicador ISS) ou destacado para recolhimento pela empresa.</td></tr>
+            <tr><td><strong>IR</strong></td><td>Retenção federal pelo tomador PJ (Cenário A) ou recolhimento pela Pin Saúde (Cenário B). Incide sobre o valor bruto da nota.</td></tr>
+            <tr><td><strong>CSLL</strong></td><td>Contribuição Social — mesmo fluxo do IR (Cenários A e B).</td></tr>
+            <tr><td><strong>PIS</strong></td><td>Contribuição para PIS — mesmo fluxo do IR (Cenários A e B).</td></tr>
+            <tr><td><strong>COFINS</strong></td><td>Contribuição para COFINS — mesmo fluxo do IR (Cenários A e B).</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Aba IBS/CBS -->
+    <div id="fiscal-ibscbs" class="sub-section">
+      <p class="sub-title">Aba 2 — Parâm. IBS/CBS 2027 (Reforma Tributária)</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Configura os parâmetros da Reforma Tributária 2027. A partir de janeiro de 2027, o
+        IBS (Imposto sobre Bens e Serviços) e o CBS (Contribuição sobre Bens e Serviços)
+        substituem progressivamente IR, CSLL, PIS e COFINS.
+        O motor fiscal seleciona automaticamente o regime correto pela competência do fato gerador.
+      </p>
+
+      <div class="info-box" style="background:#f5f3ff;border-color:#8b5cf6;color:#4c1d95;">
+        <strong>Regime automático por competência:</strong>
+        competências até 2026-12 usam o regime atual (Aba 1 — Alíquotas).
+        Competências a partir de 2027-01 usam o regime IBS/CBS configurado nesta aba.
+      </div>
+
+      <table class="fields-table" style="margin-top:14px;">
+        <thead><tr><th>Campo</th><th>Obrigatório?</th><th>Detalhes</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Competência de Início</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Mês a partir do qual o parâmetro IBS/CBS entra em vigor. Normalmente 2027-01.</td>
+          </tr>
+          <tr>
+            <td><strong>ISS Municipal (fração)</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>O ISS municipal permanece separado mesmo com IBS/CBS ativo. Ex: <code>0.02</code> = 2%. Continua incidindo na transição.</td>
+          </tr>
+          <tr>
+            <td><strong>Alíquota Base IBS/CBS</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Alíquota bruta do IBS/CBS em fração decimal. Fase-teste 2027: <code>0.01</code> (1%).</td>
+          </tr>
+          <tr>
+            <td><strong>Redução para Saúde (NBS 200029)</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Percentual de redução aplicável a serviços de saúde. Padrão: <code>0.60</code> (60%). Resultado: 1% × (1 − 60%) = <strong>0,4% efetivo</strong>.</td>
+          </tr>
+          <tr>
+            <td><strong>Observações</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Referência à publicação do Comitê Gestor IBS que definiu as alíquotas.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="sub-section">
+        <p style="font-weight:700;font-size:13px;margin-bottom:10px;">Workflow de Homologação</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-number">1</div>
+            <div class="step-body">
+              <div class="step-title">Criar parâmetro (status: Rascunho)</div>
+              <div class="step-desc">Qualquer usuário com acesso pode criar um parâmetro IBS/CBS. Ele fica marcado como <em>"A homologar"</em> e não afeta o motor fiscal ainda.</div>
+            </div>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step">
+            <div class="step-number">2</div>
+            <div class="step-body">
+              <div class="step-title">Contabilidade revisa e homologa</div>
+              <div class="step-desc">O responsável contábil clica em <strong>"Homologar"</strong>. O botão aparece apenas para parâmetros pendentes. Um alerta aparece na tela enquanto há parâmetros não homologados.</div>
+            </div>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step">
+            <div class="step-number">3</div>
+            <div class="step-body">
+              <div class="step-title">Parâmetro ativo — motor passa a usar IBS/CBS</div>
+              <div class="step-desc">A partir da competência configurada, notas emitidas pelo motor fiscal usarão IBS/CBS efetivo em vez de IR+CSLL+PIS+COFINS.</div>
+            </div>
+          </div>
+        </div>
+        <div class="warn" style="margin-top:14px;">
+          ⚠️ Parâmetros IBS/CBS são <strong>append-only</strong> (nunca editados, apenas adicionados).
+          Para corrigir uma alíquota, crie um novo parâmetro com a competência correta.
+        </div>
+      </div>
+    </div>
+
+    <!-- Aba Equiparação -->
+    <div id="fiscal-equiparacao" class="sub-section">
+      <p class="sub-title">Aba 3 — Regras de Equiparação Hospitalar</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Define quais combinações de CNAE (atividade econômica do tomador) e Código LC 116
+        (classificação do serviço médico) são tratadas como equiparadas a estabelecimento
+        hospitalar. A equiparação determina qual Cenário Fiscal (C) será aplicado na emissão
+        de notas para esses tomadores.
+      </p>
+
+      <table class="fields-table">
+        <thead><tr><th>Campo</th><th>Obrigatório?</th><th>Detalhes</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>CNAE</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Código de Atividade Econômica do tomador. Ex: <code>8610-1/00</code> (Atividades de atendimento hospitalar).</td>
+          </tr>
+          <tr>
+            <td><strong>Código LC 116</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Código da Lista de Serviços da Lei Complementar 116/2003. Ex: <code>4.02</code> (Análises clínicas).</td>
+          </tr>
+          <tr>
+            <td><strong>Equiparado</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Checkbox: se marcado, ativa o Cenário C (tomador PF com equiparação hospitalar → tributos zerados na nota).</td>
+          </tr>
+          <tr>
+            <td><strong>Regime Presunção</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Apenas quando Equiparado = Sim. <em>Reduzida</em> ou <em>Cheia</em> — impacta a base de presunção do IR no Lucro Presumido.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="info-box blue" style="margin-top:14px;">
+        <strong>Impacto no motor fiscal:</strong> se o tomador da nota fiscal tiver um CNAE + Código
+        LC 116 cadastrado aqui com <em>Equiparado = Sim</em>, o motor aplica o Cenário C
+        (equiparação hospitalar) e os tributos (IR, CSLL, PIS, COFINS) ficam zerados na nota.
+        Isso beneficia serviços prestados dentro de hospitais, onde a Lei prevê tributação reduzida.
+      </div>
+
+      <div class="sub-section" style="margin-top:14px;">
+        <p style="font-weight:700;font-size:13px;margin-bottom:8px;">Histórico de auditoria</p>
+        <p style="color:var(--text-mid);font-size:13px;">
+          Cada alteração em uma regra de equiparação gera uma linha de auditoria com:
+          campo alterado · valor anterior · valor novo · quem alterou · data/hora.
+          Clique na seta de expansão da linha para ver o histórico completo.
+        </p>
+      </div>
+    </div>
+
+    <!-- Aba Serviços -->
+    <div id="fiscal-servicos" class="sub-section">
+      <p class="sub-title">Aba 4 — Serviços Cadastrados (LC 116)</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Catálogo de referência dos 15 serviços médicos mais comuns conforme a
+        <strong>Lei Complementar 116/2003</strong>. Esta aba é <strong>somente leitura</strong> — os serviços
+        são um dado mestre do sistema e não podem ser alterados pela interface.
+      </p>
+
+      <table class="fields-table">
+        <thead><tr><th>Coluna</th><th>Descrição</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Código LC 116</strong></td><td>Código nacional do serviço. Ex: <code>4.02</code> — Análises clínicas.</td></tr>
+          <tr><td><strong>Descrição</strong></td><td>Nome padronizado do serviço conforme a lei.</td></tr>
+          <tr><td><strong>ISS / IR / CSLL / PIS / COFINS</strong></td><td>Alíquotas padrão do catálogo. Para ajustar por competência, use a Aba 1.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="info-box amber" style="margin-top:14px;">
+        <strong>Atenção:</strong> as alíquotas exibidas aqui são o padrão do catálogo (semente). As
+        alíquotas vigentes usadas na emissão de notas vêm da <em>Aba 1 — Alíquotas por Competência</em>,
+        que sobrescreve os padrões do catálogo conforme o período da nota.
+      </div>
+    </div>
+
+    <!-- Motor Fiscal -->
+    <div id="fiscal-motor" class="sub-section">
+      <p class="sub-title">Como o Motor Fiscal usa esses dados</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:16px;">
+        Ao emitir uma NFS-e, o motor fiscal segue a seguinte hierarquia para selecionar alíquotas e cenário:
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <div class="step-title">Determina a competência da nota</div>
+            <div class="step-desc">Usa o mês/ano da produção médica (fato gerador) como competência de referência para todos os cálculos.</div>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <div class="step-title">Verifica se há parâmetro IBS/CBS ativo para a competência</div>
+            <div class="step-desc">
+              Se existe um parâmetro IBS/CBS homologado com vigência ≤ competência da nota →
+              aplica o <strong>regime 2027</strong> (IBS/CBS substitui IR+CSLL+PIS+COFINS; ISS permanece).
+              <br/>Caso contrário → segue para as alíquotas padrão (passo 3).
+            </div>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <div class="step-title">Busca alíquotas por tributo (Aba 1)</div>
+            <div class="step-desc">Para cada tributo (ISS, IR, CSLL, PIS, COFINS), busca o parâmetro mais recente com <em>competência_início ≤ competência da nota</em>. Se não encontrar → alíquota = 0 para aquele tributo.</div>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-body">
+            <div class="step-title">Determina o Cenário Fiscal pelo tomador</div>
+            <div class="step-desc">
+              Com as alíquotas em mãos, o motor aplica um dos 4 cenários:
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <table class="fields-table" style="margin-top:16px;">
+        <thead>
+          <tr><th>Cenário</th><th>Condição</th><th>Retenções aplicadas</th><th>Médico recebe</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>A</strong></td>
+            <td>Tomador PJ + Retenção Federal = Sim</td>
+            <td>IR + CSLL + PIS + COFINS retidos pelo tomador; ISS conforme indicador</td>
+            <td>85% do bruto</td>
+          </tr>
+          <tr>
+            <td><strong>B</strong></td>
+            <td>Tomador PJ + Retenção Federal = Não</td>
+            <td>Pin Saúde recolhe todos por guia própria</td>
+            <td>85% do bruto</td>
+          </tr>
+          <tr>
+            <td><strong>C</strong></td>
+            <td>Tomador PF + Equiparação Hospitalar = Sim (Aba 3)</td>
+            <td>Tributos zerados na nota (benefício fiscal hospitalar)</td>
+            <td>85% do bruto</td>
+          </tr>
+          <tr>
+            <td><strong>D</strong></td>
+            <td>Tomador PF + Equiparação Hospitalar = Não</td>
+            <td>IR na fonte retido pelo tomador PF</td>
+            <td>85% do bruto</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="result-box" style="margin-top:16px;">
+        ✅ <strong>Invariante absoluta:</strong> em qualquer cenário, o médico recebe exatamente
+        <strong>85% do valor bruto</strong>. Os impostos saem dos 15% retidos pela Pin Saúde —
+        nunca do repasse ao médico.
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ GLOSSÁRIO ══════════════════ -->
+  <div class="section" id="glossario">
+    <div class="section-header">
+      <div class="section-icon icon-blue">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.966 8.966 0 00-6 2.292m0-14.25v14.25"/>
+        </svg>
+      </div>
+      <div>
+        <div class="section-title">Glossário</div>
+        <div class="section-subtitle">Termos utilizados neste guia</div>
+      </div>
+    </div>
+
+    <dl class="glossary">
+      <dt>CRM</dt>
+      <dd>Conselho Regional de Medicina — número de registro profissional do médico.</dd>
+
+      <dt>CNPJ</dt>
+      <dd>Cadastro Nacional da Pessoa Jurídica — identificador único de empresas no Brasil.</dd>
+
+      <dt>CPF</dt>
+      <dd>Cadastro de Pessoa Física — identificador único de cidadãos.</dd>
+
+      <dt>IBS / CBS</dt>
+      <dd>Imposto sobre Bens e Serviços (IBS) e Contribuição sobre Bens e Serviços (CBS) — novos tributos da Reforma Tributária 2027 que substituem progressivamente IR, CSLL, PIS e COFINS. Serviços de saúde têm redução de 60% (NBS 200029).</dd>
+
+      <dt>ISS</dt>
+      <dd>Imposto Sobre Serviços — tributo municipal incidente sobre a prestação de serviços médicos. Permanece separado mesmo com IBS/CBS ativo.</dd>
+
+      <dt>IR / CSLL / PIS / COFINS</dt>
+      <dd>Tributos federais retidos na fonte pelo tomador PJ com retenção federal ativa. Substituídos por IBS/CBS nas competências a partir de 2027-01.</dd>
+
+      <dt>Homologação</dt>
+      <dd>Aprovação formal da contabilidade para um parâmetro IBS/CBS. Parâmetros não homologados ficam como rascunho e não afetam o motor fiscal.</dd>
+
+      <dt>Equiparação Hospitalar</dt>
+      <dd>Classificação que determina se um serviço prestado em determinado tomador (CNAE + LC 116) tem tratamento tributário de estabelecimento hospitalar, zerando tributos na nota (Cenário C).</dd>
+
+      <dt>Cenário Fiscal</dt>
+      <dd>Um dos 4 padrões de cálculo do motor fiscal: A (PJ com retenção), B (PJ sem retenção), C (PF equiparado), D (PF não equiparado). Determinado pelos indicadores do tomador e regras de equiparação.</dd>
+
+      <dt>LC 116</dt>
+      <dd>Lei Complementar 116/2003 — lista nacional de serviços sujeitos ao ISS. O código LC 116 identifica o tipo de serviço médico prestado na nota fiscal.</dd>
+
+      <dt>CNAE</dt>
+      <dd>Classificação Nacional de Atividades Econômicas — código que identifica a atividade principal do tomador de serviço. Usado nas regras de equiparação hospitalar.</dd>
+
+      <dt>NFS-e</dt>
+      <dd>Nota Fiscal de Serviço Eletrônica — emitida pela empresa para o tomador após cada produção médica.</dd>
+
+      <dt>Rascunho</dt>
+      <dd>Status inicial do médico após o cadastro. O médico não pode emitir notas neste status.</dd>
+
+      <dt>Regime Tributário</dt>
+      <dd>Modalidade de tributação da empresa: Simples Nacional, Lucro Presumido ou Lucro Real. Impacta as alíquotas aplicadas nas NFS-e.</dd>
+
+      <dt>Retenção na fonte</dt>
+      <dd>Mecanismo pelo qual o tomador desconta e recolhe o imposto diretamente, em nome do prestador de serviço.</dd>
+
+      <dt>Split de pagamento</dt>
+      <dd>Divisão do repasse PIX acima de R$ 40.000 entre múltiplos CPFs cadastrados.</dd>
+
+      <dt>Tenant / Multi-tenancy</dt>
+      <dd>Isolamento de dados por empresa. Cada empresa (CNPJ) enxerga apenas seus próprios médicos, notas e produções.</dd>
+
+      <dt>Tomador</dt>
+      <dd>Entidade que contrata o serviço médico: hospital, clínica, operadora ou paciente pessoa física.</dd>
+
+      <dt>Vínculo Médico-Empresa</dt>
+      <dd>Relação entre um médico e uma empresa para fins de emissão de NFS-e e repasse financeiro.</dd>
+    </dl>
+  </div>
+
+  <!-- ══════════════════ FOOTER ═════════════════════ -->
+  <div class="footer">
+    Pin Saúde — Documentação operacional interna · Versão 1.1 · Junho 2026<br/>
+    Para dúvidas, entre em contato com o time de operações.
+  </div>
+
+</div>
+</body>
+</html>
