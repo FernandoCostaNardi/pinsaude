@@ -20,6 +20,9 @@ MINIO_BUCKET=pinsaude-documentos
 # Gestão service
 DB_PASSWORD_GESTAO=TROCAR_POR_SENHA_FORTE
 
+# Portal do médico (leitura cross-schema)
+DB_PASSWORD_PORTAL=TROCAR_POR_SENHA_FORTE
+
 # Faturamento service
 DB_PASSWORD_FATURAMENTO=TROCAR_POR_SENHA_FORTE
 

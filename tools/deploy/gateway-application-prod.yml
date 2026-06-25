@@ -5,55 +5,59 @@ spring:
         - id: onboarding
           uri: http://localhost:8185
           predicates:
-            - Path=/api/onboarding/**
+            - Path=/api/onboarding,/api/onboarding/**
         - id: medicos
           uri: http://localhost:8185
           predicates:
-            - Path=/api/medicos/**
+            - Path=/api/medicos,/api/medicos/**
         - id: empresas
           uri: http://localhost:8185
           predicates:
-            - Path=/api/empresas/**
+            - Path=/api/empresas,/api/empresas/**
         - id: gestao-usuarios
           uri: http://localhost:8186
           predicates:
-            - Path=/api/gestao/**
+            - Path=/api/gestao,/api/gestao/**
         - id: gestao-roles
           uri: http://localhost:8186
           predicates:
-            - Path=/api/usuarios/**
+            - Path=/api/usuarios,/api/usuarios/**
         - id: faturamento
           uri: http://localhost:8182
           predicates:
-            - Path=/api/faturamento/**
+            - Path=/api/faturamento,/api/faturamento/**
         - id: tomadores
           uri: http://localhost:8182
           predicates:
-            - Path=/api/tomadores/**
+            - Path=/api/tomadores,/api/tomadores/**
         - id: producoes
           uri: http://localhost:8182
           predicates:
-            - Path=/api/producoes/**
+            - Path=/api/producoes,/api/producoes/**
         - id: servicos
           uri: http://localhost:8182
           predicates:
-            - Path=/api/servicos/**
+            - Path=/api/servicos,/api/servicos/**
+        - id: portal
+          uri: http://localhost:8187
+          predicates:
+            - Path=/api/portal,/api/portal/**
         - id: nfse
           uri: http://localhost:8181
           predicates:
-            - Path=/api/nfse/**
+            - Path=/api/nfse,/api/nfse/**
         - id: motor-fiscal
           uri: http://localhost:8181
           predicates:
-            - Path=/api/motor-fiscal/**
+            - Path=/api/motor-fiscal,/api/motor-fiscal/**
         - id: fiscal
           uri: http://localhost:8181
           predicates:
-            - Path=/api/fiscal/**
+            - Path=/api/fiscal,/api/fiscal/**
         - id: parametros-fiscais
           uri: http://localhost:8181
           predicates:
-            - Path=/api/parametros-fiscais/**
+            - Path=/api/parametros-fiscais,/api/parametros-fiscais/**
   security:
     oauth2:
       resourceserver:

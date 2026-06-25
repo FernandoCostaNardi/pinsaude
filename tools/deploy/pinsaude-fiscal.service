@@ -13,6 +13,7 @@ EnvironmentFile=/home/pinsaude/infra/.env
 ExecStart=/usr/bin/java \
   -Xms256m -Xmx512m \
   -Dspring.profiles.active=prod \
+  -Dspring.cloud.vault.enabled=false \
   -Dspring.config.additional-location=file:/home/pinsaude/apps/fiscal/application-prod.yml \
   -jar /home/pinsaude/apps/fiscal/app.jar
 

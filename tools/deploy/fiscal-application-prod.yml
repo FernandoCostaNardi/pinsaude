@@ -32,12 +32,9 @@ spring:
           max-attempts: 3
           initial-interval: 1s
           multiplier: 2.0
-  # Vault desabilitado em prod simples (sem HashiCorp Vault instalado)
-  config:
-    import: "optional:vault://"
   cloud:
     vault:
-      fail-fast: false
+      enabled: false
 
 server:
   port: 8181
@@ -47,6 +44,9 @@ management:
     web:
       exposure:
         include: health,info
+  health:
+    vault:
+      enabled: false
 
 # Integração NFS-e — habilitar quando tiver token real do agregador
 nfse:

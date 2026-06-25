@@ -34,6 +34,10 @@ spring:
           uri: http://localhost:8082
           predicates:
             - Path=/api/servicos/**
+        - id: portal
+          uri: http://localhost:8087
+          predicates:
+            - Path=/api/portal/**
         - id: ledger
           uri: http://localhost:8083
           predicates:

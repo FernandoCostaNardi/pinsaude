@@ -29,6 +29,7 @@ pinsaude/
   services/repasse/  → Spring Boot (porta 8084)
   services/onboarding/ → Spring Boot (porta 8085)
   services/gestao/   → Spring Boot (porta 8086)
+  services/portal/   → Spring Boot (porta 8087) ← Portal do Médico (EPIC-06.1)
   gateway/           → Spring Cloud Gateway (porta 8090)
   tools/scripts/     → Scripts Node.js de build/test
   docs/              → PRD, ADR
@@ -1532,6 +1533,62 @@ como `@Mock` — mesmo que o teste não chame métodos de empresa diretamente:
 ```
 Quando `vinculoRepo.findByIdMedicoId()` retorna lista vazia, o `empresaRepo.findAllById(emptyList)`
 é chamado mas retorna lista vazia por padrão do Mockito (sem stub explícito necessário).
+
+---
+
+## Portal do Médico — Padrões e Armadilhas (EPIC-06.1)
+
+### Serviço portal: leitura cross-schema sem JPA/Flyway
+O `services/portal/` é um serviço Spring Boot leve (porta 8087 dev / 8187 prod) que agrega dados
+de `onboarding.medicos`, `fiscal.notas_fiscais` e `faturamento.producoes` usando **JdbcTemplate**.
+Não tem JPA, Hibernate, nem Flyway — não é dono de nenhum schema, apenas lê de outros.
+
+Usar `spring-boot-starter-jdbc` em vez de `spring-boot-starter-data-jpa`:
+```xml
+<dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jdbc</artifactId></dependency>
+```
+
+### Usuário svc_portal — cross-schema read-only
+O `svc_portal` precisa de `USAGE` nos schemas e `SELECT` em todas as tabelas.
+Para instâncias já existentes (init.sql não recria), executar como superuser:
+```sql
+CREATE USER svc_portal WITH PASSWORD 'portal_dev';
+GRANT USAGE ON SCHEMA onboarding, fiscal, faturamento TO svc_portal;
+GRANT SELECT ON ALL TABLES IN SCHEMA onboarding TO svc_portal;
+GRANT SELECT ON ALL TABLES IN SCHEMA fiscal TO svc_portal;
+GRANT SELECT ON ALL TABLES IN SCHEMA faturamento TO svc_portal;
+ALTER DEFAULT PRIVILEGES IN SCHEMA onboarding  GRANT SELECT ON TABLES TO svc_portal;
+ALTER DEFAULT PRIVILEGES IN SCHEMA fiscal      GRANT SELECT ON TABLES TO svc_portal;
+ALTER DEFAULT PRIVILEGES IN SCHEMA faturamento GRANT SELECT ON TABLES TO svc_portal;
+```
+`ALTER DEFAULT PRIVILEGES` cobre tabelas criadas no futuro; `GRANT SELECT ON ALL TABLES` cobre as já existentes.
+
+### Identificação do médico via JWT email
+O JWT do médico contém `email` mas **não** `medico_db_id` (não mapeado no Keycloak).
+O portal resolve o médico via: `SELECT id FROM onboarding.medicos WHERE email = ?`
+A coluna `email` é texto plano (não criptografada), lookup por email é seguro e eficiente.
+
+Para o teste funcionar: o usuário `medico@pinsaude.com.br` no Keycloak deve ter um registro
+correspondente em `onboarding.medicos` com o mesmo e-mail.
+
+### RLS bypass no portal (sem TenantFilter)
+O portal não usa TenantFilter. O médico JWT não tem `cnpj_id`, então `current_setting('app.current_tenant', TRUE)` retorna NULL.
+`COALESCE(NULL, '') = ''` → TRUE → bypass do RLS em todos os schemas.
+Isolamento de dados garante-se via filtro de aplicação: `WHERE medico_id = ?`.
+
+### @WebMvcTest + @EnableMethodSecurity exige @Import(SecurityConfig.class)
+`@WebMvcTest` não aplica o interceptor AOP do `@PreAuthorize` automaticamente.
+Sem `@Import(SecurityConfig.class)`, testes que esperam 403 recebem 200 (controller executado sem guard):
+```java
+@WebMvcTest(PortalMedicoController.class)
+@Import(SecurityConfig.class)  // obrigatório para @PreAuthorize funcionar no slice de teste
+class PortalMedicoControllerTest { ... }
+```
+
+### UUID e OffsetDateTime com JdbcTemplate + PostgreSQL JDBC
+- UUID: `rs.getObject("id", UUID.class)` — suportado nativo pelo driver PostgreSQL
+- Timestamp: `rs.getTimestamp("created_at").toInstant().atOffset(ZoneOffset.UTC)` — converter Timestamp para OffsetDateTime
+- Colunas nullable timestamp: verificar `ts != null` antes de converter
 
 ---
 

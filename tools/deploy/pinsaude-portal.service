@@ -1,0 +1,25 @@
+[Unit]
+Description=Pin Saude - Portal do Medico
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=pinsaude
+Group=pinsaude
+WorkingDirectory=/home/pinsaude/apps/portal
+
+EnvironmentFile=/home/pinsaude/infra/.env
+
+ExecStart=/usr/bin/java \
+  -Xms128m -Xmx256m \
+  -Dspring.profiles.active=prod \
+  -Dspring.config.additional-location=file:/home/pinsaude/apps/portal/application-prod.yml \
+  -jar /home/pinsaude/apps/portal/app.jar
+
+Restart=on-failure
+RestartSec=15
+StandardOutput=append:/home/pinsaude/logs/portal.log
+StandardError=append:/home/pinsaude/logs/portal.log
+
+[Install]
+WantedBy=multi-user.target
