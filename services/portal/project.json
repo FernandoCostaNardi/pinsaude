@@ -1,0 +1,15 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "portal",
+  "sourceRoot": "services/portal/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tools\\scripts\\run.cmd tools/scripts/mvn-build.js :pinsaude-portal",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

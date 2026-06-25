@@ -31,6 +31,8 @@ CREATE USER svc_ledger       WITH PASSWORD 'ledger_dev';
 CREATE USER svc_repasse      WITH PASSWORD 'repasse_dev';
 CREATE USER svc_onboarding   WITH PASSWORD 'onboarding_dev';
 CREATE USER svc_gestao       WITH PASSWORD 'gestao_dev';
+-- Portal: leitura cross-schema (onboarding + fiscal + faturamento)
+CREATE USER svc_portal       WITH PASSWORD 'portal_dev';
 
 -- Grants de schema (cada usuário só cria/acessa o próprio schema)
 GRANT CREATE, USAGE ON SCHEMA fiscal       TO svc_fiscal;
@@ -39,6 +41,10 @@ GRANT CREATE, USAGE ON SCHEMA ledger       TO svc_ledger;
 GRANT CREATE, USAGE ON SCHEMA repasse      TO svc_repasse;
 GRANT CREATE, USAGE ON SCHEMA onboarding   TO svc_onboarding;
 GRANT CREATE, USAGE ON SCHEMA gestao       TO svc_gestao;
+-- Portal: acesso de leitura nos três schemas
+GRANT USAGE ON SCHEMA onboarding  TO svc_portal;
+GRANT USAGE ON SCHEMA fiscal      TO svc_portal;
+GRANT USAGE ON SCHEMA faturamento TO svc_portal;
 
 -- search_path padrão por usuário (Flyway encontra o schema sem prefixo)
 ALTER USER svc_fiscal       SET search_path TO fiscal, public;
@@ -55,3 +61,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA ledger       GRANT ALL ON TABLES TO svc_ledge
 ALTER DEFAULT PRIVILEGES IN SCHEMA repasse      GRANT ALL ON TABLES TO svc_repasse;
 ALTER DEFAULT PRIVILEGES IN SCHEMA onboarding   GRANT ALL ON TABLES TO svc_onboarding;
 ALTER DEFAULT PRIVILEGES IN SCHEMA gestao       GRANT ALL ON TABLES TO svc_gestao;
+-- Portal: herda SELECT em tabelas existentes e futuras (criadas pelos owners)
+ALTER DEFAULT PRIVILEGES IN SCHEMA onboarding  GRANT SELECT ON TABLES TO svc_portal;
+ALTER DEFAULT PRIVILEGES IN SCHEMA fiscal      GRANT SELECT ON TABLES TO svc_portal;
+ALTER DEFAULT PRIVILEGES IN SCHEMA faturamento GRANT SELECT ON TABLES TO svc_portal;

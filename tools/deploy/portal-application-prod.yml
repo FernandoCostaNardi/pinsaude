@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pinsaude
+    username: svc_portal
+    password: ${DB_PASSWORD_PORTAL}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://212.85.12.228:8443/realms/pinsaude
+
+server:
+  port: 8187
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -1,0 +1,36 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pinsaude
+    username: svc_faturamento
+    password: ${DB_PASSWORD_FATURAMENTO}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: faturamento
+  flyway:
+    schemas: faturamento
+    default-schema: faturamento
+    locations: classpath:db/migration
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://212.85.12.228:8443/realms/pinsaude
+
+crypto:
+  key: ${CRYPTO_KEY}
+
+receita-federal:
+  base-url: ${RECEITA_FEDERAL_URL:https://brasilapi.com.br}
+
+server:
+  port: 8182
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

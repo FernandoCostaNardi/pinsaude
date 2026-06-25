@@ -1,0 +1,56 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pinsaude
+    username: svc_fiscal
+    password: ${DB_PASSWORD_FISCAL}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: fiscal
+  flyway:
+    schemas: fiscal
+    default-schema: fiscal
+    enabled: true
+    locations: classpath:db/migration
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://212.85.12.228:8443/realms/pinsaude
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2.0
+  cloud:
+    vault:
+      enabled: false
+
+server:
+  port: 8181
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  health:
+    vault:
+      enabled: false
+
+# Integração NFS-e — habilitar quando tiver token real do agregador
+nfse:
+  enabled: ${NFSE_ENABLED:false}
+  api-token: ${NFSE_API_TOKEN:}
+  base-url: ${NFSE_BASE_URL:https://api.plugnotas.com.br}
+  timeout-segundos: ${NFSE_TIMEOUT_SEGUNDOS:30}

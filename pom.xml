@@ -24,6 +24,7 @@
         <module>services/repasse</module>
         <module>services/onboarding</module>
         <module>services/gestao</module>
+        <module>services/portal</module>
         <module>gateway</module>
     </modules>
 

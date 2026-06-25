@@ -17,5 +17,27 @@ MINIO_ACCESS_KEY=TROCAR_POR_USUARIO_FORTE
 MINIO_SECRET_KEY=TROCAR_POR_SENHA_FORTE_MIN_8_CHARS
 MINIO_BUCKET=pinsaude-documentos
 
-# Criptografia de dados sensíveis (CPF, chave PIX) — pgcrypto
+# Gestão service
+DB_PASSWORD_GESTAO=TROCAR_POR_SENHA_FORTE
+
+# Portal do médico (leitura cross-schema)
+DB_PASSWORD_PORTAL=TROCAR_POR_SENHA_FORTE
+
+# Faturamento service
+DB_PASSWORD_FATURAMENTO=TROCAR_POR_SENHA_FORTE
+
+# Fiscal service
+DB_PASSWORD_FISCAL=TROCAR_POR_SENHA_FORTE
+
+# Criptografia de dados sensíveis (CPF, chave PIX, dados bancários) — pgcrypto
+# Mesma chave usada por onboarding e faturamento — não alterar após primeiro deploy
 CRYPTO_KEY=TROCAR_POR_CHAVE_FORTE_32_CHARS
+
+# RabbitMQ — filas de emissão NFS-e (fiscal service)
+RABBITMQ_USER=pinsaude
+RABBITMQ_PASSWORD=TROCAR_POR_SENHA_FORTE
+
+# Integração NFS-e (agregador fiscal) — habilitar quando tiver contrato
+NFSE_ENABLED=false
+NFSE_API_TOKEN=
+NFSE_BASE_URL=https://api.plugnotas.com.br
