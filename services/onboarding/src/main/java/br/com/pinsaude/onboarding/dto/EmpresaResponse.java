@@ -16,14 +16,22 @@ public record EmpresaResponse(
     RegimeTributario regimeTributario,
     boolean ativo,
     OffsetDateTime createdAt,
-    OffsetDateTime updatedAt
+    OffsetDateTime updatedAt,
+    String logradouro,
+    String bairro,
+    String uf,
+    String cep,
+    String telefone,
+    String emailContato
 ) {
     public static EmpresaResponse from(Empresa e) {
         return new EmpresaResponse(
             e.getId(), e.getCnpj(), e.getRazaoSocial(),
             e.getInscricaoMunicipal(), e.getMunicipio(), e.getCodigoMunicipioIbge(),
             e.getRegimeTributario(),
-            e.isAtivo(), e.getCreatedAt(), e.getUpdatedAt()
+            e.isAtivo(), e.getCreatedAt(), e.getUpdatedAt(),
+            e.getLogradouro(), e.getBairro(), e.getUf(), e.getCep(),
+            e.getTelefone(), e.getEmailContato()
         );
     }
 }

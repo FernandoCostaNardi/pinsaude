@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Printer, Send, Loader2, AlertTriangle } from 'lucide-react'
 import { Producao } from '../api/producoesApi'
+import { Empresa } from '../api/empresasApi'
 import { tomadoresApi, Tomador } from '../api/tomadoresApi'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -9,10 +10,16 @@ function formatBRL(centavos: number): string {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
-function formatCompetencia(comp: string): string {
+function formatCompetenciaMesAno(comp: string): string {
   const [ano, mes] = comp.split('-')
-  const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
-  return `${meses[parseInt(mes, 10) - 1]} de ${ano}`
+  const meses = ['JANEIRO','FEVEREIRO','MARÇO','ABRIL','MAIO','JUNHO',
+                  'JULHO','AGOSTO','SETEMBRO','OUTUBRO','NOVEMBRO','DEZEMBRO']
+  return `${meses[parseInt(mes, 10) - 1]}/${ano}`
+}
+
+function formatCompetenciaMMYYYY(comp: string): string {
+  const [ano, mes] = comp.split('-')
+  return `${mes.padStart(2,'0')}/${ano}`
 }
 
 function formatCnpj(digits: string): string {
@@ -26,64 +33,68 @@ function calcPct(valorCentavos: number, aliquotaPct: number): number {
   return Math.round(valorCentavos * aliquotaPct / 100)
 }
 
-// ─── Linha de valor fiscal ────────────────────────────────────────────────────
+// ─── Componentes da DANFSe ────────────────────────────────────────────────────
 
-function ValorRow({ label, value, destaque, sub }: {
-  label: string; value: number; destaque?: boolean; sub?: boolean
+function SecaoHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="bg-gray-700 px-3 py-1">
+      <p className="text-[9px] font-bold text-white uppercase tracking-widest">{children}</p>
+    </div>
+  )
+}
+
+function CamposGrid({ children, cols = 2 }: { children: React.ReactNode; cols?: number }) {
+  return (
+    <div className={`px-3 py-2 grid gap-x-4 gap-y-2 bg-white`}
+         style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+      {children}
+    </div>
+  )
+}
+
+function Campo({ label, value, span }: { label: string; value: string | null | undefined; span?: number }) {
+  return (
+    <div style={span ? { gridColumn: `span ${span}` } : undefined}>
+      <p className="text-[8px] font-bold text-gray-500 uppercase tracking-wider">{label}</p>
+      <p className="text-[11px] text-gray-900 font-medium leading-tight mt-0.5">{value || '—'}</p>
+    </div>
+  )
+}
+
+function LinhaValor({
+  label, value, negativo, destaque, sub,
+}: {
+  label: string; value: number; negativo?: boolean; destaque?: boolean; sub?: boolean
 }) {
   return (
-    <tr className={destaque ? 'bg-primary-50' : sub ? 'bg-gray-50' : ''}>
-      <td className={`px-3 py-1.5 text-xs border-b border-r border-gray-200 ${
-        destaque ? 'font-bold text-primary' : sub ? 'pl-5 text-gray-500 italic' : 'text-gray-600'
-      }`}>
-        {label}
-      </td>
-      <td className={`px-3 py-1.5 text-xs text-right border-b border-gray-200 tabular-nums ${
-        destaque ? 'font-bold text-primary' : sub ? 'text-gray-500' : 'text-gray-800'
-      }`}>
-        {formatBRL(value)}
-      </td>
-    </tr>
-  )
-}
-
-// ─── Célula de dado ───────────────────────────────────────────────────────────
-
-function Campo({ label, value, fullWidth }: { label: string; value: string | null | undefined; fullWidth?: boolean }) {
-  return (
-    <div className={`${fullWidth ? 'col-span-2' : ''} min-w-0`}>
-      <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">{label}</p>
-      <p className="text-xs text-gray-900 font-medium truncate">{value || '—'}</p>
+    <div className={`flex justify-between py-1 ${destaque ? 'border-t-2 border-gray-400 mt-1' : sub ? 'pl-3' : ''}`}>
+      <span className={`text-[10px] ${destaque ? 'font-bold text-gray-900' : sub ? 'text-gray-500' : 'text-gray-700'}`}>
+        {sub && <span className="text-gray-400 mr-1">(−)</span>}{label}
+      </span>
+      <span className={`text-[10px] tabular-nums ${destaque ? 'font-bold text-gray-900' : negativo ? 'text-red-600' : 'text-gray-800'}`}>
+        {negativo ? `(${formatBRL(value)})` : formatBRL(value)}
+      </span>
     </div>
   )
 }
 
-// ─── Seção ────────────────────────────────────────────────────────────────────
-
-function Secao({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="border border-gray-300 rounded overflow-hidden">
-      <div className="bg-primary px-3 py-1">
-        <p className="text-[10px] font-bold text-white uppercase tracking-wider">{title}</p>
-      </div>
-      <div className="px-3 py-2.5 grid grid-cols-2 gap-x-6 gap-y-3 bg-white">
-        {children}
-      </div>
-    </div>
-  )
-}
-
-// ─── Modal ────────────────────────────────────────────────────────────────────
+// ─── Props ───────────────────────────────────────────────────────────────────
 
 interface Props {
   producao: Producao
   cnpjPrestador: string | null | undefined
+  empresaInfo: Empresa | null
+  medicoNomeMap: Record<string, string>
   onClose: () => void
   onConfirmar: () => void
   emitindo: boolean
 }
 
-export function NfsePreviewModal({ producao, cnpjPrestador, onClose, onConfirmar, emitindo }: Props) {
+// ─── Modal ────────────────────────────────────────────────────────────────────
+
+export function NfsePreviewModal({
+  producao, cnpjPrestador, empresaInfo, medicoNomeMap, onClose, onConfirmar, emitindo,
+}: Props) {
   const [tomador, setTomador] = useState<Tomador | null>(null)
   const [loadingTomador, setLoadingTomador] = useState(true)
   const documentRef = useRef<HTMLDivElement>(null)
@@ -95,54 +106,58 @@ export function NfsePreviewModal({ producao, cnpjPrestador, onClose, onConfirmar
       .finally(() => setLoadingTomador(false))
   }, [producao.tomador.id])
 
-  const { servico, valorBruto, competencia } = producao
+  const { servico, valorBruto, competencia, participantes } = producao
 
-  // Tributos retidos PELO TOMADOR (esses reduzem o valor que o tomador paga à Pin)
-  const issRetido      = producao.tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
-  const irRetido       = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
-  const csllRetido     = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
-  const pisRetido      = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
-  const cofinsRetido   = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
-  const totalRetidos   = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
+  const issRetido    = producao.tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
+  const irRetido     = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
+  const csllRetido   = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
+  const pisRetido    = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
+  const cofinsRetido = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
+  const totalFederal = irRetido + csllRetido + pisRetido + cofinsRetido
+  const totalRetidos = issRetido + totalFederal
+  const valorLiquido = valorBruto - totalRetidos
 
-  // Valor líquido da NOTA = o que o tomador efetivamente deposita à Pin
-  const valorLiquidoNota = valorBruto - totalRetidos
+  // Nomes dos médicos para a discriminação
+  const medicoNomes = participantes
+    .map(p => medicoNomeMap[p.medicoId])
+    .filter(Boolean)
+  const medicoNomesStr = medicoNomes.length > 0 ? medicoNomes.join(', ') : null
 
-  // Discriminação — apenas dados fiscais (sem menção à taxa interna da Pin)
-  const linhasDiscriminacao = [
-    `PRESTAÇÃO DE SERVIÇOS MÉDICOS — COMPETÊNCIA ${formatCompetencia(competencia).toUpperCase()}`,
-    `SERVIÇO: ${servico.codigoLc116} — ${servico.descricaoPadrao}`,
-    '',
-    `VALOR DOS SERVIÇOS: ${formatBRL(valorBruto)}`,
-    '',
-    `ISS (${Number(servico.aliquotaIss).toFixed(2)}%): ${formatBRL(calcPct(valorBruto, servico.aliquotaIss))} — ${issRetido > 0 ? 'RETIDO PELO TOMADOR' : 'A RECOLHER PELA PRESTADORA'}`,
-    `IR (${Number(servico.aliquotaIr).toFixed(2)}%): ${formatBRL(calcPct(valorBruto, servico.aliquotaIr))} — ${irRetido > 0 ? 'RETIDO PELO TOMADOR' : 'A RECOLHER PELA PRESTADORA'}`,
-    `CSLL (${Number(servico.aliquotaCsll).toFixed(2)}%): ${formatBRL(calcPct(valorBruto, servico.aliquotaCsll))} — ${csllRetido > 0 ? 'RETIDO PELO TOMADOR' : 'A RECOLHER PELA PRESTADORA'}`,
-    `PIS (${Number(servico.aliquotaPis).toFixed(2)}%): ${formatBRL(calcPct(valorBruto, servico.aliquotaPis))} — ${pisRetido > 0 ? 'RETIDO PELO TOMADOR' : 'A RECOLHER PELA PRESTADORA'}`,
-    `COFINS (${Number(servico.aliquotaCofins).toFixed(2)}%): ${formatBRL(calcPct(valorBruto, servico.aliquotaCofins))} — ${cofinsRetido > 0 ? 'RETIDO PELO TOMADOR' : 'A RECOLHER PELA PRESTADORA'}`,
-    '',
-    totalRetidos > 0
-      ? `TOTAL RETIDO PELO TOMADOR: ${formatBRL(totalRetidos)}`
-      : '',
-    `VALOR LÍQUIDO DA NOTA: ${formatBRL(valorLiquidoNota)}`,
-  ]
+  // Endereço do prestador
+  const prestadorEndereco = [
+    empresaInfo?.logradouro,
+    empresaInfo?.bairro,
+  ].filter(Boolean).join(', ')
+  const prestadorLocalidade = [
+    empresaInfo?.municipio,
+    empresaInfo?.uf,
+  ].filter(Boolean).join(' - ')
 
-  const discriminacao = linhasDiscriminacao.filter(l => l !== null && l !== undefined).join('\n')
+  // Endereço do tomador
+  const tomadorEndereco = [
+    tomador?.logradouro,
+    tomador?.bairro,
+  ].filter(Boolean).join(', ')
+  const tomadorLocalidade = [
+    tomador?.municipio || producao.tomador.municipio,
+    tomador?.uf,
+  ].filter(Boolean).join(' - ')
 
   const handlePrint = () => {
     const content = documentRef.current?.innerHTML
     if (!content) return
-    const w = window.open('', '_blank', 'width=800,height=900')
+    const w = window.open('', '_blank', 'width=800,height=1000')
     if (!w) return
     w.document.write(`
-      <html><head><title>Preview NFS-e — Pin Saúde</title>
+      <html><head><title>DANFSe — Pin Saúde</title>
       <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-        @media print { body { padding: 0; } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; padding: 12px; font-size: 11px; color: #111; }
+        @media print { body { padding: 0; } @page { margin: 8mm; } }
         .watermark {
           position: fixed; top: 50%; left: 50%;
-          transform: translate(-50%,-50%) rotate(-45deg);
-          font-size: 60px; font-weight: 900; color: rgba(0,0,0,0.06);
+          transform: translate(-50%,-50%) rotate(-40deg);
+          font-size: 52px; font-weight: 900; color: rgba(0,0,0,0.05);
           white-space: nowrap; pointer-events: none; z-index: 9999; letter-spacing: 4px;
         }
       </style>
@@ -161,14 +176,14 @@ export function NfsePreviewModal({ producao, cnpjPrestador, onClose, onConfirmar
       <div className="absolute inset-0 bg-black/50" />
 
       <div
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col"
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[94vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Toolbar */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 shrink-0">
           <div>
-            <h2 className="text-base font-bold text-gray-800">Preview da NFS-e</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Revise os dados antes de enviar para emissão</p>
+            <h2 className="text-base font-bold text-gray-800">Prévia da NFS-e (DANFSe)</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Revise os dados antes de confirmar a emissão</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -192,188 +207,234 @@ export function NfsePreviewModal({ producao, cnpjPrestador, onClose, onConfirmar
           </div>
         </div>
 
-        {/* Alert de preview */}
+        {/* Alert */}
         <div className="mx-5 mt-3 shrink-0 flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
           <AlertTriangle size={13} className="text-yellow-600 shrink-0" />
           <p className="text-xs text-yellow-800">
-            Este é apenas um preview para validação. O documento real será gerado e numerado pela prefeitura após a emissão.
+            Prévia para validação. O número e protocolo definitivos serão gerados pela prefeitura na emissão.
           </p>
         </div>
 
         {/* Documento */}
         <div className="overflow-y-auto flex-1 px-5 pb-5 mt-3">
-          <div ref={documentRef} className="relative bg-white border-2 border-gray-300 rounded overflow-hidden select-text">
-
-            {/* Watermark */}
+          <div
+            ref={documentRef}
+            className="relative bg-white border-2 border-gray-400 text-[11px] select-text overflow-hidden"
+          >
+            {/* Marca d'água */}
             <div
               className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden"
               aria-hidden
             >
               <p
-                className="text-gray-200 font-black text-2xl whitespace-nowrap"
-                style={{ transform: 'rotate(-35deg)', letterSpacing: '3px', userSelect: 'none' }}
+                className="font-black whitespace-nowrap"
+                style={{
+                  transform: 'rotate(-38deg)',
+                  fontSize: '42px',
+                  color: 'rgba(0,0,0,0.04)',
+                  letterSpacing: '3px',
+                  userSelect: 'none',
+                }}
               >
                 PRÉVIA — NÃO É DOCUMENTO FISCAL
               </p>
             </div>
 
-            {/* Cabeçalho */}
-            <div className="bg-primary px-4 py-3 flex items-center justify-between">
+            {/* ── Cabeçalho ── */}
+            <div className="bg-gray-800 px-4 py-2.5 flex items-center justify-between">
               <div>
-                <p className="text-white font-black text-sm tracking-wide">NOTA FISCAL DE SERVIÇOS ELETRÔNICA</p>
-                <p className="text-primary-100 text-[10px] mt-0.5">NFS-e — Lei Complementar 116/2003</p>
-              </div>
-              <div className="text-right">
-                <p className="text-primary-100 text-[9px] uppercase">Competência</p>
-                <p className="text-white font-bold text-sm">{formatCompetencia(competencia)}</p>
-              </div>
-            </div>
-
-            {/* Número / RPS (provisório) */}
-            <div className="bg-primary-50 border-b border-primary-100 px-4 py-2 flex items-center justify-between">
-              <div className="flex items-center gap-6">
-                <div>
-                  <p className="text-[9px] text-primary-600 uppercase font-bold">Número da NFS-e</p>
-                  <p className="text-sm font-black text-primary">A SER GERADO</p>
-                </div>
-                <div>
-                  <p className="text-[9px] text-primary-600 uppercase font-bold">RPS (Provisório)</p>
-                  <p className="text-sm font-bold text-primary-700">PRÉVIA</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-[9px] text-primary-600 uppercase font-bold">Data Prevista de Emissão</p>
-                <p className="text-xs font-bold text-primary-700">{new Date().toLocaleDateString('pt-BR')}</p>
-              </div>
-            </div>
-
-            <div className="p-4 space-y-3">
-              {/* Prestador */}
-              <Secao title="Prestador de Serviços">
-                <Campo label="CNPJ"         value={formatCnpj(cnpjPrestador ?? '')} />
-                <Campo label="Razão Social"  value="Pin Saúde Serviços Médicos" />
-                <Campo label="Inscrição Municipal" value="—" />
-                <Campo label="Regime Tributário"   value="Lucro Presumido" />
-              </Secao>
-
-              {/* Tomador */}
-              <Secao title="Tomador de Serviços">
-                {loadingTomador ? (
-                  <div className="col-span-2 flex items-center gap-2 py-2">
-                    <Loader2 size={12} className="animate-spin text-primary" />
-                    <span className="text-xs text-gray-500">Carregando dados do tomador...</span>
-                  </div>
-                ) : (
-                  <>
-                    <Campo label="CNPJ / CPF"       value={tomador ? formatCnpj(tomador.cnpjCpf) : '—'} />
-                    <Campo label="Inscrição Municipal" value={tomador?.inscricaoMunicipal || '—'} />
-                    <Campo label="Razão Social / Nome" value={producao.tomador.razaoSocialNome} fullWidth />
-                    <Campo label="Município"           value={producao.tomador.municipio || tomador?.municipio || '—'} />
-                    <Campo label="Retenção Federal"    value={producao.tomador.retencaoFederal ? 'Sim — retém IR, CSLL, PIS, COFINS' : 'Não (pagos pela prestadora)'} />
-                    <Campo label="Retenção ISS"        value={producao.tomador.retencaoIss ? 'Sim — retém na fonte' : 'Não (pago pela prestadora)'} />
-                  </>
-                )}
-              </Secao>
-
-              {/* Serviço */}
-              <Secao title="Descrição do Serviço">
-                <Campo label="Código LC 116/2003" value={servico.codigoLc116} />
-                <Campo label="Competência"        value={formatCompetencia(competencia)} />
-                <Campo label="Descrição"          value={servico.descricaoPadrao} fullWidth />
-              </Secao>
-
-              {/* Discriminação */}
-              <div className="border border-gray-300 rounded overflow-hidden">
-                <div className="bg-primary px-3 py-1">
-                  <p className="text-[10px] font-bold text-white uppercase tracking-wider">Discriminação dos Serviços</p>
-                </div>
-                <div className="bg-white px-3 py-2.5">
-                  <pre className="text-[10px] text-gray-700 font-mono whitespace-pre-wrap leading-5">{discriminacao}</pre>
-                </div>
-              </div>
-
-              {/* Valores e Tributos */}
-              <div className="border border-gray-300 rounded overflow-hidden">
-                <div className="bg-primary px-3 py-1">
-                  <p className="text-[10px] font-bold text-white uppercase tracking-wider">Valores e Tributos</p>
-                </div>
-                <div className="bg-white grid grid-cols-2 gap-0">
-                  {/* Coluna esquerda: tributos */}
-                  <div className="border-r border-gray-200">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="px-3 py-1.5 text-[9px] font-bold text-gray-500 uppercase text-left border-b border-r border-gray-200">Tributo</th>
-                          <th className="px-3 py-1.5 text-[9px] font-bold text-gray-500 uppercase text-right border-b border-gray-200">Valor</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {([
-                          { nome: 'ISS', aliq: servico.aliquotaIss, retido: issRetido > 0 },
-                          { nome: 'IR',  aliq: servico.aliquotaIr,  retido: irRetido > 0  },
-                          { nome: 'CSLL',aliq: servico.aliquotaCsll,retido: csllRetido > 0 },
-                          { nome: 'PIS', aliq: servico.aliquotaPis, retido: pisRetido > 0  },
-                          { nome: 'COFINS',aliq: servico.aliquotaCofins, retido: cofinsRetido > 0 },
-                        ]).map((t, i, arr) => (
-                          <tr key={t.nome}>
-                            <td className={`px-3 py-1.5 text-xs text-gray-600 border-r border-gray-200 ${i < arr.length - 1 ? 'border-b' : ''}`}>
-                              {t.nome} ({Number(t.aliq).toFixed(2)}%)
-                              {t.retido
-                                ? <span className="ml-1 text-[9px] bg-orange-100 text-orange-700 font-semibold px-1 rounded">RETIDO</span>
-                                : <span className="ml-1 text-[9px] bg-blue-50 text-blue-600 font-semibold px-1 rounded">PRESTADORA</span>
-                              }
-                            </td>
-                            <td className={`px-3 py-1.5 text-xs text-right tabular-nums text-gray-800 ${i < arr.length - 1 ? 'border-b border-gray-200' : ''}`}>
-                              {formatBRL(calcPct(valorBruto, t.aliq))}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Coluna direita: resumo da nota */}
-                  <div>
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="px-3 py-1.5 text-[9px] font-bold text-gray-500 uppercase text-left border-b border-r border-gray-200">Resumo da Nota</th>
-                          <th className="px-3 py-1.5 text-[9px] font-bold text-gray-500 uppercase text-right border-b border-gray-200">Valor</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <ValorRow label="Valor dos Serviços" value={valorBruto} />
-                        {totalRetidos > 0 && (
-                          <ValorRow label="(−) Retenções pelo Tomador" value={totalRetidos} sub />
-                        )}
-                        <ValorRow
-                          label={totalRetidos > 0 ? 'Valor Líquido da Nota' : 'Valor Líquido da Nota (sem retenções)'}
-                          value={valorLiquidoNota}
-                          destaque
-                        />
-                      </tbody>
-                    </table>
-
-                    <div className="border-t-2 border-primary-100 mx-2 my-2 pt-2">
-                      <p className="text-[9px] text-gray-400 leading-4 px-1">
-                        O Valor Líquido da Nota corresponde ao montante que o tomador deposita ao
-                        prestador após as retenções na fonte. Os tributos marcados como "PRESTADORA"
-                        são de responsabilidade da Pin Saúde e recolhidos via guia própria.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Observações fiscais */}
-              <div className="border border-gray-200 rounded bg-gray-50 px-3 py-2">
-                <p className="text-[9px] text-gray-500 leading-4">
-                  Documento gerado com base na LC 116/2003 e na legislação municipal vigente.
-                  Os valores de retenção indicados são de responsabilidade do tomador de serviços.
-                  O número definitivo da NFS-e será atribuído pela prefeitura no momento da emissão.
-                  CNPJ Prestador: {formatCnpj(cnpjPrestador ?? '')} — Pin Saúde Serviços Médicos.
+                <p className="text-white font-black text-sm tracking-wide">NOTA FISCAL DE SERVIÇOS ELETRÔNICA — NFS-e</p>
+                <p className="text-gray-300 text-[9px] mt-0.5">
+                  Documento Auxiliar da NFS-e (DANFSe) · LC 116/2003 · PRÉVIA
                 </p>
               </div>
+              <div className="text-right">
+                <p className="text-gray-400 text-[8px] uppercase">Competência</p>
+                <p className="text-white font-bold text-sm">{formatCompetenciaMMYYYY(competencia)}</p>
+              </div>
+            </div>
+
+            {/* ── Número / RPS ── */}
+            <div className="border-b border-gray-300 px-4 py-2 grid grid-cols-4 gap-4 bg-gray-50">
+              {[
+                { label: 'Número da NFS-e', value: 'A SER GERADO' },
+                { label: 'Número DPS/RPS', value: 'PRÉVIA' },
+                { label: 'Data de Emissão', value: new Date().toLocaleDateString('pt-BR') },
+                { label: 'Competência', value: formatCompetenciaMMYYYY(competencia) },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <p className="text-[8px] font-bold text-gray-500 uppercase tracking-wider">{label}</p>
+                  <p className="text-[11px] font-bold text-gray-800 mt-0.5">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Emitente / Prestador ── */}
+            <SecaoHeader>Emitente da NFS-e — Prestador do Serviço</SecaoHeader>
+            <CamposGrid cols={4}>
+              <Campo label="CNPJ / CPF / NIF" value={formatCnpj(cnpjPrestador ?? '')} />
+              <Campo label="Inscrição Municipal" value={empresaInfo?.inscricaoMunicipal || '—'} />
+              <Campo label="Telefone" value={empresaInfo?.telefone || '—'} />
+              <Campo label="E-mail" value={empresaInfo?.emailContato || '—'} />
+              <Campo label="Nome / Razão Social" value={empresaInfo?.razaoSocial || 'Pin Saúde Serviços Médicos Ltda'} span={2} />
+              <Campo label="Regime Tributário"
+                     value={empresaInfo?.regimeTributario?.replace('_', ' ') || 'LUCRO PRESUMIDO'} />
+              <Campo label="Simples Nacional" value="Não optante" />
+              <Campo
+                label="Endereço"
+                value={prestadorEndereco || 'Av. Presidente Getúlio Vargas, 1605, Lj 09'}
+                span={2}
+              />
+              <Campo label="Município" value={prestadorLocalidade || 'Olinda - PE'} />
+              <Campo label="CEP" value={empresaInfo?.cep || '53030-010'} />
+            </CamposGrid>
+
+            {/* ── Tomador ── */}
+            <SecaoHeader>Tomador do Serviço</SecaoHeader>
+            {loadingTomador ? (
+              <div className="px-3 py-4 flex items-center gap-2 bg-white">
+                <Loader2 size={13} className="animate-spin text-primary" />
+                <span className="text-xs text-gray-500">Carregando dados do tomador...</span>
+              </div>
+            ) : (
+              <CamposGrid cols={4}>
+                <Campo label="CNPJ / CPF / NIF" value={tomador ? formatCnpj(tomador.cnpjCpf) : '—'} />
+                <Campo label="Inscrição Municipal" value={tomador?.inscricaoMunicipal || '—'} />
+                <Campo label="Telefone" value={tomador?.telefone || '—'} />
+                <Campo label="E-mail" value={tomador?.email || '—'} />
+                <Campo label="Nome / Razão Social" value={producao.tomador.razaoSocialNome} span={3} />
+                <Campo label="País" value={tomador?.pais || 'Brasil'} />
+                <Campo
+                  label="Endereço"
+                  value={tomadorEndereco || '—'}
+                  span={2}
+                />
+                <Campo label="Município" value={tomadorLocalidade || '—'} />
+                <Campo label="CEP" value={tomador?.cep || '—'} />
+              </CamposGrid>
+            )}
+
+            {/* ── Serviço Prestado ── */}
+            <SecaoHeader>Serviço Prestado</SecaoHeader>
+            <CamposGrid cols={4}>
+              <Campo label="Cód. de Tributação Nacional" value="04.02.01" />
+              <Campo label="Código LC 116/2003" value={servico.codigoLc116} />
+              <Campo label="Local da Prestação"
+                     value={`${empresaInfo?.municipio || 'Olinda'} - ${empresaInfo?.uf || 'PE'}`} />
+              <Campo label="País da Prestação" value="Brasil" />
+              <Campo
+                label="Descrição do Serviço"
+                value={servico.descricaoPadrao}
+                span={4}
+              />
+            </CamposGrid>
+
+            {/* ── Discriminação ── */}
+            <SecaoHeader>Discriminação dos Serviços</SecaoHeader>
+            <div className="px-3 py-2.5 bg-white border-b border-gray-200">
+              <pre className="text-[10px] text-gray-700 font-mono whitespace-pre-wrap leading-5">
+{[
+  `Serviços médicos prestados ref ${formatCompetenciaMesAno(competencia)}${medicoNomesStr ? ` — ${medicoNomesStr}` : ''}`,
+  ``,
+  `Dados bancários: Banco Inter: 077 / Agência: 0001 / Conta Corrente PJ: 3875500-9`,
+  `Chave Pix: financeiro@pinsaude.com.br`,
+].join('\n')}
+              </pre>
+            </div>
+
+            {/* ── Tributação Municipal ── */}
+            <SecaoHeader>Tributação Municipal — ISSQN</SecaoHeader>
+            <CamposGrid cols={4}>
+              <Campo label="Tributação do ISSQN"
+                     value={issRetido > 0 ? 'Retido pelo Tomador' : 'Operação Tributável'} />
+              <Campo label="Município de Incidência"
+                     value={`${empresaInfo?.municipio || 'Olinda'} - ${empresaInfo?.uf || 'PE'}`} />
+              <Campo label="Regime Especial" value="Nenhum" />
+              <Campo label="Suspensão ISSQN" value="Não" />
+              <Campo label="BC ISSQN" value={formatBRL(valorBruto)} />
+              <Campo label="Alíquota ISSQN" value={`${Number(servico.aliquotaIss).toFixed(2)}%`} />
+              <Campo label="ISSQN Retido?" value={issRetido > 0 ? 'Sim' : 'Não Retido'} />
+              <Campo label="ISSQN Apurado" value={formatBRL(calcPct(valorBruto, servico.aliquotaIss))} />
+            </CamposGrid>
+
+            {/* ── Tributação Federal ── */}
+            <SecaoHeader>Tributação Federal</SecaoHeader>
+            <CamposGrid cols={4}>
+              <Campo label="IRRF"
+                     value={irRetido > 0 ? formatBRL(irRetido) : `${formatBRL(calcPct(valorBruto, servico.aliquotaIr))} (a recolher)`} />
+              <Campo label="CSLL"
+                     value={csllRetido > 0 ? formatBRL(csllRetido) : `${formatBRL(calcPct(valorBruto, servico.aliquotaCsll))} (a recolher)`} />
+              <Campo label="PIS"
+                     value={pisRetido > 0 ? formatBRL(pisRetido) : `${formatBRL(calcPct(valorBruto, servico.aliquotaPis))} (a recolher)`} />
+              <Campo label="COFINS"
+                     value={cofinsRetido > 0 ? formatBRL(cofinsRetido) : `${formatBRL(calcPct(valorBruto, servico.aliquotaCofins))} (a recolher)`} />
+              {totalFederal > 0 && (
+                <Campo
+                  label="Contrib. Sociais Retidas (PIS/COFINS/CSLL)"
+                  value={formatBRL(csllRetido + pisRetido + cofinsRetido)}
+                  span={2}
+                />
+              )}
+              <Campo
+                label={totalFederal > 0 ? 'Total Retenções Federais' : 'Observação'}
+                value={totalFederal > 0
+                  ? formatBRL(totalFederal)
+                  : 'Tributos federais a recolher pela prestadora via DARF'}
+                span={totalFederal > 0 ? 2 : 4}
+              />
+            </CamposGrid>
+
+            {/* ── Valor Total ── */}
+            <SecaoHeader>Valor Total da NFS-e</SecaoHeader>
+            <div className="px-4 py-3 bg-white grid grid-cols-2 gap-6">
+              <div>
+                <LinhaValor label="Valor dos Serviços" value={valorBruto} />
+                {issRetido > 0 && (
+                  <LinhaValor label={`ISSQN Retido (${Number(servico.aliquotaIss).toFixed(2)}%)`} value={issRetido} sub negativo />
+                )}
+                {totalFederal > 0 && (
+                  <LinhaValor label="Total Retenções Federais" value={totalFederal} sub negativo />
+                )}
+                <LinhaValor
+                  label={totalRetidos > 0 ? 'Valor Líquido da NFS-e' : 'Valor Líquido da NFS-e (sem retenções)'}
+                  value={valorLiquido}
+                  destaque
+                />
+              </div>
+              <div className="pl-4 border-l border-gray-200 text-[9px] text-gray-500 space-y-1.5">
+                <p className="font-bold text-gray-700 text-[10px]">Composição dos Tributos</p>
+                {[
+                  { nome: 'ISS', aliq: servico.aliquotaIss, retido: issRetido > 0 },
+                  { nome: 'IR',  aliq: servico.aliquotaIr,  retido: irRetido > 0 },
+                  { nome: 'CSLL',aliq: servico.aliquotaCsll,retido: csllRetido > 0 },
+                  { nome: 'PIS', aliq: servico.aliquotaPis, retido: pisRetido > 0 },
+                  { nome: 'COFINS',aliq: servico.aliquotaCofins, retido: cofinsRetido > 0 },
+                ].map(t => (
+                  <div key={t.nome} className="flex justify-between">
+                    <span>
+                      {t.nome} ({Number(t.aliq).toFixed(2)}%)
+                      {' '}
+                      <span className={`px-1 rounded text-[8px] font-bold ${
+                        t.retido ? 'bg-orange-100 text-orange-700' : 'bg-blue-50 text-blue-600'
+                      }`}>
+                        {t.retido ? 'RETIDO' : 'PRESTADORA'}
+                      </span>
+                    </span>
+                    <span className="tabular-nums text-gray-700">
+                      {formatBRL(calcPct(valorBruto, t.aliq))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Rodapé ── */}
+            <div className="border-t border-gray-200 px-4 py-2 bg-gray-50">
+              <p className="text-[8px] text-gray-400 leading-4">
+                Documento gerado com base na LC 116/2003 e legislação municipal vigente. Valores de retenção são de
+                responsabilidade do tomador de serviços. Número definitivo será atribuído pela prefeitura na emissão.
+                CNPJ Prestador: {formatCnpj(cnpjPrestador ?? '')} — Pin Saúde Serviços Médicos.
+              </p>
             </div>
           </div>
         </div>

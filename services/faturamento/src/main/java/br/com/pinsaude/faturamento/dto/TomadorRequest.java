@@ -10,5 +10,12 @@ public record TomadorRequest(
     String municipio,
     String inscricaoMunicipal,
     @NotNull Boolean indicadorRetencaoFederal,
-    @NotNull Boolean indicadorRetencaoIss
+    @NotNull Boolean indicadorRetencaoIss,
+    String email,
+    String telefone,
+    String logradouro,
+    String bairro,
+    String cep,
+    String uf,
+    String pais
 ) {}

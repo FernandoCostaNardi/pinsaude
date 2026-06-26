@@ -19,6 +19,12 @@ export interface Empresa {
   ativo: boolean
   createdAt: string
   updatedAt: string
+  logradouro: string | null
+  bairro: string | null
+  uf: string | null
+  cep: string | null
+  telefone: string | null
+  emailContato: string | null
 }
 
 export interface EmpresaRequest {
@@ -28,6 +34,12 @@ export interface EmpresaRequest {
   municipio: string
   codigoMunicipioIbge: string
   regimeTributario: RegimeTributario
+  logradouro: string
+  bairro: string
+  uf: string
+  cep: string
+  telefone: string
+  emailContato: string
 }
 
 export interface EmpresaPage {

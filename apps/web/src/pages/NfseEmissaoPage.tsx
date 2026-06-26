@@ -11,6 +11,8 @@ import {
   emitirNfse, getNotaStatus, aprovarNota, downloadComAuth, downloadXmlUrl, downloadPdfUrl,
   NotaFiscal, StatusNota,
 } from '../api/nfseApi'
+import { medicosApi } from '../api/medicosApi'
+import { empresasApi, Empresa } from '../api/empresasApi'
 import { NfsePreviewModal } from './NfsePreviewModal'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -131,6 +133,8 @@ export function NfseEmissaoPage() {
   const [erro, setErro] = useState<string | null>(null)
   const [primeiraNotaMedico, setPrimeiraNotaMedico] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [empresaInfo, setEmpresaInfo] = useState<Empresa | null>(null)
+  const [medicoNomeMap, setMedicoNomeMap] = useState<Record<string, string>>({})
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -162,6 +166,33 @@ export function NfseEmissaoPage() {
       .catch(e => setErro(e.message))
       .finally(() => setLoading(false))
   }, [producaoId])
+
+  // Carrega empresa da prestadora para dados do prestador no preview
+  useEffect(() => {
+    const cnpj = user?.cnpj_id
+    if (!cnpj) return
+    empresasApi.listar(0, 1000)
+      .then(page => {
+        const cnpjDigits = cnpj.replace(/\D/g, '')
+        const found = page.content.find(e =>
+          e.cnpj.replace(/\D/g, '') === cnpjDigits
+        )
+        if (found) setEmpresaInfo(found)
+      })
+      .catch(() => {})
+  }, [user?.cnpj_id])
+
+  // Carrega nomes dos médicos participantes para a discriminação
+  useEffect(() => {
+    if (!producao) return
+    const ids = producao.participantes.map(p => p.medicoId)
+    Promise.all(ids.map(id => medicosApi.buscarPorId(id).catch(() => null)))
+      .then(medicos => {
+        const map: Record<string, string> = {}
+        medicos.forEach((m, i) => { if (m) map[ids[i]] = m.nome })
+        setMedicoNomeMap(map)
+      })
+  }, [producao])
 
   // Se já existe nota para esta produção, inicia polling
   useEffect(() => {
@@ -576,6 +607,8 @@ export function NfseEmissaoPage() {
         <NfsePreviewModal
           producao={producao}
           cnpjPrestador={cnpjPrestador}
+          empresaInfo={empresaInfo}
+          medicoNomeMap={medicoNomeMap}
           onClose={() => setShowPreview(false)}
           onConfirmar={() => {
             setShowPreview(false)

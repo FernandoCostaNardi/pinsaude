@@ -34,6 +34,13 @@ const emptyForm = (): TomadorRequest => ({
   inscricaoMunicipal: '',
   indicadorRetencaoFederal: false,
   indicadorRetencaoIss: false,
+  email: '',
+  telefone: '',
+  logradouro: '',
+  bairro: '',
+  cep: '',
+  uf: '',
+  pais: 'Brasil',
 })
 
 export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
@@ -56,6 +63,13 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
         inscricaoMunicipal: tomador.inscricaoMunicipal ?? '',
         indicadorRetencaoFederal: tomador.indicadorRetencaoFederal,
         indicadorRetencaoIss: tomador.indicadorRetencaoIss,
+        email: tomador.email ?? '',
+        telefone: tomador.telefone ?? '',
+        logradouro: tomador.logradouro ?? '',
+        bairro: tomador.bairro ?? '',
+        cep: tomador.cep ?? '',
+        uf: tomador.uf ?? '',
+        pais: tomador.pais ?? 'Brasil',
       })
     } else {
       setForm(emptyForm())
@@ -81,6 +95,7 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
             ...f,
             razaoSocialNome: data.razaoSocial ?? f.razaoSocialNome,
             municipio: data.municipio ?? f.municipio,
+            uf: data.uf ?? f.uf,
           }))
           setReceitaOk(true)
         }
@@ -219,6 +234,58 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
               onChange={e => set('inscricaoMunicipal', e.target.value)}
               placeholder="N.º inscrição"
               className={isPf ? 'col-span-2' : ''}
+            />
+          </div>
+        </div>
+
+        {/* ── Contato e Endereço ── */}
+        <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
+          <p className="text-xs font-semibold text-ds-mid mb-3 uppercase tracking-wide">Contato e Endereço</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="E-mail"
+              type="email"
+              value={form.email}
+              onChange={e => set('email', e.target.value)}
+              placeholder="email@empresa.com.br"
+            />
+            <Input
+              label="Telefone"
+              value={form.telefone}
+              onChange={e => set('telefone', e.target.value)}
+              placeholder="(XX) XXXXX-XXXX"
+            />
+            <Input
+              label="Logradouro"
+              value={form.logradouro}
+              onChange={e => set('logradouro', e.target.value)}
+              placeholder="Rua, Av, número..."
+              className="col-span-2"
+            />
+            <Input
+              label="Bairro"
+              value={form.bairro}
+              onChange={e => set('bairro', e.target.value)}
+              placeholder="Bairro"
+            />
+            <Input
+              label="CEP"
+              value={form.cep}
+              onChange={e => set('cep', e.target.value)}
+              placeholder="XXXXX-XXX"
+            />
+            <Input
+              label="UF"
+              value={form.uf}
+              onChange={e => set('uf', e.target.value.toUpperCase().slice(0, 2))}
+              placeholder="PE"
+              className="w-24"
+            />
+            <Input
+              label="País"
+              value={form.pais}
+              onChange={e => set('pais', e.target.value)}
+              placeholder="Brasil"
             />
           </div>
         </div>

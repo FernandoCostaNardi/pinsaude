@@ -77,6 +77,13 @@ public class TomadorService {
         t.setInscricaoMunicipal(req.inscricaoMunicipal());
         t.setIndicadorRetencaoFederal(req.indicadorRetencaoFederal());
         t.setIndicadorRetencaoIss(req.indicadorRetencaoIss());
+        t.setEmail(req.email());
+        t.setTelefone(req.telefone());
+        t.setLogradouro(req.logradouro());
+        t.setBairro(req.bairro());
+        t.setCep(req.cep());
+        t.setUf(req.uf());
+        t.setPais(req.pais());
 
         return toResponse(repo.save(t));
     }
@@ -96,6 +103,13 @@ public class TomadorService {
         t.setInscricaoMunicipal(req.inscricaoMunicipal());
         t.setIndicadorRetencaoFederal(req.indicadorRetencaoFederal());
         t.setIndicadorRetencaoIss(req.indicadorRetencaoIss());
+        t.setEmail(req.email());
+        t.setTelefone(req.telefone());
+        t.setLogradouro(req.logradouro());
+        t.setBairro(req.bairro());
+        t.setCep(req.cep());
+        t.setUf(req.uf());
+        t.setPais(req.pais());
 
         return toResponse(repo.save(t));
     }
@@ -154,7 +168,14 @@ public class TomadorService {
             t.getMunicipio(),
             t.getInscricaoMunicipal(),
             t.isIndicadorRetencaoFederal(),
-            t.isIndicadorRetencaoIss()
+            t.isIndicadorRetencaoIss(),
+            t.getEmail(),
+            t.getTelefone(),
+            t.getLogradouro(),
+            t.getBairro(),
+            t.getCep(),
+            t.getUf(),
+            t.getPais()
         );
     }
 }

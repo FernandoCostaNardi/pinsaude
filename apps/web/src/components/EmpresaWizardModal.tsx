@@ -37,6 +37,12 @@ const emptyForm = (): EmpresaRequest => ({
   municipio: '',
   codigoMunicipioIbge: '',
   regimeTributario: 'SIMPLES_NACIONAL',
+  logradouro: '',
+  bairro: '',
+  uf: '',
+  cep: '',
+  telefone: '',
+  emailContato: '',
 })
 
 export function EmpresaWizardModal({ empresa, onClose, onSaved }: Props) {
@@ -58,6 +64,12 @@ export function EmpresaWizardModal({ empresa, onClose, onSaved }: Props) {
         municipio: empresa.municipio ?? '',
         codigoMunicipioIbge: empresa.codigoMunicipioIbge ?? '',
         regimeTributario: empresa.regimeTributario,
+        logradouro: empresa.logradouro ?? '',
+        bairro: empresa.bairro ?? '',
+        uf: empresa.uf ?? '',
+        cep: empresa.cep ?? '',
+        telefone: empresa.telefone ?? '',
+        emailContato: empresa.emailContato ?? '',
       })
       setMunicipioUf('')
       setMaxVisited(2)
@@ -335,6 +347,39 @@ function StepDadosFiscais({
             error={errors.municipio}
           />
         </div>
+
+        <Input
+          label="Logradouro"
+          value={form.logradouro}
+          onChange={e => onChange('logradouro', e.target.value)}
+          placeholder="Av. Presidente Getúlio Vargas, 1605, Lj 09"
+          className="sm:col-span-2"
+        />
+        <Input
+          label="Bairro"
+          value={form.bairro}
+          onChange={e => onChange('bairro', e.target.value)}
+          placeholder="Bairro Novo"
+        />
+        <Input
+          label="CEP"
+          value={form.cep}
+          onChange={e => onChange('cep', e.target.value)}
+          placeholder="53030-010"
+        />
+        <Input
+          label="Telefone"
+          value={form.telefone}
+          onChange={e => onChange('telefone', e.target.value)}
+          placeholder="(81) 99789-8181"
+        />
+        <Input
+          label="E-mail de contato"
+          type="email"
+          value={form.emailContato}
+          onChange={e => onChange('emailContato', e.target.value)}
+          placeholder="falecom@pinsaude.com.br"
+        />
       </div>
     </div>
   )
@@ -363,6 +408,17 @@ function StepRevisao({ form, municipioUf }: { form: EmpresaRequest; municipioUf:
           hint={form.codigoMunicipioIbge ? `IBGE ${form.codigoMunicipioIbge}` : undefined}
           className="sm:col-span-2"
         />
+        {form.logradouro && (
+          <ReviewField label="Logradouro" value={form.logradouro} className="sm:col-span-2" />
+        )}
+        {(form.bairro || form.cep) && (
+          <>
+            {form.bairro && <ReviewField label="Bairro" value={form.bairro} />}
+            {form.cep && <ReviewField label="CEP" value={form.cep} />}
+          </>
+        )}
+        {form.telefone && <ReviewField label="Telefone" value={form.telefone} />}
+        {form.emailContato && <ReviewField label="E-mail de contato" value={form.emailContato} />}
       </div>
     </div>
   )
