@@ -17,6 +17,7 @@ import { NotasPage }               from './pages/NotasPage'
 import { NfseEmissaoPage }         from './pages/NfseEmissaoPage'
 import { LotePage }                from './pages/LotePage'
 import { UnderConstruction }        from './pages/UnderConstruction'
+import { DashboardMedicoPage }      from './pages/DashboardMedicoPage'
 
 export default function App() {
   return (
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/notas"                      element={<NotasPage />} />
             <Route path="/notas/emitir/:producaoId"   element={<NfseEmissaoPage />} />
             <Route path="/notas/lote"                 element={<LotePage />} />
+            <Route path="/portal/dashboard" element={<DashboardMedicoPage />} />
             <Route path="/repasses"    element={<UnderConstruction title="Repasses"    epic="EPIC-09" />} />
             <Route path="/conciliacao" element={<UnderConstruction title="Conciliação" epic="EPIC-07" />} />
             <Route path="/gestao"      element={<UnderConstruction title="Gestão"      epic="EPIC-10" />} />
