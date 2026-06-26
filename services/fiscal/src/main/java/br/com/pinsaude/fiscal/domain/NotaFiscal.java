@@ -21,7 +21,7 @@ public class NotaFiscal {
     @Column(name = "producao_id", nullable = false)
     private UUID producaoId;
 
-    @Column(name = "medico_id", nullable = false)
+    @Column(name = "medico_id")
     private UUID medicoId;
 
     @Column(name = "tomador_id", nullable = false)

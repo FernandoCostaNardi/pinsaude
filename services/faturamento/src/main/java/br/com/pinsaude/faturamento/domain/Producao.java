@@ -17,7 +17,7 @@ public class Producao {
     @Column(name = "cnpj_id_tenant", nullable = false, length = 14)
     private String cnpjIdTenant;
 
-    @Column(name = "medico_id", nullable = false)
+    @Column(name = "medico_id")
     private UUID medicoId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

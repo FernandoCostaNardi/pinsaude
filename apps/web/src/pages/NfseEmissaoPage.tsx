@@ -182,7 +182,10 @@ export function NfseEmissaoPage() {
     setEmitindo(true)
     setErro(null)
     try {
-      const { tomador, servico, valorBruto, competencia, medicoId } = producao
+      const { tomador, servico, valorBruto, competencia } = producao
+      const medicoId = producao.participantes.length === 1
+        ? producao.participantes[0].medicoId
+        : null
       const taxaPin       = calcPct(valorBruto, 15)
       const issRetido     = tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
       const irRetido      = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0

@@ -57,7 +57,9 @@ public class NfseService {
                 .orElseThrow();
         }
 
-        boolean primeiraNotaMedico = !notaRepo.existsByMedicoIdAndStatus(req.medicoId(), StatusNota.EMITIDA);
+        // Multi-médico (medicoId null) → sem verificação de primeira nota; vai direto para fila
+        boolean primeiraNotaMedico = req.medicoId() != null
+            && !notaRepo.existsByMedicoIdAndStatus(req.medicoId(), StatusNota.EMITIDA);
         StatusNota statusInicial = primeiraNotaMedico ? StatusNota.AGUARDANDO_VALIDACAO : StatusNota.PENDENTE;
 
         var nota = new NotaFiscal();

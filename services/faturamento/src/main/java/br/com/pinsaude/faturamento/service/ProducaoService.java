@@ -1,6 +1,7 @@
 package br.com.pinsaude.faturamento.service;
 
 import br.com.pinsaude.faturamento.config.SecurityUtils;
+import br.com.pinsaude.faturamento.domain.ParticipacaoProducao;
 import br.com.pinsaude.faturamento.domain.Producao;
 import br.com.pinsaude.faturamento.domain.Servico;
 import br.com.pinsaude.faturamento.domain.StatusProducao;
@@ -9,6 +10,7 @@ import br.com.pinsaude.faturamento.dto.PreviewCalculoRequest;
 import br.com.pinsaude.faturamento.dto.PreviewCalculoResponse;
 import br.com.pinsaude.faturamento.dto.ProducaoRequest;
 import br.com.pinsaude.faturamento.dto.ProducaoResponse;
+import br.com.pinsaude.faturamento.repository.ParticipacaoRepository;
 import br.com.pinsaude.faturamento.repository.ProducaoRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
@@ -20,50 +22,75 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class ProducaoService {
 
     private static final BigDecimal TAXA_PIN_PCT = new BigDecimal("0.15");
 
-    private final ProducaoRepository producaoRepo;
-    private final TomadorRepository tomadorRepo;
-    private final ServicoRepository servicoRepo;
+    private final ProducaoRepository     producaoRepo;
+    private final ParticipacaoRepository participacaoRepo;
+    private final TomadorRepository      tomadorRepo;
+    private final ServicoRepository      servicoRepo;
 
     public ProducaoService(ProducaoRepository producaoRepo,
+                           ParticipacaoRepository participacaoRepo,
                            TomadorRepository tomadorRepo,
                            ServicoRepository servicoRepo) {
-        this.producaoRepo = producaoRepo;
-        this.tomadorRepo  = tomadorRepo;
-        this.servicoRepo  = servicoRepo;
+        this.producaoRepo     = producaoRepo;
+        this.participacaoRepo = participacaoRepo;
+        this.tomadorRepo      = tomadorRepo;
+        this.servicoRepo      = servicoRepo;
     }
 
     @Transactional(readOnly = true)
     public List<ProducaoResponse> listar(String status, String competencia, UUID medicoId,
                                          UUID tomadorId, String periodoInicio, String periodoFim) {
         StatusProducao statusEnum = (status != null && !status.isBlank()) ? parseStatus(status) : null;
-        return producaoRepo.findAllByOrderByCreatedAtDesc().stream()
+
+        // IDs de produções em que o médico filtrado participa
+        Set<UUID> producaoIdsDoMedico = medicoId != null
+            ? new HashSet<>(participacaoRepo.findProducaoIdsByMedicoId(medicoId))
+            : null;
+
+        List<Producao> all = producaoRepo.findAllByOrderByCreatedAtDesc().stream()
             .filter(p -> statusEnum == null || p.getStatus() == statusEnum)
             .filter(p -> competencia == null || competencia.isBlank() || competencia.equals(p.getCompetencia()))
-            .filter(p -> medicoId == null || medicoId.equals(p.getMedicoId()))
+            .filter(p -> producaoIdsDoMedico == null || producaoIdsDoMedico.contains(p.getId()))
             .filter(p -> tomadorId == null || tomadorId.equals(p.getTomador().getId()))
             .filter(p -> periodoInicio == null || periodoInicio.isBlank() || p.getCompetencia().compareTo(periodoInicio) >= 0)
             .filter(p -> periodoFim == null || periodoFim.isBlank() || p.getCompetencia().compareTo(periodoFim) <= 0)
-            .map(ProducaoResponse::from)
+            .toList();
+
+        if (all.isEmpty()) return List.of();
+
+        List<UUID> ids = all.stream().map(Producao::getId).toList();
+        Map<UUID, List<ParticipacaoProducao>> byProducao = participacaoRepo.findByProducaoIdIn(ids).stream()
+            .collect(Collectors.groupingBy(ParticipacaoProducao::getProducaoId));
+
+        return all.stream()
+            .map(p -> ProducaoResponse.from(p, byProducao.getOrDefault(p.getId(), List.of())))
             .toList();
     }
 
     @Transactional(readOnly = true)
     public ProducaoResponse buscarPorId(UUID id) {
-        return ProducaoResponse.from(findOrThrow(id));
+        Producao p = findOrThrow(id);
+        return ProducaoResponse.from(p, participacaoRepo.findByProducaoId(id));
     }
 
     @Transactional
     public ProducaoResponse criar(ProducaoRequest req) {
-        if (req.valorBruto() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Valor bruto deve ser maior que zero");
+        long valorTotal = req.participantes().stream()
+            .mapToLong(part -> part.valorBruto()).sum();
+        if (valorTotal <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Valor total deve ser maior que zero");
         }
 
         Tomador tomador = tomadorRepo.findById(req.tomadorId())
@@ -75,15 +102,25 @@ public class ProducaoService {
 
         Producao p = new Producao();
         p.setCnpjIdTenant(tenant != null ? tenant : "");
-        p.setMedicoId(req.medicoId());
         p.setTomador(tomador);
         p.setServico(servico);
-        p.setValorBruto(req.valorBruto());
+        p.setValorBruto(valorTotal);
         p.setCompetencia(req.competencia());
         p.setDescricaoComplementar(req.descricaoComplementar());
         p.setStatus(StatusProducao.CONFIRMADA);
 
-        return ProducaoResponse.from(producaoRepo.save(p));
+        producaoRepo.save(p);
+
+        List<ParticipacaoProducao> participacoes = req.participantes().stream().map(part -> {
+            var pp = new ParticipacaoProducao();
+            pp.setProducaoId(p.getId());
+            pp.setMedicoId(part.medicoId());
+            pp.setValorBruto(part.valorBruto());
+            return pp;
+        }).toList();
+        participacaoRepo.saveAll(participacoes);
+
+        return ProducaoResponse.from(p, participacoes);
     }
 
     @Transactional(readOnly = true)
@@ -100,27 +137,27 @@ public class ProducaoService {
         return calcular(req.valorBruto(), servico, tomador);
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────
+    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private PreviewCalculoResponse calcular(long valorBruto, Servico servico, Tomador tomador) {
         BigDecimal bruto = BigDecimal.valueOf(valorBruto);
 
         long taxaPin = pct(bruto, TAXA_PIN_PCT);
 
-        long issRetido   = tomador.isIndicadorRetencaoIss()
-            ? pct(bruto, pct(servico.getAliquotaIss()))   : 0L;
-        long irRetido    = tomador.isIndicadorRetencaoFederal()
-            ? pct(bruto, pct(servico.getAliquotaIr()))    : 0L;
-        long csllRetido  = tomador.isIndicadorRetencaoFederal()
-            ? pct(bruto, pct(servico.getAliquotaCsll()))  : 0L;
-        long pisRetido   = tomador.isIndicadorRetencaoFederal()
-            ? pct(bruto, pct(servico.getAliquotaPis()))   : 0L;
+        long issRetido    = tomador.isIndicadorRetencaoIss()
+            ? pct(bruto, pct(servico.getAliquotaIss()))    : 0L;
+        long irRetido     = tomador.isIndicadorRetencaoFederal()
+            ? pct(bruto, pct(servico.getAliquotaIr()))     : 0L;
+        long csllRetido   = tomador.isIndicadorRetencaoFederal()
+            ? pct(bruto, pct(servico.getAliquotaCsll()))   : 0L;
+        long pisRetido    = tomador.isIndicadorRetencaoFederal()
+            ? pct(bruto, pct(servico.getAliquotaPis()))    : 0L;
         long cofinsRetido = tomador.isIndicadorRetencaoFederal()
             ? pct(bruto, pct(servico.getAliquotaCofins())) : 0L;
 
-        long totalRetencoes    = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido;
-        long valorLiquidoMedico = valorBruto - taxaPin;   // médico sempre recebe 85%
-        long resultadoPin       = taxaPin - totalRetencoes; // lucro Pin após tributos
+        long totalRetencoes     = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido;
+        long valorLiquidoMedico = valorBruto - taxaPin;
+        long resultadoPin       = taxaPin - totalRetencoes;
 
         return new PreviewCalculoResponse(
             valorBruto, taxaPin,
@@ -129,12 +166,10 @@ public class ProducaoService {
         );
     }
 
-    /** Converte alíquota percentual (ex: 5.0000) para decimal (0.05) */
     private BigDecimal pct(BigDecimal aliquota) {
         return aliquota.divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP);
     }
 
-    /** Aplica fator decimal sobre valor em centavos e retorna centavos (arredondado) */
     private long pct(BigDecimal valorCentavos, BigDecimal fator) {
         return valorCentavos.multiply(fator).setScale(0, RoundingMode.HALF_UP).longValue();
     }
