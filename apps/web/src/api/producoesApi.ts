@@ -36,6 +36,7 @@ export interface Participacao {
 export interface Producao {
   id: string
   medicoId: string | null     // null para multi-médico; 1º participante para single
+  empresaId: string | null
   participantes: Participacao[]
   tomador: TomadorResumo
   servico: ServicoResumo
@@ -56,6 +57,7 @@ export interface ProducaoRequest {
   servicoId: string
   competencia: string
   descricaoComplementar?: string
+  empresaId: string | null
   participantes: ParticipacaoRequest[]
 }
 

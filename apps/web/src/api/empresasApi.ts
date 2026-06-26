@@ -34,12 +34,12 @@ export interface EmpresaRequest {
   municipio: string
   codigoMunicipioIbge: string
   regimeTributario: RegimeTributario
-  logradouro: string
-  bairro: string
-  uf: string
-  cep: string
-  telefone: string
-  emailContato: string
+  logradouro: string | null
+  bairro: string | null
+  uf: string | null
+  cep: string | null
+  telefone: string | null
+  emailContato: string | null
 }
 
 export interface EmpresaPage {
@@ -101,4 +101,9 @@ async function remover(id: string): Promise<void> {
   return handleResponse<void>(res)
 }
 
-export const empresasApi = { listar, criar, atualizar, remover }
+async function buscarPorId(id: string): Promise<Empresa> {
+  const res = await fetch(`/api/empresas/${id}`, { headers: authHeaders() })
+  return handleResponse<Empresa>(res)
+}
+
+export const empresasApi = { listar, criar, atualizar, remover, buscarPorId }

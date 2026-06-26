@@ -350,34 +350,34 @@ function StepDadosFiscais({
 
         <Input
           label="Logradouro"
-          value={form.logradouro}
-          onChange={e => onChange('logradouro', e.target.value)}
+          value={form.logradouro ?? ''}
+          onChange={e => onChange('logradouro', e.target.value || null)}
           placeholder="Av. Presidente Getúlio Vargas, 1605, Lj 09"
           className="sm:col-span-2"
         />
         <Input
           label="Bairro"
-          value={form.bairro}
-          onChange={e => onChange('bairro', e.target.value)}
+          value={form.bairro ?? ''}
+          onChange={e => onChange('bairro', e.target.value || null)}
           placeholder="Bairro Novo"
         />
         <Input
           label="CEP"
-          value={form.cep}
-          onChange={e => onChange('cep', e.target.value)}
+          value={form.cep ?? ''}
+          onChange={e => onChange('cep', e.target.value || null)}
           placeholder="53030-010"
         />
         <Input
           label="Telefone"
-          value={form.telefone}
-          onChange={e => onChange('telefone', e.target.value)}
+          value={form.telefone ?? ''}
+          onChange={e => onChange('telefone', e.target.value || null)}
           placeholder="(81) 99789-8181"
         />
         <Input
           label="E-mail de contato"
           type="email"
-          value={form.emailContato}
-          onChange={e => onChange('emailContato', e.target.value)}
+          value={form.emailContato ?? ''}
+          onChange={e => onChange('emailContato', e.target.value || null)}
           placeholder="falecom@pinsaude.com.br"
         />
       </div>

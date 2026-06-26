@@ -9,6 +9,8 @@ import { Servico, servicosApi } from '../api/servicosApi'
 import { Tomador, tomadoresApi } from '../api/tomadoresApi'
 import { Medico, medicosApi } from '../api/medicosApi'
 import { PreviewCalculoResponse, ProducaoRequest, producoesApi } from '../api/producoesApi'
+import { Empresa, empresasApi } from '../api/empresasApi'
+import { useAuth } from '../auth/useAuth'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -319,14 +321,17 @@ let nextKey = 1
 
 export function ProducaoNovaPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const [medicos, setMedicos]     = useState<Medico[]>([])
   const [tomadores, setTomadores] = useState<Tomador[]>([])
   const [servicos, setServicos]   = useState<Servico[]>([])
+  const [empresas, setEmpresas]   = useState<Empresa[]>([])
   const [loadingData, setLoadingData] = useState(true)
 
-  const [tomador,  setTomador]  = useState<AutocompleteItem | null>(null)
-  const [servico,  setServico]  = useState<AutocompleteItem | null>(null)
+  const [tomador,    setTomador]    = useState<AutocompleteItem | null>(null)
+  const [servico,    setServico]    = useState<AutocompleteItem | null>(null)
+  const [empresaId,  setEmpresaId]  = useState<string>('')
   const [competencia, setCompetencia] = useState(currentCompetencia())
   const [descricao, setDescricao] = useState('')
 
@@ -348,12 +353,19 @@ export function ProducaoNovaPage() {
       medicosApi.listar(0, 1000, 'ATIVO').catch(() => ({ content: [] as Medico[] })),
       tomadoresApi.listar().catch(() => [] as Tomador[]),
       servicosApi.listar().catch(() => [] as Servico[]),
-    ]).then(([mp, ts, ss]) => {
+      empresasApi.listar(0, 1000).catch(() => ({ content: [] as Empresa[], page: 0, size: 1000, totalElements: 0, totalPages: 0 })),
+    ]).then(([mp, ts, ss, ep]) => {
       setMedicos(mp.content)
       setTomadores(ts)
       setServicos(ss)
+      setEmpresas(ep.content)
+      if (user?.cnpj_id) {
+        const digits = user.cnpj_id.replace(/\D/g, '')
+        const match = ep.content.find(e => e.cnpj.replace(/\D/g, '') === digits)
+        if (match) setEmpresaId(match.id)
+      }
     }).finally(() => setLoadingData(false))
-  }, [])
+  }, [user])
 
   const totalCentavos = participantes.reduce((s, p) => s + parseBRL(p.valorStr), 0)
 
@@ -394,6 +406,7 @@ export function ProducaoNovaPage() {
     if (!tomador)    e.tomador   = 'Selecione um tomador'
     if (!servico)    e.servico   = 'Selecione um serviço'
     if (!competencia) e.competencia = 'Selecione a competência'
+    if (!empresaId)  e.empresa   = 'Selecione a empresa emissora'
 
     const semMedico = participantes.some(p => !p.medico)
     const semValor  = participantes.some(p => parseBRL(p.valorStr) <= 0)
@@ -416,6 +429,7 @@ export function ProducaoNovaPage() {
       servicoId:             servico!.id,
       competencia,
       descricaoComplementar: descricao || undefined,
+      empresaId:             empresaId || null,
       participantes: participantes.map(p => ({
         medicoId:   p.medico!.id,
         valorBruto: parseBRL(p.valorStr),
@@ -446,7 +460,7 @@ export function ProducaoNovaPage() {
     sublabel: t.municipio ?? undefined,
   }))
 
-  const canConfirm = !!tomador && !!servico && totalCentavos > 0 && !!competencia
+  const canConfirm = !!tomador && !!servico && totalCentavos > 0 && !!competencia && !!empresaId
     && participantes.every(p => p.medico && parseBRL(p.valorStr) > 0)
 
   if (loadingData) return (
@@ -528,6 +542,21 @@ export function ProducaoNovaPage() {
               >
                 {competencias.map(c => (
                   <option key={c} value={c}>{competenciaLabel(c)}</option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Empresa Emissora (Pin Saúde)" required error={errors.empresa}>
+              <select
+                value={empresaId}
+                onChange={e => { setEmpresaId(e.target.value); setErrors(ex => ({ ...ex, empresa: '' })) }}
+                className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid"
+              >
+                <option value="">Selecione a empresa...</option>
+                {empresas.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.razaoSocial} — {e.cnpj}
+                  </option>
                 ))}
               </select>
             </Field>

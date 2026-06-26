@@ -102,6 +102,7 @@ public class ProducaoService {
 
         Producao p = new Producao();
         p.setCnpjIdTenant(tenant != null ? tenant : "");
+        p.setEmpresaId(req.empresaId());
         p.setTomador(tomador);
         p.setServico(servico);
         p.setValorBruto(valorTotal);

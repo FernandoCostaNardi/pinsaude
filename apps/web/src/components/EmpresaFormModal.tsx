@@ -23,6 +23,12 @@ const emptyForm = (): EmpresaRequest => ({
   municipio: '',
   codigoMunicipioIbge: '',
   regimeTributario: 'SIMPLES_NACIONAL',
+  logradouro: null,
+  bairro: null,
+  uf: null,
+  cep: null,
+  telefone: null,
+  emailContato: null,
 })
 
 export function EmpresaFormModal({ empresa, onClose, onSaved }: Props) {
@@ -42,6 +48,12 @@ export function EmpresaFormModal({ empresa, onClose, onSaved }: Props) {
         municipio: empresa.municipio ?? '',
         codigoMunicipioIbge: empresa.codigoMunicipioIbge ?? '',
         regimeTributario: empresa.regimeTributario,
+        logradouro: empresa.logradouro,
+        bairro: empresa.bairro,
+        uf: empresa.uf,
+        cep: empresa.cep,
+        telefone: empresa.telefone,
+        emailContato: empresa.emailContato,
       })
     } else {
       setForm(emptyForm())
@@ -154,6 +166,54 @@ export function EmpresaFormModal({ empresa, onClose, onSaved }: Props) {
             onChange={e => set('codigoMunicipioIbge', e.target.value)}
             placeholder="7 dígitos (ex: 3550308)"
             maxLength={7}
+          />
+
+          <div className="sm:col-span-2">
+            <Input
+              label="Logradouro"
+              value={form.logradouro ?? ''}
+              onChange={e => set('logradouro', e.target.value || null)}
+              placeholder="Rua, Av., Travessa..."
+            />
+          </div>
+
+          <Input
+            label="Bairro"
+            value={form.bairro ?? ''}
+            onChange={e => set('bairro', e.target.value || null)}
+            placeholder="Ex: Centro"
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="UF"
+              value={form.uf ?? ''}
+              onChange={e => set('uf', e.target.value.toUpperCase().slice(0, 2) || null)}
+              placeholder="SP"
+              maxLength={2}
+            />
+            <Input
+              label="CEP"
+              value={form.cep ?? ''}
+              onChange={e => set('cep', e.target.value || null)}
+              placeholder="00000-000"
+              maxLength={9}
+            />
+          </div>
+
+          <Input
+            label="Telefone"
+            value={form.telefone ?? ''}
+            onChange={e => set('telefone', e.target.value || null)}
+            placeholder="(11) 99999-9999"
+          />
+
+          <Input
+            label="E-mail de contato"
+            value={form.emailContato ?? ''}
+            onChange={e => set('emailContato', e.target.value || null)}
+            placeholder="contato@empresa.com.br"
+            type="email"
           />
 
         </div>

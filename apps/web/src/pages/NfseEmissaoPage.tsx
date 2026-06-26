@@ -167,20 +167,13 @@ export function NfseEmissaoPage() {
       .finally(() => setLoading(false))
   }, [producaoId])
 
-  // Carrega empresa da prestadora para dados do prestador no preview
+  // Carrega empresa emissora a partir da produção (empresaId selecionado na criação)
   useEffect(() => {
-    const cnpj = user?.cnpj_id
-    if (!cnpj) return
-    empresasApi.listar(0, 1000)
-      .then(page => {
-        const cnpjDigits = cnpj.replace(/\D/g, '')
-        const found = page.content.find(e =>
-          e.cnpj.replace(/\D/g, '') === cnpjDigits
-        )
-        if (found) setEmpresaInfo(found)
-      })
+    if (!producao?.empresaId) return
+    empresasApi.buscarPorId(producao.empresaId)
+      .then(setEmpresaInfo)
       .catch(() => {})
-  }, [user?.cnpj_id])
+  }, [producao?.empresaId])
 
   // Carrega nomes dos médicos participantes para a discriminação
   useEffect(() => {

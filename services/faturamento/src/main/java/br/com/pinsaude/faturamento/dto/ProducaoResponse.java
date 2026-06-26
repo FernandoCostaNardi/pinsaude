@@ -13,6 +13,7 @@ import java.util.UUID;
 public record ProducaoResponse(
     UUID id,
     UUID medicoId,                         // null para multi-médico; 1º participante para single (backward compat)
+    UUID empresaId,
     List<ParticipacaoResponse> participantes,
     TomadorResumo tomador,
     ServicoResumo servico,
@@ -48,6 +49,7 @@ public record ProducaoResponse(
         return new ProducaoResponse(
             p.getId(),
             medicoIdCompat,
+            p.getEmpresaId(),
             parts,
             TomadorResumo.from(p.getTomador()),
             ServicoResumo.from(p.getServico()),
