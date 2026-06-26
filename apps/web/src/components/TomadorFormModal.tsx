@@ -91,11 +91,18 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
       try {
         const data = await tomadoresApi.consultarReceita(digits)
         if (data) {
+          const logradouroCompleto = [data.logradouro, data.numero]
+            .filter(Boolean).join(', ')
           setForm(f => ({
             ...f,
             razaoSocialNome: data.razaoSocial ?? f.razaoSocialNome,
-            municipio: data.municipio ?? f.municipio,
-            uf: data.uf ?? f.uf,
+            municipio:       data.municipio  ?? f.municipio,
+            uf:              data.uf         ?? f.uf,
+            logradouro:      logradouroCompleto || f.logradouro,
+            bairro:          data.bairro     ?? f.bairro,
+            cep:             data.cep        ?? f.cep,
+            email:           data.email      ?? f.email,
+            telefone:        data.telefone   ?? f.telefone,
           }))
           setReceitaOk(true)
         }

@@ -69,6 +69,12 @@ export interface ReceitaFederalData {
   nomeFantasia: string | null
   municipio: string | null
   uf: string | null
+  logradouro: string | null
+  numero: string | null
+  bairro: string | null
+  cep: string | null
+  email: string | null
+  telefone: string | null
 }
 
 export const tomadoresApi = {
