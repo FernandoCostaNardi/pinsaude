@@ -61,7 +61,11 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA ledger       GRANT ALL ON TABLES TO svc_ledge
 ALTER DEFAULT PRIVILEGES IN SCHEMA repasse      GRANT ALL ON TABLES TO svc_repasse;
 ALTER DEFAULT PRIVILEGES IN SCHEMA onboarding   GRANT ALL ON TABLES TO svc_onboarding;
 ALTER DEFAULT PRIVILEGES IN SCHEMA gestao       GRANT ALL ON TABLES TO svc_gestao;
--- Portal: herda SELECT em tabelas existentes e futuras (criadas pelos owners)
-ALTER DEFAULT PRIVILEGES IN SCHEMA onboarding  GRANT SELECT ON TABLES TO svc_portal;
-ALTER DEFAULT PRIVILEGES IN SCHEMA fiscal      GRANT SELECT ON TABLES TO svc_portal;
-ALTER DEFAULT PRIVILEGES IN SCHEMA faturamento GRANT SELECT ON TABLES TO svc_portal;
+-- Portal: SELECT em tabelas existentes
+GRANT SELECT ON ALL TABLES IN SCHEMA onboarding  TO svc_portal;
+GRANT SELECT ON ALL TABLES IN SCHEMA fiscal       TO svc_portal;
+GRANT SELECT ON ALL TABLES IN SCHEMA faturamento  TO svc_portal;
+-- Portal: SELECT em tabelas futuras criadas pelos owners de cada schema
+ALTER DEFAULT PRIVILEGES FOR ROLE svc_onboarding  IN SCHEMA onboarding  GRANT SELECT ON TABLES TO svc_portal;
+ALTER DEFAULT PRIVILEGES FOR ROLE svc_fiscal      IN SCHEMA fiscal       GRANT SELECT ON TABLES TO svc_portal;
+ALTER DEFAULT PRIVILEGES FOR ROLE svc_faturamento IN SCHEMA faturamento  GRANT SELECT ON TABLES TO svc_portal;

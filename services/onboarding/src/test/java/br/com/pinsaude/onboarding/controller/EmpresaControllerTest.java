@@ -50,7 +50,8 @@ class EmpresaControllerTest {
     private EmpresaResponse empresaResponse() {
         return new EmpresaResponse(ID, CNPJ, "Clínica Teste", "1234/2024",
             "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL,
-            true, OffsetDateTime.now(), OffsetDateTime.now());
+            true, OffsetDateTime.now(), OffsetDateTime.now(),
+            null, null, null, null, null, null);
     }
 
     private EmpresaPageResponse pageResponse() {
@@ -59,7 +60,8 @@ class EmpresaControllerTest {
 
     private EmpresaRequest requestValido() {
         return new EmpresaRequest(CNPJ, "Clínica Teste", "1234/2024",
-            "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL);
+            "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL,
+            null, null, null, null, null, null);
     }
 
     @Test
@@ -116,7 +118,7 @@ class EmpresaControllerTest {
     @Test
     void post_cnpjInvalido_retorna400() throws Exception {
         EmpresaRequest req = new EmpresaRequest("11.222.333/0001-44", "Clínica", "1234/2024",
-            null, null, RegimeTributario.SIMPLES_NACIONAL);
+            null, null, RegimeTributario.SIMPLES_NACIONAL, null, null, null, null, null, null);
 
         mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)

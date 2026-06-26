@@ -1036,14 +1036,15 @@ Alíquotas padrão: ISS 5%, IR 1,5%, CSLL 1%, PIS 0,65%, COFINS 3%.
 Ajustes por competência/empresa são feitos via `aliquotas_competencia` (EPIC-02.4).
 
 ### Modelo de negócio — médico sempre recebe 85%, impostos saem dos 15% da Pin
-**REGRA FUNDAMENTAL:** A Pin Saúde retém 15% do valor bruto pago pelo tomador ao médico.
-O médico **sempre** recebe exatamente 85%, independente de quais impostos são retidos.
+**REGRA FUNDAMENTAL:** A Pin Saúde retém 15% do valor bruto **por participante**.
+O médico **sempre** recebe exatamente 85% do SEU valor bruto, independente de quais impostos são retidos.
 Os impostos (ISS, IR, CSLL, PIS, COFINS) são custo fiscal da **Pin**, não do médico.
+Em produções multi-médico (EPIC-04.6), a regra se aplica individualmente a cada participante.
 
 ```
 Valor Bruto (do tomador):        R$ 10.000
 − Taxa Pin Saúde (15%):          R$  1.500
-= Valor Líquido ao Médico:       R$  8.500  ← sempre 85%
+= Valor Líquido ao Médico:       R$  8.500  ← sempre 85% do SEU valor bruto
 
 Pin Saúde retém:                 R$  1.500
 − Impostos pagos/retidos:        R$  (815)
@@ -1089,16 +1090,9 @@ Isso evita problemas com separadores de milhar e vírgula decimal do pt-BR.
 ## Consulta e Exportação de Produção — Padrões (EPIC-04.5)
 
 ### Filtros combinados via stream — nunca if-branches mutuamente exclusivos
-Quando o service precisa suportar múltiplos filtros opcionais simultaneamente, usar stream com predicados independentes:
-```java
-return producaoRepo.findAllByOrderByCreatedAtDesc().stream()
-    .filter(p -> statusEnum == null || p.getStatus() == statusEnum)
-    .filter(p -> medicoId == null || medicoId.equals(p.getMedicoId()))
-    .filter(p -> tomadorId == null || tomadorId.equals(p.getTomador().getId()))
-    .filter(p -> periodoInicio == null || p.getCompetencia().compareTo(periodoInicio) >= 0)
-    .filter(p -> periodoFim   == null || p.getCompetencia().compareTo(periodoFim)   <= 0)
-    .map(ProducaoResponse::from).toList();
-```
+Quando o service precisa suportar múltiplos filtros opcionais simultaneamente, usar stream com predicados independentes.
+**Atenção:** a partir do EPIC-04.6, o filtro por `medicoId` é feito via `participacoes_producao`, não por `p.getMedicoId()` (que é null para produções multi-médico). Ver padrão em EPIC-04.6.
+
 Comparação lexicográfica de `String` funciona corretamente para competência no formato `YYYY-MM` (ordem ISO = ordem cronológica).
 
 ### Export CSV pt-BR no browser — BOM + ponto-e-vírgula
@@ -1138,6 +1132,147 @@ public record ServicoResumo(UUID id, String codigoLc116, String descricaoPadrao,
 O cálculo fiscal no frontend repete a lógica do backend:
 ```typescript
 const issRetido = tomador.retencaoIss ? Math.round(valorBruto * servico.aliquotaIss / 100) : 0
+```
+
+---
+
+## Produção Multi-Médico — Padrões e Armadilhas (EPIC-04.6)
+
+### Modelo: uma NFS-e para N médicos via `participacoes_producao`
+Uma produção pode envolver N médicos somados (ex.: hospital com 2, 4, 10 médicos em uma nota).
+A emissão é **uma única NFS-e pelo total** (valor somado dos participantes). O detalhamento
+por médico fica em `faturamento.participacoes_producao`, que é a tabela âncora do isolamento
+multi-médico.
+
+```
+producoes (uma por nota)
+  ├── tomador_id
+  ├── servico_id
+  ├── valor_total (soma dos participantes)
+  ├── medico_id NULL (preenchido apenas em single-médico por compat. histórica)
+  └── participacoes_producao (N linhas)
+        ├── medico_id
+        ├── valor_bruto (contribuição deste médico)
+        └── taxaPin = Math.round(valor_bruto * 0.15)
+```
+
+### API contract — `ProducaoRequest` agora usa lista de participantes
+```json
+// ANTES (single-médico):
+{ "medicoId": "uuid", "valorBruto": 1000000, "tomadorId": "...", ... }
+
+// DEPOIS (EPIC-04.6):
+{
+  "tomadorId": "...", "servicoId": "...", "competencia": "2026-06",
+  "participantes": [
+    { "medicoId": "uuid-medico-1", "valorBruto": 600000 },
+    { "medicoId": "uuid-medico-2", "valorBruto": 400000 }
+  ]
+}
+```
+`@NotEmpty List<@Valid ParticipacaoRequest> participantes` — obrigatório, mínimo 1 item.
+`valorTotal` da produção = soma dos `valorBruto` de cada participante (calculado no service).
+
+### `ProducaoResponse` — campos de compatibilidade
+- `medicoId` retorna `participantes[0].medicoId` para produções de 1 médico, `null` para multi.
+- `valorBruto` = soma total de todos os participantes.
+- `participantes: List<ParticipacaoResponse>` — lista completa sempre presente.
+
+```java
+public record ParticipacaoResponse(UUID id, UUID medicoId, long valorBruto, long taxaPin, long valorLiquido) {
+    static ParticipacaoResponse from(ParticipacaoProducao p) {
+        long taxaPin = Math.round(p.getValorBruto() * 0.15);
+        return new ParticipacaoResponse(p.getId(), p.getMedicoId(), p.getValorBruto(),
+                                        taxaPin, p.getValorBruto() - taxaPin);
+    }
+}
+```
+
+### Filtro por médico — batch para evitar N+1
+O filtro de `listar(medicoId)` no `ProducaoService` não usa `p.getMedicoId()` (é null para multi).
+Usa-se dois queries em sequência sem N+1:
+```java
+// 1. busca IDs das produções onde o médico participa
+List<UUID> ids = participacaoRepo.findProducaoIdsByMedicoId(medicoId);
+
+// 2. carrega todas as participações dessas produções em batch
+Map<UUID, List<ParticipacaoProducao>> partsMap =
+    participacaoRepo.findByProducaoIdIn(ids)
+        .stream().collect(groupingBy(ParticipacaoProducao::getProducaoId));
+```
+```java
+// JPQL — retorna só os IDs (não as entidades)
+@Query("SELECT p.producaoId FROM ParticipacaoProducao p WHERE p.medicoId = :medicoId")
+List<UUID> findProducaoIdsByMedicoId(@Param("medicoId") UUID medicoId);
+```
+
+### RLS em `participacoes_producao` — subquery para `producoes`
+A tabela `participacoes_producao` não tem coluna `cnpj_id_tenant` diretamente.
+O isolamento é por subquery:
+```sql
+CREATE POLICY tenant_isolation ON faturamento.participacoes_producao
+USING (
+    COALESCE(current_setting('app.current_tenant', TRUE), '') = ''
+    OR producao_id IN (
+        SELECT id FROM faturamento.producoes
+        WHERE cnpj_id_tenant = current_setting('app.current_tenant', TRUE)
+    )
+);
+```
+Bypass via `COALESCE = ''` para gestão e portal (sem tenant no JWT).
+
+### Migration V5 — auto-migra produções existentes
+`V5__add_participacoes_producao.sql`:
+1. Cria a tabela `participacoes_producao` com RLS e UNIQUE `(producao_id, medico_id)`
+2. Migra todas as produções existentes automaticamente (single-médico → 1 participação)
+3. Remove NOT NULL de `producoes.medico_id` (passa a ser nullable)
+
+O campo `medico_id` em `producoes` é mantido por compatibilidade histórica com as notas fiscais já emitidas.
+
+### NfseService — `medicoId` nullable para multi-médico
+A lógica de "primeira nota" (que determina se vai para `AGUARDANDO_VALIDACAO` antes de emitir)
+só se aplica quando `medicoId != null`. Produções multi-médico vão direto para `PENDENTE`:
+```java
+boolean primeiraNotaMedico = req.medicoId() != null
+    && !notaRepo.existsByMedicoIdAndStatus(req.medicoId(), StatusNota.EMITIDA);
+String statusInicial = primeiraNotaMedico ? "AGUARDANDO_VALIDACAO" : "PENDENTE";
+```
+
+### Portal — backward compat com notas antigas (CASE WHEN)
+O `PortalService` usa CASE WHEN para suportar notas emitidas antes e depois do EPIC-04.6:
+```sql
+LEFT JOIN faturamento.participacoes_producao pp
+       ON pp.producao_id = nf.producao_id AND pp.medico_id = ?
+
+WHERE (nf.medico_id = ? OR pp.medico_id IS NOT NULL)
+
+-- valores por médico:
+CASE WHEN nf.medico_id IS NOT NULL
+     THEN nf.valor_bruto            -- nota single-médico legada
+     ELSE pp.valor_bruto            -- nota multi-médico: usa a participação deste médico
+END AS valor_bruto,
+CASE WHEN nf.medico_id IS NOT NULL
+     THEN nf.valor_liquido_medico
+     ELSE pp.valor_bruto * 0.85
+END AS valor_liquido_medico
+```
+
+### Frontend — `filtroMedico` via `participantes.some()`
+A listagem `ProducoesPage` filtra por médico usando a lista de participantes, nunca `medicoId` (que é null para multi):
+```typescript
+.filter(p => !filtroMedico || p.participantes.some(pt => pt.medicoId === filtroMedico))
+```
+
+No CSV export, participantes de uma mesma produção são concatenados:
+```typescript
+participantes.map(pt => medicoNomeMap[pt.medicoId] ?? pt.medicoId).join(' / ')
+```
+
+### `NfseEmissaoPage` — `medicoId` null para multi-médico
+```typescript
+const medicoId = producao.participantes.length === 1
+    ? producao.participantes[0].medicoId
+    : null   // multi-médico: nota não vinculada a um único médico
 ```
 
 ---

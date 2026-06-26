@@ -136,7 +136,7 @@ class MultitenancyIsolationTest {
     private void criarEmpresa(String cnpj, String razaoSocial) throws Exception {
         EmpresaRequest req = new EmpresaRequest(
             cnpj, razaoSocial, "IM-001", "Sao Paulo", "3550308",
-            RegimeTributario.SIMPLES_NACIONAL);
+            RegimeTributario.SIMPLES_NACIONAL, null, null, null, null, null, null);
         mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req))

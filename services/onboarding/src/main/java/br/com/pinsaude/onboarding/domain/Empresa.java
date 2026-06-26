@@ -45,7 +45,8 @@ public class Empresa {
     @Column(name = "bairro", length = 100)
     private String bairro;
 
-    @Column(name = "uf", length = 2)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "uf", columnDefinition = "char(2)")
     private String uf;
 
     @Column(name = "cep", length = 9)

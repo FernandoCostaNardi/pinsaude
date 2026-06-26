@@ -2,6 +2,8 @@ package br.com.pinsaude.faturamento.domain;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.ColumnTransformer;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -55,7 +57,8 @@ public class Tomador {
     @Column(name = "cep", length = 9)
     private String cep;
 
-    @Column(name = "uf", length = 2)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "uf", columnDefinition = "char(2)")
     private String uf;
 
     @Column(name = "pais", length = 50)

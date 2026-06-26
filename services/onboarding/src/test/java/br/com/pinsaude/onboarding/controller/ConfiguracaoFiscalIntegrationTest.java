@@ -49,7 +49,8 @@ class ConfiguracaoFiscalIntegrationTest {
         empresaRepository.deleteAll();
         EmpresaRequest req = new EmpresaRequest(
             "11.222.333/0001-81", "Clínica Fiscal Teste", "IM-001",
-            "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL);
+            "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL,
+            null, null, null, null, null, null);
 
         String json = mockMvc.perform(post("/api/empresas")
                 .contentType(MediaType.APPLICATION_JSON)
