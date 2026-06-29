@@ -1,8 +1,10 @@
 package br.com.pinsaude.portal.controller;
 
 import br.com.pinsaude.portal.dto.DashboardResponse;
+import br.com.pinsaude.portal.dto.EmpresaPortalResponse;
 import br.com.pinsaude.portal.dto.ExtratoResponse;
 import br.com.pinsaude.portal.dto.NotaPortalResponse;
+import br.com.pinsaude.portal.dto.PerfilMedicoResponse;
 import br.com.pinsaude.portal.dto.ProducaoPortalResponse;
 import br.com.pinsaude.portal.service.PortalService;
 import org.springframework.http.MediaType;
@@ -92,6 +94,20 @@ public class PortalMedicoController {
         LocalDate inicio = dtInicio != null && !dtInicio.isBlank() ? LocalDate.parse(dtInicio) : null;
         LocalDate fim    = dtFim    != null && !dtFim.isBlank()    ? LocalDate.parse(dtFim)    : null;
         return ResponseEntity.ok(service.getExtrato(medicoId, inicio, fim));
+    }
+
+    @GetMapping("/perfil")
+    @PreAuthorize("hasRole('medico')")
+    public ResponseEntity<PerfilMedicoResponse> perfil(@AuthenticationPrincipal Jwt jwt) {
+        UUID medicoId = service.resolveMedicoId(jwt.getClaimAsString("email"));
+        return ResponseEntity.ok(service.getPerfil(medicoId));
+    }
+
+    @GetMapping("/vinculos-empresa")
+    @PreAuthorize("hasRole('medico')")
+    public ResponseEntity<List<EmpresaPortalResponse>> vinculosEmpresa(@AuthenticationPrincipal Jwt jwt) {
+        UUID medicoId = service.resolveMedicoId(jwt.getClaimAsString("email"));
+        return ResponseEntity.ok(service.getEmpresasDoMedico(medicoId));
     }
 
     @GetMapping("/repasses")

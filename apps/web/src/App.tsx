@@ -20,6 +20,7 @@ import { UnderConstruction }        from './pages/UnderConstruction'
 import { DashboardMedicoPage }      from './pages/DashboardMedicoPage'
 import { MinhasNotasPage }           from './pages/MinhasNotasPage'
 import { ExtratoPage }               from './pages/ExtratoPage'
+import { PortalProducaoNovaPage }    from './pages/PortalProducaoNovaPage'
 
 export default function App() {
   return (
@@ -50,7 +51,8 @@ export default function App() {
             <Route path="/notas/lote"                 element={<LotePage />} />
             <Route path="/portal/dashboard" element={<DashboardMedicoPage />} />
             <Route path="/portal/notas"     element={<MinhasNotasPage />} />
-            <Route path="/portal/extrato"   element={<ExtratoPage />} />
+            <Route path="/portal/extrato"        element={<ExtratoPage />} />
+            <Route path="/portal/producao/nova"  element={<PortalProducaoNovaPage />} />
             <Route path="/repasses"    element={<UnderConstruction title="Repasses"    epic="EPIC-09" />} />
             <Route path="/conciliacao" element={<UnderConstruction title="Conciliação" epic="EPIC-07" />} />
             <Route path="/gestao"      element={<UnderConstruction title="Gestão"      epic="EPIC-10" />} />

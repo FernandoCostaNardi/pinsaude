@@ -13,10 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.YearMonth;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class ParametrosFiscaisService {
@@ -29,16 +26,8 @@ public class ParametrosFiscaisService {
 
     @Transactional(readOnly = true)
     public List<ParametrosFiscaisResponse> listar(String cnpjId) {
-        List<ParametrosFiscais> lista = new java.util.ArrayList<>();
-        for (TipoTributo tributo : TipoTributo.values()) {
-            lista.addAll(repo.findVigenteParaTributo(cnpjId, tributo,
-                "9999-12", PageRequest.of(0, 200)));
-        }
-        lista.sort((a, b) -> {
-            int cmp = a.getTipoTributo().name().compareTo(b.getTipoTributo().name());
-            return cmp != 0 ? cmp : b.getCompetenciaInicio().compareTo(a.getCompetenciaInicio());
-        });
-        return lista.stream().map(ParametrosFiscaisResponse::from).toList();
+        return repo.findByCnpjIdOrderByTipoTributoAscCompetenciaInicioDesc(cnpjId)
+            .stream().map(ParametrosFiscaisResponse::from).toList();
     }
 
     @Transactional(readOnly = true)
@@ -70,11 +59,20 @@ public class ParametrosFiscaisService {
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private void validarSobreposicao(String cnpjId, ParametrosFiscaisRequest req) {
+        // Verifica duplicata exata (mesmo cnpjId + competenciaInicio + tipoTributo)
+        // independente de competenciaFim — evita 500 por violação da UNIQUE constraint
+        if (repo.existsByCnpjIdAndCompetenciaInicioAndTipoTributo(
+                cnpjId, req.competenciaInicio(), req.tipoTributo())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Já existe alíquota de " + req.tipoTributo()
+                + " para a competência " + req.competenciaInicio() + ".");
+        }
+
+        // Verifica sobreposição de intervalo com registros abertos (sem competenciaFim ou com fim no futuro)
         List<ParametrosFiscais> existentes = repo.findVigenteParaTributo(
             cnpjId, req.tipoTributo(), "9999-12", PageRequest.of(0, 50));
 
         for (ParametrosFiscais ex : existentes) {
-            // Nova entrada sobrepõe se competenciaInicio cair dentro da vigência existente
             boolean inicioNaVigencia =
                 req.competenciaInicio().compareTo(ex.getCompetenciaInicio()) >= 0
                 && (ex.getCompetenciaFim() == null

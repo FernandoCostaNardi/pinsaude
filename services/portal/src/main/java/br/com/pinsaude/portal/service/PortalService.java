@@ -1,9 +1,11 @@
 package br.com.pinsaude.portal.service;
 
 import br.com.pinsaude.portal.dto.DashboardResponse;
+import br.com.pinsaude.portal.dto.EmpresaPortalResponse;
 import br.com.pinsaude.portal.dto.ExtratoLancamentoResponse;
 import br.com.pinsaude.portal.dto.ExtratoResponse;
 import br.com.pinsaude.portal.dto.NotaPortalResponse;
+import br.com.pinsaude.portal.dto.PerfilMedicoResponse;
 import br.com.pinsaude.portal.dto.ProducaoPortalResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -131,6 +133,43 @@ public class PortalService {
                     toOffsetDateTime(rs.getTimestamp("created_at"))
             );
         }, params.toArray());
+    }
+
+    public PerfilMedicoResponse getPerfil(UUID medicoId) {
+        return jdbc.query("""
+                SELECT id, nome, email, crm, crm_uf, especialidade, status
+                FROM onboarding.medicos
+                WHERE id = ?
+                """,
+                (rs, row) -> new PerfilMedicoResponse(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("nome"),
+                        rs.getString("email"),
+                        rs.getString("crm"),
+                        rs.getString("crm_uf"),
+                        rs.getString("especialidade"),
+                        rs.getString("status")),
+                medicoId).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Médico não encontrado"));
+    }
+
+    public List<EmpresaPortalResponse> getEmpresasDoMedico(UUID medicoId) {
+        return jdbc.query("""
+                SELECT e.id, e.razao_social, e.cnpj, e.municipio, e.inscricao_municipal
+                FROM onboarding.vinculos_medico_empresa v
+                JOIN onboarding.empresas e ON e.id = v.empresa_id
+                WHERE v.medico_id = ?
+                  AND e.ativo = true
+                ORDER BY e.razao_social
+                """,
+                (rs, row) -> new EmpresaPortalResponse(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("razao_social"),
+                        rs.getString("cnpj"),
+                        rs.getString("municipio"),
+                        rs.getString("inscricao_municipal")),
+                medicoId);
     }
 
     public ExtratoResponse getExtrato(UUID medicoId, LocalDate dtInicio, LocalDate dtFim) {

@@ -1727,6 +1727,60 @@ class PortalMedicoControllerTest { ... }
 
 ---
 
+## Extrato Financeiro — Lançamentos Virtuais (EPIC-06.4)
+
+### Extrato derivado de NFS-e quando Ledger não existe
+Quando o serviço de Ledger (EPIC-08.2) ainda não existe, o extrato financeiro
+pode ser gerado como **lançamentos virtuais** a partir das `fiscal.notas_fiscais`:
+
+```
+Cada NFS-e EMITIDA gera automaticamente:
+  1. CREDITO  NFS_E     — valor_bruto da nota
+  2. DEBITO   ISS       — valor_iss       (se > 0)
+  3. DEBITO   IR        — valor_ir        (se > 0)
+  4. DEBITO   CSLL      — valor_csll      (se > 0)
+  5. DEBITO   PIS       — valor_pis       (se > 0)
+  6. DEBITO   COFINS    — valor_cofins    (se > 0)
+  7. DEBITO   TAXA_PIN  — taxa_pin (15%)
+```
+
+O saldo running é calculado do mais antigo para o mais recente, depois a lista
+é revertida antes de retornar (mais recentes primeiro = leitura natural de extrato).
+
+```java
+// Saldo running acumulado — gerado antes do reverse:
+saldo += nota.valorBrutoCentavos();  // crédito
+saldo -= nota.valorIss();            // débito por tributo
+// ... outros tributos ...
+saldo -= nota.taxaPinCentavos();     // taxa Pin
+lancamentos.add(new ExtratoLancamentoResponse(..., saldoApos: saldo, ...));
+Collections.reverse(lancamentos);   // mais recentes primeiro
+```
+
+Quando o Ledger for criado (EPIC-08.2), substituir `getExtrato()` no PortalService
+por uma consulta à tabela `ledger.lancamentos` — a interface do endpoint e do frontend
+não mudam.
+
+### Export PDF sem dependência externa
+Usar `window.open()` + `window.print()` para PDF do extrato. A URL do logo deve
+usar `window.location.origin` para funcionar no contexto da nova janela:
+```typescript
+const logoUrl = `${window.location.origin}/logo-pinsaude.png`
+```
+O logo em `/public/logo-pinsaude.png` é servido pelo Vite dev server e pelo build
+de produção como arquivo estático — a URL absoluta com `origin` funciona em ambos.
+
+### `KpiCard.sub` como ReactNode (padrão DashboardMedicoPage)
+O `KpiCard` do DashboardMedicoPage aceita `sub: ReactNode` (não `string`) para
+permitir links como "Ver extrato →". Importar `ReactNode` de `react`:
+```tsx
+import { ReactNode } from 'react'
+// ...
+sub: ReactNode  // NOT sub: string
+```
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
