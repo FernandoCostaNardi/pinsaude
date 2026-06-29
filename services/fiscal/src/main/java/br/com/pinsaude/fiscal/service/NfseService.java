@@ -5,6 +5,7 @@ import br.com.pinsaude.fiscal.domain.StatusNota;
 import br.com.pinsaude.fiscal.dto.EmitirNfseRequest;
 import br.com.pinsaude.fiscal.dto.EmitirNfseResponse;
 import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
+import br.com.pinsaude.fiscal.messaging.EmailNotificacaoProducer;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoMessage;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoProducer;
 import br.com.pinsaude.fiscal.port.DadosNota;
@@ -32,15 +33,18 @@ public class NfseService {
     private final LoteEmissaoRepository loteRepo;
     private final EmissaoNfsePort emissaoPort;
     private final NfseEmissaoProducer producer;
+    private final EmailNotificacaoProducer emailProducer;
 
     public NfseService(NotaFiscalRepository notaRepo,
                        LoteEmissaoRepository loteRepo,
                        EmissaoNfsePort emissaoPort,
-                       NfseEmissaoProducer producer) {
-        this.notaRepo = notaRepo;
-        this.loteRepo = loteRepo;
-        this.emissaoPort = emissaoPort;
-        this.producer = producer;
+                       NfseEmissaoProducer producer,
+                       EmailNotificacaoProducer emailProducer) {
+        this.notaRepo      = notaRepo;
+        this.loteRepo      = loteRepo;
+        this.emissaoPort   = emissaoPort;
+        this.producer      = producer;
+        this.emailProducer = emailProducer;
     }
 
     /**
@@ -135,6 +139,10 @@ public class NfseService {
 
         notaRepo.save(nota);
         log.info("NotaFiscal {} atualizada para status={}", notaId, nota.getStatus());
+
+        if (nota.getStatus() == StatusNota.EMITIDA) {
+            emailProducer.notificarNotaEmitida(nota);
+        }
 
         atualizarContadoresLote(nota.getCompetencia(), nota.getStatus());
     }

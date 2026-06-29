@@ -21,6 +21,11 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/pinsaude
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
   mail:
     host: ${SMTP_HOST:localhost}
     port: ${SMTP_PORT:1025}

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Alerta de Teto Fiscal — Pin Saúde</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7fb;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <tr>
+        <td style="background:#02A9F7;padding:32px 40px;text-align:center;">
+          <p style="margin:0;font-size:26px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">Pin Saúde</p>
+          <p style="margin:6px 0 0;font-size:12px;color:#BAE9FF;letter-spacing:2px;text-transform:uppercase;">Sistema de Gestão Médica</p>
+        </td>
+      </tr>
+
+      <!-- Alert banner -->
+      <tr>
+        <td style="background:#fffbeb;border-bottom:3px solid #fbbf24;padding:16px 40px;text-align:center;">
+          <p style="margin:0;font-size:14px;font-weight:700;color:#b45309;">⚠️ Atenção: Limite de Receita Atingido</p>
+        </td>
+      </tr>
+
+      <!-- Body -->
+      <tr>
+        <td style="padding:40px 40px 24px;">
+          <p style="margin:0 0 20px;font-size:22px;font-weight:700;color:#1a1a2e;">Alerta de Teto Fiscal</p>
+
+          <!-- Progress indicator -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;margin-bottom:24px;">
+            <tr>
+              <td style="padding:20px 24px;text-align:center;">
+                <p style="margin:0 0 8px;font-size:13px;color:#92400e;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Utilização do Teto</p>
+                <!-- Progress bar -->
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0;">
+                  <tr>
+                    <td style="background:#fde68a;border-radius:100px;height:20px;overflow:hidden;">
+                      <td th:style="'background:' + (${percentualTeto} >= 90 ? '#dc2626' : '#f59e0b') + ';width:' + ${percentualTeto} + '%;border-radius:100px;height:20px;'" style="background:#f59e0b;width:80%;border-radius:100px;height:20px;"></td>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:12px 0 0;font-size:36px;font-weight:900;" th:style="'color:' + (${percentualTeto} >= 90 ? '#dc2626' : '#b45309')">
+                  <span th:text="${percentualTeto}">80</span>%
+                </p>
+                <p style="margin:4px 0 0;font-size:13px;color:#92400e;">do limite anual de Lucro Presumido</p>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:0 0 16px;font-size:15px;color:#4a4a6a;line-height:1.6;">
+            A empresa <strong th:text="${cnpj}">XX.XXX.XXX/0001-XX</strong> atingiu
+            <strong th:text="${percentualTeto} + '%'" th:style="'color:' + (${percentualTeto} >= 90 ? '#dc2626' : '#b45309')">80%</strong>
+            do teto anual de receita para o regime de Lucro Presumido.
+          </p>
+
+          <p style="margin:0 0 24px;font-size:15px;color:#4a4a6a;line-height:1.6;">
+            Ao ultrapassar o limite, pode haver necessidade de migração de regime tributário e impacto nas alíquotas praticadas.
+            Consulte seu contador para as próximas medidas.
+          </p>
+
+          <!-- CTA Button -->
+          <table cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+            <tr>
+              <td style="background:#02A9F7;border-radius:8px;">
+                <a th:href="${portalUrl}" href="#"
+                   style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                  Ver Painel Fiscal →
+                </a>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">
+            Este alerta é gerado automaticamente pelo sistema Pin Saúde. Para configurar os limiares de alerta, acesse o painel de configuração fiscal.
+          </p>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="background:#f8faff;border-top:1px solid #e8edf5;padding:24px 40px;text-align:center;">
+          <p style="margin:0;font-size:12px;color:#aaa;">Pin Saúde — Gestão Fiscal para Médicos</p>
+          <p style="margin:4px 0 0;font-size:11px;color:#ccc;">noreply@pinsaude.com.br</p>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

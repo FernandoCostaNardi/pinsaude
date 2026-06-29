@@ -17,6 +17,7 @@ public class RabbitConfig {
     public static final String DLQ            = "nfse.emissao.dlq";
     public static final String ROUTING_KEY    = "nfse.emissao";
     public static final String DLQ_ROUTING    = "nfse.emissao.dlq";
+    public static final String EMAIL_QUEUE    = "email.envio";
 
     // ── Exchanges ───────────────────────────────────────────────────────────
 
@@ -43,6 +44,11 @@ public class RabbitConfig {
     @Bean
     public Queue nfseEmissaoDlq() {
         return QueueBuilder.durable(DLQ).build();
+    }
+
+    @Bean
+    public Queue emailEnvioQueue() {
+        return QueueBuilder.durable(EMAIL_QUEUE).build();
     }
 
     // ── Bindings ────────────────────────────────────────────────────────────
