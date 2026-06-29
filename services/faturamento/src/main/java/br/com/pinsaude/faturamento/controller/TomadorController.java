@@ -25,14 +25,14 @@ public class TomadorController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
     public ResponseEntity<List<TomadorResponse>> buscar(
             @RequestParam(required = false) String q) {
         return ResponseEntity.ok(service.buscar(q));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
     public ResponseEntity<TomadorResponse> buscarPorId(@PathVariable UUID id) {
         return ResponseEntity.ok(service.buscarPorId(id));
     }

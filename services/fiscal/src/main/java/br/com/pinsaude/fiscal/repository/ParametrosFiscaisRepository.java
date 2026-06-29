@@ -29,4 +29,9 @@ public interface ParametrosFiscaisRepository extends JpaRepository<ParametrosFis
         @Param("tipoTributo") TipoTributo tipoTributo,
         @Param("competencia") String competencia,
         Pageable pageable);
+
+    boolean existsByCnpjIdAndCompetenciaInicioAndTipoTributo(
+        String cnpjId, String competenciaInicio, TipoTributo tipoTributo);
+
+    List<ParametrosFiscais> findByCnpjIdOrderByTipoTributoAscCompetenciaInicioDesc(String cnpjId);
 }

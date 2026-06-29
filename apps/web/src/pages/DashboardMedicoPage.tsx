@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Banknote, TrendingUp, FileText, ClipboardList,
   RefreshCw, Bell, CheckCircle2, Clock, XCircle,
-  AlertTriangle, Loader2, ShieldCheck,
+  AlertTriangle, Loader2, ShieldCheck, PlusCircle,
 } from 'lucide-react'
 import { Spinner, Alert } from '@pinsaude/ui'
 import { portalApi, DashboardPortal } from '../api/portalApi'
@@ -240,14 +240,23 @@ export function DashboardMedicoPage() {
           </h1>
           <p className="text-sm text-ds-light mt-0.5">Visão financeira do seu portal</p>
         </div>
-        <button
-          onClick={() => load(true)}
-          disabled={refreshing || loading}
-          className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-ds-mid border border-ds-border rounded-lg hover:bg-ds-input transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/portal/producao/nova"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-primary hover:bg-primary-700 rounded-lg transition-colors"
+          >
+            <PlusCircle size={13} />
+            Informar Produção
+          </Link>
+          <button
+            onClick={() => load(true)}
+            disabled={refreshing || loading}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-ds-mid border border-ds-border rounded-lg hover:bg-ds-input transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+            Atualizar
+          </button>
+        </div>
       </div>
 
       {error && <Alert variant="error">{error}</Alert>}

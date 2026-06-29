@@ -47,6 +47,24 @@ export interface NotaPortal {
   createdAt: string
 }
 
+export interface PerfilMedico {
+  id: string
+  nome: string
+  email: string
+  crm: string
+  crmUf: string
+  especialidade: string | null
+  status: string
+}
+
+export interface EmpresaPortal {
+  id: string
+  razaoSocial: string
+  cnpj: string
+  municipio: string | null
+  inscricaoMunicipal: string | null
+}
+
 export interface ExtratoLancamento {
   tipo: 'CREDITO' | 'DEBITO'
   categoria: 'NFS_E' | 'ISS' | 'IR' | 'CSLL' | 'PIS' | 'COFINS' | 'TAXA_PIN'
@@ -143,4 +161,17 @@ async function getExtrato(params?: { dtInicio?: string; dtFim?: string }): Promi
   return handleResponse<ExtratoPortal>(res)
 }
 
-export const portalApi = { getDashboard, getNotas, getProducao, downloadXml, downloadPdf, getExtrato }
+async function getPerfil(): Promise<PerfilMedico> {
+  const res = await fetch('/api/portal/perfil', { headers: authHeaders() })
+  return handleResponse<PerfilMedico>(res)
+}
+
+async function getVinculosEmpresa(): Promise<EmpresaPortal[]> {
+  const res = await fetch('/api/portal/vinculos-empresa', { headers: authHeaders() })
+  return handleResponse<EmpresaPortal[]>(res)
+}
+
+export const portalApi = {
+  getDashboard, getNotas, getProducao, downloadXml, downloadPdf,
+  getExtrato, getPerfil, getVinculosEmpresa,
+}

@@ -43,13 +43,13 @@ public class ProducaoController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
     public ResponseEntity<ProducaoResponse> criar(@Valid @RequestBody ProducaoRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.criar(req));
     }
 
     @PostMapping("/preview-calculo")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
     public ResponseEntity<PreviewCalculoResponse> previewCalculo(
             @Valid @RequestBody PreviewCalculoRequest req) {
         return ResponseEntity.ok(service.calcularPreview(req));

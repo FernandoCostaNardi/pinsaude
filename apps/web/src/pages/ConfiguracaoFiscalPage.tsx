@@ -426,9 +426,11 @@ function AbaServicos() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-ds-mid">
-        Catálogo de serviços médicos conforme LC 116/2003. Alíquotas padrão — ajustes por competência são feitos na aba "Alíquotas".
-      </p>
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <strong>Estes são os valores padrão do catálogo LC 116/2003</strong> — fixos por tipo de serviço.
+        As alíquotas efetivas usadas nos cálculos fiscais e no preview de produção são as configuradas
+        na aba <strong>"Alíquotas por Competência"</strong>, que substituem estes valores padrão.
+      </div>
       <div className="border border-ds-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-xs text-ds-mid uppercase">
