@@ -47,6 +47,26 @@ export interface NotaPortal {
   createdAt: string
 }
 
+export interface ExtratoLancamento {
+  tipo: 'CREDITO' | 'DEBITO'
+  categoria: 'NFS_E' | 'ISS' | 'IR' | 'CSLL' | 'PIS' | 'COFINS' | 'TAXA_PIN'
+  descricao: string
+  valor: number       // centavos, sempre positivo
+  saldoApos: number   // centavos
+  competencia: string
+  referencia: string
+  dataRef: string     // ISO datetime
+}
+
+export interface ExtratoPortal {
+  saldoPeriodo: number
+  totalCreditos: number
+  totalDebitos: number
+  totalRetencoes: number
+  totalTaxaPin: number
+  lancamentos: ExtratoLancamento[]
+}
+
 export interface DashboardPortal {
   saldoDisponivelCentavos: number
   valorAReceberCentavos: number
@@ -114,4 +134,13 @@ async function downloadPdf(notaId: string): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
-export const portalApi = { getDashboard, getNotas, getProducao, downloadXml, downloadPdf }
+async function getExtrato(params?: { dtInicio?: string; dtFim?: string }): Promise<ExtratoPortal> {
+  const search = new URLSearchParams()
+  if (params?.dtInicio) search.set('dtInicio', params.dtInicio)
+  if (params?.dtFim)    search.set('dtFim',    params.dtFim)
+  const qs = search.toString() ? `?${search}` : ''
+  const res = await fetch(`/api/portal/extrato${qs}`, { headers: authHeaders() })
+  return handleResponse<ExtratoPortal>(res)
+}
+
+export const portalApi = { getDashboard, getNotas, getProducao, downloadXml, downloadPdf, getExtrato }
