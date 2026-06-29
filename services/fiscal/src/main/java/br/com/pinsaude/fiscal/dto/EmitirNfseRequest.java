@@ -8,7 +8,7 @@ import java.util.UUID;
 
 public record EmitirNfseRequest(
     @NotNull UUID producaoId,
-    @NotNull UUID medicoId,
+    UUID medicoId,             // null para produções multi-médico
     @NotNull UUID tomadorId,
     @NotNull @Pattern(regexp = "\\d{4}-\\d{2}") String competencia,
     @NotNull @Positive Long valorBruto,

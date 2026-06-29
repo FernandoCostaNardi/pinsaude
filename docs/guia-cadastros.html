@@ -270,7 +270,7 @@
     <h1>Pin Saúde<br/><span>Guia Operacional</span></h1>
     <p>Cadastros · Configuração Fiscal · Motor de Cálculo</p>
     <div class="cover-meta">
-      <span>Versão 1.0</span>
+      <span>Versão 1.3</span>
       <span>Junho / 2026</span>
       <span>Pin Saúde MVP</span>
     </div>
@@ -298,6 +298,13 @@
         </ol>
       </li>
       <li><a href="#tomador">Cadastro de Tomador</a></li>
+      <li><a href="#producao">Registro de Produção</a>
+        <ol style="padding-left:18px; margin-top:4px;">
+          <li><a href="#producao-single">Produção de um médico</a></li>
+          <li><a href="#producao-multi">Produção multi-médico</a></li>
+          <li><a href="#producao-regra">Regra dos 85% por participante</a></li>
+        </ol>
+      </li>
       <li><a href="#fiscal">Menu Fiscal</a>
         <ol style="padding-left:18px; margin-top:4px;">
           <li><a href="#fiscal-aliquotas">Aba: Alíquotas por Competência</a></li>
@@ -432,8 +439,8 @@
     <div id="empresa-step2" class="sub-section">
       <p class="sub-title">Passo 2 — Dados Fiscais</p>
       <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
-        Configure o regime tributário, inscrição municipal e localização da empresa.
-        Estes dados são utilizados no cálculo e emissão de NFS-e.
+        Configure o regime tributário, inscrição municipal, localização e contato da empresa.
+        Estes dados são utilizados no cálculo, emissão e no DANFSe das NFS-e.
       </p>
       <table class="fields-table">
         <thead>
@@ -455,6 +462,31 @@
             <td><span class="badge badge-opt">Opcional</span></td>
             <td>Campo de busca com autocomplete. Preenche o código IBGE automaticamente.</td>
           </tr>
+          <tr>
+            <td><strong>Logradouro</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Endereço completo da sede (rua, avenida, número, complemento). Exibido no DANFSe como endereço do prestador.</td>
+          </tr>
+          <tr>
+            <td><strong>Bairro</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Bairro da sede da empresa.</td>
+          </tr>
+          <tr>
+            <td><strong>CEP</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>CEP no formato XXXXX-XXX.</td>
+          </tr>
+          <tr>
+            <td><strong>Telefone</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Telefone de contato da empresa. Ex: (81) 99789-8181.</td>
+          </tr>
+          <tr>
+            <td><strong>E-mail de contato</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>E-mail institucional. Ex: falecom@pinsaude.com.br.</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -468,7 +500,8 @@
       </p>
       <div class="info-box green">
         <strong>Campos exibidos na revisão:</strong> CNPJ · Razão Social · Regime Tributário ·
-        Inscrição Municipal · Município (com código IBGE).
+        Inscrição Municipal · Município (com código IBGE) · Logradouro · Bairro · CEP ·
+        Telefone · E-mail de contato (os campos opcionais só aparecem quando preenchidos).
       </div>
       <p style="margin-top:12px;font-size:13px;color:var(--text-mid);">
         Clique em <strong>"Cadastrar empresa"</strong> para salvar. A empresa estará imediatamente
@@ -772,13 +805,14 @@
         <p style="color:var(--text-mid);font-size:13px;">
           Para tomadores PJ (Hospital, Clínica, Operadora), o sistema busca automaticamente
           os dados na <strong>Receita Federal</strong> após o CNPJ ser digitado completo
-          e válido. Os campos <em>Razão Social</em> e <em>Município</em> são preenchidos
+          e válido. Os campos <em>Razão Social</em>, <em>Município</em> e <em>UF</em> são preenchidos
           automaticamente quando a consulta tem sucesso.
         </p>
         <div class="info-box green" style="margin-top:10px;">
           <strong>Preenchimento automático pela Receita Federal:</strong> aguarde o indicador
           <em>"Receita preenchida"</em> aparecer ao lado do campo CNPJ antes de avançar.
-          Você pode editar os campos preenchidos automaticamente se necessário.
+          Os campos preenchidos automaticamente (Razão Social, Município, UF) podem ser
+          editados manualmente se necessário.
         </div>
       </div>
 
@@ -809,9 +843,61 @@
         </table>
       </div>
 
+      <!-- Contato e Endereço -->
+      <div style="margin-bottom:22px;">
+        <p style="font-weight:700;font-size:14px;margin-bottom:10px;">4. Contato e Endereço</p>
+        <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+          Informações de localização e contato do tomador. Esses dados são utilizados no
+          <strong>DANFSe</strong> (Documento Auxiliar da NFS-e) gerado no preview antes da emissão.
+          Quanto mais completo o cadastro, mais fiel o documento ao modelo oficial das prefeituras.
+        </p>
+        <table class="fields-table">
+          <thead>
+            <tr><th>Campo</th><th>Obrigatório?</th><th>Observações</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>E-mail</strong></td>
+              <td><span class="badge badge-opt">Opcional</span></td>
+              <td>E-mail do tomador para fins de comunicação e DANFSe.</td>
+            </tr>
+            <tr>
+              <td><strong>Telefone</strong></td>
+              <td><span class="badge badge-opt">Opcional</span></td>
+              <td>Telefone de contato. Ex: (XX) XXXXX-XXXX.</td>
+            </tr>
+            <tr>
+              <td><strong>Logradouro</strong></td>
+              <td><span class="badge badge-opt">Opcional</span></td>
+              <td>Endereço completo (rua, avenida, número, complemento). Compõe a seção <em>Tomador do Serviço</em> no DANFSe.</td>
+            </tr>
+            <tr>
+              <td><strong>Bairro</strong></td>
+              <td><span class="badge badge-opt">Opcional</span></td>
+              <td>Bairro do tomador.</td>
+            </tr>
+            <tr>
+              <td><strong>CEP</strong></td>
+              <td><span class="badge badge-opt">Opcional</span></td>
+              <td>CEP no formato XXXXX-XXX.</td>
+            </tr>
+            <tr>
+              <td><strong>UF</strong></td>
+              <td><span class="badge badge-opt">Opcional</span></td>
+              <td>Sigla do estado (2 letras). Preenchido automaticamente pela Receita Federal para tomadores PJ.</td>
+            </tr>
+            <tr>
+              <td><strong>País</strong></td>
+              <td><span class="badge badge-opt">Opcional</span></td>
+              <td>Padrão: <em>Brasil</em>. Informe apenas para tomadores estrangeiros.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <!-- Retenções -->
       <div style="margin-bottom:22px;">
-        <p style="font-weight:700;font-size:14px;margin-bottom:10px;">4. Retenções na Fonte</p>
+        <p style="font-weight:700;font-size:14px;margin-bottom:10px;">5. Retenções na Fonte</p>
         <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
           Define se o tomador é responsável por reter tributos sobre os valores pagos ao médico.
           Esta configuração impacta diretamente o motor fiscal e a emissão de NFS-e.
@@ -841,8 +927,9 @@
         </table>
         <div class="info-box amber" style="margin-top:12px;">
           <strong>Atenção:</strong> em qualquer cenário, o médico sempre recebe exatamente
-          <strong>85% do valor bruto</strong>. Os tributos saem dos 15% retidos pela Pin Saúde,
-          nunca do repasse ao médico.
+          <strong>85% do seu valor bruto</strong>. Os tributos saem dos 15% retidos pela Pin Saúde,
+          nunca do repasse ao médico. Em produções multi-médico, a regra se aplica individualmente
+          a cada participante sobre o seu próprio valor bruto.
         </div>
       </div>
 
@@ -870,6 +957,217 @@
           </tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════ PRODUÇÃO ══════════════════ -->
+  <div class="section" id="producao">
+    <div class="section-header">
+      <div class="section-icon" style="background:#fef9c3;">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="#ca8a04">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="section-title" style="color:#92400e;">Registro de Produção</div>
+        <div class="section-subtitle">Menu lateral → Produções → botão <em>"+ Nova Produção"</em></div>
+      </div>
+    </div>
+
+    <div class="info-box blue">
+      <strong>O que é uma Produção?</strong>
+      <p>É o registro do serviço médico prestado a um tomador em determinada competência.
+         Uma produção origina uma única NFS-e — seja para um único médico ou para vários
+         médicos cujos valores são somados na mesma nota. O registro da produção é o
+         ponto de partida para o cálculo fiscal e a emissão da nota.</p>
+    </div>
+
+    <!-- Produção single -->
+    <div id="producao-single" class="sub-section">
+      <p class="sub-title">Produção de um único médico</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Caso mais comum: um médico atendeu um tomador e o valor total da nota corresponde
+        ao trabalho deste médico. A tela exibe um único participante pré-adicionado.
+      </p>
+      <table class="fields-table">
+        <thead>
+          <tr><th>Campo</th><th>Obrigatório?</th><th>Observações</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Tomador</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Hospital, clínica, operadora ou paciente PF. Selecionado por busca com autocomplete.</td>
+          </tr>
+          <tr>
+            <td><strong>Serviço (LC 116)</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Serviço prestado conforme o catálogo LC 116/2003. Ex: 4.02 — Análises clínicas.</td>
+          </tr>
+          <tr>
+            <td><strong>Competência</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Mês de referência no formato YYYY-MM. Ex: 2026-06. Determina as alíquotas e o cenário fiscal.</td>
+          </tr>
+          <tr>
+            <td><strong>Médico (Participante 1)</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Selecionado por busca. Deve estar vinculado a uma empresa ativa.</td>
+          </tr>
+          <tr>
+            <td><strong>Valor Bruto</strong></td>
+            <td><span class="badge badge-req">Obrigatório</span></td>
+            <td>Valor contratado pelo tomador para este médico. Em reais (centavos internamente).</td>
+          </tr>
+          <tr>
+            <td><strong>Descrição Complementar</strong></td>
+            <td><span class="badge badge-opt">Opcional</span></td>
+            <td>Observação adicional que irá compor a descrição da NFS-e.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="info-box green" style="margin-top:12px;">
+        <strong>Preview fiscal em tempo real:</strong> ao preencher médico, tomador e valor, o
+        sistema calcula automaticamente a prévia do cálculo fiscal (taxa Pin, retenções,
+        valor líquido ao médico) antes de salvar.
+      </div>
+    </div>
+
+    <!-- Produção multi -->
+    <div id="producao-multi" class="sub-section">
+      <p class="sub-title">Produção multi-médico</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:12px;">
+        Quando o mesmo tomador remunera vários médicos por uma prestação coletiva (ex.: equipe
+        cirúrgica, plantão com 3 especialistas), os valores individuais são somados em uma única
+        NFS-e. Cada médico tem seu próprio valor bruto e recebe seu repasse separadamente.
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-body">
+            <div class="step-title">Preencha os campos comuns</div>
+            <div class="step-desc">Tomador, Serviço (LC 116), Competência e Descrição Complementar
+              são únicos para toda a produção — valem para todos os médicos desta nota.</div>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-body">
+            <div class="step-title">Configure o Participante 1</div>
+            <div class="step-desc">Selecione o primeiro médico e informe seu valor bruto individual.</div>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-body">
+            <div class="step-title">Clique em "+ Adicionar médico" para cada participante</div>
+            <div class="step-desc">
+              Cada linha adicional pede: médico + valor bruto deste médico.
+              Não há limite de participantes por produção.<br/>
+              O valor total da NFS-e é calculado automaticamente como a <strong>soma de todos os valores brutos</strong>.
+            </div>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-body">
+            <div class="step-title">Confirme e salve</div>
+            <div class="step-desc">
+              O sistema valida que todos os participantes têm médico selecionado e valor informado.
+              A produção é salva e fica disponível para emissão de NFS-e pelo valor total somado.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-box amber" style="margin-top:20px;">
+        <strong>Um médico por linha:</strong> o mesmo médico não pode aparecer duas vezes na
+        mesma produção. Caso precise dividir valores para o mesmo profissional, registre
+        produções separadas por competência.
+      </div>
+
+      <table class="fields-table" style="margin-top:16px;">
+        <thead>
+          <tr><th>Exemplo prático</th><th>Valor Bruto</th><th>Líquido ao Médico (85%)</th><th>Taxa Pin (15%)</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Dr. Ana (Cirurgiã)</td>
+            <td>R$ 6.000</td>
+            <td>R$ 5.100</td>
+            <td>R$ 900</td>
+          </tr>
+          <tr>
+            <td>Dr. Bruno (Anestesista)</td>
+            <td>R$ 2.500</td>
+            <td>R$ 2.125</td>
+            <td>R$ 375</td>
+          </tr>
+          <tr>
+            <td>Dr. Carla (Instrumentadora)</td>
+            <td>R$ 1.500</td>
+            <td>R$ 1.275</td>
+            <td>R$ 225</td>
+          </tr>
+          <tr style="background:#f0fdf4;">
+            <td><strong>NFS-e emitida pelo total</strong></td>
+            <td><strong>R$ 10.000</strong></td>
+            <td><strong>R$ 8.500 (somado)</strong></td>
+            <td><strong>R$ 1.500 (somado)</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Regra dos 85% -->
+    <div id="producao-regra" class="sub-section">
+      <p class="sub-title">Regra dos 85% — aplicada por participante</p>
+      <p style="color:var(--text-mid);font-size:13px;margin-bottom:14px;">
+        Independentemente do número de médicos na produção, a regra é sempre calculada
+        individualmente sobre o valor bruto de cada participante.
+      </p>
+
+      <div class="result-box">
+        ✅ <strong>Invariante absoluta:</strong> cada médico recebe <strong>85% do seu próprio valor bruto</strong>.
+        A taxa Pin Saúde (15%) e os tributos são calculados separadamente para cada participante.
+        Os tributos saem dos 15% da Pin — nunca do repasse ao médico.
+      </div>
+
+      <table class="fields-table" style="margin-top:16px;">
+        <thead>
+          <tr><th>Produção</th><th>Valor Bruto</th><th>Taxa Pin (15%)</th><th>Médico recebe</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Single-médico</td>
+            <td>R$ 10.000 (do médico)</td>
+            <td>R$ 1.500 (da Pin)</td>
+            <td><strong>R$ 8.500 (85%)</strong></td>
+          </tr>
+          <tr>
+            <td>Multi-médico — participante A</td>
+            <td>R$ 6.000 (do médico A)</td>
+            <td>R$ 900 (da Pin)</td>
+            <td><strong>R$ 5.100 (85%)</strong></td>
+          </tr>
+          <tr>
+            <td>Multi-médico — participante B</td>
+            <td>R$ 4.000 (do médico B)</td>
+            <td>R$ 600 (da Pin)</td>
+            <td><strong>R$ 3.400 (85%)</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="warn" style="margin-top:12px;">
+        ⚠️ A NFS-e é emitida pelo <strong>valor total somado</strong> (ex.: R$ 10.000). O detalhamento
+        por médico é interno ao sistema — o tomador recebe uma única nota pelo total.
+      </div>
     </div>
   </div>
 
@@ -1212,9 +1510,9 @@
       </table>
 
       <div class="result-box" style="margin-top:16px;">
-        ✅ <strong>Invariante absoluta:</strong> em qualquer cenário, o médico recebe exatamente
-        <strong>85% do valor bruto</strong>. Os impostos saem dos 15% retidos pela Pin Saúde —
-        nunca do repasse ao médico.
+        ✅ <strong>Invariante absoluta:</strong> em qualquer cenário, cada médico recebe exatamente
+        <strong>85% do seu próprio valor bruto</strong>. Os impostos saem dos 15% retidos pela Pin Saúde —
+        nunca do repasse ao médico. Em produções multi-médico, o cálculo é feito por participante.
       </div>
     </div>
   </div>
@@ -1271,6 +1569,9 @@
       <dt>NFS-e</dt>
       <dd>Nota Fiscal de Serviço Eletrônica — emitida pela empresa para o tomador após cada produção médica.</dd>
 
+      <dt>DANFSe</dt>
+      <dd>Documento Auxiliar da NFS-e — representação visual da nota fiscal, com seções de Emitente (prestador), Tomador do Serviço, Serviço Prestado, Discriminação dos Serviços, Tributação Municipal (ISSQN) e Tributação Federal (IR/CSLL/PIS/COFINS). Exibido no preview antes da confirmação da emissão. Os dados de endereço e contato do prestador (empresa) e do tomador compõem esse documento.</dd>
+
       <dt>Rascunho</dt>
       <dd>Status inicial do médico após o cadastro. O médico não pode emitir notas neste status.</dd>
 
@@ -1291,12 +1592,24 @@
 
       <dt>Vínculo Médico-Empresa</dt>
       <dd>Relação entre um médico e uma empresa para fins de emissão de NFS-e e repasse financeiro.</dd>
+
+      <dt>Produção (médica)</dt>
+      <dd>Registro do serviço prestado por um ou mais médicos a um tomador em determinada competência. Origina uma única NFS-e pelo valor total dos participantes.</dd>
+
+      <dt>Participante (de Produção)</dt>
+      <dd>Cada médico listado em uma produção com seu respectivo valor bruto individual. O repasse e a taxa Pin são calculados separadamente para cada participante.</dd>
+
+      <dt>Produção Multi-Médico</dt>
+      <dd>Produção com dois ou mais participantes (ex.: equipe cirúrgica). Uma única NFS-e é emitida pelo valor somado. Cada médico recebe 85% do seu próprio valor bruto, independentemente dos demais.</dd>
+
+      <dt>Competência</dt>
+      <dd>Mês de referência de uma produção ou alíquota fiscal, no formato YYYY-MM (ex.: 2026-06). Define qual conjunto de alíquotas e qual cenário fiscal serão aplicados na emissão da nota.</dd>
     </dl>
   </div>
 
   <!-- ══════════════════ FOOTER ═════════════════════ -->
   <div class="footer">
-    Pin Saúde — Documentação operacional interna · Versão 1.1 · Junho 2026<br/>
+    Pin Saúde — Documentação operacional interna · Versão 1.3 · Junho 2026<br/>
     Para dúvidas, entre em contato com o time de operações.
   </div>
 

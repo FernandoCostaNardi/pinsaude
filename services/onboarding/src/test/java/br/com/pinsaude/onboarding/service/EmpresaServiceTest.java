@@ -52,7 +52,8 @@ class EmpresaServiceTest {
 
     private EmpresaRequest requestValido() {
         return new EmpresaRequest(CNPJ_A, "Clínica Teste", "1234/2024",
-            "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL);
+            "São Paulo", "3550308", RegimeTributario.SIMPLES_NACIONAL,
+            null, null, null, null, null, null);
     }
 
     @Test
@@ -135,7 +136,8 @@ class EmpresaServiceTest {
         when(repository.save(any(Empresa.class))).thenAnswer(inv -> inv.getArgument(0));
 
         EmpresaRequest update = new EmpresaRequest(CNPJ_A, "Novo Nome", "9999/2024",
-            "Campinas", "3509502", RegimeTributario.LUCRO_PRESUMIDO);
+            "Campinas", "3509502", RegimeTributario.LUCRO_PRESUMIDO,
+            null, null, null, null, null, null);
 
         EmpresaResponse response = service.atualizar(EMPRESA_ID, update);
 

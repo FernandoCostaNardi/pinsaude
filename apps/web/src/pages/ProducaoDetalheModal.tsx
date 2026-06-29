@@ -62,11 +62,11 @@ function FiscalRow({ label, value, indent, negative, bold }: {
 
 interface Props {
   producao: Producao | null
-  medicoNome: string
+  medicoNomeMap: Record<string, string>
   onClose: () => void
 }
 
-export function ProducaoDetalheModal({ producao, medicoNome, onClose }: Props) {
+export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props) {
   const navigate = useNavigate()
   if (!producao) return null
 
@@ -123,14 +123,26 @@ export function ProducaoDetalheModal({ producao, medicoNome, onClose }: Props) {
         </div>
 
         <div className="px-6 py-5 space-y-6">
-          {/* Médico */}
+          {/* Participantes */}
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Stethoscope size={14} className="text-primary" />
-              <SectionTitle>Médico</SectionTitle>
+              <SectionTitle>Participantes ({producao.participantes.length})</SectionTitle>
             </div>
-            <InfoRow label="Nome" value={medicoNome || producao.medicoId} />
-            <InfoRow label="ID" value={<span className="font-mono text-xs">{producao.medicoId}</span>} />
+            {producao.participantes.map((part, idx) => (
+              <div key={part.id} className="py-2 border-b border-ds-border last:border-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-ds-mid">
+                    {medicoNomeMap[part.medicoId] ?? <span className="font-mono text-xs text-ds-light">{part.medicoId.slice(0, 8)}…</span>}
+                  </span>
+                  <span className="text-sm text-ds-mid font-semibold">{formatBRL(part.valorBruto)}</span>
+                </div>
+                <div className="flex justify-between mt-0.5">
+                  <span className="text-xs text-ds-light">Participante {idx + 1}</span>
+                  <span className="text-xs text-green-600">Líquido: {formatBRL(part.valorLiquido)}</span>
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Tomador */}

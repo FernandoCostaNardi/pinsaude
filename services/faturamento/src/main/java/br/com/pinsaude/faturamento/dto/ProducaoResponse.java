@@ -1,16 +1,20 @@
 package br.com.pinsaude.faturamento.dto;
 
+import br.com.pinsaude.faturamento.domain.ParticipacaoProducao;
 import br.com.pinsaude.faturamento.domain.Producao;
 import br.com.pinsaude.faturamento.domain.Servico;
 import br.com.pinsaude.faturamento.domain.Tomador;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record ProducaoResponse(
     UUID id,
-    UUID medicoId,
+    UUID medicoId,                         // null para multi-médico; 1º participante para single (backward compat)
+    UUID empresaId,
+    List<ParticipacaoResponse> participantes,
     TomadorResumo tomador,
     ServicoResumo servico,
     long valorBruto,
@@ -38,10 +42,15 @@ public record ProducaoResponse(
         }
     }
 
-    public static ProducaoResponse from(Producao p) {
+    public static ProducaoResponse from(Producao p, List<ParticipacaoProducao> participacoes) {
+        List<ParticipacaoResponse> parts = participacoes.stream()
+            .map(ParticipacaoResponse::from).toList();
+        UUID medicoIdCompat = parts.size() == 1 ? parts.get(0).medicoId() : null;
         return new ProducaoResponse(
             p.getId(),
-            p.getMedicoId(),
+            medicoIdCompat,
+            p.getEmpresaId(),
+            parts,
             TomadorResumo.from(p.getTomador()),
             ServicoResumo.from(p.getServico()),
             p.getValorBruto(),

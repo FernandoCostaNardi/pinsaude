@@ -11,5 +11,11 @@ public record EmpresaRequest(
     @NotBlank String inscricaoMunicipal,
     String municipio,
     String codigoMunicipioIbge,
-    @NotNull RegimeTributario regimeTributario
+    @NotNull RegimeTributario regimeTributario,
+    String logradouro,
+    String bairro,
+    String uf,
+    String cep,
+    String telefone,
+    String emailContato
 ) {}

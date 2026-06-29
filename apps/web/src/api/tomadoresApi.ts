@@ -37,6 +37,13 @@ export interface Tomador {
   inscricaoMunicipal: string | null
   indicadorRetencaoFederal: boolean
   indicadorRetencaoIss: boolean
+  email: string | null
+  telefone: string | null
+  logradouro: string | null
+  bairro: string | null
+  cep: string | null
+  uf: string | null
+  pais: string | null
 }
 
 export interface TomadorRequest {
@@ -47,6 +54,13 @@ export interface TomadorRequest {
   inscricaoMunicipal: string
   indicadorRetencaoFederal: boolean
   indicadorRetencaoIss: boolean
+  email: string
+  telefone: string
+  logradouro: string
+  bairro: string
+  cep: string
+  uf: string
+  pais: string
 }
 
 export interface ReceitaFederalData {
@@ -55,6 +69,12 @@ export interface ReceitaFederalData {
   nomeFantasia: string | null
   municipio: string | null
   uf: string | null
+  logradouro: string | null
+  numero: string | null
+  bairro: string | null
+  cep: string | null
+  email: string | null
+  telefone: string | null
 }
 
 export const tomadoresApi = {

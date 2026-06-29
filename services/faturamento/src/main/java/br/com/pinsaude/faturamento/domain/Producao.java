@@ -17,8 +17,11 @@ public class Producao {
     @Column(name = "cnpj_id_tenant", nullable = false, length = 14)
     private String cnpjIdTenant;
 
-    @Column(name = "medico_id", nullable = false)
+    @Column(name = "medico_id")
     private UUID medicoId;
+
+    @Column(name = "empresa_id")
+    private UUID empresaId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "tomador_id", nullable = false)
@@ -57,6 +60,8 @@ public class Producao {
     public void setCnpjIdTenant(String cnpjIdTenant) { this.cnpjIdTenant = cnpjIdTenant; }
     public UUID getMedicoId() { return medicoId; }
     public void setMedicoId(UUID medicoId) { this.medicoId = medicoId; }
+    public UUID getEmpresaId() { return empresaId; }
+    public void setEmpresaId(UUID empresaId) { this.empresaId = empresaId; }
     public Tomador getTomador() { return tomador; }
     public void setTomador(Tomador tomador) { this.tomador = tomador; }
     public Servico getServico() { return servico; }

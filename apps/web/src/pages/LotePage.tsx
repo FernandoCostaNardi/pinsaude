@@ -338,7 +338,10 @@ export function LotePage() {
     setLotes(prev => {
       const lote = prev.find(l => l.loteId === loteId)
       if (lote?.status === 'EM_ANDAMENTO') {
-        pollingRef.current = setInterval(() => atualizarProgresso(loteId), 5000)
+        // agendar fora do updater para não causar side-effect em render puro
+        setTimeout(() => {
+          pollingRef.current = setInterval(() => atualizarProgresso(loteId), 5000)
+        }, 0)
       }
       return prev
     })
@@ -346,24 +349,31 @@ export function LotePage() {
 
   // Carregamento inicial
   useEffect(() => {
+    let mounted = true
     const carregar = async () => {
       try {
         const data = await listarLotes()
+        if (!mounted) return
         setLotes(data)
         const emAndamento = data.find(l => l.status === 'EM_ANDAMENTO')
         if (emAndamento) {
           setLoteAtivoId(emAndamento.loteId)
           await carregarErros(emAndamento.loteId)
-          pollingRef.current = setInterval(() => atualizarProgresso(emAndamento.loteId), 5000)
+          if (mounted) {
+            pollingRef.current = setInterval(() => atualizarProgresso(emAndamento.loteId), 5000)
+          }
         }
       } catch (e) {
-        setErroGlobal('Erro ao carregar lotes. Verifique sua conexão.')
+        if (mounted) setErroGlobal('Erro ao carregar lotes. Verifique sua conexão.')
       } finally {
-        setLoading(false)
+        if (mounted) setLoading(false)
       }
     }
     carregar()
-    return pararPolling
+    return () => {
+      mounted = false
+      pararPolling()
+    }
   }, [pararPolling, carregarErros, atualizarProgresso])
 
   const handleIniciarLote = async (competencia: string) => {

@@ -2,6 +2,8 @@ package br.com.pinsaude.faturamento.domain;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.ColumnTransformer;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -40,6 +42,28 @@ public class Tomador {
     @Column(name = "municipio", length = 100)
     private String municipio;
 
+    @Column(name = "email", length = 255)
+    private String email;
+
+    @Column(name = "telefone", length = 20)
+    private String telefone;
+
+    @Column(name = "logradouro", length = 255)
+    private String logradouro;
+
+    @Column(name = "bairro", length = 100)
+    private String bairro;
+
+    @Column(name = "cep", length = 9)
+    private String cep;
+
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "uf", columnDefinition = "char(2)")
+    private String uf;
+
+    @Column(name = "pais", length = 50)
+    private String pais;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -66,5 +90,19 @@ public class Tomador {
     public void setIndicadorRetencaoIss(boolean v) { this.indicadorRetencaoIss = v; }
     public String getMunicipio() { return municipio; }
     public void setMunicipio(String municipio) { this.municipio = municipio; }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    public String getTelefone() { return telefone; }
+    public void setTelefone(String telefone) { this.telefone = telefone; }
+    public String getLogradouro() { return logradouro; }
+    public void setLogradouro(String logradouro) { this.logradouro = logradouro; }
+    public String getBairro() { return bairro; }
+    public void setBairro(String bairro) { this.bairro = bairro; }
+    public String getCep() { return cep; }
+    public void setCep(String cep) { this.cep = cep; }
+    public String getUf() { return uf; }
+    public void setUf(String uf) { this.uf = uf; }
+    public String getPais() { return pais; }
+    public void setPais(String pais) { this.pais = pais; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

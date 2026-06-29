@@ -39,6 +39,25 @@ public class Empresa {
     @ColumnTransformer(write = "?::onboarding.regime_tributario_enum")
     private RegimeTributario regimeTributario;
 
+    @Column(name = "logradouro", length = 255)
+    private String logradouro;
+
+    @Column(name = "bairro", length = 100)
+    private String bairro;
+
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "uf", columnDefinition = "char(2)")
+    private String uf;
+
+    @Column(name = "cep", length = 9)
+    private String cep;
+
+    @Column(name = "telefone", length = 20)
+    private String telefone;
+
+    @Column(name = "email_contato", length = 255)
+    private String emailContato;
+
     @Column(name = "ativo", nullable = false)
     private boolean ativo = true;
 
@@ -70,6 +89,19 @@ public class Empresa {
 
     public RegimeTributario getRegimeTributario() { return regimeTributario; }
     public void setRegimeTributario(RegimeTributario regimeTributario) { this.regimeTributario = regimeTributario; }
+
+    public String getLogradouro() { return logradouro; }
+    public void setLogradouro(String logradouro) { this.logradouro = logradouro; }
+    public String getBairro() { return bairro; }
+    public void setBairro(String bairro) { this.bairro = bairro; }
+    public String getUf() { return uf; }
+    public void setUf(String uf) { this.uf = uf; }
+    public String getCep() { return cep; }
+    public void setCep(String cep) { this.cep = cep; }
+    public String getTelefone() { return telefone; }
+    public void setTelefone(String telefone) { this.telefone = telefone; }
+    public String getEmailContato() { return emailContato; }
+    public void setEmailContato(String emailContato) { this.emailContato = emailContato; }
 
     public boolean isAtivo() { return ativo; }
     public void setAtivo(boolean ativo) { this.ativo = ativo; }

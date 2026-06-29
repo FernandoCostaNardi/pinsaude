@@ -10,5 +10,12 @@ public record TomadorResponse(
     String municipio,
     String inscricaoMunicipal,
     boolean indicadorRetencaoFederal,
-    boolean indicadorRetencaoIss
+    boolean indicadorRetencaoIss,
+    String email,
+    String telefone,
+    String logradouro,
+    String bairro,
+    String cep,
+    String uf,
+    String pais
 ) {}

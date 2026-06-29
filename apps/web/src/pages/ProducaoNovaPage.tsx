@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Calculator, CheckCircle2, ChevronDown,
-  AlertCircle, Loader2
+  AlertCircle, Loader2, Plus, Trash2, Users,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import { Servico, servicosApi } from '../api/servicosApi'
 import { Tomador, tomadoresApi } from '../api/tomadoresApi'
 import { Medico, medicosApi } from '../api/medicosApi'
 import { PreviewCalculoResponse, ProducaoRequest, producoesApi } from '../api/producoesApi'
+import { Empresa, empresasApi } from '../api/empresasApi'
+import { useAuth } from '../auth/useAuth'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -149,7 +151,11 @@ function Autocomplete({
 
 // ─── Preview card ─────────────────────────────────────────────────────────────
 
-function PreviewCard({ preview, loading }: { preview: PreviewCalculoResponse | null; loading: boolean }) {
+function PreviewCard({ preview, loading, totalCentavos }: {
+  preview: PreviewCalculoResponse | null
+  loading: boolean
+  totalCentavos: number
+}) {
   return (
     <div className="bg-white rounded-xl border border-ds-border shadow-sm p-5 sticky top-6">
       <div className="flex items-center gap-2 mb-4">
@@ -166,27 +172,25 @@ function PreviewCard({ preview, loading }: { preview: PreviewCalculoResponse | n
       {!loading && !preview && (
         <div className="text-center text-ds-light py-8 text-sm">
           <Calculator size={32} className="mx-auto mb-2 opacity-30" />
-          Preencha médico, tomador, serviço e valor para ver o cálculo
+          Preencha tomador, serviço e ao menos um participante para ver o cálculo
         </div>
       )}
 
       {!loading && preview && (
         <div className="space-y-4">
-          {/* Seção 1 — repasse ao médico */}
           <div>
-            <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Repasse ao Médico</p>
+            <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Repasse ao(s) Médico(s)</p>
             <div className="space-y-2">
-              <PreviewRow label="Valor Bruto (contrato)" value={formatBRL(preview.valorBruto)} bold />
+              <PreviewRow label="Valor Bruto Total" value={formatBRL(totalCentavos)} bold />
               <PreviewRow label="Taxa Pin Saúde (15%)" value={formatBRL(preview.taxaPin)} negative />
             </div>
             <div className="border-t-2 border-green-400/40 mt-3 pt-3 flex items-center justify-between">
-              <span className="font-bold text-ds-mid text-sm">Valor Líquido ao Médico</span>
+              <span className="font-bold text-ds-mid text-sm">Total Líquido aos Médicos</span>
               <span className="font-bold text-green-600 text-lg">{formatBRL(preview.valorLiquidoMedico)}</span>
             </div>
             <p className="text-xs text-ds-light mt-1 text-right">Sempre 85% do valor bruto</p>
           </div>
 
-          {/* Seção 2 — apuração fiscal da Pin */}
           <div className="bg-ds-surface rounded-lg p-3">
             <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Apuração Fiscal Pin Saúde</p>
             <div className="space-y-1.5">
@@ -203,9 +207,6 @@ function PreviewCard({ preview, loading }: { preview: PreviewCalculoResponse | n
                 {formatBRL(preview.resultadoPin)}
               </span>
             </div>
-            {preview.totalRetencoes === 0 && (
-              <p className="text-xs text-ds-light mt-1">Tomador não faz retenções — Pin fica com os 15% integrais</p>
-            )}
           </div>
         </div>
       )}
@@ -244,26 +245,100 @@ function Field({ label, required, children, error }: {
   )
 }
 
+// ─── Participante row ─────────────────────────────────────────────────────────
+
+interface PartItem {
+  key: number
+  medico: AutocompleteItem | null
+  valorStr: string
+}
+
+function ParticipanteRow({
+  part, index, medicoItems, usedMedicoIds, onChangeMedico, onChangeValor, onRemove, canRemove,
+}: {
+  part: PartItem
+  index: number
+  medicoItems: AutocompleteItem[]
+  usedMedicoIds: Set<string>
+  onChangeMedico: (item: AutocompleteItem | null) => void
+  onChangeValor: (val: string) => void
+  onRemove: () => void
+  canRemove: boolean
+}) {
+  const available = medicoItems.filter(m => !usedMedicoIds.has(m.id) || m.id === part.medico?.id)
+  const centavos = parseBRL(part.valorStr)
+
+  return (
+    <div className="flex gap-3 items-start p-3 bg-ds-surface rounded-lg border border-ds-border">
+      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center mt-2">
+        {index + 1}
+      </div>
+      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-ds-mid mb-1">Médico</label>
+          <Autocomplete
+            items={available}
+            value={part.medico}
+            onChange={onChangeMedico}
+            onClear={() => onChangeMedico(null)}
+            placeholder="Buscar médico..."
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ds-mid mb-1">Valor Bruto</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-ds-mid">R$</span>
+            <input
+              value={part.valorStr}
+              onChange={e => {
+                const raw = e.target.value.replace(/\D/g, '')
+                onChangeValor(maskBRL(parseInt(raw || '0', 10)))
+              }}
+              placeholder="0,00"
+              className="w-full pl-8 pr-3 py-2 border border-ds-border rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          {centavos > 0 && (
+            <p className="text-xs text-ds-light mt-0.5 text-right">{formatBRL(centavos)}</p>
+          )}
+        </div>
+      </div>
+      {canRemove && (
+        <button
+          onClick={onRemove}
+          className="mt-2 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+        >
+          <Trash2 size={14} />
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
+let nextKey = 1
 
 export function ProducaoNovaPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
 
-  // dados carregados
   const [medicos, setMedicos]     = useState<Medico[]>([])
   const [tomadores, setTomadores] = useState<Tomador[]>([])
   const [servicos, setServicos]   = useState<Servico[]>([])
+  const [empresas, setEmpresas]   = useState<Empresa[]>([])
   const [loadingData, setLoadingData] = useState(true)
 
-  // seleções do formulário
-  const [medico,   setMedico]   = useState<AutocompleteItem | null>(null)
-  const [tomador,  setTomador]  = useState<AutocompleteItem | null>(null)
-  const [servico,  setServico]  = useState<AutocompleteItem | null>(null)
-  const [valorStr, setValorStr] = useState('')
+  const [tomador,    setTomador]    = useState<AutocompleteItem | null>(null)
+  const [servico,    setServico]    = useState<AutocompleteItem | null>(null)
+  const [empresaId,  setEmpresaId]  = useState<string>('')
   const [competencia, setCompetencia] = useState(currentCompetencia())
   const [descricao, setDescricao] = useState('')
 
-  // estado
+  const [participantes, setParticipantes] = useState<PartItem[]>([
+    { key: nextKey++, medico: null, valorStr: '' },
+  ])
+
   const [preview, setPreview]           = useState<PreviewCalculoResponse | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [errors, setErrors]             = useState<Record<string, string>>({})
@@ -273,55 +348,75 @@ export function ProducaoNovaPage() {
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const competencias    = generateCompetencias()
 
-  // ─── Carrega dados iniciais ────────────────────────────────────────────────
-
   useEffect(() => {
     Promise.all([
       medicosApi.listar(0, 1000, 'ATIVO').catch(() => ({ content: [] as Medico[] })),
       tomadoresApi.listar().catch(() => [] as Tomador[]),
       servicosApi.listar().catch(() => [] as Servico[]),
-    ]).then(([mp, ts, ss]) => {
+      empresasApi.listar(0, 1000).catch(() => ({ content: [] as Empresa[], page: 0, size: 1000, totalElements: 0, totalPages: 0 })),
+    ]).then(([mp, ts, ss, ep]) => {
       setMedicos(mp.content)
       setTomadores(ts)
       setServicos(ss)
+      setEmpresas(ep.content)
+      if (user?.cnpj_id) {
+        const digits = user.cnpj_id.replace(/\D/g, '')
+        const match = ep.content.find(e => e.cnpj.replace(/\D/g, '') === digits)
+        if (match) setEmpresaId(match.id)
+      }
     }).finally(() => setLoadingData(false))
-  }, [])
+  }, [user])
 
-  // ─── Preview automático ────────────────────────────────────────────────────
-
-  const valorCentavos = parseBRL(valorStr)
+  const totalCentavos = participantes.reduce((s, p) => s + parseBRL(p.valorStr), 0)
 
   useEffect(() => {
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
-
     const servicoId = servico?.id
     const tomadorId = tomador?.id
-
-    if (!servicoId || !tomadorId || valorCentavos <= 0) {
+    if (!servicoId || !tomadorId || totalCentavos <= 0) {
       setPreview(null)
       return
     }
-
     previewTimerRef.current = setTimeout(() => {
       setPreviewLoading(true)
-      producoesApi.previewCalculo({ servicoId, tomadorId, valorBruto: valorCentavos })
+      producoesApi.previewCalculo({ servicoId, tomadorId, valorBruto: totalCentavos })
         .then(setPreview)
         .catch(() => setPreview(null))
         .finally(() => setPreviewLoading(false))
     }, 400)
-
     return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current) }
-  }, [servico?.id, tomador?.id, valorCentavos])
+  }, [servico?.id, tomador?.id, totalCentavos])
 
-  // ─── Submissão ────────────────────────────────────────────────────────────
+  const usedMedicoIds = new Set(participantes.map(p => p.medico?.id).filter(Boolean) as string[])
+
+  function addParticipante() {
+    setParticipantes(prev => [...prev, { key: nextKey++, medico: null, valorStr: '' }])
+  }
+
+  function removeParticipante(key: number) {
+    setParticipantes(prev => prev.filter(p => p.key !== key))
+  }
+
+  function updateParticipante(key: number, patch: Partial<PartItem>) {
+    setParticipantes(prev => prev.map(p => p.key === key ? { ...p, ...patch } : p))
+  }
 
   function validate(): boolean {
     const e: Record<string, string> = {}
-    if (!medico)           e.medico    = 'Selecione um médico'
-    if (!tomador)          e.tomador   = 'Selecione um tomador'
-    if (!servico)          e.servico   = 'Selecione um serviço'
-    if (valorCentavos <= 0) e.valor    = 'Valor deve ser maior que R$ 0,00'
-    if (!competencia)      e.competencia = 'Selecione a competência'
+    if (!tomador)    e.tomador   = 'Selecione um tomador'
+    if (!servico)    e.servico   = 'Selecione um serviço'
+    if (!competencia) e.competencia = 'Selecione a competência'
+    if (!empresaId)  e.empresa   = 'Selecione a empresa emissora'
+
+    const semMedico = participantes.some(p => !p.medico)
+    const semValor  = participantes.some(p => parseBRL(p.valorStr) <= 0)
+    if (semMedico) e.participantes = 'Todos os participantes precisam de um médico selecionado'
+    if (semValor)  e.participantes = (e.participantes ? e.participantes + ' ' : '') + 'e valor maior que zero'
+
+    // duplicate médicos
+    const ids = participantes.map(p => p.medico?.id).filter(Boolean)
+    if (new Set(ids).size !== ids.length) e.participantes = 'O mesmo médico não pode aparecer duas vezes'
+
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -330,12 +425,15 @@ export function ProducaoNovaPage() {
     if (!validate()) return
 
     const req: ProducaoRequest = {
-      medicoId:              medico!.id,
       tomadorId:             tomador!.id,
       servicoId:             servico!.id,
-      valorBruto:            valorCentavos,
       competencia,
       descricaoComplementar: descricao || undefined,
+      empresaId:             empresaId || null,
+      participantes: participantes.map(p => ({
+        medicoId:   p.medico!.id,
+        valorBruto: parseBRL(p.valorStr),
+      })),
     }
 
     setSubmitLoading(true)
@@ -350,8 +448,6 @@ export function ProducaoNovaPage() {
     }
   }
 
-  // ─── Listas para autocomplete ──────────────────────────────────────────────
-
   const medicoItems: AutocompleteItem[] = medicos.map(m => ({
     id: m.id,
     label: m.nome,
@@ -364,7 +460,8 @@ export function ProducaoNovaPage() {
     sublabel: t.municipio ?? undefined,
   }))
 
-  const canConfirm = !!medico && !!tomador && !!servico && valorCentavos > 0 && !!competencia
+  const canConfirm = !!tomador && !!servico && totalCentavos > 0 && !!competencia && !!empresaId
+    && participantes.every(p => p.medico && parseBRL(p.valorStr) > 0)
 
   if (loadingData) return (
     <div className="flex items-center justify-center h-64">
@@ -374,7 +471,6 @@ export function ProducaoNovaPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/producao')}
           className="p-2 rounded-lg hover:bg-ds-input text-ds-light hover:text-ds-mid transition-colors">
@@ -382,40 +478,21 @@ export function ProducaoNovaPage() {
         </button>
         <div>
           <h1 className="text-2xl font-bold text-ds-mid">Nova Produção Médica</h1>
-          <p className="text-sm text-ds-light mt-0.5">Registre a produção e veja o breakdown fiscal antes de confirmar</p>
+          <p className="text-sm text-ds-light mt-0.5">Registre a produção de um ou mais médicos e veja o breakdown fiscal</p>
         </div>
       </div>
 
       {globalError && <Alert variant="error" onClose={() => setGlobalError(null)}>{globalError}</Alert>}
 
-      {/* Layout em duas colunas */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
         {/* Formulário (3/5) */}
         <div className="lg:col-span-3 space-y-5">
           <div className="bg-white rounded-xl border border-ds-border shadow-sm p-6 space-y-5">
             <h2 className="font-semibold text-ds-mid text-sm uppercase tracking-wide border-b border-ds-border pb-3">
-              Dados da Produção
+              Dados da Nota / Tomador
             </h2>
 
-            {/* Médico */}
-            <Field label="Médico" required error={errors.medico}>
-              <Autocomplete
-                items={medicoItems}
-                value={medico}
-                onChange={item => { setMedico(item); setErrors(e => ({ ...e, medico: '' })) }}
-                onClear={() => setMedico(null)}
-                placeholder="Buscar por nome ou CRM..."
-              />
-              {medicos.length === 0 && (
-                <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
-                  <AlertCircle size={11} />
-                  Nenhum médico ativo encontrado. Ative um médico primeiro.
-                </p>
-              )}
-            </Field>
-
-            {/* Tomador */}
             <Field label="Tomador (Hospital / Clínica / Operadora)" required error={errors.tomador}>
               <Autocomplete
                 items={tomadorItems}
@@ -426,7 +503,6 @@ export function ProducaoNovaPage() {
               />
             </Field>
 
-            {/* Serviço */}
             <Field label="Serviço (LC 116/2003)" required error={errors.servico}>
               <select
                 value={servico?.id ?? ''}
@@ -458,28 +534,6 @@ export function ProducaoNovaPage() {
               })()}
             </Field>
 
-            {/* Valor bruto */}
-            <Field label="Valor Bruto" required error={errors.valor}>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-ds-mid">R$</span>
-                <input
-                  value={valorStr}
-                  onChange={e => {
-                    const raw = e.target.value.replace(/\D/g, '')
-                    const cents = parseInt(raw || '0', 10)
-                    setValorStr(maskBRL(cents))
-                    setErrors(ex => ({ ...ex, valor: '' }))
-                  }}
-                  placeholder="0,00"
-                  className="w-full pl-9 pr-3 py-2 border border-ds-border rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-              {valorCentavos > 0 && (
-                <p className="text-xs text-ds-light mt-1">= {formatBRL(valorCentavos)}</p>
-              )}
-            </Field>
-
-            {/* Competência */}
             <Field label="Competência" required error={errors.competencia}>
               <select
                 value={competencia}
@@ -492,19 +546,92 @@ export function ProducaoNovaPage() {
               </select>
             </Field>
 
-            {/* Descrição */}
+            <Field label="Empresa Emissora (Pin Saúde)" required error={errors.empresa}>
+              <select
+                value={empresaId}
+                onChange={e => { setEmpresaId(e.target.value); setErrors(ex => ({ ...ex, empresa: '' })) }}
+                className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid"
+              >
+                <option value="">Selecione a empresa...</option>
+                {empresas.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.razaoSocial} — {e.cnpj}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
             <Field label="Descrição Complementar">
               <textarea
                 value={descricao}
                 onChange={e => setDescricao(e.target.value)}
                 placeholder="Informações adicionais sobre a produção (opcional)"
-                rows={3}
+                rows={2}
                 className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
               />
             </Field>
           </div>
 
-          {/* Botões */}
+          {/* Participantes */}
+          <div className="bg-white rounded-xl border border-ds-border shadow-sm p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-ds-border pb-3">
+              <div className="flex items-center gap-2">
+                <Users size={16} className="text-primary" />
+                <h2 className="font-semibold text-ds-mid text-sm uppercase tracking-wide">
+                  Participantes
+                </h2>
+                <span className="text-xs bg-primary-50 text-primary font-semibold px-2 py-0.5 rounded-full">
+                  {participantes.length}
+                </span>
+              </div>
+              <button
+                onClick={addParticipante}
+                disabled={participantes.length >= 20}
+                className="flex items-center gap-1 text-xs text-primary font-semibold hover:text-primary-700 disabled:opacity-40 transition-colors"
+              >
+                <Plus size={13} />
+                Adicionar médico
+              </button>
+            </div>
+
+            {errors.participantes && (
+              <p className="text-xs text-red-500 flex items-center gap-1">
+                <AlertCircle size={11} />{errors.participantes}
+              </p>
+            )}
+
+            <div className="space-y-3">
+              {participantes.map((part, idx) => (
+                <ParticipanteRow
+                  key={part.key}
+                  part={part}
+                  index={idx}
+                  medicoItems={medicoItems}
+                  usedMedicoIds={usedMedicoIds}
+                  onChangeMedico={item => updateParticipante(part.key, { medico: item })}
+                  onChangeValor={val => updateParticipante(part.key, { valorStr: val })}
+                  onRemove={() => removeParticipante(part.key)}
+                  canRemove={participantes.length > 1}
+                />
+              ))}
+            </div>
+
+            {/* Total */}
+            {totalCentavos > 0 && (
+              <div className="mt-3 px-4 py-3 bg-primary-50 rounded-lg flex items-center justify-between">
+                <span className="text-sm font-semibold text-primary">Valor Bruto Total</span>
+                <span className="text-lg font-black text-primary">{formatBRL(totalCentavos)}</span>
+              </div>
+            )}
+
+            {medicos.length === 0 && (
+              <p className="text-xs text-amber-600 flex items-center gap-1">
+                <AlertCircle size={11} />
+                Nenhum médico ativo encontrado. Ative um médico primeiro.
+              </p>
+            )}
+          </div>
+
           <div className="flex items-center justify-between">
             <Button variant="ghost" onClick={() => navigate('/producao')} disabled={submitLoading}>
               Cancelar
@@ -525,7 +652,7 @@ export function ProducaoNovaPage() {
 
         {/* Preview (2/5) */}
         <div className="lg:col-span-2">
-          <PreviewCard preview={preview} loading={previewLoading} />
+          <PreviewCard preview={preview} loading={previewLoading} totalCentavos={totalCentavos} />
         </div>
       </div>
     </div>

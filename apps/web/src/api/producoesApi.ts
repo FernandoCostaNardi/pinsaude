@@ -25,9 +25,19 @@ export interface ServicoResumo {
   aliquotaCofins: number
 }
 
-export interface Producao {
+export interface Participacao {
   id: string
   medicoId: string
+  valorBruto: number
+  taxaPin: number
+  valorLiquido: number
+}
+
+export interface Producao {
+  id: string
+  medicoId: string | null     // null para multi-médico; 1º participante para single
+  empresaId: string | null
+  participantes: Participacao[]
   tomador: TomadorResumo
   servico: ServicoResumo
   valorBruto: number
@@ -37,13 +47,18 @@ export interface Producao {
   createdAt: string
 }
 
-export interface ProducaoRequest {
+export interface ParticipacaoRequest {
   medicoId: string
+  valorBruto: number
+}
+
+export interface ProducaoRequest {
   tomadorId: string
   servicoId: string
-  valorBruto: number
   competencia: string
   descricaoComplementar?: string
+  empresaId: string | null
+  participantes: ParticipacaoRequest[]
 }
 
 export interface PreviewCalculoRequest {

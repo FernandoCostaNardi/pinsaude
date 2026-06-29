@@ -78,10 +78,10 @@ function StatCard({ icon: Icon, label, value, sub, iconBg, iconColor }: {
 // ─── CSV export ───────────────────────────────────────────────────────────────
 
 function exportarCSV(producoes: Producao[], medicoNomeMap: Record<string, string>) {
-  const header = ['Data', 'Médico', 'Tomador', 'Município', 'Cód. LC 116', 'Serviço', 'Competência', 'Valor Bruto (R$)', 'Status', 'Descrição Complementar']
+  const header = ['Data', 'Médico(s)', 'Tomador', 'Município', 'Cód. LC 116', 'Serviço', 'Competência', 'Valor Bruto (R$)', 'Status', 'Descrição Complementar']
   const rows = producoes.map(p => [
     new Date(p.createdAt).toLocaleDateString('pt-BR'),
-    medicoNomeMap[p.medicoId] ?? p.medicoId,
+    p.participantes.map(pt => medicoNomeMap[pt.medicoId] ?? pt.medicoId).join(' / '),
     p.tomador.razaoSocialNome,
     p.tomador.municipio ?? '',
     p.servico.codigoLc116,
@@ -150,12 +150,13 @@ export function ProducoesPage() {
   const filtered = useMemo(() => {
     const ql = q.toLowerCase()
     return producoes.filter(p => {
+      const nomesMedicos = p.participantes.map(pt => (medicoNomeMap[pt.medicoId] ?? '').toLowerCase())
       const matchQ = !q ||
         p.tomador.razaoSocialNome.toLowerCase().includes(ql) ||
-        (medicoNomeMap[p.medicoId] ?? '').toLowerCase().includes(ql) ||
+        nomesMedicos.some(n => n.includes(ql)) ||
         p.competencia.includes(q)
       const matchStatus  = !filtroStatus  || p.status === filtroStatus
-      const matchMedico  = !filtroMedico  || p.medicoId === filtroMedico
+      const matchMedico  = !filtroMedico  || p.participantes.some(pt => pt.medicoId === filtroMedico)
       const matchTomador = !filtroTomador || p.tomador.id === filtroTomador
       const matchDe  = !periodoInicio || p.competencia >= periodoInicio
       const matchAte = !periodoFim    || p.competencia <= periodoFim
@@ -349,9 +350,18 @@ export function ProducoesPage() {
                   )}
                 </TD>
                 <TD>
-                  <div className="text-sm text-ds-mid">
-                    {medicoNomeMap[p.medicoId] ?? <span className="font-mono text-xs text-ds-light">{p.medicoId.slice(0, 8)}…</span>}
-                  </div>
+                  {p.participantes.length === 1 ? (
+                    <div className="text-sm text-ds-mid">
+                      {medicoNomeMap[p.participantes[0].medicoId] ?? <span className="font-mono text-xs text-ds-light">{p.participantes[0].medicoId.slice(0, 8)}…</span>}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-ds-mid">
+                      <span className="font-semibold text-primary">{p.participantes.length} médicos</span>
+                      <div className="text-xs text-ds-light truncate max-w-36" title={p.participantes.map(pt => medicoNomeMap[pt.medicoId] ?? pt.medicoId.slice(0, 8)).join(', ')}>
+                        {p.participantes.map(pt => medicoNomeMap[pt.medicoId] ?? pt.medicoId.slice(0, 8)).join(', ')}
+                      </div>
+                    </div>
+                  )}
                 </TD>
                 <TD>
                   <div className="text-sm text-ds-mid font-medium">{p.servico.codigoLc116}</div>
@@ -396,7 +406,7 @@ export function ProducoesPage() {
       {/* Modal detalhe */}
       <ProducaoDetalheModal
         producao={selectedProducao}
-        medicoNome={selectedProducao ? (medicoNomeMap[selectedProducao.medicoId] ?? '') : ''}
+        medicoNomeMap={medicoNomeMap}
         onClose={() => setSelectedProducao(null)}
       />
     </div>

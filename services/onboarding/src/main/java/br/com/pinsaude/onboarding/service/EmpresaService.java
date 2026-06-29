@@ -50,6 +50,12 @@ public class EmpresaService {
         empresa.setMunicipio(request.municipio());
         empresa.setCodigoMunicipioIbge(request.codigoMunicipioIbge());
         empresa.setRegimeTributario(request.regimeTributario());
+        empresa.setLogradouro(request.logradouro());
+        empresa.setBairro(request.bairro());
+        empresa.setUf(request.uf());
+        empresa.setCep(request.cep());
+        empresa.setTelefone(request.telefone());
+        empresa.setEmailContato(request.emailContato());
         return EmpresaResponse.from(repository.save(empresa));
     }
 
@@ -64,6 +70,12 @@ public class EmpresaService {
         empresa.setMunicipio(request.municipio());
         empresa.setCodigoMunicipioIbge(request.codigoMunicipioIbge());
         empresa.setRegimeTributario(request.regimeTributario());
+        empresa.setLogradouro(request.logradouro());
+        empresa.setBairro(request.bairro());
+        empresa.setUf(request.uf());
+        empresa.setCep(request.cep());
+        empresa.setTelefone(request.telefone());
+        empresa.setEmailContato(request.emailContato());
         return EmpresaResponse.from(repository.save(empresa));
     }
 

@@ -40,7 +40,7 @@ export interface NotaFiscal {
 
 export interface EmitirNfseRequest {
   producaoId: string
-  medicoId: string
+  medicoId: string | null   // null para produções multi-médico
   tomadorId: string
   competencia: string
   valorBruto: number
