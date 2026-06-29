@@ -111,6 +111,40 @@ export async function updateRegraEquiparacao(id: string, req: RegraEquiparacaoRe
   return r.json()
 }
 
+// ─── Motor Fiscal — cálculo por competência ───────────────────────────────────
+
+export interface CalculoFiscalRequest {
+  competencia: string
+  valorBruto: number
+  tomadorPj: boolean
+  indicadorRetencaoFederal: boolean
+  indicadorRetencaoIss: boolean
+  equiparacaoHospitalar: boolean
+}
+
+export interface CalculoFiscalResult {
+  valorBruto: number
+  taxaPin: number
+  valorIss: number
+  valorIr: number
+  valorCsll: number
+  valorPis: number
+  valorCofins: number
+  totalRetencoes: number
+  valorLiquidoMedico: number
+  resultadoPin: number
+}
+
+export async function calcularFiscal(req: CalculoFiscalRequest): Promise<CalculoFiscalResult> {
+  const r = await fetch('/api/motor-fiscal/calcular', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(req),
+  })
+  if (!r.ok) throw new Error(`Erro no cálculo fiscal: ${r.status}`)
+  return r.json()
+}
+
 // ─── Serviços Cadastrados (faturamento service) ───────────────────────────────
 
 export interface ServicoLc116 {
