@@ -144,31 +144,55 @@ export function NfsePreviewModal({
   ].filter(Boolean).join(' - ')
 
   const handlePrint = () => {
-    const content = documentRef.current?.innerHTML
-    if (!content) return
-    const w = window.open('', '_blank', 'width=800,height=1000')
+    const node = documentRef.current
+    if (!node) return
+    const w = window.open('', '_blank', 'width=860,height=1100')
     if (!w) return
-    w.document.write(`
-      <html><head><title>DANFSe — Pin Saúde</title>
-      <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, sans-serif; padding: 12px; font-size: 11px; color: #111; }
-        @media print { body { padding: 0; } @page { margin: 8mm; } }
-        .watermark {
-          position: fixed; top: 50%; left: 50%;
-          transform: translate(-50%,-50%) rotate(-40deg);
-          font-size: 52px; font-weight: 900; color: rgba(0,0,0,0.05);
-          white-space: nowrap; pointer-events: none; z-index: 9999; letter-spacing: 4px;
-        }
-      </style>
-      </head><body>
-      <div class="watermark">PRÉVIA — NÃO É DOCUMENTO FISCAL</div>
-      ${content}
-      </body></html>
-    `)
+
+    // Copia todos os estilos do app (Tailwind + Vite HMR styles) para a janela de impressão
+    const linkTags = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+      .map(el => `<link rel="stylesheet" href="${(el as HTMLLinkElement).href}">`)
+      .join('\n')
+    const styleTags = Array.from(document.querySelectorAll('style'))
+      .map(el => `<style>${el.textContent}</style>`)
+      .join('\n')
+
+    // Serializa o nó do documento com a tag externa (preserva classes de layout do container)
+    const outerHtml = node.outerHTML
+
+    w.document.write(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>DANFSe — Pin Saúde</title>
+  ${linkTags}
+  ${styleTags}
+  <style>
+    body { padding: 16px; background: #fff; }
+    @media print {
+      body { padding: 0; }
+      @page { margin: 8mm; size: A4 portrait; }
+    }
+  </style>
+</head>
+<body>
+${outerHtml}
+</body>
+</html>`)
     w.document.close()
     w.focus()
-    setTimeout(() => w.print(), 500)
+    // Aguarda estilos carregarem (link tags são async) antes de abrir o diálogo de impressão
+    let printed = false
+    const doPrint = () => {
+      if (printed) return
+      printed = true
+      clearInterval(poll)
+      setTimeout(() => w.print(), 300)
+    }
+    const poll = setInterval(() => {
+      if (w.document.readyState === 'complete') doPrint()
+    }, 50)
+    setTimeout(doPrint, 2000)
   }
 
   return (

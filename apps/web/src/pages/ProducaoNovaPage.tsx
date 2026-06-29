@@ -8,7 +8,8 @@ import { Button, Spinner, Alert } from '@pinsaude/ui'
 import { Servico, servicosApi } from '../api/servicosApi'
 import { Tomador, tomadoresApi } from '../api/tomadoresApi'
 import { Medico, medicosApi } from '../api/medicosApi'
-import { PreviewCalculoResponse, ProducaoRequest, producoesApi } from '../api/producoesApi'
+import { ProducaoRequest, producoesApi } from '../api/producoesApi'
+import { calcularFiscal } from '../api/fiscalApi'
 import { Empresa, empresasApi } from '../api/empresasApi'
 import { useAuth } from '../auth/useAuth'
 
@@ -149,18 +150,39 @@ function Autocomplete({
   )
 }
 
+// ─── Tipo local para o preview fiscal ─────────────────────────────────────────
+
+interface TaxaItem { valor: number; retido: boolean }
+interface FiscalPreview {
+  valorBruto: number
+  iss: TaxaItem
+  ir: TaxaItem
+  csll: TaxaItem
+  pis: TaxaItem
+  cofins: TaxaItem
+  totalRetencoes: number
+  valorLiquidoNota: number
+}
+
 // ─── Preview card ─────────────────────────────────────────────────────────────
 
-function PreviewCard({ preview, loading, totalCentavos }: {
-  preview: PreviewCalculoResponse | null
+function PreviewCard({ preview, loading }: {
+  preview: FiscalPreview | null
   loading: boolean
-  totalCentavos: number
 }) {
+  const impostos: { label: string; item: TaxaItem }[] = preview ? [
+    { label: 'ISS',    item: preview.iss    },
+    { label: 'IR',     item: preview.ir     },
+    { label: 'CSLL',   item: preview.csll   },
+    { label: 'PIS',    item: preview.pis    },
+    { label: 'COFINS', item: preview.cofins },
+  ] : []
+
   return (
     <div className="bg-white rounded-xl border border-ds-border shadow-sm p-5 sticky top-6">
       <div className="flex items-center gap-2 mb-4">
         <Calculator size={16} className="text-primary" />
-        <h3 className="font-semibold text-ds-mid text-sm">Preview do Cálculo Fiscal</h3>
+        <h3 className="font-semibold text-ds-mid text-sm">Cálculo Fiscal da Nota</h3>
       </div>
 
       {loading && (
@@ -178,53 +200,55 @@ function PreviewCard({ preview, loading, totalCentavos }: {
 
       {!loading && preview && (
         <div className="space-y-4">
-          <div>
-            <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Repasse ao(s) Médico(s)</p>
-            <div className="space-y-2">
-              <PreviewRow label="Valor Bruto Total" value={formatBRL(totalCentavos)} bold />
-              <PreviewRow label="Taxa Pin Saúde (15%)" value={formatBRL(preview.taxaPin)} negative />
-            </div>
-            <div className="border-t-2 border-green-400/40 mt-3 pt-3 flex items-center justify-between">
-              <span className="font-bold text-ds-mid text-sm">Total Líquido aos Médicos</span>
-              <span className="font-bold text-green-600 text-lg">{formatBRL(preview.valorLiquidoMedico)}</span>
-            </div>
-            <p className="text-xs text-ds-light mt-1 text-right">Sempre 85% do valor bruto</p>
+          {/* Valor bruto */}
+          <div className="flex items-center justify-between py-2 border-b border-ds-border">
+            <span className="text-sm font-semibold text-ds-mid">Valor Bruto da Nota</span>
+            <span className="text-lg font-black text-ds-mid">{formatBRL(preview.valorBruto)}</span>
           </div>
 
-          <div className="bg-ds-surface rounded-lg p-3">
-            <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Apuração Fiscal Pin Saúde</p>
-            <div className="space-y-1.5">
-              <PreviewRow label="Pin Saúde retém (15%)" value={formatBRL(preview.taxaPin)} />
-              {preview.issRetido > 0 && <PreviewRow label="ISS (tomador retém)" value={formatBRL(preview.issRetido)} negative sub />}
-              {preview.irRetido > 0 && <PreviewRow label="IR retido" value={formatBRL(preview.irRetido)} negative sub />}
-              {preview.csllRetido > 0 && <PreviewRow label="CSLL retido" value={formatBRL(preview.csllRetido)} negative sub />}
-              {preview.pisRetido > 0 && <PreviewRow label="PIS retido" value={formatBRL(preview.pisRetido)} negative sub />}
-              {preview.cofinsRetido > 0 && <PreviewRow label="COFINS retido" value={formatBRL(preview.cofinsRetido)} negative sub />}
-            </div>
-            <div className="border-t border-ds-border mt-2 pt-2 flex items-center justify-between">
-              <span className="text-sm font-semibold text-ds-mid">Resultado Pin Saúde</span>
-              <span className={`text-sm font-bold ${preview.resultadoPin >= 0 ? 'text-primary' : 'text-red-500'}`}>
-                {formatBRL(preview.resultadoPin)}
-              </span>
-            </div>
+          {/* Impostos individuais */}
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Impostos</p>
+            {impostos.map(({ label, item }) => (
+              item.valor > 0 && (
+                <div key={label} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-medium ${item.retido ? 'text-ds-mid' : 'text-ds-light'}`}>
+                      {label}
+                    </span>
+                    {item.retido ? (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">
+                        retido
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-ds-surface text-ds-light">
+                        Pin paga
+                      </span>
+                    )}
+                  </div>
+                  <span className={`text-sm font-semibold ${item.retido ? 'text-ds-mid' : 'text-ds-light'}`}>
+                    {item.retido ? '−' : ''}{formatBRL(item.valor)}
+                  </span>
+                </div>
+              )
+            ))}
+          </div>
+
+          {/* Total retido */}
+          <div className="flex items-center justify-between py-2 border-t border-ds-border">
+            <span className="text-sm font-semibold text-ds-mid">Total retido na nota</span>
+            <span className="text-sm font-bold text-orange-700">
+              − {formatBRL(preview.totalRetencoes)}
+            </span>
+          </div>
+
+          {/* Valor líquido */}
+          <div className="flex items-center justify-between py-3 px-4 bg-primary-50 rounded-lg border border-primary-100">
+            <span className="font-bold text-ds-mid text-sm">Valor Líquido da Nota</span>
+            <span className="font-black text-primary text-xl">{formatBRL(preview.valorLiquidoNota)}</span>
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-function PreviewRow({ label, value, bold, negative, sub }: {
-  label: string; value: string; bold?: boolean; negative?: boolean; sub?: boolean
-}) {
-  return (
-    <div className={`flex items-center justify-between ${sub ? 'pl-2' : ''}`}>
-      <span className={`text-sm ${bold ? 'font-semibold text-ds-mid' : sub ? 'font-medium text-ds-light' : 'text-ds-light'}`}>
-        {label}
-      </span>
-      <span className={`text-sm font-semibold ${negative ? 'text-red-500' : bold ? 'text-ds-mid' : 'text-ds-mid'}`}>
-        {negative ? '−' : ''}{value}
-      </span>
     </div>
   )
 }
@@ -339,7 +363,7 @@ export function ProducaoNovaPage() {
     { key: nextKey++, medico: null, valorStr: '' },
   ])
 
-  const [preview, setPreview]           = useState<PreviewCalculoResponse | null>(null)
+  const [preview, setPreview]           = useState<FiscalPreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [errors, setErrors]             = useState<Record<string, string>>({})
   const [submitLoading, setSubmitLoading] = useState(false)
@@ -359,7 +383,10 @@ export function ProducaoNovaPage() {
       setTomadores(ts)
       setServicos(ss)
       setEmpresas(ep.content)
-      if (user?.cnpj_id) {
+      // Auto-select: única empresa → seleciona direto; múltiplas → tenta pelo cnpj_id do JWT
+      if (ep.content.length === 1) {
+        setEmpresaId(ep.content[0].id)
+      } else if (user?.cnpj_id) {
         const digits = user.cnpj_id.replace(/\D/g, '')
         const match = ep.content.find(e => e.cnpj.replace(/\D/g, '') === digits)
         if (match) setEmpresaId(match.id)
@@ -371,21 +398,43 @@ export function ProducaoNovaPage() {
 
   useEffect(() => {
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
-    const servicoId = servico?.id
-    const tomadorId = tomador?.id
-    if (!servicoId || !tomadorId || totalCentavos <= 0) {
+    const tomObj = tomador ? tomadores.find(t => t.id === tomador.id) : null
+    const servObj = servico ? servicos.find(s => s.id === servico.id) : null
+    if (!tomObj || !servObj || totalCentavos <= 0) {
       setPreview(null)
       return
     }
     previewTimerRef.current = setTimeout(() => {
+      const tomadorPj = tomObj.tipo !== 'PACIENTE_PF'
+      const retFed    = tomadorPj && tomObj.indicadorRetencaoFederal
+      const retIss    = tomadorPj && tomObj.indicadorRetencaoIss
+      // Cenário D: PF sem equiparação — apenas IR retido pelo tomador
+      const cenarioD  = !tomadorPj && !servObj.indicadorEquiparacao
+
       setPreviewLoading(true)
-      producoesApi.previewCalculo({ servicoId, tomadorId, valorBruto: totalCentavos })
-        .then(setPreview)
+      calcularFiscal({
+        competencia,
+        valorBruto: totalCentavos,
+        tomadorPj,
+        indicadorRetencaoFederal: tomObj.indicadorRetencaoFederal,
+        indicadorRetencaoIss: tomObj.indicadorRetencaoIss,
+        equiparacaoHospitalar: servObj.indicadorEquiparacao,
+      })
+        .then(r => setPreview({
+          valorBruto:       r.valorBruto,
+          iss:    { valor: r.valorIss,    retido: retIss },
+          ir:     { valor: r.valorIr,     retido: retFed || cenarioD },
+          csll:   { valor: r.valorCsll,   retido: retFed },
+          pis:    { valor: r.valorPis,    retido: retFed },
+          cofins: { valor: r.valorCofins, retido: retFed },
+          totalRetencoes:   r.totalRetencoes,
+          valorLiquidoNota: r.valorBruto - r.totalRetencoes,
+        }))
         .catch(() => setPreview(null))
         .finally(() => setPreviewLoading(false))
     }, 400)
     return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current) }
-  }, [servico?.id, tomador?.id, totalCentavos])
+  }, [servico?.id, tomador?.id, totalCentavos, competencia, tomadores, servicos])
 
   const usedMedicoIds = new Set(participantes.map(p => p.medico?.id).filter(Boolean) as string[])
 
@@ -520,18 +569,6 @@ export function ProducaoNovaPage() {
                   </option>
                 ))}
               </select>
-              {servico && (() => {
-                const s = servicos.find(s => s.id === servico.id)
-                return s ? (
-                  <div className="mt-1.5 px-3 py-2 bg-ds-surface rounded-lg text-xs text-ds-light flex gap-4">
-                    <span>ISS {s.aliquotaIss}%</span>
-                    <span>IR {s.aliquotaIr}%</span>
-                    <span>CSLL {s.aliquotaCsll}%</span>
-                    <span>PIS {s.aliquotaPis}%</span>
-                    <span>COFINS {s.aliquotaCofins}%</span>
-                  </div>
-                ) : null
-              })()}
             </Field>
 
             <Field label="Competência" required error={errors.competencia}>
@@ -636,23 +673,36 @@ export function ProducaoNovaPage() {
             <Button variant="ghost" onClick={() => navigate('/producao')} disabled={submitLoading}>
               Cancelar
             </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={!canConfirm || submitLoading}
-              className="min-w-40"
-            >
-              {submitLoading ? (
-                <><Loader2 size={15} className="mr-2 animate-spin" />Confirmando...</>
-              ) : (
-                <><CheckCircle2 size={15} className="mr-2" />Confirmar Produção</>
+            <div className="flex flex-col items-end gap-1">
+              {!canConfirm && !submitLoading && (
+                <p className="text-xs text-ds-light text-right">
+                  Faltam: {[
+                    !tomador && 'tomador',
+                    !servico && 'serviço',
+                    !empresaId && 'empresa emissora',
+                    totalCentavos <= 0 && 'valor',
+                    participantes.some(p => !p.medico) && 'médico',
+                  ].filter(Boolean).join(', ')}
+                </p>
               )}
-            </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={!canConfirm || submitLoading}
+                className="min-w-40"
+              >
+                {submitLoading ? (
+                  <><Loader2 size={15} className="mr-2 animate-spin" />Confirmando...</>
+                ) : (
+                  <><CheckCircle2 size={15} className="mr-2" />Confirmar Produção</>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* Preview (2/5) */}
         <div className="lg:col-span-2">
-          <PreviewCard preview={preview} loading={previewLoading} totalCentavos={totalCentavos} />
+          <PreviewCard preview={preview} loading={previewLoading} />
         </div>
       </div>
     </div>

@@ -4,12 +4,14 @@ import br.com.pinsaude.portal.dto.DashboardResponse;
 import br.com.pinsaude.portal.dto.NotaPortalResponse;
 import br.com.pinsaude.portal.dto.ProducaoPortalResponse;
 import br.com.pinsaude.portal.service.PortalService;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -48,6 +50,34 @@ public class PortalMedicoController {
             @RequestParam(required = false) String competencia) {
         UUID medicoId = service.resolveMedicoId(jwt.getClaimAsString("email"));
         return ResponseEntity.ok(service.getProducoes(medicoId, competencia));
+    }
+
+    @GetMapping("/notas/{id}/xml")
+    @PreAuthorize("hasRole('medico')")
+    public ResponseEntity<byte[]> downloadXml(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID id) {
+        UUID medicoId = service.resolveMedicoId(jwt.getClaimAsString("email"));
+        String xml = service.getNotaXml(medicoId, id);
+        if (xml == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_XML)
+                .header("Content-Disposition", "attachment; filename=\"nfse-" + id + ".xml\"")
+                .body(xml.getBytes(StandardCharsets.UTF_8));
+    }
+
+    @GetMapping("/notas/{id}/pdf")
+    @PreAuthorize("hasRole('medico')")
+    public ResponseEntity<byte[]> downloadPdf(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID id) {
+        UUID medicoId = service.resolveMedicoId(jwt.getClaimAsString("email"));
+        byte[] pdf = service.getNotaPdf(medicoId, id);
+        if (pdf == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header("Content-Disposition", "attachment; filename=\"nfse-" + id + ".pdf\"")
+                .body(pdf);
     }
 
     @GetMapping("/extrato")

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Banknote, TrendingUp, FileText, ClipboardList,
   RefreshCw, Bell, CheckCircle2, Clock, XCircle,
@@ -327,6 +328,12 @@ export function DashboardMedicoPage() {
             <p className="text-sm font-bold text-ds-text">Últimas Notas Fiscais</p>
             <p className="text-xs text-ds-light mt-0.5">5 mais recentes</p>
           </div>
+          <Link
+            to="/portal/notas"
+            className="shrink-0 text-xs font-semibold text-primary hover:text-primary-700 transition-colors"
+          >
+            Ver todas →
+          </Link>
         </div>
 
         {loading ? (

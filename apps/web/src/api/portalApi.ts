@@ -33,8 +33,16 @@ export interface NotaPortal {
   valorBrutoCentavos: number
   valorLiquidoMedicoCentavos: number
   taxaPinCentavos: number
+  valorIss: number
+  valorIr: number
+  valorCsll: number
+  valorPis: number
+  valorCofins: number
   status: string
   numeroNota: string | null
+  temXml: boolean
+  temPdf: boolean
+  protocolo: string | null
   emitidaAt: string | null
   createdAt: string
 }
@@ -82,4 +90,28 @@ async function getProducao(params?: { competencia?: string }): Promise<ProducaoP
   return handleResponse<ProducaoPortal[]>(res)
 }
 
-export const portalApi = { getDashboard, getNotas, getProducao }
+async function downloadXml(notaId: string): Promise<void> {
+  const res = await fetch(`/api/portal/notas/${notaId}/xml`, { headers: authHeaders() })
+  if (!res.ok) throw new Error(`Erro ao baixar XML: ${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `nfse-${notaId}.xml`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function downloadPdf(notaId: string): Promise<void> {
+  const res = await fetch(`/api/portal/notas/${notaId}/pdf`, { headers: authHeaders() })
+  if (!res.ok) throw new Error(`Erro ao baixar PDF: ${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `nfse-${notaId}.pdf`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export const portalApi = { getDashboard, getNotas, getProducao, downloadXml, downloadPdf }
