@@ -1,6 +1,7 @@
 package br.com.pinsaude.portal.controller;
 
 import br.com.pinsaude.portal.dto.DashboardResponse;
+import br.com.pinsaude.portal.dto.ExtratoResponse;
 import br.com.pinsaude.portal.dto.NotaPortalResponse;
 import br.com.pinsaude.portal.dto.ProducaoPortalResponse;
 import br.com.pinsaude.portal.service.PortalService;
@@ -12,6 +13,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -82,9 +84,14 @@ public class PortalMedicoController {
 
     @GetMapping("/extrato")
     @PreAuthorize("hasRole('medico')")
-    public ResponseEntity<List<Object>> extrato(@AuthenticationPrincipal Jwt jwt) {
-        // Ledger service ainda não implementado — retorna lista vazia
-        return ResponseEntity.ok(Collections.emptyList());
+    public ResponseEntity<ExtratoResponse> extrato(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) String dtInicio,
+            @RequestParam(required = false) String dtFim) {
+        UUID medicoId = service.resolveMedicoId(jwt.getClaimAsString("email"));
+        LocalDate inicio = dtInicio != null && !dtInicio.isBlank() ? LocalDate.parse(dtInicio) : null;
+        LocalDate fim    = dtFim    != null && !dtFim.isBlank()    ? LocalDate.parse(dtFim)    : null;
+        return ResponseEntity.ok(service.getExtrato(medicoId, inicio, fim));
     }
 
     @GetMapping("/repasses")

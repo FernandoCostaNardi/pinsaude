@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Banknote, TrendingUp, FileText, ClipboardList,
@@ -66,7 +66,7 @@ function KpiCard({ icon: Icon, label, value, sub, iconBg, iconColor }: {
   icon: React.ElementType
   label: string
   value: string
-  sub: string
+  sub: ReactNode
   iconBg: string
   iconColor: string
 }) {
@@ -267,7 +267,7 @@ export function DashboardMedicoPage() {
               icon={Banknote}
               label="Saldo Disponível"
               value={formatBRL(dashboard.saldoDisponivelCentavos)}
-              sub="Notas emitidas"
+              sub={<Link to="/portal/extrato" className="hover:text-primary transition-colors">Ver extrato →</Link>}
               iconBg="bg-green-50"
               iconColor="text-green-600"
             />

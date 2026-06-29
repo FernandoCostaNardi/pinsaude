@@ -17,12 +17,14 @@ import {
   Layers,
   HeartPulse,
   Receipt,
+  TrendingUp,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 
 const navItems = [
   { to: '/portal/dashboard', label: 'Meu Portal',   icon: HeartPulse,      roles: ['medico'], end: true  },
-  { to: '/portal/notas',    label: 'Minhas Notas', icon: Receipt,         roles: ['medico'], end: true  },
+  { to: '/portal/notas',    label: 'Minhas Notas',  icon: Receipt,         roles: ['medico'], end: true  },
+  { to: '/portal/extrato',  label: 'Extrato',       icon: TrendingUp,      roles: ['medico'], end: true  },
   { to: '/',            label: 'Dashboard',    icon: LayoutDashboard,  roles: null,       end: true  },
   { to: '/medicos',           label: 'Médicos',     icon: Stethoscope,      roles: null,       end: false },
   { to: '/medicos/aprovacao', label: 'Aprovação',   icon: ClipboardCheck,   roles: ['gestao', 'operacao'],                         end: true },
