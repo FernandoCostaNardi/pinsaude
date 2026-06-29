@@ -2,6 +2,7 @@ package br.com.pinsaude.onboarding.service;
 
 import br.com.pinsaude.onboarding.domain.*;
 import br.com.pinsaude.onboarding.dto.*;
+import br.com.pinsaude.onboarding.messaging.EmailEnvioMessage;
 import br.com.pinsaude.onboarding.port.ContratoAssinaturaPort;
 import br.com.pinsaude.onboarding.repository.*;
 import org.junit.jupiter.api.Test;
@@ -10,8 +11,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -38,7 +38,7 @@ class OnboardingFluxoTest {
     @Mock ConviteService                 conviteService;
     @Mock ContratoAssinaturaPort         contratoPort;
     @Mock NotificacaoService             notificacaoService;
-    @Mock JavaMailSender                 mailSender;
+    @Mock RabbitTemplate                 rabbitTemplate;
     @Mock EmpresaRepository              empresaRepo;
 
     @InjectMocks MedicoService medicoService;
@@ -113,7 +113,7 @@ class OnboardingFluxoTest {
     @Test
     void conviteService_enviaEmail_statusEnviado() {
         var svc = new ConviteService(
-            conviteRepo, mailSender,
+            conviteRepo, rabbitTemplate,
             "noreply@pinsaude.com.br", "http://localhost:3000", 168L
         );
 
@@ -127,18 +127,15 @@ class OnboardingFluxoTest {
 
         var result = svc.enviarConvite(medico);
 
-        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mailSender).send(captor.capture());
-        SimpleMailMessage msg = captor.getValue();
-        assertThat(msg.getTo()).contains(medico.getEmail());
-        assertThat(msg.getSubject()).contains("Convite");
+        // ConviteService agora é fire-and-forget via RabbitMQ (não JavaMailSender)
+        verify(rabbitTemplate).convertAndSend(eq("email.envio"), any(EmailEnvioMessage.class));
         assertThat(result.getStatus()).isEqualTo("ENVIADO");
     }
 
     @Test
     void conviteService_semEmail_lancaIllegalState() {
         var svc = new ConviteService(
-            conviteRepo, mailSender,
+            conviteRepo, rabbitTemplate,
             "noreply@pinsaude.com.br", "http://localhost:3000", 168L
         );
         var medico = new Medico();
