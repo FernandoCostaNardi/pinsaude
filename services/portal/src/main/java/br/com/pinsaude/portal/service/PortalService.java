@@ -147,7 +147,12 @@ public class PortalService {
                        CASE WHEN nf.medico_id IS NOT NULL THEN nf.taxa_pin
                             ELSE CAST(ROUND(pp.valor_bruto * 0.15) AS BIGINT)
                        END AS taxa_pin,
-                       nf.status, nf.numero_nota, nf.emitida_at, nf.created_at
+                       nf.valor_iss, nf.valor_ir, nf.valor_csll, nf.valor_pis, nf.valor_cofins,
+                       nf.status, nf.numero_nota,
+                       (nf.xml_nota IS NOT NULL) AS tem_xml,
+                       (nf.pdf_nota IS NOT NULL) AS tem_pdf,
+                       nf.protocolo_emissao,
+                       nf.emitida_at, nf.created_at
                 FROM fiscal.notas_fiscais nf
                 LEFT JOIN faturamento.participacoes_producao pp
                     ON pp.producao_id = nf.producao_id AND pp.medico_id = ?
@@ -213,11 +218,47 @@ public class PortalService {
                 rs.getLong("valor_bruto"),
                 rs.getLong("valor_liquido_medico"),
                 rs.getLong("taxa_pin"),
+                rs.getLong("valor_iss"),
+                rs.getLong("valor_ir"),
+                rs.getLong("valor_csll"),
+                rs.getLong("valor_pis"),
+                rs.getLong("valor_cofins"),
                 rs.getString("status"),
                 rs.getString("numero_nota"),
+                rs.getBoolean("tem_xml"),
+                rs.getBoolean("tem_pdf"),
+                rs.getString("protocolo_emissao"),
                 toOffsetDateTime(rs.getTimestamp("emitida_at")),
                 toOffsetDateTime(rs.getTimestamp("created_at"))
         );
+    }
+
+    public String getNotaXml(UUID medicoId, UUID notaId) {
+        List<String> result = jdbc.query("""
+                SELECT nf.xml_nota
+                FROM fiscal.notas_fiscais nf
+                LEFT JOIN faturamento.participacoes_producao pp
+                    ON pp.producao_id = nf.producao_id AND pp.medico_id = ?
+                WHERE nf.id = ?
+                  AND (nf.medico_id = ? OR pp.medico_id IS NOT NULL)
+                """,
+                (rs, row) -> rs.getString("xml_nota"),
+                medicoId, notaId, medicoId);
+        return result.isEmpty() ? null : result.get(0);
+    }
+
+    public byte[] getNotaPdf(UUID medicoId, UUID notaId) {
+        List<byte[]> result = jdbc.query("""
+                SELECT nf.pdf_nota
+                FROM fiscal.notas_fiscais nf
+                LEFT JOIN faturamento.participacoes_producao pp
+                    ON pp.producao_id = nf.producao_id AND pp.medico_id = ?
+                WHERE nf.id = ?
+                  AND (nf.medico_id = ? OR pp.medico_id IS NOT NULL)
+                """,
+                (rs, row) -> rs.getBytes("pdf_nota"),
+                medicoId, notaId, medicoId);
+        return result.isEmpty() ? null : result.get(0);
     }
 
     private OffsetDateTime toOffsetDateTime(Timestamp ts) {
