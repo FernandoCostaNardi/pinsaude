@@ -394,8 +394,18 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
   async function salvarBlob(blob: Blob, nomeArquivo: string) {
     if ('showSaveFilePicker' in window) {
       try {
+        const ext = nomeArquivo.includes('.') ? nomeArquivo.split('.').pop()!.toLowerCase() : ''
+        const mimeMap: Record<string, string> = {
+          pdf: 'application/pdf',
+          jpg: 'image/jpeg', jpeg: 'image/jpeg',
+          png: 'image/png',
+        }
+        const mime = mimeMap[ext] ?? blob.type ?? 'application/octet-stream'
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const handle = await (window as any).showSaveFilePicker({ suggestedName: nomeArquivo })
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: nomeArquivo,
+          types: [{ description: 'Arquivo', accept: { [mime]: ext ? [`.${ext}`] : [] } }],
+        })
         const writable = await handle.createWritable()
         await writable.write(blob)
         await writable.close()
