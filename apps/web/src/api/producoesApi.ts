@@ -29,6 +29,7 @@ export interface Participacao {
   id: string
   medicoId: string
   valorBruto: number
+  taxaPinPct: number
   taxaPin: number
   valorLiquido: number
 }
@@ -50,6 +51,7 @@ export interface Producao {
 export interface ParticipacaoRequest {
   medicoId: string
   valorBruto: number
+  taxaPinPct?: number
 }
 
 export interface ProducaoRequest {

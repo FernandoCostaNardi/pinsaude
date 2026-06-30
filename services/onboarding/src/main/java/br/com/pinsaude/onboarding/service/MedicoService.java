@@ -4,6 +4,8 @@ import br.com.pinsaude.onboarding.domain.*;
 import br.com.pinsaude.onboarding.dto.*;
 import br.com.pinsaude.onboarding.port.ContratoAssinaturaPort;
 import br.com.pinsaude.onboarding.repository.*;
+
+import java.math.BigDecimal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -44,6 +46,9 @@ public class MedicoService {
     private final ContratoAssinaturaPort contratoPort;
     private final NotificacaoService notificacaoService;
     private final EmpresaRepository empresaRepo;
+    private final HistoricoTaxaPinRepository historicoTaxaPinRepo;
+
+    private static final BigDecimal TAXA_PIN_DEFAULT = new BigDecimal("0.1500");
 
     public MedicoService(
             MedicoRepository medicoRepo,
@@ -59,7 +64,8 @@ public class MedicoService {
             ConviteService conviteService,
             ContratoAssinaturaPort contratoPort,
             NotificacaoService notificacaoService,
-            EmpresaRepository empresaRepo) {
+            EmpresaRepository empresaRepo,
+            HistoricoTaxaPinRepository historicoTaxaPinRepo) {
         this.medicoRepo = medicoRepo;
         this.vinculoRepo = vinculoRepo;
         this.dadosBancariosRepo = dadosBancariosRepo;
@@ -74,6 +80,7 @@ public class MedicoService {
         this.contratoPort = contratoPort;
         this.notificacaoService = notificacaoService;
         this.empresaRepo = empresaRepo;
+        this.historicoTaxaPinRepo = historicoTaxaPinRepo;
     }
 
     public List<MedicoResponse> listarFilaAprovacao() {
@@ -131,6 +138,7 @@ public class MedicoService {
         medico.setEspecialidade(req.especialidade());
         medico.setEmail(req.email());
         medico.setTelefone(req.telefone());
+        medico.setTaxaPinPct(req.taxaPinPct() != null ? req.taxaPinPct() : TAXA_PIN_DEFAULT);
         medico.setStatus(StatusMedico.RASCUNHO);
         medico = medicoRepo.save(medico);
 
@@ -173,6 +181,17 @@ public class MedicoService {
         medico.setEspecialidade(req.especialidade());
         medico.setEmail(req.email());
         medico.setTelefone(req.telefone());
+
+        BigDecimal taxaAtual = medico.getTaxaPinPct();
+        BigDecimal taxaNova  = req.taxaPinPct() != null ? req.taxaPinPct() : taxaAtual;
+        if (taxaNova.compareTo(taxaAtual) != 0) {
+            historicoTaxaPinRepo.save(new HistoricoTaxaPin(id, taxaAtual, taxaNova, getCurrentUser()));
+            medico.setTaxaPinPct(taxaNova);
+            registrarHistorico(id, TipoAcaoMedico.ATUALIZACAO_DADOS,
+                String.format("Taxa Pin renegociada: %.2f%% → %.2f%%",
+                    taxaAtual.multiply(new BigDecimal("100")),
+                    taxaNova.multiply(new BigDecimal("100"))));
+        }
 
         var saved = toFullResponse(medicoRepo.save(medico));
         registrarHistorico(id, TipoAcaoMedico.ATUALIZACAO_DADOS, "Dados pessoais atualizados");
@@ -442,6 +461,13 @@ public class MedicoService {
         findOrThrow(medicoId);
         return historicoRepo.findByMedicoIdOrderByCreatedAtDesc(medicoId).stream()
             .map(HistoricoMedicoResponse::from)
+            .toList();
+    }
+
+    public List<HistoricoTaxaPinResponse> listarHistoricoTaxaPin(UUID medicoId) {
+        findOrThrow(medicoId);
+        return historicoTaxaPinRepo.findByMedicoIdOrderByAlteradoEmDesc(medicoId).stream()
+            .map(HistoricoTaxaPinResponse::from)
             .toList();
     }
 
