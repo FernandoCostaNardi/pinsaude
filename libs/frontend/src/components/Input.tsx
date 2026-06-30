@@ -1,14 +1,14 @@
-import { InputHTMLAttributes, forwardRef } from 'react'
+import { InputHTMLAttributes, ReactNode, forwardRef } from 'react'
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  label?: string
+  label?: ReactNode
   error?: string
   hint?: string
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ label, error, hint, className = '', id, ...props }, ref) => {
-    const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-')
+    const inputId = id ?? (typeof label === 'string' ? label.toLowerCase().replace(/\s+/g, '-') : undefined)
 
     return (
       <div className="flex flex-col gap-1">

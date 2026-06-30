@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 @Service
 public class ProducaoService {
 
-    private static final BigDecimal TAXA_PIN_PCT = new BigDecimal("0.15");
+    private static final BigDecimal TAXA_PIN_DEFAULT = new BigDecimal("0.1500");
 
     private final ProducaoRepository     producaoRepo;
     private final ParticipacaoRepository participacaoRepo;
@@ -117,6 +117,7 @@ public class ProducaoService {
             pp.setProducaoId(p.getId());
             pp.setMedicoId(part.medicoId());
             pp.setValorBruto(part.valorBruto());
+            pp.setTaxaPinPct(part.taxaPinPct() != null ? part.taxaPinPct() : TAXA_PIN_DEFAULT);
             return pp;
         }).toList();
         participacaoRepo.saveAll(participacoes);
@@ -135,15 +136,17 @@ public class ProducaoService {
         Servico servico = servicoRepo.findById(req.servicoId())
             .orElseThrow(() -> new EntityNotFoundException("Serviço não encontrado: " + req.servicoId()));
 
-        return calcular(req.valorBruto(), servico, tomador);
+        BigDecimal taxaPinPct = req.taxaPinPct() != null ? req.taxaPinPct() : TAXA_PIN_DEFAULT;
+        return calcular(req.valorBruto(), servico, tomador, taxaPinPct);
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────────
 
-    private PreviewCalculoResponse calcular(long valorBruto, Servico servico, Tomador tomador) {
+    private PreviewCalculoResponse calcular(long valorBruto, Servico servico, Tomador tomador,
+                                            BigDecimal taxaPinPct) {
         BigDecimal bruto = BigDecimal.valueOf(valorBruto);
 
-        long taxaPin = pct(bruto, TAXA_PIN_PCT);
+        long taxaPin = pct(bruto, taxaPinPct);
 
         long issRetido    = tomador.isIndicadorRetencaoIss()
             ? pct(bruto, pct(servico.getAliquotaIss()))    : 0L;

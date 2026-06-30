@@ -3,6 +3,7 @@ package br.com.pinsaude.onboarding.dto;
 import br.com.pinsaude.onboarding.domain.Medico;
 import br.com.pinsaude.onboarding.domain.StatusMedico;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -16,6 +17,7 @@ public record MedicoResponse(
     String especialidade,
     String email,
     String telefone,
+    BigDecimal taxaPinPct,
     StatusMedico status,
     String statusJuntaComercial,
     UUID empresaId,
@@ -41,7 +43,7 @@ public record MedicoResponse(
         return new MedicoResponse(
             m.getId(), cpfDecriptografado, m.getNome(),
             m.getCrm(), m.getCrmUf(), m.getEspecialidade(),
-            m.getEmail(), m.getTelefone(), m.getStatus(),
+            m.getEmail(), m.getTelefone(), m.getTaxaPinPct(), m.getStatus(),
             m.getStatusJuntaComercial(),
             primeiraEmpresaId, empresas, dadosBancarios, documentos, checklist,
             contratoAssinatura, ultimoConvite,

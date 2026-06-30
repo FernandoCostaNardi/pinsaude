@@ -473,6 +473,7 @@ export function ProducaoNovaPage() {
   async function handleSubmit() {
     if (!validate()) return
 
+    const medicoMap = new Map(medicos.map(m => [m.id, m]))
     const req: ProducaoRequest = {
       tomadorId:             tomador!.id,
       servicoId:             servico!.id,
@@ -482,6 +483,7 @@ export function ProducaoNovaPage() {
       participantes: participantes.map(p => ({
         medicoId:   p.medico!.id,
         valorBruto: parseBRL(p.valorStr),
+        taxaPinPct: medicoMap.get(p.medico!.id)?.taxaPinPct ?? 0.15,
       })),
     }
 

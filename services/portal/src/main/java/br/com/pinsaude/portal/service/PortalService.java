@@ -103,7 +103,9 @@ public class PortalService {
         StringBuilder sql = new StringBuilder("""
                 SELECT p.id, p.competencia, t.razao_social AS tomador_nome,
                        s.descricao_padrao AS servico_descricao,
-                       pp.valor_bruto AS valor_bruto_medico, p.status, p.created_at
+                       pp.valor_bruto AS valor_bruto_medico,
+                       COALESCE(pp.taxa_pin_pct, 0.15) AS taxa_pin_pct,
+                       p.status, p.created_at
                 FROM faturamento.participacoes_producao pp
                 JOIN faturamento.producoes p ON p.id = pp.producao_id
                 JOIN faturamento.tomadores t ON t.id = p.tomador_id
@@ -122,13 +124,15 @@ public class PortalService {
 
         return jdbc.query(sql.toString(), (rs, row) -> {
             long bruto = rs.getLong("valor_bruto_medico");
+            double taxaPinPct = rs.getDouble("taxa_pin_pct");
+            long taxaPin = Math.round(bruto * taxaPinPct);
             return new ProducaoPortalResponse(
                     rs.getObject("id", UUID.class),
                     rs.getString("competencia"),
                     rs.getString("tomador_nome"),
                     rs.getString("servico_descricao"),
                     bruto,
-                    Math.round(bruto * 0.85),
+                    bruto - taxaPin,
                     rs.getString("status"),
                     toOffsetDateTime(rs.getTimestamp("created_at"))
             );
@@ -282,11 +286,11 @@ public class PortalService {
                        CASE WHEN nf.medico_id IS NOT NULL THEN nf.valor_bruto
                             ELSE pp.valor_bruto END AS valor_bruto,
                        CASE WHEN nf.medico_id IS NOT NULL THEN nf.valor_liquido_medico
-                            ELSE pp.valor_bruto - CAST(ROUND(pp.valor_bruto * 0.15) AS BIGINT)
-                       END AS valor_liquido_medico,
-                       CASE WHEN nf.medico_id IS NOT NULL THEN nf.taxa_pin
-                            ELSE CAST(ROUND(pp.valor_bruto * 0.15) AS BIGINT)
+                            ELSE CAST(ROUND(pp.valor_bruto * COALESCE(pp.taxa_pin_pct, 0.15)) AS BIGINT)
                        END AS taxa_pin,
+                       CASE WHEN nf.medico_id IS NOT NULL THEN nf.valor_liquido_medico
+                            ELSE pp.valor_bruto - CAST(ROUND(pp.valor_bruto * COALESCE(pp.taxa_pin_pct, 0.15)) AS BIGINT)
+                       END AS valor_liquido_medico,
                        nf.valor_iss, nf.valor_ir, nf.valor_csll, nf.valor_pis, nf.valor_cofins,
                        nf.status, nf.numero_nota,
                        (nf.xml_nota IS NOT NULL) AS tem_xml,
@@ -304,7 +308,7 @@ public class PortalService {
         return jdbc.query("""
                 SELECT COALESCE(SUM(
                     CASE WHEN nf.medico_id IS NOT NULL THEN nf.valor_liquido_medico
-                         ELSE pp.valor_bruto - CAST(ROUND(pp.valor_bruto * 0.15) AS BIGINT) END
+                         ELSE pp.valor_bruto - CAST(ROUND(pp.valor_bruto * COALESCE(pp.taxa_pin_pct, 0.15)) AS BIGINT) END
                 ), 0)
                 FROM fiscal.notas_fiscais nf
                 LEFT JOIN faturamento.participacoes_producao pp
@@ -325,7 +329,7 @@ public class PortalService {
         return jdbc.query("""
                 SELECT COALESCE(SUM(
                     CASE WHEN nf.medico_id IS NOT NULL THEN nf.valor_liquido_medico
-                         ELSE pp.valor_bruto - CAST(ROUND(pp.valor_bruto * 0.15) AS BIGINT) END
+                         ELSE pp.valor_bruto - CAST(ROUND(pp.valor_bruto * COALESCE(pp.taxa_pin_pct, 0.15)) AS BIGINT) END
                 ), 0)
                 FROM fiscal.notas_fiscais nf
                 LEFT JOIN faturamento.participacoes_producao pp

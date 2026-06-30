@@ -158,6 +158,12 @@ public class MedicoController {
         return ResponseEntity.ok(service.listarHistorico(id));
     }
 
+    @GetMapping("/{id}/taxa-pin/historico")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil')")
+    public ResponseEntity<List<HistoricoTaxaPinResponse>> listarHistoricoTaxaPin(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarHistoricoTaxaPin(id));
+    }
+
     @PutMapping("/{id}/checklist")
     @PreAuthorize("hasAnyRole('gestao','operacao')")
     public ResponseEntity<ChecklistCondutaResponse> atualizarChecklist(

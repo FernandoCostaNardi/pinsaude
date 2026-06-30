@@ -66,6 +66,7 @@ export interface Medico {
   especialidade?: string
   email?: string
   telefone?: string
+  taxaPinPct: number
   status: StatusMedico
   statusJuntaComercial: StatusJuntaComercial
   empresaId?: string
@@ -79,6 +80,14 @@ export interface Medico {
   updatedAt: string
 }
 
+export interface HistoricoTaxaPin {
+  id: string
+  taxaAnterior: number
+  taxaNova: number
+  alteradoPor?: string
+  alteradoEm: string
+}
+
 export interface MedicoRequest {
   cpf: string
   nome: string
@@ -88,6 +97,7 @@ export interface MedicoRequest {
   email: string
   telefone: string
   empresaId?: string
+  taxaPinPct?: number
 }
 
 export interface DadosBancariosMedicoRequest {
@@ -253,6 +263,11 @@ async function listarHistorico(medicoId: string): Promise<HistoricoMedico[]> {
   return handleResponse<HistoricoMedico[]>(res)
 }
 
+async function listarHistoricoTaxaPin(medicoId: string): Promise<HistoricoTaxaPin[]> {
+  const res = await fetch(`/api/medicos/${medicoId}/taxa-pin/historico`, { headers: authHeaders() })
+  return handleResponse<HistoricoTaxaPin[]>(res)
+}
+
 async function deletarDocumento(medicoId: string, docId: string): Promise<void> {
   const res = await fetch(`/api/medicos/${medicoId}/documentos/${docId}`, {
     method: 'DELETE',
@@ -345,6 +360,7 @@ export const medicosApi = {
   listar, buscarPorId, criar, atualizar, ativar, inativar,
   atualizarDadosBancarios, listarDocumentos, uploadDocumento,
   validarDocumento, getDocumentoUrl, deletarDocumento, listarHistorico,
+  listarHistoricoTaxaPin,
   enviarConvite, enviarContrato, atualizarJuntaComercial,
   assinarContratoManual, listarFilaAprovacao, atualizarChecklist,
   listarVinculos, adicionarVinculo, removerVinculo,

@@ -7,6 +7,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -48,6 +49,9 @@ public class Medico {
     @ColumnTransformer(write = "?::onboarding.status_medico_enum")
     private StatusMedico status = StatusMedico.RASCUNHO;
 
+    @Column(name = "taxa_pin_pct", nullable = false, precision = 5, scale = 4)
+    private BigDecimal taxaPinPct = new BigDecimal("0.1500");
+
     @Column(name = "status_junta_comercial", nullable = false, length = 20)
     private String statusJuntaComercial = "AGUARDANDO";
 
@@ -88,6 +92,9 @@ public class Medico {
 
     public StatusMedico getStatus() { return status; }
     public void setStatus(StatusMedico status) { this.status = status; }
+
+    public BigDecimal getTaxaPinPct() { return taxaPinPct; }
+    public void setTaxaPinPct(BigDecimal taxaPinPct) { this.taxaPinPct = taxaPinPct; }
 
     public String getStatusJuntaComercial() { return statusJuntaComercial; }
     public void setStatusJuntaComercial(String statusJuntaComercial) { this.statusJuntaComercial = statusJuntaComercial; }

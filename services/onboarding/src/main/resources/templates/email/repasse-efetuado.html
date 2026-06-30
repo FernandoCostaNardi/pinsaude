@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Repasse Efetuado — Pin Saúde</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7fb;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <tr>
+        <td style="background:#02A9F7;padding:32px 40px;text-align:center;">
+          <p style="margin:0;font-size:26px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">Pin Saúde</p>
+          <p style="margin:6px 0 0;font-size:12px;color:#BAE9FF;letter-spacing:2px;text-transform:uppercase;">Sistema de Gestão Médica</p>
+        </td>
+      </tr>
+
+      <!-- Success banner -->
+      <tr>
+        <td style="background:#f0fdf4;border-bottom:3px solid #22c55e;padding:16px 40px;text-align:center;">
+          <p style="margin:0;font-size:14px;font-weight:700;color:#15803d;">💸 Repasse efetuado com sucesso!</p>
+        </td>
+      </tr>
+
+      <!-- Body -->
+      <tr>
+        <td style="padding:40px 40px 24px;">
+          <p style="margin:0 0 24px;font-size:22px;font-weight:700;color:#1a1a2e;">Olá, <span th:text="${nome}">Dr. Nome</span>!</p>
+
+          <!-- Valor destaque -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border:2px solid #86efac;border-radius:12px;margin-bottom:24px;">
+            <tr>
+              <td style="padding:28px 24px;text-align:center;">
+                <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:1px;">Valor Transferido via PIX</p>
+                <p style="margin:0;font-size:40px;font-weight:900;color:#15803d;">
+                  R$ <span th:text="${#numbers.formatDecimal(valor / 100.0, 1, 'POINT', 2, 'COMMA')}">0,00</span>
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Detalhes PIX -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8faff;border:1px solid #e0ebff;border-radius:10px;margin-bottom:24px;">
+            <tr>
+              <td style="padding:20px 24px;">
+                <p style="margin:0 0 12px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">Dados da Transferência</p>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="padding:6px 0;font-size:13px;color:#6b7280;">Chave PIX</td>
+                    <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a2e;text-align:right;" th:text="${chavePix}">CPF/CNPJ/Email</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 0;border-top:1px solid #e5e7eb;font-size:13px;color:#6b7280;">Tipo</td>
+                    <td style="padding:6px 0;border-top:1px solid #e5e7eb;font-size:13px;font-weight:600;color:#15803d;text-align:right;">✅ PIX Imediato</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:0 0 20px;font-size:15px;color:#4a4a6a;line-height:1.6;">
+            O valor acima foi transferido via PIX para a chave cadastrada em seu perfil. Acesse o portal para conferir o histórico completo de repasses e extrato financeiro:
+          </p>
+
+          <!-- CTA Button -->
+          <table cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+            <tr>
+              <td style="background:#02A9F7;border-radius:8px;">
+                <a th:href="${portalUrl}" href="#"
+                   style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                  Ver Extrato no Portal →
+                </a>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">
+            O crédito pode levar alguns instantes para aparecer em seu saldo. Caso não receba em até 30 minutos, entre em contato com nossa equipe.
+          </p>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="background:#f8faff;border-top:1px solid #e8edf5;padding:24px 40px;text-align:center;">
+          <p style="margin:0;font-size:12px;color:#aaa;">Pin Saúde — Gestão Fiscal para Médicos</p>
+          <p style="margin:4px 0 0;font-size:11px;color:#ccc;">noreply@pinsaude.com.br</p>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
