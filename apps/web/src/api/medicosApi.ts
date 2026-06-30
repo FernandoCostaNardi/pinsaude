@@ -268,6 +268,18 @@ async function listarHistoricoTaxaPin(medicoId: string): Promise<HistoricoTaxaPi
   return handleResponse<HistoricoTaxaPin[]>(res)
 }
 
+async function downloadDocumento(medicoId: string, docId: string): Promise<Blob> {
+  const res = await fetch(`/api/medicos/${medicoId}/documentos/${docId}/download`, {
+    headers: { Authorization: `Bearer ${getAccessToken()}` },
+  })
+  if (!res.ok) {
+    let msg = `Erro ${res.status}`
+    try { const b = await res.json(); msg = b.mensagem ?? b.message ?? msg } catch { /* ignore */ }
+    throw new Error(msg)
+  }
+  return res.blob()
+}
+
 async function deletarDocumento(medicoId: string, docId: string): Promise<void> {
   const res = await fetch(`/api/medicos/${medicoId}/documentos/${docId}`, {
     method: 'DELETE',
@@ -360,7 +372,7 @@ export const medicosApi = {
   listar, buscarPorId, criar, atualizar, ativar, inativar,
   atualizarDadosBancarios, listarDocumentos, uploadDocumento,
   validarDocumento, getDocumentoUrl, deletarDocumento, listarHistorico,
-  listarHistoricoTaxaPin,
+  listarHistoricoTaxaPin, downloadDocumento,
   enviarConvite, enviarContrato, atualizarJuntaComercial,
   assinarContratoManual, listarFilaAprovacao, atualizarChecklist,
   listarVinculos, adicionarVinculo, removerVinculo,

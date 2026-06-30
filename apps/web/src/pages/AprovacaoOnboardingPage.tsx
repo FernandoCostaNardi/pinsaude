@@ -124,7 +124,8 @@ function DocRow({
   async function handleOpenDoc() {
     if (docUrl) { window.open(docUrl, '_blank'); return }
     try {
-      const url = await medicosApi.getDocumentoUrl(medicoId, doc.id)
+      const blob = await medicosApi.downloadDocumento(medicoId, doc.id)
+      const url = URL.createObjectURL(blob)
       setDocUrl(url)
       window.open(url, '_blank')
     } catch {

@@ -1781,6 +1781,90 @@ sub: ReactNode  // NOT sub: string
 
 ---
 
+## Notificações por E-mail — Fila RabbitMQ + Thymeleaf (EPIC-06.6)
+
+### Arquitetura: fire-and-forget via fila email.envio
+O envio de e-mail é 100% assíncrono. O serviço que origina o evento publica na fila
+`email.envio` (durable, JSON) e retorna imediatamente — nunca aguarda o envio do e-mail:
+```java
+private void publicar(EmailEnvioMessage msg) {
+    try {
+        rabbitTemplate.convertAndSend("email.envio", msg);
+    } catch (Exception e) {
+        log.warn("Falha ao enfileirar — tipo={}: {}", msg.tipo(), e.getMessage());
+        // silencioso: não propaga para o caller
+    }
+}
+```
+O consumer (`EmailEventConsumer` no onboarding) é assíncrono por natureza (`@RabbitListener`
+roda em thread pool separado) — não precisa de `@Async`.
+
+### Cross-service medicoId resolution (sem HTTP)
+O fiscal não sabe o email do médico — só tem o UUID. O fiscal publica com `destinatario=null`
+e `medicoId=<uuid>`. O onboarding consumer resolve localmente via `MedicoRepository`:
+```java
+@RabbitListener(queues = EmailRabbitConfig.EMAIL_QUEUE)
+public void consumir(EmailEnvioMessage message) {
+    EmailEnvioMessage resolved = resolverDestinatario(message);
+    emailTemplateService.enviar(resolved);
+}
+// resolverDestinatario: se destinatario nulo, busca email por medicoId no MedicoRepository
+```
+Isso evita chamada HTTP cross-service e mantém o onboarding como dono dos dados do médico.
+
+### EmailEnvioMessage — record compartilhado (duplicado por serviço)
+```java
+public record EmailEnvioMessage(
+    String tipo,         // "NOTA_FISCAL_EMITIDA", "CONVITE_CADASTRO", etc.
+    String destinatario, // email direto, ou null quando medicoId é usado
+    String medicoId,     // UUID como string, null quando destinatario é direto
+    String assunto,
+    Map<String, Object> dados  // variáveis do template Thymeleaf
+) {}
+```
+Cada serviço tem sua cópia do record (onboarding e fiscal). Sem módulo compartilhado.
+A serialização JSON é consistente desde que os campos sejam idênticos.
+
+### Tipos de notificação suportados
+| tipo | Origem | Destinatário |
+|------|--------|-------------|
+| `CONVITE_CADASTRO` | onboarding (ConviteService) | email direto do convite |
+| `DOCUMENTO_REPROVADO` | onboarding (NotificacaoService) | email do médico (direto) |
+| `MEDICO_ATIVADO` | onboarding (NotificacaoService) | email do médico (direto) |
+| `NOTA_FISCAL_EMITIDA` | fiscal (NfseService) | medicoId → resolve no consumer |
+| `ALERTA_TETO_FISCAL` | fiscal (EmailNotificacaoProducer) | email direto do gestor |
+| `REPASSE_EFETUADO` | repasse (futuro) | email direto do médico |
+
+### Templates Thymeleaf — localização e convenção
+Templates em `services/onboarding/src/main/resources/templates/email/<tipo>.html`.
+Referenciados no TIPO_TEMPLATE map de `EmailTemplateService`:
+```java
+"NOTA_FISCAL_EMITIDA" → "email/nota-fiscal-emitida"   // sem .html
+```
+Design: table-based HTML com inline CSS (máxima compatibilidade de cliente de e-mail).
+Paleta Pin Saúde: header `#02A9F7`, verde sucesso `#15803d`, alerta laranja `#b45309`.
+
+### Fila declarada em ambos os serviços — idempotente
+Tanto `onboarding/EmailRabbitConfig.java` quanto `fiscal/RabbitConfig.java` declaram
+`email.envio` como Queue durable. O RabbitMQ ignora re-declaração com mesmos parâmetros.
+Garante que a fila existe independente de qual serviço iniciar primeiro.
+
+### Thymeleaf com SpringTemplateEngine — não processa views web
+Adicionar `spring-boot-starter-thymeleaf` em um `@RestController` não afeta endpoints REST.
+O Thymeleaf é usado apenas via `SpringTemplateEngine.process(template, ctx)` no `EmailTemplateService`.
+NÃO remover nem adicionar `spring.thymeleaf.check-template: false` — templates existem e devem ser verificados.
+
+### Nota: multi-médico sem e-mail individual
+Produções com múltiplos médicos (`medicoId = null` na `NotaFiscal`) não disparam e-mail.
+```java
+public void notificarNotaEmitida(NotaFiscal nota) {
+    if (nota.getMedicoId() == null) return; // multi-médico: sem e-mail individual
+    ...
+}
+```
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

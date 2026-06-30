@@ -10,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -82,6 +83,18 @@ public class StorageService {
         } catch (MinioException | IOException | InvalidKeyException | NoSuchAlgorithmException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Não foi possível gerar URL de download: " + e.getMessage());
+        }
+    }
+
+    public InputStream getObjectStream(String objectName) {
+        try {
+            return minioClient.getObject(GetObjectArgs.builder()
+                .bucket(bucket)
+                .object(objectName)
+                .build());
+        } catch (MinioException | IOException | InvalidKeyException | NoSuchAlgorithmException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Não foi possível obter arquivo: " + e.getMessage());
         }
     }
 

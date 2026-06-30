@@ -269,8 +269,11 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
         setDocs(byTipo)
         for (const doc of list) {
           if (isImagem(doc.nomeArquivo)) {
-            medicosApi.getDocumentoUrl(medico.id, doc.id)
-              .then(url => setPreviews(p => ({ ...p, [doc.id]: url })))
+            medicosApi.downloadDocumento(medico.id, doc.id)
+              .then(blob => {
+                const url = URL.createObjectURL(blob)
+                setPreviews(p => ({ ...p, [doc.id]: url }))
+              })
               .catch(() => {})
           }
         }
@@ -384,10 +387,12 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
 
   async function handleVerArquivo(doc: DocumentoMedico) {
     try {
-      const url = await medicosApi.getDocumentoUrl(medico.id, doc.id)
+      const blob = await medicosApi.downloadDocumento(medico.id, doc.id)
+      const url = URL.createObjectURL(blob)
       window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
     } catch {
-      setError('Não foi possível obter o link do arquivo')
+      setError('Não foi possível obter o arquivo')
     }
   }
 
@@ -429,9 +434,7 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     setDownloadingId(doc.id)
     setError(null)
     try {
-      const url = await medicosApi.getDocumentoUrl(medico.id, doc.id)
-      const res = await fetch(url)
-      const blob = await res.blob()
+      const blob = await medicosApi.downloadDocumento(medico.id, doc.id)
       await salvarBlob(blob, doc.nomeArquivo)
     } catch {
       setError('Não foi possível baixar o arquivo')
@@ -458,9 +461,7 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
 
     for (const doc of lista) {
       try {
-        const url = await medicosApi.getDocumentoUrl(medico.id, doc.id)
-        const res = await fetch(url)
-        const blob = await res.blob()
+        const blob = await medicosApi.downloadDocumento(medico.id, doc.id)
         if (dirHandle) {
           const fileHandle = await dirHandle.getFileHandle(doc.nomeArquivo, { create: true })
           const writable = await fileHandle.createWritable()

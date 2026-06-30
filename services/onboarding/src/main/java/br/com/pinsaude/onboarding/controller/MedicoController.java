@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.util.List;
@@ -150,6 +151,14 @@ public class MedicoController {
             @PathVariable UUID id,
             @PathVariable UUID docId) {
         return ResponseEntity.ok(java.util.Map.of("url", service.getDocumentoUrl(id, docId)));
+    }
+
+    @GetMapping("/{id}/documentos/{docId}/download")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico')")
+    public ResponseEntity<StreamingResponseBody> downloadDocumento(
+            @PathVariable UUID id,
+            @PathVariable UUID docId) {
+        return service.downloadDocumento(id, docId);
     }
 
     @GetMapping("/{id}/historico")
