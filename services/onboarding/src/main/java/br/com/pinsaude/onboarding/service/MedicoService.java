@@ -9,13 +9,17 @@ import java.math.BigDecimal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -435,6 +439,32 @@ public class MedicoService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Documento não encontrado: " + docId));
         return storageService.getPresignedUrl(doc.getCaminhoStorage());
+    }
+
+    public ResponseEntity<StreamingResponseBody> downloadDocumento(UUID medicoId, UUID docId) {
+        findOrThrow(medicoId);
+        DocumentoMedico doc = documentoRepo.findById(docId)
+            .filter(d -> medicoId.equals(d.getMedicoId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Documento não encontrado: " + docId));
+
+        var stream = storageService.getObjectStream(doc.getCaminhoStorage());
+        StreamingResponseBody body = out -> {
+            try (stream) { stream.transferTo(out); }
+        };
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(resolveContentType(doc.getNomeArquivo())))
+            .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + doc.getNomeArquivo() + "\"")
+            .body(body);
+    }
+
+    private String resolveContentType(String filename) {
+        if (filename == null) return "application/octet-stream";
+        String f = filename.toLowerCase();
+        if (f.endsWith(".pdf"))  return "application/pdf";
+        if (f.endsWith(".jpg") || f.endsWith(".jpeg")) return "image/jpeg";
+        if (f.endsWith(".png"))  return "image/png";
+        return "application/octet-stream";
     }
 
     @Transactional
