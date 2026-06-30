@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Award, GraduationCap, CreditCard, Home, FileText, BookOpen,
-  Upload, CheckCircle2, XCircle, Clock, Eye, Plus, Trash2,
+  Upload, CheckCircle2, XCircle, Clock, Eye, Plus, Trash2, Download,
 } from 'lucide-react'
 import { Modal, Button, Alert, Spinner } from '@pinsaude/ui'
 import {
@@ -50,21 +50,23 @@ interface RowProps {
   canValidate: boolean
   rejectingDocId: string | null
   rejectReason: string
+  downloadingId: string | null
   onAprovar: (doc: DocumentoMedico) => void
   onIniciarReprovacao: (doc: DocumentoMedico) => void
   onConfirmarReprovacao: () => void
   onCancelarReprovacao: () => void
   onRejectReasonChange: (v: string) => void
   onVerArquivo: (doc: DocumentoMedico) => void
+  onDownload: (doc: DocumentoMedico) => void
   onDeletar: (doc: DocumentoMedico) => void
   onAdicionarMais: (tipo: TipoDocumentoMedico) => void
 }
 
 function DocumentoRow({
   tipo, docs, previews, uploadingThisTipo, validating, canValidate,
-  rejectingDocId, rejectReason,
+  rejectingDocId, rejectReason, downloadingId,
   onAprovar, onIniciarReprovacao, onConfirmarReprovacao,
-  onCancelarReprovacao, onRejectReasonChange, onVerArquivo, onDeletar, onAdicionarMais,
+  onCancelarReprovacao, onRejectReasonChange, onVerArquivo, onDownload, onDeletar, onAdicionarMais,
 }: RowProps) {
   const { Icon, label } = TIPO_INFO[tipo]
 
@@ -129,9 +131,17 @@ function DocumentoRow({
                   <button
                     onClick={() => onVerArquivo(doc)}
                     className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
-                    title="Ver arquivo"
+                    title="Visualizar arquivo"
                   >
                     <Eye size={13} />
+                  </button>
+                  <button
+                    onClick={() => onDownload(doc)}
+                    disabled={downloadingId === doc.id}
+                    className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-50"
+                    title="Baixar arquivo"
+                  >
+                    <Download size={13} className={downloadingId === doc.id ? 'animate-bounce' : ''} />
                   </button>
                   <button
                     onClick={() => onDeletar(doc)}
@@ -234,6 +244,8 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
   const [validating, setValidating] = useState<string | null>(null) // docId
   const [rejectingDocId, setRejectingDocId] = useState<string | null>(null)
   const [rejectReason, setRejectReason]     = useState('')
+  const [downloadingId, setDownloadingId]   = useState<string | null>(null)
+  const [downloadingAll, setDownloadingAll] = useState(false)
   const [error, setError]   = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -379,6 +391,92 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     }
   }
 
+  async function salvarBlob(blob: Blob, nomeArquivo: string) {
+    if ('showSaveFilePicker' in window) {
+      try {
+        const ext = nomeArquivo.includes('.') ? nomeArquivo.split('.').pop()!.toLowerCase() : ''
+        const mimeMap: Record<string, string> = {
+          pdf: 'application/pdf',
+          jpg: 'image/jpeg', jpeg: 'image/jpeg',
+          png: 'image/png',
+        }
+        const mime = mimeMap[ext] ?? blob.type ?? 'application/octet-stream'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: nomeArquivo,
+          types: [{ description: 'Arquivo', accept: { [mime]: ext ? [`.${ext}`] : [] } }],
+        })
+        const writable = await handle.createWritable()
+        await writable.write(blob)
+        await writable.close()
+        return
+      } catch (e: unknown) {
+        if ((e as { name?: string })?.name === 'AbortError') return
+        // browser não suportou — cai no fallback
+      }
+    }
+    const blobUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = nomeArquivo
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
+  }
+
+  async function handleDownload(doc: DocumentoMedico) {
+    setDownloadingId(doc.id)
+    setError(null)
+    try {
+      const url = await medicosApi.getDocumentoUrl(medico.id, doc.id)
+      const res = await fetch(url)
+      const blob = await res.blob()
+      await salvarBlob(blob, doc.nomeArquivo)
+    } catch {
+      setError('Não foi possível baixar o arquivo')
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
+  async function handleDownloadAll() {
+    setDownloadingAll(true)
+    setError(null)
+    const lista = TODOS_TIPOS.flatMap(t => docs[t] ?? [])
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let dirHandle: any = null
+    if ('showDirectoryPicker' in window) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
+      } catch (e: unknown) {
+        if ((e as { name?: string })?.name === 'AbortError') { setDownloadingAll(false); return }
+      }
+    }
+
+    for (const doc of lista) {
+      try {
+        const url = await medicosApi.getDocumentoUrl(medico.id, doc.id)
+        const res = await fetch(url)
+        const blob = await res.blob()
+        if (dirHandle) {
+          const fileHandle = await dirHandle.getFileHandle(doc.nomeArquivo, { create: true })
+          const writable = await fileHandle.createWritable()
+          await writable.write(blob)
+          await writable.close()
+        } else {
+          await salvarBlob(blob, doc.nomeArquivo)
+          await new Promise(r => setTimeout(r, 400))
+        }
+      } catch {
+        // continua para o próximo documento
+      }
+    }
+    setDownloadingAll(false)
+  }
+
   const allDocs = TODOS_TIPOS.flatMap(t => docs[t] ?? [])
   const totalEnviados = allDocs.length
   const aprovados     = allDocs.filter(d => d.statusValidacao === 'APROVADO').length
@@ -393,7 +491,7 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
             <h2 className="text-base font-bold text-ds-text">Documentos do Médico</h2>
             <p className="text-xs text-ds-light mt-0.5">{medico.nome} · CRM {medico.crm}/{medico.crmUf.trim()}</p>
           </div>
-          <div className="shrink-0 flex flex-col items-end gap-1">
+          <div className="shrink-0 flex flex-col items-end gap-2">
             <span className={`px-3 py-1 rounded-full text-sm font-bold ${totalEnviados > 0 && aprovados === totalEnviados ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-700'}`}>
               {aprovados} de {totalEnviados} aprovados
             </span>
@@ -403,6 +501,16 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
                 style={{ width: `${totalEnviados > 0 ? (aprovados / totalEnviados) * 100 : 0}%` }}
               />
             </div>
+            {totalEnviados > 0 && (
+              <button
+                onClick={handleDownloadAll}
+                disabled={downloadingAll || downloadingId !== null}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border border-ds-border text-ds-mid hover:text-primary hover:border-primary hover:bg-primary-50 disabled:opacity-50 transition-colors"
+              >
+                <Download size={13} className={downloadingAll ? 'animate-bounce' : ''} />
+                {downloadingAll ? 'Baixando...' : 'Baixar todos'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -478,12 +586,14 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
                   canValidate={canValidate}
                   rejectingDocId={rejectingDocId}
                   rejectReason={rejectReason}
+                  downloadingId={downloadingId}
                   onAprovar={handleAprovar}
                   onIniciarReprovacao={doc => { setRejectingDocId(doc.id); setRejectReason('') }}
                   onConfirmarReprovacao={handleConfirmarReprovacao}
                   onCancelarReprovacao={() => { setRejectingDocId(null); setRejectReason('') }}
                   onRejectReasonChange={setRejectReason}
                   onVerArquivo={handleVerArquivo}
+                  onDownload={handleDownload}
                   onDeletar={handleDeletar}
                   onAdicionarMais={handleAdicionarMais}
                 />
