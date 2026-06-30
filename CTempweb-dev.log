@@ -1,0 +1,41 @@
+npm warn Unknown project config "node-linker". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> nx run web:dev
+
+> tools\scripts\run.cmd tools/scripts/build-web.js dev
+
+> node vite.js --config G:\olisystem\pinsaude\apps\web\vite.config.ts
+Port 3000 is in use, trying another one...
+Port 3001 is in use, trying another one...
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m5774[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m3002[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[2m13:58:42[22m [36m[1m[vite][22m[39m [32mapps/web/vite.config.ts changed, restarting server...[39m
+Re-optimizing dependencies because lockfile has changed
+[2m13:58:42[22m [36m[1m[vite][22m[39m server restarted.
+[2m13:58:46[22m [36m[1m[vite][22m[39m [32mapps/web/vite.config.ts changed, restarting server...[39m
+[2m13:58:46[22m [36m[1m[vite][22m[39m server restarted.
+[2m15:15:47[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/MedicosPage.tsx, /src/components/MedicoWizardModal.tsx, /src/components/CpfInput.tsx[22m
+[2m15:15:50[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/MedicosPage.tsx, /src/components/MedicoWizardModal.tsx, /src/components/CpfInput.tsx[22m
+[2m15:23:52[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:24:14[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:24:18[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:24:29[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:24:36[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:30:13[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/MedicosPage.tsx, /src/components/MedicoInativarModal.tsx, /src/components/MedicoWizardModal.tsx[22m
+[2m15:30:20[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:52:23[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/MedicosPage.tsx, /src/components/MedicoInativarModal.tsx, /src/components/MedicoWizardModal.tsx[22m
+[2m15:52:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/MedicosPage.tsx, /src/components/MedicoInativarModal.tsx, /src/components/MedicoWizardModal.tsx[22m
+[2m15:52:37[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:52:41[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:52:45[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:52:53[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:53:14[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:53:20[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:53:50[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/MedicoWizardModal.tsx, /src/index.css[22m
+[2m15:54:09[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MedicosPage.tsx, /src/index.css[22m
+[2m15:54:17[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MedicosPage.tsx, /src/index.css[22m
+[2m15:54:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MedicosPage.tsx, /src/index.css[22m
+[2m15:54:31[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MedicosPage.tsx, /src/index.css[22m
