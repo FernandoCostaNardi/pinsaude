@@ -391,9 +391,20 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     }
   }
 
-  async function downloadBlob(url: string, nomeArquivo: string) {
-    const res = await fetch(url)
-    const blob = await res.blob()
+  async function salvarBlob(blob: Blob, nomeArquivo: string) {
+    if ('showSaveFilePicker' in window) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const handle = await (window as any).showSaveFilePicker({ suggestedName: nomeArquivo })
+        const writable = await handle.createWritable()
+        await writable.write(blob)
+        await writable.close()
+        return
+      } catch (e: unknown) {
+        if ((e as { name?: string })?.name === 'AbortError') return
+        // browser não suportou — cai no fallback
+      }
+    }
     const blobUrl = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = blobUrl
@@ -409,7 +420,9 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     setError(null)
     try {
       const url = await medicosApi.getDocumentoUrl(medico.id, doc.id)
-      await downloadBlob(url, doc.nomeArquivo)
+      const res = await fetch(url)
+      const blob = await res.blob()
+      await salvarBlob(blob, doc.nomeArquivo)
     } catch {
       setError('Não foi possível baixar o arquivo')
     } finally {
@@ -421,11 +434,32 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     setDownloadingAll(true)
     setError(null)
     const lista = TODOS_TIPOS.flatMap(t => docs[t] ?? [])
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let dirHandle: any = null
+    if ('showDirectoryPicker' in window) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
+      } catch (e: unknown) {
+        if ((e as { name?: string })?.name === 'AbortError') { setDownloadingAll(false); return }
+      }
+    }
+
     for (const doc of lista) {
       try {
         const url = await medicosApi.getDocumentoUrl(medico.id, doc.id)
-        await downloadBlob(url, doc.nomeArquivo)
-        await new Promise(r => setTimeout(r, 400))
+        const res = await fetch(url)
+        const blob = await res.blob()
+        if (dirHandle) {
+          const fileHandle = await dirHandle.getFileHandle(doc.nomeArquivo, { create: true })
+          const writable = await fileHandle.createWritable()
+          await writable.write(blob)
+          await writable.close()
+        } else {
+          await salvarBlob(blob, doc.nomeArquivo)
+          await new Promise(r => setTimeout(r, 400))
+        }
       } catch {
         // continua para o próximo documento
       }
