@@ -115,6 +115,21 @@ class TomadorServiceTest {
     }
 
     @Test
+    void criar_comCnpjDuplicado_lanca409() {
+        Tomador existente = tomadorFixture(TENANT);
+        when(repo.findAll()).thenReturn(List.of(existente));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+
+        TomadorRequest req = new TomadorRequest(
+            "CLINICA", CNPJ_VALIDO, "Outra Clínica",
+            null, null, null, false, false, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Já existe um tomador");
+    }
+
+    @Test
     void criar_comCnpjInvalido_lanca400() {
         TomadorRequest req = new TomadorRequest(
             "CLINICA", CNPJ_INVALIDO, "Clínica Inválida",
@@ -194,6 +209,27 @@ class TomadorServiceTest {
 
         assertThat(result).isNotNull();
         verify(repo).save(existente);
+    }
+
+    @Test
+    void atualizar_comCnpjDuplicadoDeOutroTomador_lanca409() {
+        UUID id = UUID.randomUUID();
+        Tomador existente = tomadorFixture(TENANT);
+        existente.setId(id);
+
+        Tomador outro = tomadorFixture(TENANT); // UUID diferente
+
+        when(repo.findById(id)).thenReturn(Optional.of(existente));
+        when(repo.findAll()).thenReturn(List.of(existente, outro));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+
+        TomadorRequest req = new TomadorRequest(
+            "OPERADORA", CNPJ_VALIDO, "Operadora Nova",
+            null, null, null, true, false, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.atualizar(id, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Já existe um tomador");
     }
 
     // ─── consultarReceita ─────────────────────────────────────────────────────
