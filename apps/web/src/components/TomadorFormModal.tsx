@@ -30,6 +30,7 @@ const emptyForm = (): TomadorRequest => ({
   tipo: 'HOSPITAL',
   cnpjCpf: '',
   razaoSocialNome: '',
+  nomeFantasia: '',
   municipio: '',
   inscricaoMunicipal: '',
   indicadorRetencaoFederal: false,
@@ -59,6 +60,7 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
         tipo: tomador.tipo,
         cnpjCpf: tomador.cnpjCpf,
         razaoSocialNome: tomador.razaoSocialNome,
+        nomeFantasia: tomador.nomeFantasia ?? '',
         municipio: tomador.municipio ?? '',
         inscricaoMunicipal: tomador.inscricaoMunicipal ?? '',
         indicadorRetencaoFederal: tomador.indicadorRetencaoFederal,
@@ -95,8 +97,9 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
             .filter(Boolean).join(', ')
           setForm(f => ({
             ...f,
-            razaoSocialNome: data.razaoSocial ?? f.razaoSocialNome,
-            municipio:       data.municipio  ?? f.municipio,
+            razaoSocialNome: data.razaoSocial  ?? f.razaoSocialNome,
+            nomeFantasia:    data.nomeFantasia ?? f.nomeFantasia,
+            municipio:       data.municipio    ?? f.municipio,
             uf:              data.uf         ?? f.uf,
             logradouro:      logradouroCompleto || f.logradouro,
             bairro:          data.bairro     ?? f.bairro,
@@ -226,6 +229,14 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
             placeholder={isPf ? 'Nome do paciente' : 'Razão social da empresa'}
             error={errors.razaoSocialNome}
           />
+          {!isPf && (
+            <Input
+              label="Nome Fantasia"
+              value={form.nomeFantasia}
+              onChange={e => set('nomeFantasia', e.target.value)}
+              placeholder="Nome fantasia (opcional)"
+            />
+          )}
           <div className="grid grid-cols-2 gap-3">
             {!isPf && (
               <Input

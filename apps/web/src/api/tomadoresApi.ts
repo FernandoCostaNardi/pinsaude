@@ -33,6 +33,7 @@ export interface Tomador {
   tipo: TipoTomador
   cnpjCpf: string
   razaoSocialNome: string
+  nomeFantasia: string | null
   municipio: string | null
   inscricaoMunicipal: string | null
   indicadorRetencaoFederal: boolean
@@ -50,6 +51,7 @@ export interface TomadorRequest {
   tipo: string
   cnpjCpf: string
   razaoSocialNome: string
+  nomeFantasia: string
   municipio: string
   inscricaoMunicipal: string
   indicadorRetencaoFederal: boolean
