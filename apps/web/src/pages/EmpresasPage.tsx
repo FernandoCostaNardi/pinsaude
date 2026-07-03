@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Pencil, Trash2, Building2, Landmark, FileText, CheckCircle2, BarChart3 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Building2, Landmark, FileText, CheckCircle2, BarChart3, FolderOpen } from 'lucide-react'
 import {
   Badge, Button, Spinner, Alert,
   Table, THead, TBody, TRow, TH, TD,
@@ -10,6 +10,7 @@ import { EmpresaWizardModal } from '../components/EmpresaWizardModal'
 import { EmpresaDeleteModal } from '../components/EmpresaDeleteModal'
 import { ContasBancariasModal } from '../components/ContasBancariasModal'
 import { ConfiguracaoFiscalModal } from '../components/ConfiguracaoFiscalModal'
+import { DocumentosEmpresaModal } from '../components/DocumentosEmpresaModal'
 import { useAuth } from '../auth/useAuth'
 
 // ─── Regime ──────────────────────────────────────────────────────────────────
@@ -104,6 +105,7 @@ export function EmpresasPage() {
   const [deleting, setDeleting] = useState<Empresa | null>(null)
   const [contasEmpresa, setContasEmpresa] = useState<Empresa | null>(null)
   const [fiscalEmpresa, setFiscalEmpresa] = useState<Empresa | null>(null)
+  const [docsEmpresa, setDocsEmpresa] = useState<Empresa | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -354,6 +356,14 @@ export function EmpresasPage() {
                       </button>
                     )}
                     {isGestao && (
+                      <button
+                        onClick={() => setDocsEmpresa(empresa)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-ds-mid hover:bg-violet-50 hover:text-violet-600 transition-colors"
+                      >
+                        <FolderOpen size={13} /> Docs
+                      </button>
+                    )}
+                    {isGestao && (
                       <>
                         <button
                           onClick={() => openEdit(empresa)}
@@ -422,6 +432,15 @@ export function EmpresasPage() {
                               title="Configuração fiscal"
                             >
                               <FileText size={15} />
+                            </button>
+                          )}
+                          {isGestao && (
+                            <button
+                              onClick={() => setDocsEmpresa(empresa)}
+                              className="p-1.5 rounded hover:bg-violet-50 text-ds-light hover:text-violet-600 transition-colors"
+                              title="Documentos"
+                            >
+                              <FolderOpen size={15} />
                             </button>
                           )}
                           {isGestao && (
@@ -521,6 +540,12 @@ export function EmpresasPage() {
           empresaId={fiscalEmpresa.id}
           empresaNome={fiscalEmpresa.razaoSocial}
           onClose={() => setFiscalEmpresa(null)}
+        />
+      )}
+      {docsEmpresa && (
+        <DocumentosEmpresaModal
+          empresa={docsEmpresa}
+          onClose={() => setDocsEmpresa(null)}
         />
       )}
     </div>
