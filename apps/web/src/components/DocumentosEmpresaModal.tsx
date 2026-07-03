@@ -224,15 +224,17 @@ function DocumentoRow({
 interface HistoricoProps {
   empresaId: string
   onVerArquivo: (doc: DocumentoEmpresa) => void
-  onDownload: (doc: DocumentoEmpresa, ) => void
+  onDownload: (doc: DocumentoEmpresa) => void
+  onDeletar: (doc: DocumentoEmpresa) => Promise<void>
   downloadingId: string | null
 }
 
-function HistoricoContratoSocial({ empresaId, onVerArquivo, onDownload, downloadingId }: HistoricoProps) {
+function HistoricoContratoSocial({ empresaId, onVerArquivo, onDownload, onDeletar, downloadingId }: HistoricoProps) {
   const [aberto, setAberto] = useState(false)
   const [loading, setLoading] = useState(false)
   const [historico, setHistorico] = useState<DocumentoEmpresa[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   async function carregar() {
     if (historico.length > 0) { setAberto(v => !v); return }
@@ -245,6 +247,18 @@ function HistoricoContratoSocial({ empresaId, onVerArquivo, onDownload, download
       setError('Erro ao carregar histórico')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleDeletarHistorico(doc: DocumentoEmpresa) {
+    setDeletingId(doc.id)
+    try {
+      await onDeletar(doc)
+      setHistorico(h => h.filter(d => d.id !== doc.id))
+    } catch {
+      setError('Erro ao remover versão anterior')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -286,6 +300,12 @@ function HistoricoContratoSocial({ empresaId, onVerArquivo, onDownload, download
                 className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-50"
                 title="Baixar">
                 <Download size={13} className={downloadingId === doc.id ? 'animate-bounce' : ''} />
+              </button>
+              <button onClick={() => handleDeletarHistorico(doc)}
+                disabled={deletingId === doc.id}
+                className="p-1 rounded text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                title="Remover versão">
+                <Trash2 size={13} />
               </button>
             </div>
           ))}
@@ -631,6 +651,7 @@ export function DocumentosEmpresaModal({ empresa, onClose }: Props) {
           empresaId={empresa.id}
           onVerArquivo={handleVerArquivo}
           onDownload={handleDownload}
+          onDeletar={handleDeletar}
           downloadingId={downloadingId}
         />
 
