@@ -185,7 +185,7 @@ async function downloadDocumentoEmpresa(empresaId: string, docId: string): Promi
   })
   if (!res.ok) {
     let msg = `Erro ${res.status}`
-    try { const b = await res.json(); msg = b.mensagem ?? b.message ?? msg } catch { }
+    try { const b = await res.json(); msg = b.mensagem ?? b.message ?? msg } catch (_) { /* ignora erro de parse */ }
     throw new Error(msg)
   }
   return res.blob()
