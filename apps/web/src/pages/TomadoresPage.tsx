@@ -173,6 +173,7 @@ export function TomadoresPage() {
     return tomadores.filter(t => {
       const matchSearch = !q
         || t.razaoSocialNome.toLowerCase().includes(q)
+        || (t.nomeFantasia?.toLowerCase().includes(q) ?? false)
         || (qDigits.length >= 3 && t.cnpjCpf.replace(/\D/g, '').includes(qDigits))
       const matchTipo = !filterTipo || t.tipo === filterTipo
       return matchSearch && matchTipo
@@ -386,6 +387,7 @@ export function TomadoresPage() {
               <Table className="!border-0 !rounded-none">
                 <THead>
                   <TRow>
+                    <TH>Nome Fantasia</TH>
                     <TH>Razão Social / Nome</TH>
                     <TH>CNPJ / CPF</TH>
                     <TH>Tipo</TH>
@@ -399,6 +401,9 @@ export function TomadoresPage() {
                 <TBody>
                   {paginated.map(t => (
                     <TRow key={t.id}>
+                      <TD>
+                        <span className="text-ds-mid">{t.nomeFantasia ?? '—'}</span>
+                      </TD>
                       <TD>
                         <span className="font-semibold text-ds-text">{t.razaoSocialNome}</span>
                       </TD>

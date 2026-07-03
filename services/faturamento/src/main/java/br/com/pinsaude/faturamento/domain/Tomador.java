@@ -30,6 +30,9 @@ public class Tomador {
     @Column(name = "razao_social_nome", nullable = false, length = 255)
     private String razaoSocialNome;
 
+    @Column(name = "nome_fantasia", length = 255)
+    private String nomeFantasia;
+
     @Column(name = "inscricao_municipal", length = 20)
     private String inscricaoMunicipal;
 
@@ -82,6 +85,8 @@ public class Tomador {
     public void setCnpjCpfTomadorCriptografado(byte[] v) { this.cnpjCpfTomadorCriptografado = v; }
     public String getRazaoSocialNome() { return razaoSocialNome; }
     public void setRazaoSocialNome(String razaoSocialNome) { this.razaoSocialNome = razaoSocialNome; }
+    public String getNomeFantasia() { return nomeFantasia; }
+    public void setNomeFantasia(String nomeFantasia) { this.nomeFantasia = nomeFantasia; }
     public String getInscricaoMunicipal() { return inscricaoMunicipal; }
     public void setInscricaoMunicipal(String inscricaoMunicipal) { this.inscricaoMunicipal = inscricaoMunicipal; }
     public boolean isIndicadorRetencaoFederal() { return indicadorRetencaoFederal; }

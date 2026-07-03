@@ -73,6 +73,7 @@ public class TomadorService {
         t.setTipo(tipo);
         t.setCnpjCpfTomadorCriptografado(crypto.encrypt(cnpjCpfLimpo));
         t.setRazaoSocialNome(req.razaoSocialNome());
+        t.setNomeFantasia(req.nomeFantasia());
         t.setMunicipio(req.municipio());
         t.setInscricaoMunicipal(req.inscricaoMunicipal());
         t.setIndicadorRetencaoFederal(req.indicadorRetencaoFederal());
@@ -99,6 +100,7 @@ public class TomadorService {
         t.setTipo(tipo);
         t.setCnpjCpfTomadorCriptografado(crypto.encrypt(cnpjCpfLimpo));
         t.setRazaoSocialNome(req.razaoSocialNome());
+        t.setNomeFantasia(req.nomeFantasia());
         t.setMunicipio(req.municipio());
         t.setInscricaoMunicipal(req.inscricaoMunicipal());
         t.setIndicadorRetencaoFederal(req.indicadorRetencaoFederal());
@@ -165,6 +167,7 @@ public class TomadorService {
             t.getTipo().name(),
             cnpjCpf,
             t.getRazaoSocialNome(),
+            t.getNomeFantasia(),
             t.getMunicipio(),
             t.getInscricaoMunicipal(),
             t.isIndicadorRetencaoFederal(),
