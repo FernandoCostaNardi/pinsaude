@@ -1,6 +1,7 @@
 package br.com.pinsaude.onboarding.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.OffsetDateTime;
