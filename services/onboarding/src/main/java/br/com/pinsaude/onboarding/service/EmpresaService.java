@@ -126,7 +126,7 @@ public class EmpresaService {
 
         // Contrato Social: arquiva a versão anterior antes de salvar a nova
         if (tipo == TipoDocumentoEmpresa.CONTRATO_SOCIAL) {
-            documentoRepo.arquivarVersoesPorTipo(empresaId, TipoDocumentoEmpresa.CONTRATO_SOCIAL.name());
+            documentoRepo.arquivarVersoesPorTipo(empresaId, TipoDocumentoEmpresa.CONTRATO_SOCIAL);
         }
 
         String caminho = storageService.upload(empresaId, tipo.name(), arquivo);

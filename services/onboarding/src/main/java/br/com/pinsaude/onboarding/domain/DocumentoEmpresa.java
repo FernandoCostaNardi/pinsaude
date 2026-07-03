@@ -1,7 +1,6 @@
 package br.com.pinsaude.onboarding.domain;
 
 import jakarta.persistence.*;
-import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.OffsetDateTime;
@@ -19,8 +18,7 @@ public class DocumentoEmpresa {
     private UUID empresaId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "tipo", nullable = false)
-    @ColumnTransformer(write = "?::onboarding.tipo_documento_empresa_enum")
+    @Column(name = "tipo", nullable = false, length = 60)
     private TipoDocumentoEmpresa tipo;
 
     @Column(name = "nome_arquivo", nullable = false, length = 500)

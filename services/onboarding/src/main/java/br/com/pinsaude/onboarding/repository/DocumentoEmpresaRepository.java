@@ -32,11 +32,9 @@ public interface DocumentoEmpresaRepository extends JpaRepository<DocumentoEmpre
             UUID empresaId, TipoDocumentoEmpresa tipo);
 
     // Arquiva versões anteriores de um tipo (marca versaoAtual = false)
-    // Native query necessária: JPQL não aplica @ColumnTransformer em @Modifying, causando
-    // "operator does not exist: tipo_documento_empresa_enum = character varying"
     @Modifying
-    @Query(value = "UPDATE onboarding.documentos_empresa SET versao_atual = false WHERE empresa_id = :empresaId AND tipo = CAST(:tipo AS onboarding.tipo_documento_empresa_enum)", nativeQuery = true)
+    @Query("UPDATE DocumentoEmpresa d SET d.versaoAtual = false WHERE d.empresaId = :empresaId AND d.tipo = :tipo")
     void arquivarVersoesPorTipo(
             @Param("empresaId") UUID empresaId,
-            @Param("tipo") String tipo);
+            @Param("tipo") TipoDocumentoEmpresa tipo);
 }
