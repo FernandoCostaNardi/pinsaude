@@ -65,6 +65,7 @@ public class TomadorService {
         TipoTomador tipo = parseTipo(req.tipo());
         String cnpjCpfLimpo = req.cnpjCpf().replaceAll("\\D", "");
         validarDocumento(tipo, cnpjCpfLimpo);
+        validarDocumentoDuplicado(cnpjCpfLimpo, null);
 
         String tenant = SecurityUtils.currentCnpjTenant();
 
@@ -96,6 +97,7 @@ public class TomadorService {
         TipoTomador tipo = parseTipo(req.tipo());
         String cnpjCpfLimpo = req.cnpjCpf().replaceAll("\\D", "");
         validarDocumento(tipo, cnpjCpfLimpo);
+        validarDocumentoDuplicado(cnpjCpfLimpo, id);
 
         t.setTipo(tipo);
         t.setCnpjCpfTomadorCriptografado(crypto.encrypt(cnpjCpfLimpo));
@@ -133,6 +135,16 @@ public class TomadorService {
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────
+
+    private void validarDocumentoDuplicado(String cnpjCpfLimpo, UUID idExcluir) {
+        boolean existe = repo.findAll().stream()
+            .filter(t -> idExcluir == null || !idExcluir.equals(t.getId()))
+            .anyMatch(t -> cnpjCpfLimpo.equals(crypto.decrypt(t.getCnpjCpfTomadorCriptografado())));
+        if (existe) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Já existe um tomador cadastrado com este CNPJ/CPF");
+        }
+    }
 
     private TipoTomador parseTipo(String tipo) {
         try {
