@@ -3,6 +3,9 @@ package br.com.pinsaude.fiscal.dto;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 
+import java.math.BigDecimal;
+import java.util.Map;
+
 public record CalculoFiscalRequest(
 
     /** Valor bruto do serviço em centavos. */
@@ -23,5 +26,11 @@ public record CalculoFiscalRequest(
     boolean indicadorRetencaoIss,
 
     /** PF: tomador é equiparado a hospital (nota com tributos zerados). */
-    boolean equiparacaoHospitalar
+    boolean equiparacaoHospitalar,
+
+    /**
+     * Alíquotas do tomador que sobrescrevem as da empresa (chave = ISS|IR|CSLL|PIS|COFINS, valor = fração decimal 0.05 = 5%).
+     * Nullable — quando ausente o motor usa as alíquotas configuradas na empresa.
+     */
+    Map<String, BigDecimal> aliquotasOverride
 ) {}

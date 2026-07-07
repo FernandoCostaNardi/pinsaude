@@ -45,6 +45,9 @@ public class Producao {
     @ColumnTransformer(write = "?::faturamento.status_producao_enum")
     private StatusProducao status;
 
+    @Column(name = "cnae_codigo", length = 10)
+    private String cnaeCodigo;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -74,5 +77,7 @@ public class Producao {
     public void setDescricaoComplementar(String descricaoComplementar) { this.descricaoComplementar = descricaoComplementar; }
     public StatusProducao getStatus() { return status; }
     public void setStatus(StatusProducao status) { this.status = status; }
+    public String getCnaeCodigo() { return cnaeCodigo; }
+    public void setCnaeCodigo(String cnaeCodigo) { this.cnaeCodigo = cnaeCodigo; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

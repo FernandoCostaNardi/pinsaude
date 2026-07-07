@@ -20,6 +20,7 @@ public record ProducaoResponse(
     long valorBruto,
     String competencia,
     String descricaoComplementar,
+    String cnaeCodigo,
     String status,
     OffsetDateTime createdAt
 ) {
@@ -56,6 +57,7 @@ public record ProducaoResponse(
             p.getValorBruto(),
             p.getCompetencia(),
             p.getDescricaoComplementar(),
+            p.getCnaeCodigo(),
             p.getStatus().name(),
             p.getCreatedAt()
         );

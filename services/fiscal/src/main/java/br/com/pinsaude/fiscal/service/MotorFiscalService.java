@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -49,7 +50,7 @@ public class MotorFiscalService {
 
     @Transactional(readOnly = true)
     public CalculoFiscalResponse calcular(String cnpjId, CalculoFiscalRequest req) {
-        AliquotasCenario aliquotas = carregarAliquotas(cnpjId, req.competencia());
+        AliquotasCenario aliquotas = carregarAliquotas(cnpjId, req.competencia(), req.aliquotasOverride());
         String cenario = derivarCenario(req);
 
         long taxaPin = aplicar(req.valorBruto(), PERC_PIN);
@@ -133,13 +134,19 @@ public class MotorFiscalService {
             .longValue();
     }
 
-    private AliquotasCenario carregarAliquotas(String cnpjId, String competencia) {
-        // 1. Alíquotas por tributo (EPIC-05.1, tabela parametros_fiscais V2)
-        Optional<BigDecimal> iss   = buscarAliquotaPerTributo(cnpjId, TipoTributo.ISS,   competencia);
-        Optional<BigDecimal> ir    = buscarAliquotaPerTributo(cnpjId, TipoTributo.IR,    competencia);
-        Optional<BigDecimal> csll  = buscarAliquotaPerTributo(cnpjId, TipoTributo.CSLL,  competencia);
-        Optional<BigDecimal> pis   = buscarAliquotaPerTributo(cnpjId, TipoTributo.PIS,   competencia);
-        Optional<BigDecimal> cofins = buscarAliquotaPerTributo(cnpjId, TipoTributo.COFINS, competencia);
+    private AliquotasCenario carregarAliquotas(String cnpjId, String competencia,
+                                               Map<String, BigDecimal> overrides) {
+        // 1. Override do tomador tem prioridade; depois busca da empresa; depois fallback V1
+        Optional<BigDecimal> iss   = override(overrides, "ISS")
+            .or(() -> buscarAliquotaPerTributo(cnpjId, TipoTributo.ISS,    competencia));
+        Optional<BigDecimal> ir    = override(overrides, "IR")
+            .or(() -> buscarAliquotaPerTributo(cnpjId, TipoTributo.IR,     competencia));
+        Optional<BigDecimal> csll  = override(overrides, "CSLL")
+            .or(() -> buscarAliquotaPerTributo(cnpjId, TipoTributo.CSLL,   competencia));
+        Optional<BigDecimal> pis   = override(overrides, "PIS")
+            .or(() -> buscarAliquotaPerTributo(cnpjId, TipoTributo.PIS,    competencia));
+        Optional<BigDecimal> cofins = override(overrides, "COFINS")
+            .or(() -> buscarAliquotaPerTributo(cnpjId, TipoTributo.COFINS, competencia));
 
         // 2. Regime geral (TASK-04.5, tabela parametro_fiscal V1) como fallback e fonte de IBS/CBS
         LocalDate dataRef = competenciaToDate(competencia);
@@ -174,6 +181,12 @@ public class MotorFiscalService {
             cofins.orElse(BigDecimal.ZERO),
             false, null
         );
+    }
+
+    private Optional<BigDecimal> override(Map<String, BigDecimal> overrides, String tipo) {
+        if (overrides == null) return Optional.empty();
+        BigDecimal val = overrides.get(tipo);
+        return val != null ? Optional.of(val) : Optional.empty();
     }
 
     private Optional<BigDecimal> buscarAliquotaPerTributo(String cnpjId, TipoTributo tipo, String comp) {

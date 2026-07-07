@@ -44,6 +44,7 @@ export interface Producao {
   valorBruto: number
   competencia: string
   descricaoComplementar?: string
+  cnaeCodigo?: string | null
   status: 'RASCUNHO' | 'CONFIRMADA' | 'EMITIDA' | 'CANCELADA'
   createdAt: string
 }
@@ -59,6 +60,7 @@ export interface ProducaoRequest {
   servicoId: string
   competencia: string
   descricaoComplementar?: string
+  cnaeCodigo?: string
   empresaId: string | null
   participantes: ParticipacaoRequest[]
 }

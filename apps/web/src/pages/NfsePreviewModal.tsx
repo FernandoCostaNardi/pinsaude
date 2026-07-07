@@ -85,6 +85,8 @@ interface Props {
   cnpjPrestador: string | null | undefined
   empresaInfo: Empresa | null
   medicoNomeMap: Record<string, string>
+  cnaeCodigo?: string | null
+  aliquotasOverride?: Record<string, number>
   onClose: () => void
   onConfirmar: () => void
   emitindo: boolean
@@ -93,7 +95,9 @@ interface Props {
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 export function NfsePreviewModal({
-  producao, cnpjPrestador, empresaInfo, medicoNomeMap, onClose, onConfirmar, emitindo,
+  producao, cnpjPrestador, empresaInfo, medicoNomeMap,
+  cnaeCodigo, aliquotasOverride,
+  onClose, onConfirmar, emitindo,
 }: Props) {
   const [tomador, setTomador] = useState<Tomador | null>(null)
   const [loadingTomador, setLoadingTomador] = useState(true)
@@ -108,11 +112,20 @@ export function NfsePreviewModal({
 
   const { servico, valorBruto, competencia, participantes } = producao
 
-  const issRetido    = producao.tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
-  const irRetido     = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
-  const csllRetido   = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
-  const pisRetido    = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
-  const cofinsRetido = producao.tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
+  function efAliq(tipo: string, servicoAliq: number): number {
+    return aliquotasOverride?.[tipo] !== undefined ? aliquotasOverride[tipo] : servicoAliq
+  }
+  const aliqIss    = efAliq('ISS',    servico.aliquotaIss)
+  const aliqIr     = efAliq('IR',     servico.aliquotaIr)
+  const aliqCsll   = efAliq('CSLL',   servico.aliquotaCsll)
+  const aliqPis    = efAliq('PIS',    servico.aliquotaPis)
+  const aliqCofins = efAliq('COFINS', servico.aliquotaCofins)
+
+  const issRetido    = producao.tomador.retencaoIss     ? calcPct(valorBruto, aliqIss)    : 0
+  const irRetido     = producao.tomador.retencaoFederal ? calcPct(valorBruto, aliqIr)     : 0
+  const csllRetido   = producao.tomador.retencaoFederal ? calcPct(valorBruto, aliqCsll)   : 0
+  const pisRetido    = producao.tomador.retencaoFederal ? calcPct(valorBruto, aliqPis)    : 0
+  const cofinsRetido = producao.tomador.retencaoFederal ? calcPct(valorBruto, aliqCofins) : 0
   const totalFederal = irRetido + csllRetido + pisRetido + cofinsRetido
   const totalRetidos = issRetido + totalFederal
   const valorLiquido = valorBruto - totalRetidos
@@ -359,10 +372,11 @@ ${outerHtml}
               <pre className="text-[10px] text-gray-700 font-mono whitespace-pre-wrap leading-5">
 {[
   `Serviços médicos prestados ref ${formatCompetenciaMesAno(competencia)}${medicoNomesStr ? ` — ${medicoNomesStr}` : ''}`,
+  cnaeCodigo ? `CNAE: ${cnaeCodigo}` : null,
   ``,
   `Dados bancários: Banco Inter: 077 / Agência: 0001 / Conta Corrente PJ: 3875500-9`,
   `Chave Pix: financeiro@pinsaude.com.br`,
-].join('\n')}
+].filter(Boolean).join('\n')}
               </pre>
             </div>
 
@@ -376,22 +390,22 @@ ${outerHtml}
               <Campo label="Regime Especial" value="Nenhum" />
               <Campo label="Suspensão ISSQN" value="Não" />
               <Campo label="BC ISSQN" value={formatBRL(valorBruto)} />
-              <Campo label="Alíquota ISSQN" value={`${Number(servico.aliquotaIss).toFixed(2)}%`} />
+              <Campo label="Alíquota ISSQN" value={`${Number(aliqIss).toFixed(2)}%`} />
               <Campo label="ISSQN Retido?" value={issRetido > 0 ? 'Sim' : 'Não Retido'} />
-              <Campo label="ISSQN Apurado" value={formatBRL(calcPct(valorBruto, servico.aliquotaIss))} />
+              <Campo label="ISSQN Apurado" value={formatBRL(calcPct(valorBruto, aliqIss))} />
             </CamposGrid>
 
             {/* ── Tributação Federal ── */}
             <SecaoHeader>Tributação Federal</SecaoHeader>
             <CamposGrid cols={4}>
               <Campo label="IRRF"
-                     value={irRetido > 0 ? formatBRL(irRetido) : `${formatBRL(calcPct(valorBruto, servico.aliquotaIr))} (a recolher)`} />
+                     value={irRetido > 0 ? formatBRL(irRetido) : `${formatBRL(calcPct(valorBruto, aliqIr))} (a recolher)`} />
               <Campo label="CSLL"
-                     value={csllRetido > 0 ? formatBRL(csllRetido) : `${formatBRL(calcPct(valorBruto, servico.aliquotaCsll))} (a recolher)`} />
+                     value={csllRetido > 0 ? formatBRL(csllRetido) : `${formatBRL(calcPct(valorBruto, aliqCsll))} (a recolher)`} />
               <Campo label="PIS"
-                     value={pisRetido > 0 ? formatBRL(pisRetido) : `${formatBRL(calcPct(valorBruto, servico.aliquotaPis))} (a recolher)`} />
+                     value={pisRetido > 0 ? formatBRL(pisRetido) : `${formatBRL(calcPct(valorBruto, aliqPis))} (a recolher)`} />
               <Campo label="COFINS"
-                     value={cofinsRetido > 0 ? formatBRL(cofinsRetido) : `${formatBRL(calcPct(valorBruto, servico.aliquotaCofins))} (a recolher)`} />
+                     value={cofinsRetido > 0 ? formatBRL(cofinsRetido) : `${formatBRL(calcPct(valorBruto, aliqCofins))} (a recolher)`} />
               {totalFederal > 0 && (
                 <Campo
                   label="Contrib. Sociais Retidas (PIS/COFINS/CSLL)"
@@ -414,7 +428,7 @@ ${outerHtml}
               <div>
                 <LinhaValor label="Valor dos Serviços" value={valorBruto} />
                 {issRetido > 0 && (
-                  <LinhaValor label={`ISSQN Retido (${Number(servico.aliquotaIss).toFixed(2)}%)`} value={issRetido} sub negativo />
+                  <LinhaValor label={`ISSQN Retido (${Number(aliqIss).toFixed(2)}%)`} value={issRetido} sub negativo />
                 )}
                 {totalFederal > 0 && (
                   <LinhaValor label="Total Retenções Federais" value={totalFederal} sub negativo />
@@ -428,11 +442,11 @@ ${outerHtml}
               <div className="pl-4 border-l border-gray-200 text-[9px] text-gray-500 space-y-1.5">
                 <p className="font-bold text-gray-700 text-[10px]">Composição dos Tributos</p>
                 {[
-                  { nome: 'ISS', aliq: servico.aliquotaIss, retido: issRetido > 0 },
-                  { nome: 'IR',  aliq: servico.aliquotaIr,  retido: irRetido > 0 },
-                  { nome: 'CSLL',aliq: servico.aliquotaCsll,retido: csllRetido > 0 },
-                  { nome: 'PIS', aliq: servico.aliquotaPis, retido: pisRetido > 0 },
-                  { nome: 'COFINS',aliq: servico.aliquotaCofins, retido: cofinsRetido > 0 },
+                  { nome: 'ISS',    aliq: aliqIss,    retido: issRetido > 0 },
+                  { nome: 'IR',     aliq: aliqIr,     retido: irRetido > 0 },
+                  { nome: 'CSLL',   aliq: aliqCsll,   retido: csllRetido > 0 },
+                  { nome: 'PIS',    aliq: aliqPis,    retido: pisRetido > 0 },
+                  { nome: 'COFINS', aliq: aliqCofins, retido: cofinsRetido > 0 },
                 ].map(t => (
                   <div key={t.nome} className="flex justify-between">
                     <span>

@@ -48,20 +48,20 @@ public class NfseService {
     }
 
     /**
-     * Cria NotaFiscal e publica na fila — ambos na mesma transação (outbox pattern).
+     * Cria NotaFiscal e publica na fila â€” ambos na mesma transaÃ§Ã£o (outbox pattern).
      * Idempotente: mesma producaoId retorna a nota existente sem reemitir.
-     * 1ª nota de um médico: fica em AGUARDANDO_VALIDACAO até aprovação manual.
+     * 1Âª nota de um mÃ©dico: fica em AGUARDANDO_VALIDACAO atÃ© aprovaÃ§Ã£o manual.
      */
     @Transactional
     public EmitirNfseResponse emitir(EmitirNfseRequest req, String cnpjTenant) {
         if (notaRepo.existsByProducaoId(req.producaoId())) {
-            log.info("Nota já existente para producaoId={}, retornando existente", req.producaoId());
+            log.info("Nota jÃ¡ existente para producaoId={}, retornando existente", req.producaoId());
             return notaRepo.findByProducaoId(req.producaoId())
                 .map(n -> EmitirNfseResponse.from(n, false))
                 .orElseThrow();
         }
 
-        // Multi-médico (medicoId null) → sem verificação de primeira nota; vai direto para fila
+        // Multi-mÃ©dico (medicoId null) â†’ sem verificaÃ§Ã£o de primeira nota; vai direto para fila
         boolean primeiraNotaMedico = req.medicoId() != null
             && !notaRepo.existsByMedicoIdAndStatus(req.medicoId(), StatusNota.EMITIDA);
         StatusNota statusInicial = primeiraNotaMedico ? StatusNota.AGUARDANDO_VALIDACAO : StatusNota.PENDENTE;
@@ -81,31 +81,32 @@ public class NfseService {
         nota.setValorPis(req.valorPis() != null ? req.valorPis() : 0L);
         nota.setValorCofins(req.valorCofins() != null ? req.valorCofins() : 0L);
         nota.setTomadorNome(req.tomadorNome());
+        nota.setCnaeCodigo(req.cnaeCodigo());
         nota.setStatus(statusInicial);
 
         nota = notaRepo.save(nota);
 
         if (statusInicial == StatusNota.PENDENTE) {
             producer.enviar(new NfseEmissaoMessage(nota.getId()));
-            log.info("NotaFiscal criada id={} producaoId={} — enfileirada para processamento", nota.getId(), nota.getProducaoId());
+            log.info("NotaFiscal criada id={} producaoId={} â€” enfileirada para processamento", nota.getId(), nota.getProducaoId());
         } else {
-            log.info("NotaFiscal criada id={} producaoId={} — aguardando validação (1ª nota do médico)", nota.getId(), nota.getProducaoId());
+            log.info("NotaFiscal criada id={} producaoId={} â€” aguardando validaÃ§Ã£o (1Âª nota do mÃ©dico)", nota.getId(), nota.getProducaoId());
         }
 
         return EmitirNfseResponse.from(nota, primeiraNotaMedico);
     }
 
     /**
-     * Chamado pelo consumer RabbitMQ: processa a emissão real via adapter.
-     * Idempotente: notas fora de PENDENTE são ignoradas silenciosamente.
+     * Chamado pelo consumer RabbitMQ: processa a emissÃ£o real via adapter.
+     * Idempotente: notas fora de PENDENTE sÃ£o ignoradas silenciosamente.
      */
     @Transactional
     public void processarEmissao(UUID notaId) {
         var nota = notaRepo.findById(notaId)
-            .orElseThrow(() -> new IllegalArgumentException("Nota não encontrada: " + notaId));
+            .orElseThrow(() -> new IllegalArgumentException("Nota nÃ£o encontrada: " + notaId));
 
         if (nota.getStatus() != StatusNota.PENDENTE) {
-            log.info("Nota {} já processada (status={}), ignorando", notaId, nota.getStatus());
+            log.info("Nota {} jÃ¡ processada (status={}), ignorando", notaId, nota.getStatus());
             return;
         }
 
@@ -147,7 +148,7 @@ public class NfseService {
         atualizarContadoresLote(nota.getCompetencia(), nota.getStatus());
     }
 
-    // Atualiza contadores do lote EM_ANDAMENTO atomicamente (se houver lote ativo para a competência)
+    // Atualiza contadores do lote EM_ANDAMENTO atomicamente (se houver lote ativo para a competÃªncia)
     private void atualizarContadoresLote(String competencia, StatusNota statusFinal) {
         if (statusFinal == StatusNota.EMITIDA) {
             loteRepo.incrementarEmitida(competencia);
@@ -157,18 +158,18 @@ public class NfseService {
     }
 
     /**
-     * Retorna o status atual de uma nota pelo producaoId — usado para polling do frontend.
+     * Retorna o status atual de uma nota pelo producaoId â€” usado para polling do frontend.
      */
     @Transactional(readOnly = true)
     public NotaFiscalStatusResponse getStatus(UUID producaoId) {
         return notaRepo.findByProducaoId(producaoId)
             .map(NotaFiscalStatusResponse::from)
             .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Nota não encontrada para producaoId: " + producaoId));
+                HttpStatus.NOT_FOUND, "Nota nÃ£o encontrada para producaoId: " + producaoId));
     }
 
     /**
-     * Lista todas as notas fiscais ordenadas por criação (mais recentes primeiro).
+     * Lista todas as notas fiscais ordenadas por criaÃ§Ã£o (mais recentes primeiro).
      */
     @Transactional(readOnly = true)
     public List<NotaFiscalStatusResponse> listar() {
@@ -184,9 +185,9 @@ public class NfseService {
     @Transactional(readOnly = true)
     public String getXml(UUID notaId) {
         var nota = notaRepo.findById(notaId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota nÃ£o encontrada"));
         if (nota.getXmlNota() == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "XML não disponível — nota ainda não emitida");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "XML nÃ£o disponÃ­vel â€” nota ainda nÃ£o emitida");
         }
         return nota.getXmlNota();
     }
@@ -197,37 +198,37 @@ public class NfseService {
     @Transactional(readOnly = true)
     public byte[] getPdf(UUID notaId) {
         var nota = notaRepo.findById(notaId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota nÃ£o encontrada"));
         if (nota.getPdfNota() == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "PDF não disponível — nota ainda não emitida");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "PDF nÃ£o disponÃ­vel â€” nota ainda nÃ£o emitida");
         }
         return nota.getPdfNota();
     }
 
     /**
-     * Aprova a 1ª nota de um médico (AGUARDANDO_VALIDACAO → PENDENTE + enfileira).
+     * Aprova a 1Âª nota de um mÃ©dico (AGUARDANDO_VALIDACAO â†’ PENDENTE + enfileira).
      */
     @Transactional
     public void aprovar(UUID notaId) {
         var nota = notaRepo.findById(notaId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota nÃ£o encontrada"));
         if (nota.getStatus() != StatusNota.AGUARDANDO_VALIDACAO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "Nota não está aguardando validação (status atual: " + nota.getStatus() + ")");
+                "Nota nÃ£o estÃ¡ aguardando validaÃ§Ã£o (status atual: " + nota.getStatus() + ")");
         }
         nota.setStatus(StatusNota.PENDENTE);
         notaRepo.save(nota);
         producer.enviar(new NfseEmissaoMessage(nota.getId()));
-        log.info("1ª nota do médico aprovada — enfileirada: notaId={}", notaId);
+        log.info("1Âª nota do mÃ©dico aprovada â€” enfileirada: notaId={}", notaId);
     }
 
     /**
-     * Cancela uma nota emitida (EMITIDA → CANCELADA). Registra motivo em observacoes.
+     * Cancela uma nota emitida (EMITIDA â†’ CANCELADA). Registra motivo em observacoes.
      */
     @Transactional
     public void cancelar(UUID notaId, String motivo) {
         var nota = notaRepo.findById(notaId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota nÃ£o encontrada"));
         if (nota.getStatus() != StatusNota.EMITIDA) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Apenas notas EMITIDAS podem ser canceladas (status atual: " + nota.getStatus() + ")");
@@ -239,12 +240,12 @@ public class NfseService {
     }
 
     /**
-     * Rejeita uma nota na fila de exceções (AGUARDANDO_VALIDACAO → CANCELADA). Registra motivo.
+     * Rejeita uma nota na fila de exceÃ§Ãµes (AGUARDANDO_VALIDACAO â†’ CANCELADA). Registra motivo.
      */
     @Transactional
     public void rejeitar(UUID notaId, String motivo) {
         var nota = notaRepo.findById(notaId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota nÃ£o encontrada"));
         if (nota.getStatus() != StatusNota.AGUARDANDO_VALIDACAO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Apenas notas AGUARDANDO_VALIDACAO podem ser rejeitadas (status atual: " + nota.getStatus() + ")");
@@ -252,11 +253,11 @@ public class NfseService {
         nota.setStatus(StatusNota.CANCELADA);
         nota.setObservacoes("Rejeitada: " + motivo);
         notaRepo.save(nota);
-        log.info("NotaFiscal {} rejeitada (fila de exceções). Motivo: {}", notaId, motivo);
+        log.info("NotaFiscal {} rejeitada (fila de exceÃ§Ãµes). Motivo: {}", notaId, motivo);
     }
 
     /**
-     * Lista notas na fila de exceções (AGUARDANDO_VALIDACAO — 1ª nota de médico pendente validação).
+     * Lista notas na fila de exceÃ§Ãµes (AGUARDANDO_VALIDACAO â€” 1Âª nota de mÃ©dico pendente validaÃ§Ã£o).
      */
     @Transactional(readOnly = true)
     public List<NotaFiscalStatusResponse> listarExcecoes() {
@@ -268,12 +269,12 @@ public class NfseService {
 
     /**
      * Reprocessa uma nota individual com status ERRO ou AGUARDANDO_EMISSAO_MANUAL.
-     * Reset para PENDENTE e republica na fila — idempotente pelo consumer.
+     * Reset para PENDENTE e republica na fila â€” idempotente pelo consumer.
      */
     @Transactional
     public void reprocessarNota(UUID notaId) {
         var nota = notaRepo.findById(notaId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota não encontrada"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota nÃ£o encontrada"));
         if (nota.getStatus() != StatusNota.ERRO && nota.getStatus() != StatusNota.AGUARDANDO_EMISSAO_MANUAL) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Apenas notas ERRO ou AGUARDANDO_EMISSAO_MANUAL podem ser reprocessadas (status: " + nota.getStatus() + ")");
@@ -284,3 +285,4 @@ public class NfseService {
         log.info("NotaFiscal {} reenfileirada para reprocessamento", notaId);
     }
 }
+

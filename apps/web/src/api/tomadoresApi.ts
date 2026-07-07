@@ -28,6 +28,18 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 export type TipoTomador = 'HOSPITAL' | 'CLINICA' | 'OPERADORA' | 'PACIENTE_PF'
 
+export interface TomadorAliquota {
+  id: string
+  tipoTributo: 'ISS' | 'IR' | 'CSLL' | 'PIS' | 'COFINS'
+  valorAliquota: number  // percentual: 5.0000 = 5%
+}
+
+export interface TomadorCnae {
+  id: string
+  codigoCnae: string
+  descricao: string | null
+}
+
 export interface Tomador {
   id: string
   tipo: TipoTomador
@@ -45,6 +57,8 @@ export interface Tomador {
   cep: string | null
   uf: string | null
   pais: string | null
+  aliquotas: TomadorAliquota[]
+  cnaes: TomadorCnae[]
 }
 
 export interface TomadorRequest {
@@ -128,5 +142,49 @@ export const tomadoresApi = {
     })
     if (res.status === 404) return null
     return handleResponse<ReceitaFederalData>(res)
+  },
+
+  async listarAliquotas(tomadorId: string): Promise<TomadorAliquota[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/aliquotas`, { headers: authHeaders() })
+    return handleResponse<TomadorAliquota[]>(res)
+  },
+
+  async salvarAliquota(tomadorId: string, tipoTributo: string, valorAliquota: number): Promise<TomadorAliquota> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/aliquotas`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ tipoTributo, valorAliquota }),
+    })
+    return handleResponse<TomadorAliquota>(res)
+  },
+
+  async removerAliquota(tomadorId: string, aliquotaId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/aliquotas/${aliquotaId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
+
+  async listarCnaes(tomadorId: string): Promise<TomadorCnae[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/cnaes`, { headers: authHeaders() })
+    return handleResponse<TomadorCnae[]>(res)
+  },
+
+  async adicionarCnae(tomadorId: string, codigoCnae: string, descricao: string): Promise<TomadorCnae> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/cnaes`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ codigoCnae, descricao }),
+    })
+    return handleResponse<TomadorCnae>(res)
+  },
+
+  async removerCnae(tomadorId: string, cnaeId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/cnaes/${cnaeId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
   },
 }

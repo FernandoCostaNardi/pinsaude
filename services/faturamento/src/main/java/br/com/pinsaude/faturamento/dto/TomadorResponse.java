@@ -1,5 +1,6 @@
 package br.com.pinsaude.faturamento.dto;
 
+import java.util.List;
 import java.util.UUID;
 
 public record TomadorResponse(
@@ -18,5 +19,7 @@ public record TomadorResponse(
     String bairro,
     String cep,
     String uf,
-    String pais
+    String pais,
+    List<TomadorAliquotaResponse> aliquotas,
+    List<TomadorCnaeResponse> cnaes
 ) {}

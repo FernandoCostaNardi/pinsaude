@@ -263,7 +263,7 @@ class MotorFiscalServiceTest {
 
     private CalculoFiscalRequest req(String comp, boolean pj, boolean retFederal,
                                      boolean retIss, boolean equiparado) {
-        return new CalculoFiscalRequest(BRUTO, comp, pj, retFederal, retIss, equiparado);
+        return new CalculoFiscalRequest(BRUTO, comp, pj, retFederal, retIss, equiparado, null);
     }
 
     private ParametroFiscal parametroPadrao() {

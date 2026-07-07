@@ -3,10 +3,18 @@ package br.com.pinsaude.faturamento.service;
 import br.com.pinsaude.faturamento.config.SecurityUtils;
 import br.com.pinsaude.faturamento.domain.TipoTomador;
 import br.com.pinsaude.faturamento.domain.Tomador;
+import br.com.pinsaude.faturamento.domain.TomadorAliquota;
+import br.com.pinsaude.faturamento.domain.TomadorCnae;
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
+import br.com.pinsaude.faturamento.dto.TomadorAliquotaRequest;
+import br.com.pinsaude.faturamento.dto.TomadorAliquotaResponse;
+import br.com.pinsaude.faturamento.dto.TomadorCnaeRequest;
+import br.com.pinsaude.faturamento.dto.TomadorCnaeResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
+import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
+import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.http.HttpStatus;
@@ -24,13 +32,19 @@ public class TomadorService {
     private final TomadorRepository repo;
     private final CryptoService crypto;
     private final ConsultaCnpjPort consultaCnpjPort;
+    private final TomadorAliquotaRepository aliquotaRepo;
+    private final TomadorCnaeRepository cnaeRepo;
 
     public TomadorService(TomadorRepository repo,
                           CryptoService crypto,
-                          ConsultaCnpjPort consultaCnpjPort) {
+                          ConsultaCnpjPort consultaCnpjPort,
+                          TomadorAliquotaRepository aliquotaRepo,
+                          TomadorCnaeRepository cnaeRepo) {
         this.repo = repo;
         this.crypto = crypto;
         this.consultaCnpjPort = consultaCnpjPort;
+        this.aliquotaRepo = aliquotaRepo;
+        this.cnaeRepo = cnaeRepo;
     }
 
     public List<TomadorResponse> buscar(String q) {
@@ -40,7 +54,6 @@ public class TomadorService {
 
         String qDigitos = q.replaceAll("\\D", "");
 
-        // Se a query contém apenas dígitos, pontos, traços e barras → busca por CNPJ/CPF
         if (!qDigitos.isBlank() && qDigitos.length() >= 6 && q.matches("[\\d.\\-/]+")) {
             return repo.findAll().stream()
                 .filter(t -> {
@@ -97,7 +110,11 @@ public class TomadorService {
         TipoTomador tipo = parseTipo(req.tipo());
         String cnpjCpfLimpo = req.cnpjCpf().replaceAll("\\D", "");
         validarDocumento(tipo, cnpjCpfLimpo);
-        validarDocumentoDuplicado(cnpjCpfLimpo, id);
+
+        String cnpjAtual = crypto.decrypt(t.getCnpjCpfTomadorCriptografado());
+        if (!cnpjCpfLimpo.equals(cnpjAtual)) {
+            validarDocumentoDuplicado(cnpjCpfLimpo, id);
+        }
 
         t.setTipo(tipo);
         t.setCnpjCpfTomadorCriptografado(crypto.encrypt(cnpjCpfLimpo));
@@ -132,6 +149,66 @@ public class TomadorService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CNPJ inválido");
         }
         return consultaCnpjPort.consultar(digits);
+    }
+
+    // ─── Alíquotas por tomador ────────────────────────────────────────────────
+
+    public List<TomadorAliquotaResponse> listarAliquotas(UUID tomadorId) {
+        findOrThrow(tomadorId);
+        return aliquotaRepo.findByTomadorId(tomadorId).stream()
+            .map(TomadorAliquotaResponse::from).toList();
+    }
+
+    @Transactional
+    public TomadorAliquotaResponse salvarAliquota(UUID tomadorId, TomadorAliquotaRequest req) {
+        findOrThrow(tomadorId);
+        TomadorAliquota aliquota = aliquotaRepo
+            .findByTomadorIdAndTipoTributo(tomadorId, req.tipoTributo())
+            .orElseGet(TomadorAliquota::new);
+        aliquota.setTomadorId(tomadorId);
+        aliquota.setTipoTributo(req.tipoTributo());
+        aliquota.setValorAliquota(req.valorAliquota());
+        return TomadorAliquotaResponse.from(aliquotaRepo.save(aliquota));
+    }
+
+    @Transactional
+    public void removerAliquota(UUID tomadorId, UUID aliquotaId) {
+        findOrThrow(tomadorId);
+        TomadorAliquota aliquota = aliquotaRepo.findById(aliquotaId)
+            .filter(a -> tomadorId.equals(a.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alíquota não encontrada"));
+        aliquotaRepo.delete(aliquota);
+    }
+
+    // ─── CNAEs por tomador ────────────────────────────────────────────────────
+
+    public List<TomadorCnaeResponse> listarCnaes(UUID tomadorId) {
+        findOrThrow(tomadorId);
+        return cnaeRepo.findByTomadorId(tomadorId).stream()
+            .map(TomadorCnaeResponse::from).toList();
+    }
+
+    @Transactional
+    public TomadorCnaeResponse adicionarCnae(UUID tomadorId, TomadorCnaeRequest req) {
+        findOrThrow(tomadorId);
+        if (cnaeRepo.existsByTomadorIdAndCodigoCnae(tomadorId, req.codigoCnae())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "CNAE " + req.codigoCnae() + " já cadastrado para este tomador");
+        }
+        TomadorCnae cnae = new TomadorCnae();
+        cnae.setTomadorId(tomadorId);
+        cnae.setCodigoCnae(req.codigoCnae());
+        cnae.setDescricao(req.descricao());
+        return TomadorCnaeResponse.from(cnaeRepo.save(cnae));
+    }
+
+    @Transactional
+    public void removerCnae(UUID tomadorId, UUID cnaeId) {
+        findOrThrow(tomadorId);
+        TomadorCnae cnae = cnaeRepo.findById(cnaeId)
+            .filter(c -> tomadorId.equals(c.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "CNAE não encontrado"));
+        cnaeRepo.delete(cnae);
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────
@@ -174,6 +251,10 @@ public class TomadorService {
 
     private TomadorResponse toResponse(Tomador t) {
         String cnpjCpf = crypto.decrypt(t.getCnpjCpfTomadorCriptografado());
+        List<TomadorAliquotaResponse> aliquotas = aliquotaRepo.findByTomadorId(t.getId()).stream()
+            .map(TomadorAliquotaResponse::from).toList();
+        List<TomadorCnaeResponse> cnaes = cnaeRepo.findByTomadorId(t.getId()).stream()
+            .map(TomadorCnaeResponse::from).toList();
         return new TomadorResponse(
             t.getId(),
             t.getTipo().name(),
@@ -190,7 +271,9 @@ public class TomadorService {
             t.getBairro(),
             t.getCep(),
             t.getUf(),
-            t.getPais()
+            t.getPais(),
+            aliquotas,
+            cnaes
         );
     }
 }

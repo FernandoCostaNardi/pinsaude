@@ -10,6 +10,7 @@ import { Servico, servicosApi } from '../api/servicosApi'
 import { Tomador, tomadoresApi } from '../api/tomadoresApi'
 import { producoesApi } from '../api/producoesApi'
 import { portalApi, PerfilMedico, EmpresaPortal, ProducaoPortal } from '../api/portalApi'
+import { formatCnae } from '../components/CnaeSelect'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -295,6 +296,7 @@ export function PortalProducaoNovaPage() {
 
   // seleções do formulário
   const [tomador,      setTomador]      = useState<Tomador | null>(null)
+  const [cnaeCodigo,   setCnaeCodigo]   = useState<string>('')
   const [servico,      setServico]      = useState<Servico | null>(null)
   const [empresa,      setEmpresa]      = useState<EmpresaPortal | null>(null)
   const [competencia,  setCompetencia]  = useState(COMPETENCIAS[0])
@@ -359,6 +361,7 @@ export function PortalProducaoNovaPage() {
         servicoId: servico!.id,
         competencia,
         descricaoComplementar: descricao || undefined,
+        cnaeCodigo: cnaeCodigo || undefined,
         empresaId: empresa!.id,
         participantes: [{ medicoId: perfil.id, valorBruto: totalCentavos }],
       })
@@ -457,9 +460,28 @@ export function PortalProducaoNovaPage() {
             placeholder="Selecione o tomador..."
             items={tomadores}
             selected={tomador}
-            onSelect={setTomador}
+            onSelect={t => { setTomador(t); setCnaeCodigo('') }}
             getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
           />
+
+          {/* CNAE do tomador — aparece quando o tomador tem CNAEs cadastrados */}
+          {tomador && tomador.cnaes && tomador.cnaes.length > 0 && (
+            <div>
+              <label className="block text-xs font-bold text-ds-mid mb-1">CNAE (atividade econômica da nota)</label>
+              <select
+                value={cnaeCodigo}
+                onChange={e => setCnaeCodigo(e.target.value)}
+                className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">Selecione o CNAE...</option>
+                {tomador.cnaes.map(c => (
+                  <option key={c.id} value={c.codigoCnae}>
+                    {formatCnae(c.codigoCnae)}{c.descricao ? ` — ${c.descricao.charAt(0) + c.descricao.slice(1).toLowerCase()}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Serviço */}
           <SearchDropdown

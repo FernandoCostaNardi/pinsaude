@@ -5,6 +5,7 @@ import br.com.pinsaude.fiscal.domain.StatusNota;
 import br.com.pinsaude.fiscal.dto.EmitirNfseRequest;
 import br.com.pinsaude.fiscal.dto.EmitirNfseResponse;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoMessage;
+import br.com.pinsaude.fiscal.messaging.EmailNotificacaoProducer;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoProducer;
 import br.com.pinsaude.fiscal.port.EmissaoNfsePort;
 import br.com.pinsaude.fiscal.port.ResultadoEmissao;
@@ -37,6 +38,7 @@ class NfseServiceTest {
     @Mock LoteEmissaoRepository loteRepo;
     @Mock EmissaoNfsePort emissaoPort;
     @Mock NfseEmissaoProducer producer;
+    @Mock EmailNotificacaoProducer emailProducer;
 
     @InjectMocks NfseService nfseService;
 
@@ -337,7 +339,7 @@ class NfseServiceTest {
         return new EmitirNfseRequest(
             producaoId, medicoId, UUID.randomUUID(),
             "2026-06", 1000000L, 150000L,
-            50000L, 15000L, 10000L, 6500L, 30000L, "Clínica Exemplo"
+            50000L, 15000L, 10000L, 6500L, 30000L, "Clínica Exemplo", null
         );
     }
 

@@ -18,5 +18,6 @@ public record EmitirNfseRequest(
     Long valorCsll,
     Long valorPis,
     Long valorCofins,
-    String tomadorNome
+    String tomadorNome,
+    String cnaeCodigo           // CNAE selecionado na emissão (opcional)
 ) {}

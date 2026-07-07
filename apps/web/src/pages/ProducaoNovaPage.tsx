@@ -12,6 +12,7 @@ import { ProducaoRequest, producoesApi } from '../api/producoesApi'
 import { calcularFiscal } from '../api/fiscalApi'
 import { Empresa, empresasApi } from '../api/empresasApi'
 import { useAuth } from '../auth/useAuth'
+import { formatCnae } from '../components/CnaeSelect'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -354,6 +355,7 @@ export function ProducaoNovaPage() {
   const [loadingData, setLoadingData] = useState(true)
 
   const [tomador,    setTomador]    = useState<AutocompleteItem | null>(null)
+  const [cnaeCodigo, setCnaeCodigo] = useState<string>('')
   const [servico,    setServico]    = useState<AutocompleteItem | null>(null)
   const [empresaId,  setEmpresaId]  = useState<string>('')
   const [competencia, setCompetencia] = useState(currentCompetencia())
@@ -411,6 +413,14 @@ export function ProducaoNovaPage() {
       // Cenário D: PF sem equiparação — apenas IR retido pelo tomador
       const cenarioD  = !tomadorPj && !servObj.indicadorEquiparacao
 
+      // Alíquotas do tomador sobrescrevem as da empresa: converter de percentual (5.0) para fração (0.05)
+      const aliquotasOverride: Record<string, number> = {}
+      if (tomObj.aliquotas?.length) {
+        for (const a of tomObj.aliquotas) {
+          aliquotasOverride[a.tipoTributo] = Number(a.valorAliquota) / 100
+        }
+      }
+
       setPreviewLoading(true)
       calcularFiscal({
         competencia,
@@ -419,6 +429,7 @@ export function ProducaoNovaPage() {
         indicadorRetencaoFederal: tomObj.indicadorRetencaoFederal,
         indicadorRetencaoIss: tomObj.indicadorRetencaoIss,
         equiparacaoHospitalar: servObj.indicadorEquiparacao,
+        aliquotasOverride: Object.keys(aliquotasOverride).length > 0 ? aliquotasOverride : undefined,
       })
         .then(r => setPreview({
           valorBruto:       r.valorBruto,
@@ -479,6 +490,7 @@ export function ProducaoNovaPage() {
       servicoId:             servico!.id,
       competencia,
       descricaoComplementar: descricao || undefined,
+      cnaeCodigo:            cnaeCodigo || undefined,
       empresaId:             empresaId || null,
       participantes: participantes.map(p => ({
         medicoId:   p.medico!.id,
@@ -548,11 +560,33 @@ export function ProducaoNovaPage() {
               <Autocomplete
                 items={tomadorItems}
                 value={tomador}
-                onChange={item => { setTomador(item); setErrors(e => ({ ...e, tomador: '' })) }}
-                onClear={() => { setTomador(null); setPreview(null) }}
+                onChange={item => { setTomador(item); setCnaeCodigo(''); setErrors(e => ({ ...e, tomador: '' })) }}
+                onClear={() => { setTomador(null); setCnaeCodigo(''); setPreview(null) }}
                 placeholder="Buscar por nome ou CNPJ..."
               />
             </Field>
+
+            {/* CNAE do tomador — aparece quando o tomador tem CNAEs cadastrados */}
+            {(() => {
+              const tomadorObj = tomadores.find(t => t.id === tomador?.id)
+              if (!tomadorObj || !tomadorObj.cnaes || tomadorObj.cnaes.length === 0) return null
+              return (
+                <Field label="CNAE (atividade econômica da nota)">
+                  <select
+                    value={cnaeCodigo}
+                    onChange={e => setCnaeCodigo(e.target.value)}
+                    className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid"
+                  >
+                    <option value="">Selecione o CNAE...</option>
+                    {tomadorObj.cnaes.map(c => (
+                      <option key={c.id} value={c.codigoCnae}>
+                        {formatCnae(c.codigoCnae)}{c.descricao ? ` — ${c.descricao.charAt(0) + c.descricao.slice(1).toLowerCase()}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )
+            })()}
 
             <Field label="Serviço (LC 116/2003)" required error={errors.servico}>
               <select
