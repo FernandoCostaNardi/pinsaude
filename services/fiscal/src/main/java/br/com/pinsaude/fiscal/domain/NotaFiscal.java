@@ -75,6 +75,9 @@ public class NotaFiscal {
     @Column(name = "protocolo_emissao", length = 100)
     private String protocoloEmissao;
 
+    @Column(name = "cnae_codigo", length = 20)
+    private String cnaeCodigo;
+
     @Column(name = "observacoes")
     private String observacoes;
 
@@ -132,6 +135,8 @@ public class NotaFiscal {
     public void setPdfNota(byte[] v)                 { this.pdfNota = v; }
     public String getProtocoloEmissao()              { return protocoloEmissao; }
     public void setProtocoloEmissao(String v)        { this.protocoloEmissao = v; }
+    public String getCnaeCodigo()                    { return cnaeCodigo; }
+    public void setCnaeCodigo(String v)              { this.cnaeCodigo = v; }
     public String getObservacoes()                   { return observacoes; }
     public void setObservacoes(String v)             { this.observacoes = v; }
     public OffsetDateTime getCreatedAt()             { return createdAt; }

@@ -13,6 +13,7 @@ import {
 } from '../api/nfseApi'
 import { medicosApi } from '../api/medicosApi'
 import { empresasApi, Empresa } from '../api/empresasApi'
+import { tomadoresApi, Tomador } from '../api/tomadoresApi'
 import { NfsePreviewModal } from './NfsePreviewModal'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -126,6 +127,8 @@ export function NfseEmissaoPage() {
   const { user } = useAuth()
 
   const [producao, setProducao] = useState<Producao | null>(null)
+  const [tomadorFull, setTomadorFull] = useState<Tomador | null>(null)
+  const [cnaeSelecionado, setCnaeSelecionado] = useState<string>('')
   const [nota, setNota] = useState<NotaFiscal | null>(null)
   const [loading, setLoading] = useState(true)
   const [emitindo, setEmitindo] = useState(false)
@@ -175,6 +178,17 @@ export function NfseEmissaoPage() {
       .catch(() => {})
   }, [producao?.empresaId])
 
+  // Carrega tomador completo (com alíquotas e CNAEs)
+  useEffect(() => {
+    if (!producao?.tomador?.id) return
+    tomadoresApi.buscarPorId(producao.tomador.id)
+      .then(t => {
+        setTomadorFull(t)
+        if (t.cnaes && t.cnaes.length === 1) setCnaeSelecionado(t.cnaes[0].codigoCnae)
+      })
+      .catch(() => {})
+  }, [producao?.tomador?.id])
+
   // Carrega nomes dos médicos participantes para a discriminação
   useEffect(() => {
     if (!producao) return
@@ -210,12 +224,19 @@ export function NfseEmissaoPage() {
       const medicoId = producao.participantes.length === 1
         ? producao.participantes[0].medicoId
         : null
+
+      // Alíquotas efetivas: tomador substitui serviço quando configurado
+      function efAliq(tipo: string, servicoAliq: number): number {
+        const override = tomadorFull?.aliquotas?.find(a => a.tipoTributo === tipo)
+        return override !== undefined ? Number(override.valorAliquota) : servicoAliq
+      }
+
       const taxaPin       = calcPct(valorBruto, 15)
-      const issRetido     = tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
-      const irRetido      = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
-      const csllRetido    = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
-      const pisRetido     = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
-      const cofinsRetido  = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
+      const issRetido     = tomador.retencaoIss     ? calcPct(valorBruto, efAliq('ISS',    servico.aliquotaIss))    : 0
+      const irRetido      = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('IR',     servico.aliquotaIr))     : 0
+      const csllRetido    = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('CSLL',   servico.aliquotaCsll))   : 0
+      const pisRetido     = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('PIS',    servico.aliquotaPis))    : 0
+      const cofinsRetido  = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('COFINS', servico.aliquotaCofins)) : 0
 
       const res = await emitirNfse({
         producaoId, medicoId, tomadorId: tomador.id,
@@ -223,6 +244,7 @@ export function NfseEmissaoPage() {
         valorIss: issRetido, valorIr: irRetido, valorCsll: csllRetido,
         valorPis: pisRetido, valorCofins: cofinsRetido,
         tomadorNome: tomador.razaoSocialNome ?? null,
+        cnaeCodigo: cnaeSelecionado || null,
       })
       setPrimeiraNotaMedico(res.primeiraNotaMedico)
       await atualizarStatus()
@@ -282,23 +304,37 @@ export function NfseEmissaoPage() {
   }
 
   const { tomador, servico, valorBruto } = producao
+
+  // Alíquotas efetivas para exibição (tomador sobrepõe serviço)
+  function efAliq(tipo: string, servicoAliq: number): number {
+    const override = tomadorFull?.aliquotas?.find(a => a.tipoTributo === tipo)
+    return override !== undefined ? Number(override.valorAliquota) : servicoAliq
+  }
+  const aliqIss    = efAliq('ISS',    servico.aliquotaIss)
+  const aliqIr     = efAliq('IR',     servico.aliquotaIr)
+  const aliqCsll   = efAliq('CSLL',   servico.aliquotaCsll)
+  const aliqPis    = efAliq('PIS',    servico.aliquotaPis)
+  const aliqCofins = efAliq('COFINS', servico.aliquotaCofins)
+
   const taxaPin        = calcPct(valorBruto, 15)
-  const issRetido      = tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
-  const irRetido       = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
-  const csllRetido     = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
-  const pisRetido      = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
-  const cofinsRetido   = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
+  const issRetido      = tomador.retencaoIss     ? calcPct(valorBruto, aliqIss)    : 0
+  const irRetido       = tomador.retencaoFederal ? calcPct(valorBruto, aliqIr)     : 0
+  const csllRetido     = tomador.retencaoFederal ? calcPct(valorBruto, aliqCsll)   : 0
+  const pisRetido      = tomador.retencaoFederal ? calcPct(valorBruto, aliqPis)    : 0
+  const cofinsRetido   = tomador.retencaoFederal ? calcPct(valorBruto, aliqCofins) : 0
   const totalRetidos   = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
   const valorLiquidoNota = valorBruto - totalRetidos
   const valorRepasse   = valorBruto - taxaPin
   // Totais brutos de cada tributo — retido ou não, sempre custo fiscal da Pin
-  const issTotal    = calcPct(valorBruto, servico.aliquotaIss)
-  const irTotal     = calcPct(valorBruto, servico.aliquotaIr)
-  const csllTotal   = calcPct(valorBruto, servico.aliquotaCsll)
-  const pisTotal    = calcPct(valorBruto, servico.aliquotaPis)
-  const cofinsTotal = calcPct(valorBruto, servico.aliquotaCofins)
+  const issTotal    = calcPct(valorBruto, aliqIss)
+  const irTotal     = calcPct(valorBruto, aliqIr)
+  const csllTotal   = calcPct(valorBruto, aliqCsll)
+  const pisTotal    = calcPct(valorBruto, aliqPis)
+  const cofinsTotal = calcPct(valorBruto, aliqCofins)
   const totalTributos = issTotal + irTotal + csllTotal + pisTotal + cofinsTotal
   const resultadoPin  = taxaPin - totalTributos
+
+  const tomadorCnaes = tomadorFull?.cnaes ?? []
 
   const currentStatus  = nota?.status ?? null
   const meta           = currentStatus ? STATUS_META[currentStatus] : null
@@ -358,11 +394,11 @@ export function NfseEmissaoPage() {
             <div className="bg-primary-50 border border-primary-100 rounded-xl p-4 mb-3">
               <p className="text-xs font-semibold text-primary-700 uppercase tracking-wide mb-2">Nota Fiscal ao Tomador</p>
               <FiscalRow label="Valor dos Serviços" value={valorBruto} />
-              {issRetido   > 0 && <FiscalRow label={`ISS retido pelo tomador (${servico.aliquotaIss}%)`}    value={issRetido}   indent negative />}
-              {irRetido    > 0 && <FiscalRow label={`IR retido pelo tomador (${servico.aliquotaIr}%)`}       value={irRetido}    indent negative />}
-              {csllRetido  > 0 && <FiscalRow label={`CSLL retido pelo tomador (${servico.aliquotaCsll}%)`}  value={csllRetido}  indent negative />}
-              {pisRetido   > 0 && <FiscalRow label={`PIS retido pelo tomador (${servico.aliquotaPis}%)`}    value={pisRetido}   indent negative />}
-              {cofinsRetido > 0 && <FiscalRow label={`COFINS retido pelo tomador (${servico.aliquotaCofins}%)`} value={cofinsRetido} indent negative />}
+              {issRetido   > 0 && <FiscalRow label={`ISS retido pelo tomador (${aliqIss}%)`}    value={issRetido}   indent negative />}
+              {irRetido    > 0 && <FiscalRow label={`IR retido pelo tomador (${aliqIr}%)`}       value={irRetido}    indent negative />}
+              {csllRetido  > 0 && <FiscalRow label={`CSLL retido pelo tomador (${aliqCsll}%)`}  value={csllRetido}  indent negative />}
+              {pisRetido   > 0 && <FiscalRow label={`PIS retido pelo tomador (${aliqPis}%)`}    value={pisRetido}   indent negative />}
+              {cofinsRetido > 0 && <FiscalRow label={`COFINS retido pelo tomador (${aliqCofins}%)`} value={cofinsRetido} indent negative />}
               <div className="border-t-2 border-primary-200 mt-2 pt-2.5 flex justify-between">
                 <span className="font-bold text-primary-800 text-sm">Valor Líquido da Nota</span>
                 <span className="font-bold text-primary">{formatBRL(valorLiquidoNota)}</span>
@@ -391,23 +427,23 @@ export function NfseEmissaoPage() {
                 <p className="text-[10px] font-semibold text-ds-mid uppercase tracking-wide mb-2">Apuração Pin Saúde</p>
                 <FiscalRow label="Pin retém (15% do bruto)" value={taxaPin} />
                 <FiscalRow
-                  label={`ISS (${servico.aliquotaIss}%) ${issRetido > 0 ? '— retido pelo tomador' : '— a recolher via guia'}`}
+                  label={`ISS (${aliqIss}%)${aliqIss !== servico.aliquotaIss ? ' *' : ''} ${issRetido > 0 ? '— retido pelo tomador' : '— a recolher via guia'}`}
                   value={issTotal} indent negative
                 />
                 <FiscalRow
-                  label={`IR (${servico.aliquotaIr}%) ${irRetido > 0 ? '— retido pelo tomador' : '— a recolher via guia'}`}
+                  label={`IR (${aliqIr}%)${aliqIr !== servico.aliquotaIr ? ' *' : ''} ${irRetido > 0 ? '— retido pelo tomador' : '— a recolher via guia'}`}
                   value={irTotal} indent negative
                 />
                 <FiscalRow
-                  label={`CSLL (${servico.aliquotaCsll}%) ${csllRetido > 0 ? '— retido' : '— via guia'}`}
+                  label={`CSLL (${aliqCsll}%)${aliqCsll !== servico.aliquotaCsll ? ' *' : ''} ${csllRetido > 0 ? '— retido' : '— via guia'}`}
                   value={csllTotal} indent negative
                 />
                 <FiscalRow
-                  label={`PIS (${servico.aliquotaPis}%) ${pisRetido > 0 ? '— retido' : '— via guia'}`}
+                  label={`PIS (${aliqPis}%)${aliqPis !== servico.aliquotaPis ? ' *' : ''} ${pisRetido > 0 ? '— retido' : '— via guia'}`}
                   value={pisTotal} indent negative
                 />
                 <FiscalRow
-                  label={`COFINS (${servico.aliquotaCofins}%) ${cofinsRetido > 0 ? '— retido' : '— via guia'}`}
+                  label={`COFINS (${aliqCofins}%)${aliqCofins !== servico.aliquotaCofins ? ' *' : ''} ${cofinsRetido > 0 ? '— retido' : '— via guia'}`}
                   value={cofinsTotal} indent negative
                 />
                 <div className="border-t-2 border-ds-border mt-2 pt-2.5 flex justify-between">
@@ -419,6 +455,11 @@ export function NfseEmissaoPage() {
                 <p className="text-[10px] text-ds-light mt-2 italic">
                   O médico sempre recebe 85% do bruto. Os tributos saem dos 15% da Pin, retidos ou não.
                 </p>
+                {tomadorFull?.aliquotas && tomadorFull.aliquotas.length > 0 && (
+                  <p className="text-[10px] text-amber-600 mt-1.5 italic">
+                    * Alíquota diferenciada configurada para este tomador.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -441,6 +482,26 @@ export function NfseEmissaoPage() {
                 <p className="text-ds-light text-sm mb-5">
                   Revise o preview da nota antes de enviar para emissão.
                 </p>
+
+                {/* Seletor de CNAE — exibido quando o tomador tem CNAEs cadastrados */}
+                {tomadorCnaes.length > 0 && (
+                  <div className="text-left bg-ds-surface rounded-xl border border-ds-border p-4 mb-4 mx-4">
+                    <p className="text-xs font-semibold text-ds-mid mb-2">CNAE da NFS-e</p>
+                    <select
+                      value={cnaeSelecionado}
+                      onChange={e => setCnaeSelecionado(e.target.value)}
+                      className="w-full h-9 rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 focus:outline-none focus:border-primary"
+                    >
+                      <option value="">— Sem CNAE específico —</option>
+                      {tomadorCnaes.map(c => (
+                        <option key={c.id} value={c.codigoCnae}>
+                          {c.codigoCnae}{c.descricao ? ` — ${c.descricao}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="flex flex-col items-center gap-2">
                   <button
                     onClick={() => setShowPreview(true)}
@@ -602,6 +663,10 @@ export function NfseEmissaoPage() {
           cnpjPrestador={cnpjPrestador}
           empresaInfo={empresaInfo}
           medicoNomeMap={medicoNomeMap}
+          cnaeCodigo={cnaeSelecionado || null}
+          aliquotasOverride={tomadorFull?.aliquotas?.length ? tomadorFull.aliquotas.reduce((acc, a) => ({
+            ...acc, [a.tipoTributo]: Number(a.valorAliquota)
+          }), {} as Record<string, number>) : undefined}
           onClose={() => setShowPreview(false)}
           onConfirmar={() => {
             setShowPreview(false)

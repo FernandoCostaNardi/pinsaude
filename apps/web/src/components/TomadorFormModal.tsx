@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, CheckCircle, Info } from 'lucide-react'
+import { Loader2, CheckCircle, Info, Plus, Trash2 } from 'lucide-react'
 import { Modal, Input, Button, Alert } from '@pinsaude/ui'
 import { CnpjInput } from './CnpjInput'
 import { CpfInput } from './CpfInput'
 import { isValidCnpj } from '../utils/cnpj'
-import { Tomador, TomadorRequest, TipoTomador, tomadoresApi } from '../api/tomadoresApi'
+import { Tomador, TomadorRequest, TipoTomador, TomadorAliquota, TomadorCnae, tomadoresApi } from '../api/tomadoresApi'
 
 const TIPO_OPTIONS: { value: TipoTomador; label: string; desc: string }[] = [
   { value: 'HOSPITAL',    label: 'Hospital',    desc: 'CNPJ' },
@@ -19,6 +19,8 @@ const TIPO_COLORS: Record<TipoTomador, string> = {
   OPERADORA:   'border-violet-500 bg-violet-50 text-violet-700',
   PACIENTE_PF: 'border-orange-400 bg-orange-50 text-orange-700',
 }
+
+const TRIBUTOS = ['ISS', 'IR', 'CSLL', 'PIS', 'COFINS'] as const
 
 interface Props {
   tomador: Tomador | null
@@ -54,6 +56,18 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
   const [receitaOk, setReceitaOk] = useState(false)
   const receitaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Alíquotas
+  const [aliquotas, setAliquotas] = useState<TomadorAliquota[]>([])
+  const [novaAliq, setNovaAliq] = useState({ tributo: 'ISS', valor: '' })
+  const [aliqLoading, setAliqLoading] = useState(false)
+  const [aliqError, setAliqError] = useState<string | null>(null)
+
+  // CNAEs
+  const [cnaes, setCnaes] = useState<TomadorCnae[]>([])
+  const [novoCnae, setNovoCnae] = useState({ codigo: '', descricao: '' })
+  const [cnaeLoading, setCnaeLoading] = useState(false)
+  const [cnaeError, setCnaeError] = useState<string | null>(null)
+
   useEffect(() => {
     if (tomador) {
       setForm({
@@ -73,12 +87,18 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
         uf: tomador.uf ?? '',
         pais: tomador.pais ?? 'Brasil',
       })
+      setAliquotas(tomador.aliquotas ?? [])
+      setCnaes(tomador.cnaes ?? [])
     } else {
       setForm(emptyForm())
+      setAliquotas([])
+      setCnaes([])
     }
     setErrors({})
     setApiError(null)
     setReceitaOk(false)
+    setAliqError(null)
+    setCnaeError(null)
   }, [tomador])
 
   // Auto-fill from Receita Federal when CNPJ is valid
@@ -149,6 +169,68 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
       setApiError(err instanceof Error ? err.message : 'Erro ao salvar')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleSalvarAliquota() {
+    if (!tomador) return
+    const valor = parseFloat(novaAliq.valor.replace(',', '.'))
+    if (isNaN(valor) || valor < 0 || valor > 100) {
+      setAliqError('Informe um valor entre 0 e 100')
+      return
+    }
+    setAliqLoading(true)
+    setAliqError(null)
+    try {
+      const saved = await tomadoresApi.salvarAliquota(tomador.id, novaAliq.tributo, valor)
+      setAliquotas(prev => {
+        const filtered = prev.filter(a => a.tipoTributo !== saved.tipoTributo)
+        return [...filtered, saved]
+      })
+      setNovaAliq({ tributo: 'ISS', valor: '' })
+    } catch (err) {
+      setAliqError(err instanceof Error ? err.message : 'Erro ao salvar alíquota')
+    } finally {
+      setAliqLoading(false)
+    }
+  }
+
+  async function handleRemoverAliquota(aliquota: TomadorAliquota) {
+    if (!tomador) return
+    try {
+      await tomadoresApi.removerAliquota(tomador.id, aliquota.id)
+      setAliquotas(prev => prev.filter(a => a.id !== aliquota.id))
+    } catch (err) {
+      setAliqError(err instanceof Error ? err.message : 'Erro ao remover alíquota')
+    }
+  }
+
+  async function handleAdicionarCnae() {
+    if (!tomador) return
+    if (!novoCnae.codigo.trim()) {
+      setCnaeError('Informe o código CNAE')
+      return
+    }
+    setCnaeLoading(true)
+    setCnaeError(null)
+    try {
+      const saved = await tomadoresApi.adicionarCnae(tomador.id, novoCnae.codigo.trim(), novoCnae.descricao.trim())
+      setCnaes(prev => [...prev, saved])
+      setNovoCnae({ codigo: '', descricao: '' })
+    } catch (err) {
+      setCnaeError(err instanceof Error ? err.message : 'Erro ao adicionar CNAE')
+    } finally {
+      setCnaeLoading(false)
+    }
+  }
+
+  async function handleRemoverCnae(cnae: TomadorCnae) {
+    if (!tomador) return
+    try {
+      await tomadoresApi.removerCnae(tomador.id, cnae.id)
+      setCnaes(prev => prev.filter(c => c.id !== cnae.id))
+    } catch (err) {
+      setCnaeError(err instanceof Error ? err.message : 'Erro ao remover CNAE')
     }
   }
 
@@ -308,7 +390,7 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
           </div>
         </div>
 
-        {/* ── Dados fiscais ── */}
+        {/* ── Retenções na Fonte ── */}
         <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
           <p className="text-xs font-semibold text-ds-mid mb-3 uppercase tracking-wide">Retenções na Fonte</p>
           <div className="flex flex-col gap-3">
@@ -355,6 +437,147 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
             </label>
           </div>
         </div>
+
+        {/* ── Alíquotas Diferenciadas (só para tomadores editados) ── */}
+        {isEditing && !isPf && (
+          <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs font-semibold text-ds-mid uppercase tracking-wide">Alíquotas Diferenciadas</p>
+                <p className="text-[11px] text-ds-light mt-0.5">Sobrescrevem as alíquotas padrão do serviço para este tomador</p>
+              </div>
+            </div>
+
+            {aliqError && (
+              <p className="text-xs text-red-600 mb-2">{aliqError}</p>
+            )}
+
+            {/* Lista das alíquotas */}
+            {aliquotas.length > 0 && (
+              <div className="mb-3 space-y-1.5">
+                {aliquotas.map(a => (
+                  <div key={a.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-ds-border">
+                    <span className="text-sm font-medium text-ds-mid">
+                      {a.tipoTributo} — <span className="text-primary">{Number(a.valorAliquota).toFixed(4)}%</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoverAliquota(a)}
+                      className="text-ds-light hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Adicionar nova alíquota */}
+            <div className="flex items-end gap-2">
+              <div>
+                <p className="text-xs text-ds-light mb-1">Tributo</p>
+                <select
+                  value={novaAliq.tributo}
+                  onChange={e => setNovaAliq(v => ({ ...v, tributo: e.target.value }))}
+                  className="h-9 rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-2 focus:outline-none focus:border-primary"
+                >
+                  {TRIBUTOS.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-ds-light mb-1">Alíquota (%)</p>
+                <input
+                  type="text"
+                  value={novaAliq.valor}
+                  onChange={e => setNovaAliq(v => ({ ...v, valor: e.target.value }))}
+                  placeholder="Ex: 2.5"
+                  className="w-full h-9 rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleSalvarAliquota}
+                disabled={aliqLoading}
+                className="h-9 px-3 rounded-lg bg-primary text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-primary-600 disabled:opacity-50 transition-colors"
+              >
+                {aliqLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                {aliquotas.some(a => a.tipoTributo === novaAliq.tributo) ? 'Atualizar' : 'Adicionar'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── CNAEs (só para tomadores editados) ── */}
+        {isEditing && !isPf && (
+          <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
+            <div className="mb-3">
+              <p className="text-xs font-semibold text-ds-mid uppercase tracking-wide">CNAEs</p>
+              <p className="text-[11px] text-ds-light mt-0.5">CNAEs disponíveis para seleção na emissão da NFS-e</p>
+            </div>
+
+            {cnaeError && (
+              <p className="text-xs text-red-600 mb-2">{cnaeError}</p>
+            )}
+
+            {/* Lista dos CNAEs */}
+            {cnaes.length > 0 && (
+              <div className="mb-3 space-y-1.5">
+                {cnaes.map(c => (
+                  <div key={c.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-ds-border">
+                    <div>
+                      <span className="text-sm font-medium text-ds-mid">{c.codigoCnae}</span>
+                      {c.descricao && (
+                        <span className="text-xs text-ds-light ml-2">{c.descricao}</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoverCnae(c)}
+                      className="text-ds-light hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Adicionar novo CNAE */}
+            <div className="flex items-end gap-2">
+              <div>
+                <p className="text-xs text-ds-light mb-1">Código CNAE</p>
+                <input
+                  type="text"
+                  value={novoCnae.codigo}
+                  onChange={e => setNovoCnae(v => ({ ...v, codigo: e.target.value }))}
+                  placeholder="Ex: 8630-5/04"
+                  className="w-28 h-9 rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-ds-light mb-1">Descrição (opcional)</p>
+                <input
+                  type="text"
+                  value={novoCnae.descricao}
+                  onChange={e => setNovoCnae(v => ({ ...v, descricao: e.target.value }))}
+                  placeholder="Atividade econômica"
+                  className="w-full h-9 rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAdicionarCnae}
+                disabled={cnaeLoading}
+                className="h-9 px-3 rounded-lg bg-primary text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-primary-600 disabled:opacity-50 transition-colors"
+              >
+                {cnaeLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                Adicionar
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Ações ── */}
         <div className="flex justify-end gap-3 pt-1 border-t border-ds-border">

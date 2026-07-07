@@ -6,6 +6,8 @@ import br.com.pinsaude.faturamento.domain.Tomador;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
+import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
+import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
 import br.com.pinsaude.faturamento.service.CryptoService;
 import br.com.pinsaude.faturamento.service.TomadorService;
@@ -25,6 +27,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -40,6 +43,8 @@ class TomadorServiceTest {
     @Mock TomadorRepository repo;
     @Mock CryptoService crypto;
     @Mock ConsultaCnpjPort consultaCnpjPort;
+    @Mock TomadorAliquotaRepository aliquotaRepo;
+    @Mock TomadorCnaeRepository cnaeRepo;
 
     @InjectMocks TomadorService service;
 
@@ -55,6 +60,9 @@ class TomadorServiceTest {
         var auth = new JwtAuthenticationToken(jwt,
             List.of(new SimpleGrantedAuthority("ROLE_operacao")));
         SecurityContextHolder.setContext(new SecurityContextImpl(auth));
+
+        when(aliquotaRepo.findByTomadorId(any())).thenReturn(Collections.emptyList());
+        when(cnaeRepo.findByTomadorId(any())).thenReturn(Collections.emptyList());
     }
 
     // ─── buscar ──────────────────────────────────────────────────────────────
@@ -88,7 +96,6 @@ class TomadorServiceTest {
         when(repo.findAll()).thenReturn(List.of(t));
         when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
 
-        // Busca pelos primeiros 8 dígitos do CNPJ
         List<TomadorResponse> result = service.buscar("11222333");
 
         assertThat(result).hasSize(1);
@@ -217,7 +224,7 @@ class TomadorServiceTest {
         Tomador existente = tomadorFixture(TENANT);
         existente.setId(id);
 
-        Tomador outro = tomadorFixture(TENANT); // UUID diferente
+        Tomador outro = tomadorFixture(TENANT);
 
         when(repo.findById(id)).thenReturn(Optional.of(existente));
         when(repo.findAll()).thenReturn(List.of(existente, outro));

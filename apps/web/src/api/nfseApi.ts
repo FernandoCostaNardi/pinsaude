@@ -51,6 +51,7 @@ export interface EmitirNfseRequest {
   valorPis: number
   valorCofins: number
   tomadorNome: string | null
+  cnaeCodigo?: string | null
 }
 
 export interface EmitirNfseResponse {

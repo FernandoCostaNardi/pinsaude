@@ -1,6 +1,10 @@
 package br.com.pinsaude.faturamento.controller;
 
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
+import br.com.pinsaude.faturamento.dto.TomadorAliquotaRequest;
+import br.com.pinsaude.faturamento.dto.TomadorAliquotaResponse;
+import br.com.pinsaude.faturamento.dto.TomadorCnaeRequest;
+import br.com.pinsaude.faturamento.dto.TomadorCnaeResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
 import br.com.pinsaude.faturamento.service.TomadorService;
@@ -64,5 +68,55 @@ public class TomadorController {
         Optional<ReceitaFederalResponse> resultado = service.consultarReceita(cnpj);
         return resultado.map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
+    }
+
+    // ─── Alíquotas por tomador ────────────────────────────────────────────────
+
+    @GetMapping("/{id}/aliquotas")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    public ResponseEntity<List<TomadorAliquotaResponse>> listarAliquotas(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarAliquotas(id));
+    }
+
+    @PostMapping("/{id}/aliquotas")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorAliquotaResponse> salvarAliquota(
+            @PathVariable UUID id,
+            @Valid @RequestBody TomadorAliquotaRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.salvarAliquota(id, req));
+    }
+
+    @DeleteMapping("/{id}/aliquotas/{aliquotaId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerAliquota(
+            @PathVariable UUID id,
+            @PathVariable UUID aliquotaId) {
+        service.removerAliquota(id, aliquotaId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── CNAEs por tomador ────────────────────────────────────────────────────
+
+    @GetMapping("/{id}/cnaes")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<TomadorCnaeResponse>> listarCnaes(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarCnaes(id));
+    }
+
+    @PostMapping("/{id}/cnaes")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorCnaeResponse> adicionarCnae(
+            @PathVariable UUID id,
+            @Valid @RequestBody TomadorCnaeRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.adicionarCnae(id, req));
+    }
+
+    @DeleteMapping("/{id}/cnaes/{cnaeId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerCnae(
+            @PathVariable UUID id,
+            @PathVariable UUID cnaeId) {
+        service.removerCnae(id, cnaeId);
+        return ResponseEntity.noContent().build();
     }
 }
