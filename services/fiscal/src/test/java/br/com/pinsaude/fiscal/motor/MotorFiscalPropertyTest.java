@@ -111,9 +111,9 @@ class MotorFiscalPropertyTest {
             });
 
         CalculoFiscalResponse r2023 = motor.calcular(CNPJ,
-            new CalculoFiscalRequest(valorBruto, "2023-06", true, false, false, false));
+            new CalculoFiscalRequest(valorBruto, "2023-06", true, false, false, false, null));
         CalculoFiscalResponse r2024 = motor.calcular(CNPJ,
-            new CalculoFiscalRequest(valorBruto, "2024-06", true, false, false, false));
+            new CalculoFiscalRequest(valorBruto, "2024-06", true, false, false, false, null));
 
         long iss2023 = BigDecimal.valueOf(valorBruto)
             .multiply(new BigDecimal("0.0250")).setScale(0, RoundingMode.HALF_UP).longValue();
@@ -136,7 +136,7 @@ class MotorFiscalPropertyTest {
 
     private CalculoFiscalResponse calcular(long bruto, boolean pj, boolean retFederal,
                                            boolean retIss, boolean equiparado) {
-        return motor.calcular(CNPJ, new CalculoFiscalRequest(bruto, "2024-06", pj, retFederal, retIss, equiparado));
+        return motor.calcular(CNPJ, new CalculoFiscalRequest(bruto, "2024-06", pj, retFederal, retIss, equiparado, null));
     }
 
     private ParametroFiscal parametroPadrao() {
