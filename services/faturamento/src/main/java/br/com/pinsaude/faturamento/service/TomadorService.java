@@ -110,7 +110,11 @@ public class TomadorService {
         TipoTomador tipo = parseTipo(req.tipo());
         String cnpjCpfLimpo = req.cnpjCpf().replaceAll("\\D", "");
         validarDocumento(tipo, cnpjCpfLimpo);
-        validarDocumentoDuplicado(cnpjCpfLimpo, id);
+
+        String cnpjAtual = crypto.decrypt(t.getCnpjCpfTomadorCriptografado());
+        if (!cnpjCpfLimpo.equals(cnpjAtual)) {
+            validarDocumentoDuplicado(cnpjCpfLimpo, id);
+        }
 
         t.setTipo(tipo);
         t.setCnpjCpfTomadorCriptografado(crypto.encrypt(cnpjCpfLimpo));
