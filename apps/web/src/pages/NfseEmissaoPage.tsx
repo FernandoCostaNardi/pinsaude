@@ -226,7 +226,7 @@ export function NfseEmissaoPage() {
         : null
 
       // Alíquotas efetivas: tomador substitui serviço quando configurado
-      function efAliq(tipo: string, servicoAliq: number): number {
+      const efAliq = (tipo: string, servicoAliq: number): number => {
         const override = tomadorFull?.aliquotas?.find(a => a.tipoTributo === tipo)
         return override !== undefined ? Number(override.valorAliquota) : servicoAliq
       }
