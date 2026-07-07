@@ -120,6 +120,8 @@ export interface CalculoFiscalRequest {
   indicadorRetencaoFederal: boolean
   indicadorRetencaoIss: boolean
   equiparacaoHospitalar: boolean
+  /** Alíquotas do tomador (chave = ISS|IR|CSLL|PIS|COFINS, valor = fração decimal 0.05 = 5%). Omitir para usar as da empresa. */
+  aliquotasOverride?: Record<string, number>
 }
 
 export interface CalculoFiscalResult {

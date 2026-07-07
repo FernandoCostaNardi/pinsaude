@@ -413,6 +413,14 @@ export function ProducaoNovaPage() {
       // Cenário D: PF sem equiparação — apenas IR retido pelo tomador
       const cenarioD  = !tomadorPj && !servObj.indicadorEquiparacao
 
+      // Alíquotas do tomador sobrescrevem as da empresa: converter de percentual (5.0) para fração (0.05)
+      const aliquotasOverride: Record<string, number> = {}
+      if (tomObj.aliquotas?.length) {
+        for (const a of tomObj.aliquotas) {
+          aliquotasOverride[a.tipoTributo] = Number(a.valorAliquota) / 100
+        }
+      }
+
       setPreviewLoading(true)
       calcularFiscal({
         competencia,
@@ -421,6 +429,7 @@ export function ProducaoNovaPage() {
         indicadorRetencaoFederal: tomObj.indicadorRetencaoFederal,
         indicadorRetencaoIss: tomObj.indicadorRetencaoIss,
         equiparacaoHospitalar: servObj.indicadorEquiparacao,
+        aliquotasOverride: Object.keys(aliquotasOverride).length > 0 ? aliquotasOverride : undefined,
       })
         .then(r => setPreview({
           valorBruto:       r.valorBruto,
