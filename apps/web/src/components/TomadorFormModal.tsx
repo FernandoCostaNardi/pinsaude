@@ -5,6 +5,7 @@ import { CnpjInput } from './CnpjInput'
 import { CpfInput } from './CpfInput'
 import { isValidCnpj } from '../utils/cnpj'
 import { Tomador, TomadorRequest, TipoTomador, TomadorAliquota, TomadorCnae, tomadoresApi } from '../api/tomadoresApi'
+import { CnaeSelect, formatCnae } from './CnaeSelect'
 
 const TIPO_OPTIONS: { value: TipoTomador; label: string; desc: string }[] = [
   { value: 'HOSPITAL',    label: 'Hospital',    desc: 'CNPJ' },
@@ -526,10 +527,14 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
               <div className="mb-3 space-y-1.5">
                 {cnaes.map(c => (
                   <div key={c.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-ds-border">
-                    <div>
-                      <span className="text-sm font-medium text-ds-mid">{c.codigoCnae}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-primary bg-primary-50 px-1.5 py-0.5 rounded">
+                        {formatCnae(c.codigoCnae)}
+                      </span>
                       {c.descricao && (
-                        <span className="text-xs text-ds-light ml-2">{c.descricao}</span>
+                        <span className="text-xs text-ds-light">
+                          {c.descricao.charAt(0) + c.descricao.slice(1).toLowerCase()}
+                        </span>
                       )}
                     </div>
                     <button
@@ -546,31 +551,18 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
 
             {/* Adicionar novo CNAE */}
             <div className="flex items-end gap-2">
-              <div>
-                <p className="text-xs text-ds-light mb-1">Código CNAE</p>
-                <input
-                  type="text"
-                  value={novoCnae.codigo}
-                  onChange={e => setNovoCnae(v => ({ ...v, codigo: e.target.value }))}
-                  placeholder="Ex: 8630-5/04"
-                  className="w-28 h-9 rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 focus:outline-none focus:border-primary"
-                />
-              </div>
               <div className="flex-1">
-                <p className="text-xs text-ds-light mb-1">Descrição (opcional)</p>
-                <input
-                  type="text"
-                  value={novoCnae.descricao}
-                  onChange={e => setNovoCnae(v => ({ ...v, descricao: e.target.value }))}
-                  placeholder="Atividade econômica"
-                  className="w-full h-9 rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 focus:outline-none focus:border-primary"
+                <CnaeSelect
+                  cnaeCodigo={novoCnae.codigo}
+                  cnaeDescricao={novoCnae.descricao}
+                  onChange={(codigo, descricao) => setNovoCnae({ codigo, descricao })}
                 />
               </div>
               <button
                 type="button"
                 onClick={handleAdicionarCnae}
-                disabled={cnaeLoading}
-                className="h-9 px-3 rounded-lg bg-primary text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-primary-600 disabled:opacity-50 transition-colors"
+                disabled={cnaeLoading || !novoCnae.codigo}
+                className="h-[42px] px-3 rounded-lg bg-primary text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-primary-600 disabled:opacity-50 transition-colors self-end"
               >
                 {cnaeLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                 Adicionar
