@@ -108,6 +108,7 @@ public class ProducaoService {
         p.setValorBruto(valorTotal);
         p.setCompetencia(req.competencia());
         p.setDescricaoComplementar(req.descricaoComplementar());
+        p.setCnaeCodigo(req.cnaeCodigo());
         p.setStatus(StatusProducao.CONFIRMADA);
 
         producaoRepo.save(p);

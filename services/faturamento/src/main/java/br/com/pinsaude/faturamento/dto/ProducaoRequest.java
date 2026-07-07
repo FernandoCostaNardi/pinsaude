@@ -24,6 +24,8 @@ public record ProducaoRequest(
 
     UUID empresaId,
 
+    String cnaeCodigo,
+
     @NotEmpty(message = "Ao menos um participante é obrigatório")
     List<@Valid ParticipacaoRequest> participantes
 ) {}
