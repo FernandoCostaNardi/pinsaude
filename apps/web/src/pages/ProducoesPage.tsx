@@ -153,6 +153,7 @@ export function ProducoesPage() {
       const nomesMedicos = p.participantes.map(pt => (medicoNomeMap[pt.medicoId] ?? '').toLowerCase())
       const matchQ = !q ||
         p.tomador.razaoSocialNome.toLowerCase().includes(ql) ||
+        (p.tomador.nomeFantasia?.toLowerCase() ?? '').includes(ql) ||
         nomesMedicos.some(n => n.includes(ql)) ||
         p.competencia.includes(q)
       const matchStatus  = !filtroStatus  || p.status === filtroStatus
@@ -262,7 +263,7 @@ export function ProducoesPage() {
             <input
               value={q}
               onChange={e => { setQ(e.target.value); setPage(0) }}
-              placeholder="Tomador, médico ou competência..."
+              placeholder="Razão social, nome fantasia, médico ou competência..."
               className="block w-full pl-9 pr-3 py-1.5 text-sm border border-ds-border rounded-lg bg-white text-ds-text placeholder-ds-light focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
             />
           </div>
@@ -345,6 +346,9 @@ export function ProducoesPage() {
               >
                 <TD>
                   <div className="font-semibold text-ds-text text-sm">{p.tomador.razaoSocialNome}</div>
+                  {p.tomador.nomeFantasia && (
+                    <div className="text-xs font-medium text-red-600">{p.tomador.nomeFantasia}</div>
+                  )}
                   {p.tomador.municipio && (
                     <div className="text-xs text-ds-light">{p.tomador.municipio}</div>
                   )}
