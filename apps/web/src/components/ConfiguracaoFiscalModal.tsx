@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FileText, Percent, CheckCircle, AlertTriangle, XCircle, Clock } from 'lucide-react'
 import { Modal, Input, Button, Alert, Spinner } from '@pinsaude/ui'
-import { CnaeSelect, formatCnae } from './CnaeSelect'
 import { Lc116Select, lc116Items } from './Lc116Select'
 import {
   configuracaoFiscalApi,
@@ -14,8 +13,6 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface FiscalForm {
-  cnaeCodigo: string
-  cnaeDescricao: string
   codigoLc116: string
   indicadorEquiparacaoHospitalar: boolean
   vencimentoCertificadoA1: string
@@ -49,8 +46,6 @@ function mesAtual(): string {
 function formFromConfig(config: ConfiguracaoFiscal, comp: string): FiscalForm {
   const aq = config.historicoAliquotas.find(a => a.competencia === comp)
   return {
-    cnaeCodigo: config.cnaeCodigo ?? '',
-    cnaeDescricao: config.cnaeDescricao ?? '',
     codigoLc116: config.codigoLc116 ?? '',
     indicadorEquiparacaoHospitalar: config.indicadorEquiparacaoHospitalar,
     vencimentoCertificadoA1: config.vencimentoCertificadoA1 ?? '',
@@ -205,16 +200,6 @@ function StepDadosFiscais({
         Informe os dados tributários da empresa para emissão de NFS-e.
       </p>
 
-      <CnaeSelect
-        cnaeCodigo={form.cnaeCodigo}
-        cnaeDescricao={form.cnaeDescricao}
-        onChange={(codigo, descricao) => {
-          onChange('cnaeCodigo', codigo)
-          onChange('cnaeDescricao', descricao)
-        }}
-        error={errors.cnaeCodigo}
-      />
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Lc116Select
           value={form.codigoLc116}
@@ -358,12 +343,6 @@ function StepRevisao({
       <div>
         <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Dados Fiscais</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-          <ReviewField label="CNAE — Código" value={form.cnaeCodigo ? formatCnae(form.cnaeCodigo) : ''} mono />
-          <ReviewField label="CNAE — Descrição" value={
-            form.cnaeDescricao
-              ? form.cnaeDescricao.charAt(0) + form.cnaeDescricao.slice(1).toLowerCase()
-              : ''
-          } />
           <ReviewField label="Código LC 116" value={form.codigoLc116 ? `${form.codigoLc116} — ${lcDescricao}` : ''} />
           <ReviewField label="Vencimento Cert. A1" value={
             form.vencimentoCertificadoA1
@@ -565,8 +544,8 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
     setApiError(null)
     try {
       const payload: ConfiguracaoFiscalRequest = {
-        cnaeCodigo: form.cnaeCodigo || null,
-        cnaeDescricao: form.cnaeDescricao || null,
+        cnaeCodigo: null,
+        cnaeDescricao: null,
         codigoLc116: form.codigoLc116 || null,
         indicadorEquiparacaoHospitalar: form.indicadorEquiparacaoHospitalar,
         vencimentoCertificadoA1: form.vencimentoCertificadoA1 || null,
