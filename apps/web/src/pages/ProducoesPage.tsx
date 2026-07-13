@@ -147,13 +147,19 @@ export function ProducoesPage() {
     [medicos]
   )
 
+  const tomadorNomeFantasiaMap = useMemo<Record<string, string | null>>(() =>
+    Object.fromEntries(tomadores.map(t => [t.id, t.nomeFantasia])),
+    [tomadores]
+  )
+
   const filtered = useMemo(() => {
     const ql = q.toLowerCase()
     return producoes.filter(p => {
       const nomesMedicos = p.participantes.map(pt => (medicoNomeMap[pt.medicoId] ?? '').toLowerCase())
+      const nomeFantasia = tomadorNomeFantasiaMap[p.tomador.id]?.toLowerCase() ?? ''
       const matchQ = !q ||
         p.tomador.razaoSocialNome.toLowerCase().includes(ql) ||
-        (p.tomador.nomeFantasia?.toLowerCase() ?? '').includes(ql) ||
+        nomeFantasia.includes(ql) ||
         nomesMedicos.some(n => n.includes(ql)) ||
         p.competencia.includes(q)
       const matchStatus  = !filtroStatus  || p.status === filtroStatus
@@ -163,7 +169,7 @@ export function ProducoesPage() {
       const matchAte = !periodoFim    || p.competencia <= periodoFim
       return matchQ && matchStatus && matchMedico && matchTomador && matchDe && matchAte
     })
-  }, [producoes, q, filtroStatus, filtroMedico, filtroTomador, periodoInicio, periodoFim, medicoNomeMap])
+  }, [producoes, q, filtroStatus, filtroMedico, filtroTomador, periodoInicio, periodoFim, medicoNomeMap, tomadorNomeFantasiaMap])
 
   const paginated  = filtered.slice(page * pageSize, (page + 1) * pageSize)
   const totalPages = Math.ceil(filtered.length / pageSize)
@@ -346,8 +352,8 @@ export function ProducoesPage() {
               >
                 <TD>
                   <div className="font-semibold text-ds-text text-sm">{p.tomador.razaoSocialNome}</div>
-                  {p.tomador.nomeFantasia && (
-                    <div className="text-xs font-medium text-red-600">{p.tomador.nomeFantasia}</div>
+                  {tomadorNomeFantasiaMap[p.tomador.id] && (
+                    <div className="text-xs font-medium text-red-600">{tomadorNomeFantasiaMap[p.tomador.id]}</div>
                   )}
                   {p.tomador.municipio && (
                     <div className="text-xs text-ds-light">{p.tomador.municipio}</div>
