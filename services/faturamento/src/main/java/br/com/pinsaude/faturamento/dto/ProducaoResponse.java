@@ -24,11 +24,11 @@ public record ProducaoResponse(
     String status,
     OffsetDateTime createdAt
 ) {
-    public record TomadorResumo(UUID id, String razaoSocialNome, String municipio,
-                                boolean retencaoFederal, boolean retencaoIss) {
+    public record TomadorResumo(UUID id, String razaoSocialNome, String nomeFantasia,
+                                String municipio, boolean retencaoFederal, boolean retencaoIss) {
         static TomadorResumo from(Tomador t) {
-            return new TomadorResumo(t.getId(), t.getRazaoSocialNome(), t.getMunicipio(),
-                t.isIndicadorRetencaoFederal(), t.isIndicadorRetencaoIss());
+            return new TomadorResumo(t.getId(), t.getRazaoSocialNome(), t.getNomeFantasia(),
+                t.getMunicipio(), t.isIndicadorRetencaoFederal(), t.isIndicadorRetencaoIss());
         }
     }
 

@@ -9,6 +9,7 @@ function getAccessToken(): string {
 export interface TomadorResumo {
   id: string
   razaoSocialNome: string
+  nomeFantasia: string | null
   municipio?: string
   retencaoFederal: boolean
   retencaoIss: boolean

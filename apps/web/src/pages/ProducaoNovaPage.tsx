@@ -54,7 +54,7 @@ function generateCompetencias(): string[] {
 
 // ─── Autocomplete genérico ────────────────────────────────────────────────────
 
-interface AutocompleteItem { id: string; label: string; sublabel?: string }
+interface AutocompleteItem { id: string; label: string; highlight?: string; sublabel?: string }
 
 function Autocomplete({
   items, value, onChange, onClear, placeholder, disabled, loading: ext,
@@ -73,6 +73,7 @@ function Autocomplete({
 
   const filtered = items.filter(i =>
     i.label.toLowerCase().includes(query.toLowerCase()) ||
+    (i.highlight ?? '').toLowerCase().includes(query.toLowerCase()) ||
     (i.sublabel ?? '').toLowerCase().includes(query.toLowerCase())
   ).slice(0, 20)
 
@@ -105,6 +106,7 @@ function Autocomplete({
         <div className="flex items-center justify-between border border-ds-border rounded-lg px-3 py-2 bg-white">
           <div>
             <div className="text-sm font-medium text-ds-mid">{value.label}</div>
+            {value.highlight && <div className="text-xs font-medium text-red-600">{value.highlight}</div>}
             {value.sublabel && <div className="text-xs text-ds-light">{value.sublabel}</div>}
           </div>
           <button onClick={handleClear} className="text-ds-light hover:text-ds-mid ml-2 text-xs underline shrink-0">
@@ -135,6 +137,7 @@ function Autocomplete({
                   className="w-full text-left px-3 py-2.5 hover:bg-primary-50 transition-colors border-b border-ds-border last:border-0"
                 >
                   <div className="text-sm font-medium text-ds-mid">{item.label}</div>
+                  {item.highlight && <div className="text-xs font-medium text-red-600">{item.highlight}</div>}
                   {item.sublabel && <div className="text-xs text-ds-light">{item.sublabel}</div>}
                 </button>
               ))}
@@ -520,6 +523,7 @@ export function ProducaoNovaPage() {
   const tomadorItems: AutocompleteItem[] = tomadores.map(t => ({
     id: t.id,
     label: t.razaoSocialNome,
+    highlight: t.nomeFantasia ?? undefined,
     sublabel: t.municipio ?? undefined,
   }))
 
