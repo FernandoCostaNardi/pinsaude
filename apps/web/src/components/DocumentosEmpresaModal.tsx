@@ -3,7 +3,7 @@ import {
   FileText, Building2, Shield, MapPin, Stethoscope, UserCheck,
   FileSearch, Scale, Landmark, Users,
   Upload, CheckCircle2, XCircle, Clock, Eye, Plus, Trash2, Download,
-  History, ChevronDown, ChevronUp,
+  History, ChevronDown, ChevronUp, CalendarClock, AlertTriangle,
 } from 'lucide-react'
 import { Modal, Button, Alert, Spinner } from '@pinsaude/ui'
 import {
@@ -56,6 +56,36 @@ function validarArquivo(f: File) {
   if (f.size > MAX_MB * 1024 * 1024) return `Arquivo muito grande (máx. ${MAX_MB} MB)`
   if (!/\.(pdf|jpg|jpeg|png)$/i.test(f.name)) return 'Apenas PDF, JPG e PNG são aceitos'
   return null
+}
+
+function diasParaVencer(dataValidade: string): number {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  const venc = new Date(dataValidade + 'T00:00:00')
+  return Math.round((venc.getTime() - hoje.getTime()) / 86_400_000)
+}
+
+function ValidadeBadge({ dataValidade }: { dataValidade: string | null }) {
+  if (!dataValidade) return null
+  const dias = diasParaVencer(dataValidade)
+  const vencido = dias < 0
+  const urgente = !vencido && dias <= 20
+  const cls = vencido
+    ? 'bg-red-50 text-red-600 border-red-200'
+    : urgente
+    ? 'bg-amber-50 text-amber-700 border-amber-200'
+    : 'bg-green-50 text-green-700 border-green-200'
+  const Icon = vencido ? XCircle : urgente ? AlertTriangle : CalendarClock
+  const label = vencido
+    ? `Vencido há ${Math.abs(dias)} dia${Math.abs(dias) !== 1 ? 's' : ''}`
+    : dias === 0
+    ? 'Vence hoje'
+    : `Vence em ${dias} dia${dias !== 1 ? 's' : ''}`
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${cls}`}>
+      <Icon size={10} />
+      {label}
+    </span>
+  )
 }
 
 // ─── Linha de tipo ────────────────────────────────────────────────────────────
@@ -140,6 +170,8 @@ function DocumentoRow({
                 <statusCfg.Icon size={11} />
                 {statusCfg.label}
               </span>
+
+              <ValidadeBadge dataValidade={doc.dataValidade} />
 
               {!isRejecting && (
                 <div className="flex items-center gap-1 shrink-0">
@@ -327,6 +359,7 @@ export function DocumentosEmpresaModal({ empresa, onClose }: Props) {
   const canValidate = user?.realm_access?.roles.some(r => r === 'gestao' || r === 'operacao') ?? false
 
   const [selectedTipo, setSelectedTipo] = useState<TipoDocumentoEmpresa>('CONTRATO_SOCIAL')
+  const [dataValidade, setDataValidade] = useState('')
   const [docs, setDocs] = useState<Partial<Record<TipoDocumentoEmpresa, DocumentoEmpresa[]>>>({})
   const [previews, setPreviews] = useState<Record<string, string>>({})
   const [dragging, setDragging] = useState(false)
@@ -377,7 +410,7 @@ export function DocumentosEmpresaModal({ empresa, onClose }: Props) {
     setError(null)
     setUploading(tipo)
     try {
-      const doc = await empresasApi.uploadDocumento(empresa.id, tipo, file)
+      const doc = await empresasApi.uploadDocumento(empresa.id, tipo, file, dataValidade || null)
       if (isImagem(file.name)) {
         const url = URL.createObjectURL(file)
         setPreviews(p => ({ ...p, [doc.id]: url }))
@@ -581,6 +614,26 @@ export function DocumentosEmpresaModal({ empresa, onClose }: Props) {
             >
               <Upload size={14} /> Escolher arquivo
             </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <CalendarClock size={13} className="text-ds-light shrink-0" />
+            <label className="text-xs text-ds-light whitespace-nowrap">Validade (opcional):</label>
+            <input
+              type="date"
+              value={dataValidade}
+              onChange={e => setDataValidade(e.target.value)}
+              className="py-1 px-2 text-xs border border-ds-border rounded-lg bg-white text-ds-text focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
+            />
+            {dataValidade && (
+              <button
+                onClick={() => setDataValidade('')}
+                className="text-[11px] text-ds-light hover:text-ds-text"
+                title="Limpar data"
+              >
+                <XCircle size={13} />
+              </button>
+            )}
           </div>
 
           <div

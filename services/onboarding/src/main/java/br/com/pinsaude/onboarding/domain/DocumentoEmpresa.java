@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.CreationTimestamp;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -39,6 +40,9 @@ public class DocumentoEmpresa {
     @Column(name = "versao_atual", nullable = false)
     private boolean versaoAtual = true;
 
+    @Column(name = "data_validade")
+    private LocalDate dataValidade;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -66,6 +70,9 @@ public class DocumentoEmpresa {
 
     public boolean isVersaoAtual() { return versaoAtual; }
     public void setVersaoAtual(boolean versaoAtual) { this.versaoAtual = versaoAtual; }
+
+    public LocalDate getDataValidade() { return dataValidade; }
+    public void setDataValidade(LocalDate dataValidade) { this.dataValidade = dataValidade; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

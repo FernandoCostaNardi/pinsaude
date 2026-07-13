@@ -131,7 +131,18 @@ export interface DocumentoEmpresa {
   statusValidacao: StatusValidacaoDocumentoEmpresa
   motivoReprovacao: string | null
   versaoAtual: boolean
+  dataValidade: string | null
   createdAt: string
+}
+
+export interface AlertaVencimentoDocumento {
+  documentoId: string
+  empresaId: string
+  empresaNome: string
+  tipo: TipoDocumentoEmpresa
+  nomeArquivo: string
+  dataValidade: string
+  diasRestantes: number
 }
 
 async function listarDocumentos(empresaId: string): Promise<DocumentoEmpresa[]> {
@@ -144,17 +155,28 @@ async function historicoContratoSocial(empresaId: string): Promise<DocumentoEmpr
   return handleResponse<DocumentoEmpresa[]>(res)
 }
 
-async function uploadDocumento(empresaId: string, tipo: TipoDocumentoEmpresa, arquivo: File): Promise<DocumentoEmpresa> {
+async function uploadDocumento(
+  empresaId: string,
+  tipo: TipoDocumentoEmpresa,
+  arquivo: File,
+  dataValidade?: string | null,
+): Promise<DocumentoEmpresa> {
   const token = getAccessToken()
   const form = new FormData()
   form.append('tipo', tipo)
   form.append('arquivo', arquivo)
+  if (dataValidade) form.append('dataValidade', dataValidade)
   const res = await fetch(`/api/empresas/${empresaId}/documentos?tipo=${tipo}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: form,
   })
   return handleResponse<DocumentoEmpresa>(res)
+}
+
+async function buscarAlertasVencimento(): Promise<AlertaVencimentoDocumento[]> {
+  const res = await fetch('/api/empresas/documentos/alertas-vencimento', { headers: authHeaders() })
+  return handleResponse<AlertaVencimentoDocumento[]>(res)
 }
 
 async function validarDocumentoEmpresa(
@@ -195,4 +217,5 @@ export const empresasApi = {
   listar, criar, atualizar, remover, buscarPorId,
   listarDocumentos, historicoContratoSocial, uploadDocumento,
   validarDocumentoEmpresa, deletarDocumentoEmpresa, downloadDocumentoEmpresa,
+  buscarAlertasVencimento,
 }
