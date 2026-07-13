@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,4 +38,14 @@ public interface DocumentoEmpresaRepository extends JpaRepository<DocumentoEmpre
     void arquivarVersoesPorTipo(
             @Param("empresaId") UUID empresaId,
             @Param("tipo") TipoDocumentoEmpresa tipo);
+
+    // Documentos de qualquer empresa com dataValidade <= limite (para alertas de vencimento)
+    @Query("""
+        SELECT d FROM DocumentoEmpresa d
+        WHERE d.dataValidade IS NOT NULL
+          AND d.dataValidade <= :limite
+          AND d.versaoAtual = true
+        ORDER BY d.dataValidade ASC
+        """)
+    List<DocumentoEmpresa> findVencimentoProximo(@Param("limite") LocalDate limite);
 }

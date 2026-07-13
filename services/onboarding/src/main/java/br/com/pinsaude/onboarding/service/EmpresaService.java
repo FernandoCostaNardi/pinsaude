@@ -16,8 +16,12 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class EmpresaService {
@@ -118,7 +122,8 @@ public class EmpresaService {
     }
 
     @Transactional
-    public DocumentoEmpresaResponse uploadDocumento(UUID empresaId, TipoDocumentoEmpresa tipo, MultipartFile arquivo) {
+    public DocumentoEmpresaResponse uploadDocumento(UUID empresaId, TipoDocumentoEmpresa tipo,
+                                                    MultipartFile arquivo, LocalDate dataValidade) {
         findOrThrow(empresaId);
         if (arquivo.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Arquivo não pode estar vazio");
@@ -138,9 +143,31 @@ public class EmpresaService {
         doc.setCaminhoStorage(caminho);
         doc.setStatusValidacao(StatusValidacaoDocumento.PENDENTE);
         doc.setVersaoAtual(true);
+        doc.setDataValidade(dataValidade);
         doc = documentoRepo.save(doc);
 
         return DocumentoEmpresaResponse.from(doc);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AlertaVencimentoDocumentoResponse> buscarAlertasVencimento() {
+        LocalDate limite = LocalDate.now().plusDays(20);
+        List<DocumentoEmpresa> docs = documentoRepo.findVencimentoProximo(limite);
+
+        List<UUID> empresaIds = docs.stream().map(DocumentoEmpresa::getEmpresaId).distinct().toList();
+        Map<UUID, String> nomes = repository.findAllById(empresaIds).stream()
+            .collect(Collectors.toMap(Empresa::getId, Empresa::getRazaoSocial));
+
+        LocalDate hoje = LocalDate.now();
+        return docs.stream().map(doc -> new AlertaVencimentoDocumentoResponse(
+            doc.getId(),
+            doc.getEmpresaId(),
+            nomes.getOrDefault(doc.getEmpresaId(), "Empresa desconhecida"),
+            doc.getTipo(),
+            doc.getNomeArquivo(),
+            doc.getDataValidade(),
+            ChronoUnit.DAYS.between(hoje, doc.getDataValidade())
+        )).toList();
     }
 
     @Transactional

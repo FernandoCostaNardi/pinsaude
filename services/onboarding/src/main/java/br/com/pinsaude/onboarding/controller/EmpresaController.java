@@ -12,6 +12,9 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import org.springframework.format.annotation.DateTimeFormat;
+
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -73,13 +76,20 @@ public class EmpresaController {
         return ResponseEntity.ok(service.listarHistoricoContratoSocial(id));
     }
 
+    @GetMapping("/documentos/alertas-vencimento")
+    @PreAuthorize("hasRole('gestao')")
+    public ResponseEntity<List<AlertaVencimentoDocumentoResponse>> alertasVencimento() {
+        return ResponseEntity.ok(service.buscarAlertasVencimento());
+    }
+
     @PostMapping(value = "/{id}/documentos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyRole('gestao','operacao')")
     public ResponseEntity<DocumentoEmpresaResponse> uploadDocumento(
             @PathVariable UUID id,
             @RequestParam TipoDocumentoEmpresa tipo,
-            @RequestParam("arquivo") MultipartFile arquivo) {
-        DocumentoEmpresaResponse response = service.uploadDocumento(id, tipo, arquivo);
+            @RequestParam("arquivo") MultipartFile arquivo,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataValidade) {
+        DocumentoEmpresaResponse response = service.uploadDocumento(id, tipo, arquivo, dataValidade);
         var location = ServletUriComponentsBuilder.fromCurrentRequest()
             .path("/{docId}").buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
