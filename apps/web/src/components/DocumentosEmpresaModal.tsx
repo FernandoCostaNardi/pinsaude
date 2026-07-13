@@ -359,7 +359,10 @@ export function DocumentosEmpresaModal({ empresa, onClose }: Props) {
   const canValidate = user?.realm_access?.roles.some(r => r === 'gestao' || r === 'operacao') ?? false
 
   const [selectedTipo, setSelectedTipo] = useState<TipoDocumentoEmpresa>('CONTRATO_SOCIAL')
-  const [dataValidade, setDataValidade] = useState('')
+  // Fluxo de upload em 2 etapas: arquivo selecionado → pergunta validade → envio
+  const [pendingUpload, setPendingUpload] = useState<{ tipo: TipoDocumentoEmpresa; file: File } | null>(null)
+  const [pendingDataValidade, setPendingDataValidade] = useState('')
+  const [showDataInput, setShowDataInput] = useState(false)
   const [docs, setDocs] = useState<Partial<Record<TipoDocumentoEmpresa, DocumentoEmpresa[]>>>({})
   const [previews, setPreviews] = useState<Record<string, string>>({})
   const [dragging, setDragging] = useState(false)
@@ -404,13 +407,34 @@ export function DocumentosEmpresaModal({ empresa, onClose }: Props) {
       .finally(() => setLoading(false))
   }, [empresa.id])
 
-  async function handleUpload(tipo: TipoDocumentoEmpresa, file: File) {
+  function iniciarUpload(tipo: TipoDocumentoEmpresa, file: File) {
     const err = validarArquivo(file)
     if (err) { setError(err); return }
     setError(null)
+    setPendingDataValidade('')
+    setShowDataInput(false)
+    setPendingUpload({ tipo, file })
+  }
+
+  async function confirmarUpload(dataValidade: string | null) {
+    if (!pendingUpload) return
+    const { tipo, file } = pendingUpload
+    setPendingUpload(null)
+    setPendingDataValidade('')
+    setShowDataInput(false)
+    await handleUpload(tipo, file, dataValidade)
+  }
+
+  function cancelarUpload() {
+    setPendingUpload(null)
+    setPendingDataValidade('')
+    setShowDataInput(false)
+  }
+
+  async function handleUpload(tipo: TipoDocumentoEmpresa, file: File, dataValidade: string | null) {
     setUploading(tipo)
     try {
-      const doc = await empresasApi.uploadDocumento(empresa.id, tipo, file, dataValidade || null)
+      const doc = await empresasApi.uploadDocumento(empresa.id, tipo, file, dataValidade)
       if (isImagem(file.name)) {
         const url = URL.createObjectURL(file)
         setPreviews(p => ({ ...p, [doc.id]: url }))
@@ -433,7 +457,7 @@ export function DocumentosEmpresaModal({ empresa, onClose }: Props) {
 
   function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) handleUpload(selectedTipo, file)
+    if (file) iniciarUpload(selectedTipo, file)
     e.target.value = ''
   }
 
@@ -441,7 +465,7 @@ export function DocumentosEmpresaModal({ empresa, onClose }: Props) {
     e.preventDefault()
     setDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file) handleUpload(selectedTipo, file)
+    if (file) iniciarUpload(selectedTipo, file)
   }
 
   function handleAdicionarMais(tipo: TipoDocumentoEmpresa) {
@@ -597,69 +621,108 @@ export function DocumentosEmpresaModal({ empresa, onClose }: Props) {
         {/* Upload zone */}
         <div className="flex flex-col gap-2 p-4 border border-ds-border rounded-xl bg-ds-input">
           <p className="text-xs font-semibold text-ds-mid">Enviar documento</p>
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedTipo}
-              onChange={e => setSelectedTipo(e.target.value as TipoDocumentoEmpresa)}
-              className="flex-1 py-1.5 px-3 text-sm border border-ds-border rounded-lg bg-white text-ds-text focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
-            >
-              {TODOS_TIPOS.map(t => (
-                <option key={t} value={t}>{TIPO_INFO[t].label}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading !== null}
-              className="px-3 py-1.5 text-sm font-medium border border-ds-border rounded-lg bg-white text-ds-mid hover:bg-ds-hover disabled:opacity-50 transition-colors flex items-center gap-1.5 shrink-0"
-            >
-              <Upload size={14} /> Escolher arquivo
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <CalendarClock size={13} className="text-ds-light shrink-0" />
-            <label className="text-xs text-ds-light whitespace-nowrap">Validade (opcional):</label>
-            <input
-              type="date"
-              value={dataValidade}
-              onChange={e => setDataValidade(e.target.value)}
-              className="py-1 px-2 text-xs border border-ds-border rounded-lg bg-white text-ds-text focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
-            />
-            {dataValidade && (
-              <button
-                onClick={() => setDataValidade('')}
-                className="text-[11px] text-ds-light hover:text-ds-text"
-                title="Limpar data"
+          {!pendingUpload && (
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedTipo}
+                onChange={e => setSelectedTipo(e.target.value as TipoDocumentoEmpresa)}
+                className="flex-1 py-1.5 px-3 text-sm border border-ds-border rounded-lg bg-white text-ds-text focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
               >
-                <XCircle size={13} />
+                {TODOS_TIPOS.map(t => (
+                  <option key={t} value={t}>{TIPO_INFO[t].label}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading !== null}
+                className="px-3 py-1.5 text-sm font-medium border border-ds-border rounded-lg bg-white text-ds-mid hover:bg-ds-hover disabled:opacity-50 transition-colors flex items-center gap-1.5 shrink-0"
+              >
+                <Upload size={14} /> Escolher arquivo
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div
-            onDragOver={e => { e.preventDefault(); setDragging(true) }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={[
-              'flex flex-col items-center justify-center gap-1.5 py-5 rounded-xl border-2 border-dashed cursor-pointer transition-colors',
-              dragging ? 'border-primary bg-primary-50' : 'border-ds-border hover:border-primary hover:bg-primary-50',
-              uploading !== null ? 'pointer-events-none opacity-50' : '',
-            ].join(' ')}
-          >
-            {uploading !== null ? (
-              <>
-                <Spinner size="sm" />
-                <p className="text-xs text-primary">Enviando {TIPO_INFO[uploading].label}...</p>
-              </>
-            ) : (
-              <>
-                <Upload size={20} className={dragging ? 'text-primary' : 'text-ds-light'} />
-                <p className="text-xs font-medium text-ds-mid">Arraste o arquivo aqui</p>
-                <p className="text-[11px] text-ds-light">PDF, JPG ou PNG · máx. {MAX_MB} MB</p>
-              </>
-            )}
-          </div>
+          {pendingUpload ? (
+            /* ── Pergunta de validade por arquivo ── */
+            <div className="flex flex-col gap-3 p-3 rounded-xl border border-amber-200 bg-amber-50">
+              <div className="flex items-start gap-2">
+                <CalendarClock size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-ds-text">
+                    {TIPO_INFO[pendingUpload.tipo].label}
+                  </p>
+                  <p className="text-[11px] text-ds-light truncate">{pendingUpload.file.name}</p>
+                  <p className="text-xs text-ds-mid mt-1">Este documento tem prazo de validade?</p>
+                </div>
+              </div>
+
+              {showDataInput ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="date"
+                    value={pendingDataValidade}
+                    onChange={e => setPendingDataValidade(e.target.value)}
+                    autoFocus
+                    className="py-1 px-2 text-xs border border-ds-border rounded-lg bg-white text-ds-text focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
+                  />
+                  <button
+                    onClick={() => confirmarUpload(pendingDataValidade || null)}
+                    disabled={!pendingDataValidade}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold bg-primary text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                  >
+                    Enviar
+                  </button>
+                  <button
+                    onClick={cancelarUpload}
+                    className="px-3 py-1 rounded-lg text-xs border border-ds-border text-ds-mid hover:bg-white transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowDataInput(true)}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 transition-colors"
+                  >
+                    Sim, informar data
+                  </button>
+                  <button
+                    onClick={() => confirmarUpload(null)}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold bg-primary text-white hover:bg-primary-700 transition-colors"
+                  >
+                    Não, enviar assim
+                  </button>
+                  <button
+                    onClick={cancelarUpload}
+                    className="px-3 py-1 rounded-lg text-xs border border-ds-border text-ds-mid hover:bg-ds-hover transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : uploading !== null ? (
+            <div className="flex items-center justify-center gap-2 py-5 rounded-xl border-2 border-dashed border-ds-border bg-ds-input opacity-60">
+              <Spinner size="sm" />
+              <p className="text-xs text-primary">Enviando {TIPO_INFO[uploading].label}...</p>
+            </div>
+          ) : (
+            <div
+              onDragOver={e => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={[
+                'flex flex-col items-center justify-center gap-1.5 py-5 rounded-xl border-2 border-dashed cursor-pointer transition-colors',
+                dragging ? 'border-primary bg-primary-50' : 'border-ds-border hover:border-primary hover:bg-primary-50',
+              ].join(' ')}
+            >
+              <Upload size={20} className={dragging ? 'text-primary' : 'text-ds-light'} />
+              <p className="text-xs font-medium text-ds-mid">Arraste o arquivo aqui</p>
+              <p className="text-[11px] text-ds-light">PDF, JPG ou PNG · máx. {MAX_MB} MB</p>
+            </div>
+          )}
           <input ref={fileInputRef} type="file" accept={ACCEPT} className="hidden" onChange={handleFileInputChange} />
         </div>
 
