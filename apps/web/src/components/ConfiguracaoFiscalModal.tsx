@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { FileText, Percent, CheckCircle, AlertTriangle, XCircle, Clock } from 'lucide-react'
+import { Percent, CheckCircle, AlertTriangle, XCircle, Clock } from 'lucide-react'
 import { Modal, Input, Button, Alert, Spinner } from '@pinsaude/ui'
-import { Lc116Select, lc116Items } from './Lc116Select'
 import {
   configuracaoFiscalApi,
   ConfiguracaoFiscal,
@@ -13,8 +12,6 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface FiscalForm {
-  codigoLc116: string
-  indicadorEquiparacaoHospitalar: boolean
   vencimentoCertificadoA1: string
   competencia: string
   regimePresuncao: RegimePresuncao
@@ -30,9 +27,8 @@ type FormErrors = Partial<Record<keyof FiscalForm, string>>
 // ─── Wizard steps ─────────────────────────────────────────────────────────────
 
 const STEPS = [
-  { label: 'Dados Fiscais', Icon: FileText },
-  { label: 'Alíquotas',     Icon: Percent  },
-  { label: 'Revisão',       Icon: CheckCircle },
+  { label: 'Alíquotas', Icon: Percent     },
+  { label: 'Revisão',   Icon: CheckCircle },
 ] as const
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -42,12 +38,9 @@ function mesAtual(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-
 function formFromConfig(config: ConfiguracaoFiscal, comp: string): FiscalForm {
   const aq = config.historicoAliquotas.find(a => a.competencia === comp)
   return {
-    codigoLc116: config.codigoLc116 ?? '',
-    indicadorEquiparacaoHospitalar: config.indicadorEquiparacaoHospitalar,
     vencimentoCertificadoA1: config.vencimentoCertificadoA1 ?? '',
     competencia: comp,
     regimePresuncao: aq?.regimePresuncao ?? 'CHEIA',
@@ -159,7 +152,6 @@ function WizardSteps({
               ].join(' ')}>
                 {label}
               </span>
-              {/* Compact step number visible only on mobile */}
               <span className={[
                 'sm:hidden text-[10px] font-semibold text-center leading-tight',
                 isDone ? 'text-secondary-600' : isActive ? 'text-primary' : 'text-ds-light',
@@ -183,52 +175,7 @@ function WizardSteps({
   )
 }
 
-// ─── Step 0: Dados Fiscais ────────────────────────────────────────────────────
-
-function StepDadosFiscais({
-  form,
-  errors,
-  onChange,
-}: {
-  form: FiscalForm
-  errors: FormErrors
-  onChange: <K extends keyof FiscalForm>(k: K, v: FiscalForm[K]) => void
-}) {
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-xs sm:text-sm text-ds-light">
-        Informe os dados tributários da empresa para emissão de NFS-e.
-      </p>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Lc116Select
-          value={form.codigoLc116}
-          onChange={(codigo) => onChange('codigoLc116', codigo)}
-          error={errors.codigoLc116}
-        />
-
-        <Input
-          label="Vencimento Certificado A1"
-          type="date"
-          value={form.vencimentoCertificadoA1}
-          onChange={e => onChange('vencimentoCertificadoA1', e.target.value)}
-        />
-      </div>
-
-      <label className="flex items-center gap-2.5 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={form.indicadorEquiparacaoHospitalar}
-          onChange={e => onChange('indicadorEquiparacaoHospitalar', e.target.checked)}
-          className="w-4 h-4 rounded border-ds-border accent-primary"
-        />
-        <span className="text-sm text-ds-mid">Equiparação hospitalar (LC 116, Art. 2°)</span>
-      </label>
-    </div>
-  )
-}
-
-// ─── Step 1: Alíquotas ───────────────────────────────────────────────────────
+// ─── Step 0: Alíquotas ───────────────────────────────────────────────────────
 
 function StepAliquotas({
   form,
@@ -248,77 +195,92 @@ function StepAliquotas({
   const temHistorico = config.historicoAliquotas.some(a => a.competencia === form.competencia)
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-5">
-      <p className="text-xs sm:text-sm text-ds-light">
-        Defina as alíquotas para a competência selecionada. Cada mês é independente.
-      </p>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-gray-700">Competência *</label>
-          <input
-            type="month"
-            value={form.competencia}
-            onChange={e => onCompetenciaChange(e.target.value)}
-            className="block w-full px-3 py-2 text-sm border border-ds-border rounded-lg text-ds-text bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
+    <div className="flex flex-col gap-5">
+      {/* Certificado A1 */}
+      <div className="rounded-xl border border-ds-border p-4">
+        <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-3">Certificado A1</p>
+        <div className="max-w-xs">
+          <Input
+            label="Vencimento"
+            type="date"
+            value={form.vencimentoCertificadoA1}
+            onChange={e => onChange('vencimentoCertificadoA1', e.target.value)}
           />
-          {isPassada && (
-            <p className="text-xs text-amber-600 flex items-center gap-1">
-              <AlertTriangle size={11} />
-              Competência passada — alteração afeta retroativamente.
-            </p>
-          )}
-          {!isPassada && temHistorico && (
-            <p className="text-xs text-primary">Editando alíquotas existentes para esta competência.</p>
-          )}
-          {!isPassada && !temHistorico && (
-            <p className="text-xs text-ds-light">Nova competência — alíquotas iniciadas zeradas.</p>
-          )}
-          {errors.competencia && <p className="text-xs text-red-600">{errors.competencia}</p>}
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-gray-700">Regime de Presunção</label>
-          <select
-            value={form.regimePresuncao}
-            onChange={e => onChange('regimePresuncao', e.target.value as RegimePresuncao)}
-            className="block w-full px-3 py-2 text-sm border border-ds-border rounded-lg text-ds-text bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
-          >
-            <option value="CHEIA">Cheia</option>
-            <option value="REDUZIDA">Reduzida (equiparação)</option>
-          </select>
         </div>
       </div>
 
-      <div className="rounded-xl border border-ds-border bg-ds-input p-3 sm:p-4">
-        <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-3">Alíquotas (%)</p>
-        {/* Mobile: 2 cols so inputs are wide enough to tap; COFINS spans full on last row */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
-          {(['iss', 'ir', 'csll', 'pis'] as const).map(campo => (
-            <AliquotaInput
-              key={campo}
-              label={campo.toUpperCase()}
-              value={form[campo]}
-              onChange={v => onChange(campo, v)}
+      {/* Alíquotas por competência */}
+      <div className="flex flex-col gap-4">
+        <p className="text-xs sm:text-sm text-ds-light">
+          Defina as alíquotas para a competência selecionada. Cada mês é independente.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">Competência *</label>
+            <input
+              type="month"
+              value={form.competencia}
+              onChange={e => onCompetenciaChange(e.target.value)}
+              className="block w-full px-3 py-2 text-sm border border-ds-border rounded-lg text-ds-text bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
             />
-          ))}
-          <div className="col-span-2 sm:col-span-1">
-            <AliquotaInput
-              label="COFINS"
-              value={form.cofins}
-              onChange={v => onChange('cofins', v)}
-            />
+            {isPassada && (
+              <p className="text-xs text-amber-600 flex items-center gap-1">
+                <AlertTriangle size={11} />
+                Competência passada — alteração afeta retroativamente.
+              </p>
+            )}
+            {!isPassada && temHistorico && (
+              <p className="text-xs text-primary">Editando alíquotas existentes para esta competência.</p>
+            )}
+            {!isPassada && !temHistorico && (
+              <p className="text-xs text-ds-light">Nova competência — alíquotas iniciadas zeradas.</p>
+            )}
+            {errors.competencia && <p className="text-xs text-red-600">{errors.competencia}</p>}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">Regime de Presunção</label>
+            <select
+              value={form.regimePresuncao}
+              onChange={e => onChange('regimePresuncao', e.target.value as RegimePresuncao)}
+              className="block w-full px-3 py-2 text-sm border border-ds-border rounded-lg text-ds-text bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
+            >
+              <option value="CHEIA">Cheia</option>
+              <option value="REDUZIDA">Reduzida (equiparação)</option>
+            </select>
           </div>
         </div>
-        <p className="mt-3 text-xs text-ds-light">
-          Valores entre 0% e 100%. Alterações não retroagem em notas já emitidas.
-        </p>
+
+        <div className="rounded-xl border border-ds-border bg-ds-input p-3 sm:p-4">
+          <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-3">Alíquotas (%)</p>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
+            {(['iss', 'ir', 'csll', 'pis'] as const).map(campo => (
+              <AliquotaInput
+                key={campo}
+                label={campo.toUpperCase()}
+                value={form[campo]}
+                onChange={v => onChange(campo, v)}
+              />
+            ))}
+            <div className="col-span-2 sm:col-span-1">
+              <AliquotaInput
+                label="COFINS"
+                value={form.cofins}
+                onChange={v => onChange('cofins', v)}
+              />
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-ds-light">
+            Valores entre 0% e 100%. Alterações não retroagem em notas já emitidas.
+          </p>
+        </div>
       </div>
     </div>
   )
 }
 
-// ─── Step 2: Revisão ─────────────────────────────────────────────────────────
+// ─── Step 1: Revisão ─────────────────────────────────────────────────────────
 
 function StepRevisao({
   form,
@@ -327,10 +289,6 @@ function StepRevisao({
   form: FiscalForm
   config: ConfiguracaoFiscal
 }) {
-  const lcDescricao = form.codigoLc116
-    ? lc116Items.find(i => i.codigo === form.codigoLc116)?.descricao ?? form.codigoLc116
-    : ''
-
   const historico = [...config.historicoAliquotas].sort((a, b) =>
     b.competencia.localeCompare(a.competencia)
   )
@@ -339,32 +297,23 @@ function StepRevisao({
     <div className="flex flex-col gap-4 sm:gap-5">
       <p className="text-xs sm:text-sm text-ds-light">Confira os dados antes de salvar.</p>
 
-      {/* Dados Fiscais */}
+      {/* Certificado A1 */}
       <div>
-        <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Dados Fiscais</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-          <ReviewField label="Código LC 116" value={form.codigoLc116 ? `${form.codigoLc116} — ${lcDescricao}` : ''} />
-          <ReviewField label="Vencimento Cert. A1" value={
-            form.vencimentoCertificadoA1
-              ? new Date(form.vencimentoCertificadoA1 + 'T00:00:00').toLocaleDateString('pt-BR')
-              : ''
-          } />
-        </div>
-        {form.indicadorEquiparacaoHospitalar && (
-          <div className="mt-2 flex items-center gap-2 rounded-lg border border-secondary-200 bg-secondary-50 px-3 py-2 text-xs font-medium text-secondary-700">
-            <CheckCircle size={13} />
-            Equiparação hospitalar ativa (LC 116, Art. 2°)
-          </div>
-        )}
+        <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Certificado A1</p>
+        <ReviewField label="Vencimento" value={
+          form.vencimentoCertificadoA1
+            ? new Date(form.vencimentoCertificadoA1 + 'T00:00:00').toLocaleDateString('pt-BR')
+            : ''
+        } />
       </div>
 
-      {/* Alíquotas — mobile: cards 3-col; desktop: compact table */}
+      {/* Alíquotas */}
       <div>
         <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">
           Alíquotas — {form.competencia}
         </p>
 
-        {/* Mobile version: cards */}
+        {/* Mobile: cards */}
         <div className="sm:hidden grid grid-cols-3 gap-2">
           {(['iss', 'ir', 'csll', 'pis', 'cofins'] as const).map(c => (
             <div key={c} className="rounded-lg bg-ds-input border border-ds-border px-2 py-2.5 text-center">
@@ -383,7 +332,7 @@ function StepRevisao({
           </div>
         </div>
 
-        {/* Desktop version: table */}
+        {/* Desktop: table */}
         <div className="hidden sm:block rounded-xl border border-ds-border overflow-hidden">
           <div className="grid grid-cols-6 bg-ds-input px-4 py-2 text-xs font-semibold text-ds-light uppercase tracking-wide">
             {['ISS', 'IR', 'CSLL', 'PIS', 'COFINS', 'Regime'].map(h => (
@@ -408,7 +357,7 @@ function StepRevisao({
         </div>
       </div>
 
-      {/* Histórico — horizontal scroll on mobile */}
+      {/* Histórico */}
       {historico.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">
@@ -477,7 +426,6 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
   const [apiError, setApiError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  // Load initial config
   useEffect(() => {
     configuracaoFiscalApi.buscar(empresaId)
       .then(data => {
@@ -512,7 +460,7 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
   function validateStep(s: number): boolean {
     if (!form) return false
     const errs: FormErrors = {}
-    if (s === 1) {
+    if (s === 0) {
       if (!form.competencia) errs.competencia = 'Obrigatório'
       const check = (k: 'iss' | 'ir' | 'csll' | 'pis' | 'cofins') => {
         const v = parseFloat(form[k])
@@ -546,8 +494,8 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
       const payload: ConfiguracaoFiscalRequest = {
         cnaeCodigo: null,
         cnaeDescricao: null,
-        codigoLc116: form.codigoLc116 || null,
-        indicadorEquiparacaoHospitalar: form.indicadorEquiparacaoHospitalar,
+        codigoLc116: null,
+        indicadorEquiparacaoHospitalar: false,
         vencimentoCertificadoA1: form.vencimentoCertificadoA1 || null,
         aliquota: {
           competencia: form.competencia,
@@ -598,11 +546,8 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
         <div className="flex flex-col gap-6">
           <WizardSteps current={step} maxVisited={maxVisited} onGo={goTo} />
 
-          <div className="min-h-[160px] sm:min-h-[260px]">
+          <div className="min-h-[200px] sm:min-h-[300px]">
             {step === 0 && (
-              <StepDadosFiscais form={form} errors={errors} onChange={setField} />
-            )}
-            {step === 1 && (
               <StepAliquotas
                 form={form}
                 errors={errors}
@@ -611,7 +556,7 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
                 config={config}
               />
             )}
-            {step === 2 && (
+            {step === 1 && (
               <StepRevisao form={form} config={config} />
             )}
           </div>
@@ -627,7 +572,7 @@ export function ConfiguracaoFiscalModal({ empresaId, empresaNome, onClose }: Pro
             >
               {step === 0 ? 'Cancelar' : '← Voltar'}
             </Button>
-            {step < 2 ? (
+            {step < 1 ? (
               <Button onClick={handleNext}>
                 Próximo →
               </Button>
