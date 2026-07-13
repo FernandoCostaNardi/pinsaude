@@ -152,6 +152,9 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
               <SectionTitle>Tomador de Serviço</SectionTitle>
             </div>
             <InfoRow label="Razão Social / Nome" value={tomador.razaoSocialNome} />
+            {tomador.nomeFantasia && (
+              <InfoRow label="Nome Fantasia" value={<span className="text-red-600">{tomador.nomeFantasia}</span>} />
+            )}
             {tomador.municipio && <InfoRow label="Município" value={tomador.municipio} />}
             <InfoRow
               label="Retenção Federal"
