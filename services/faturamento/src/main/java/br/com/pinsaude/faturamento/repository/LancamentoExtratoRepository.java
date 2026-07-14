@@ -2,6 +2,7 @@ package br.com.pinsaude.faturamento.repository;
 
 import br.com.pinsaude.faturamento.domain.LancamentoExtrato;
 import br.com.pinsaude.faturamento.domain.StatusConciliacao;
+import br.com.pinsaude.faturamento.domain.TipoLancamentoExtrato;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -15,4 +16,7 @@ public interface LancamentoExtratoRepository extends JpaRepository<LancamentoExt
             UUID extratoId, StatusConciliacao statusConciliacao);
 
     boolean existsByExtratoIdAndIdentificadorExterno(UUID extratoId, String identificadorExterno);
+
+    List<LancamentoExtrato> findByExtratoIdAndTipoAndStatusConciliacao(
+            UUID extratoId, TipoLancamentoExtrato tipo, StatusConciliacao statusConciliacao);
 }

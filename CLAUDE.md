@@ -1952,6 +1952,65 @@ permitir INSERT sem restrição de tenant, mantendo `USING` apenas para SELECT/U
 
 ---
 
+## Motor de Matching Automático — Padrões (EPIC-07.3)
+
+### Matching contra `faturamento.producoes` (não contra `fiscal.notas_fiscais`)
+O motor de matching correlaciona lançamentos bancários com **produções confirmadas/emitidas**
+(`faturamento.producoes`), não diretamente com notas fiscais.
+Motivo: `notas_fiscais` está no schema `fiscal` (serviço diferente); `svc_faturamento` só tem acesso
+ao schema `faturamento`. A `producao.id` é armazenada em `conciliacoes.nota_id` (FK lógica, sem constraint explícita).
+
+### Algoritmo de scoring — pontuação aditiva (max 100)
+Três dimensões avaliadas por par (lançamento, produção):
+
+| Dimensão | Pontuação | Condição |
+|---|---|---|
+| Valor exato | +40 | `|lancamento.valor - producao.valorBruto| == 0` |
+| Valor tolerância ±1% | +20 | diferença percentual ≤ 1% |
+| Valor fora de 1% | 0 (skip) | par descartado — não entra no max |
+| CNPJ do tomador na descrição | +40 | dígitos CNPJ presentes nos dígitos da descrição |
+| Nome/razão social na descrição | +20 | descrição contém nome em uppercase (exclusivo com CNPJ) |
+| Data dentro de 7 dias | +20 | `|dataLancamento - firstDayCompetencia| ≤ 7 dias` |
+| Data dentro de 30 dias | +10 | `|dataLancamento - firstDayCompetencia| ≤ 30 dias` |
+
+Score ≥ 90 → auto-conciliação (`CONCILIADO` + cria `conciliacoes` com `AUTOMATICO`)
+Score 50-89 → sugestão (`scoreMatch` atualizado, status continua `PENDENTE`)
+Score < 50 → sem ação
+
+### Pré-descriptografia para evitar N×M chamadas
+O `MatchingService` descriptografa o CNPJ de **todos os candidatos uma vez**, antes do loop de scoring:
+```java
+Map<UUID, String> cnpjDigitosMap = pré_decriptografar(candidatas);
+// Reduz chamadas CryptoService de N×M para M (número de produções candidatas)
+```
+
+### Tenant vazio (gestão) — guard no início do método
+```java
+if (cnpjTenant == null || cnpjTenant.isBlank()) return; // gestão sem CNPJ = sem matching
+```
+Evita busca de produções com `cnpjIdTenant = ''` (não existem no schema).
+
+### Idempotência do consumer
+Antes de criar cada conciliação, verifica `conciliacaoRepo.existsByLancamentoExtratoId(id)`.
+O constraint `UNIQUE (lancamento_extrato_id)` na tabela garante unicidade no nível de banco.
+Se o consumer reprocessar a mesma mensagem (retry RabbitMQ), lançamentos já CONCILIADOS são pulados.
+
+### Um candidato por lançamento — remoção da pool
+Após auto-conciliar um par, a produção é removida da lista `candidatas` para não ser associada
+a um segundo lançamento no mesmo batch. Garantia de 1:1 por execução (sem duplicata intra-batch).
+
+### `calcularScore` é `public` — testabilidade direta
+O método `calcularScore(LancamentoExtrato, Producao, String cnpjDigitosPlain)` é `public` para
+permitir testes unitários diretos da função de pontuação sem mock de repositórios.
+O terceiro argumento é o CNPJ já descriptografado em dígitos — `null` quando o tomador não tem CNPJ.
+
+### Consumer propaga exceção para DLQ
+`MatchingAutomaticoJob.consumir` relança exceções do `MatchingService`. Com a config padrão do
+RabbitMQ listener (`max-attempts: 3`, `default-requeue-rejected: false`), após 3 falhas a mensagem
+vai para a DLQ sem loop infinito.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
