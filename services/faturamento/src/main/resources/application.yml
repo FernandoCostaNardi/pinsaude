@@ -1,6 +1,11 @@
 spring:
   config:
     import: "optional:classpath:application-local.yml"
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
   datasource:
     url: jdbc:postgresql://localhost:5433/pinsaude
     username: svc_faturamento
