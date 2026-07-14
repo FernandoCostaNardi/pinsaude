@@ -1,14 +1,18 @@
 package br.com.pinsaude.faturamento.conciliacao.matching;
 
 import br.com.pinsaude.faturamento.domain.*;
+import br.com.pinsaude.faturamento.dto.CandidatoMatchResponse;
 import br.com.pinsaude.faturamento.repository.ConciliacaoRepository;
+import br.com.pinsaude.faturamento.repository.ExtratoBancarioRepository;
 import br.com.pinsaude.faturamento.repository.LancamentoExtratoRepository;
 import br.com.pinsaude.faturamento.repository.ProducaoRepository;
 import br.com.pinsaude.faturamento.service.CryptoService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -32,15 +36,18 @@ public class MatchingService {
     private final ProducaoRepository producaoRepo;
     private final ConciliacaoRepository conciliacaoRepo;
     private final LancamentoExtratoRepository lancamentoRepo;
+    private final ExtratoBancarioRepository extratoRepo;
     private final CryptoService cryptoService;
 
     public MatchingService(ProducaoRepository producaoRepo,
                            ConciliacaoRepository conciliacaoRepo,
                            LancamentoExtratoRepository lancamentoRepo,
+                           ExtratoBancarioRepository extratoRepo,
                            CryptoService cryptoService) {
         this.producaoRepo    = producaoRepo;
         this.conciliacaoRepo = conciliacaoRepo;
         this.lancamentoRepo  = lancamentoRepo;
+        this.extratoRepo     = extratoRepo;
         this.cryptoService   = cryptoService;
     }
 
@@ -104,6 +111,41 @@ public class MatchingService {
                         lancamento.getId(), melhor.producao().getId(), melhor.score());
             }
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<CandidatoMatchResponse> getSugestoes(UUID lancamentoId) {
+        LancamentoExtrato lancamento = lancamentoRepo.findById(lancamentoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lançamento não encontrado"));
+
+        ExtratoBancario extrato = extratoRepo.findById(lancamento.getExtratoId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Extrato não encontrado"));
+
+        String cnpjTenant = extrato.getCnpjIdTenant();
+        if (cnpjTenant == null || cnpjTenant.isBlank()) return List.of();
+
+        List<Producao> candidatas = new ArrayList<>(producaoRepo.findCandidatasParaMatch(
+                cnpjTenant, List.of(StatusProducao.CONFIRMADA, StatusProducao.EMITIDA)));
+
+        if (candidatas.isEmpty()) return List.of();
+
+        Map<UUID, String> cnpjMap = pré_decriptografar(candidatas);
+
+        return candidatas.stream()
+                .map(p -> {
+                    int score = calcularScore(lancamento, p, cnpjMap.get(p.getId()));
+                    String nome = p.getTomador() != null
+                            ? p.getTomador().getRazaoSocialNome()
+                            : "—";
+                    return new CandidatoMatchResponse(p.getId(), nome, p.getValorBruto(),
+                            p.getCompetencia(), score);
+                })
+                .filter(c -> c.score() >= LIMIAR_SUGESTAO)
+                .sorted(Comparator.comparingInt(CandidatoMatchResponse::score).reversed())
+                .limit(5)
+                .toList();
     }
 
     public int calcularScore(LancamentoExtrato lancamento, Producao producao, String cnpjDigitosPlain) {

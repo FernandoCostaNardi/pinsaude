@@ -2069,6 +2069,87 @@ Spring Boot + jackson-datatype-jsr310 auto-configurado serializa `LocalDate` com
 
 ---
 
+## Tela de Conciliação Assistida — Padrões (EPIC-07.5)
+
+### Arquitetura da página — lista + painel lateral
+A `ConciliacaoAssistidaPage` segue o mesmo padrão de layout do EPIC-05.6 (duas colunas com scroll independente):
+```tsx
+{/* Container body — overflow-hidden no pai */}
+<div className="flex-1 overflow-hidden flex">
+  {/* Lista de lançamentos — scroll próprio */}
+  <div className="flex-1 overflow-auto">...</div>
+  {/* Painel lateral — largura fixa, só aparece quando lançamento selecionado */}
+  {selecionado && (
+    <div className="w-80 xl:w-96 bg-white border-l ... flex flex-col h-full shrink-0">
+      <DetalhePanel ... />
+    </div>
+  )}
+</div>
+```
+
+### Candidatos — lazy load por lançamento com cache local
+Candidatos de match são carregados apenas quando o usuário clica em um lançamento PENDENTE.
+O estado `candidatesMap: Record<string, CandidatoMatchResponse[] | null>` guarda por `lancamentoId`.
+`undefined` = ainda não carregado; `[]` = carregado e vazio; lista = carregado com candidatos.
+O loading spinner usa `candidatesMap[id] === undefined` para detectar "ainda não tentou".
+
+### Conciliação manual — modal com busca client-side
+O modal "Buscar produção manualmente" carrega todas as producoes na primeira abertura (lazy, cached em `useState`).
+Filtro via `.includes(ql)` nos campos `tomadorNome`, `competencia`, `formatBRL(valorBruto)`.
+A seleção chama `conciliarLancamento(lancId, prodId, 'Conciliação manual')`.
+
+### `recarregarLancamentos` — atualiza lista e painel sem perder seleção
+Após qualquer mutação (conciliar, ignorar, desfazer), recarrega `listarLancamentos(extratoId)`
+e atualiza `selecionado` para o item atual (preservando o painel aberto):
+```typescript
+const atualizado = data.find((l) => l.id === selecionado.id)
+setSelecionado(atualizado ?? null)
+```
+
+### Desfazer lançamento IGNORADO — usa `desfazerConciliacao`
+O endpoint `DELETE /api/conciliacao/lancamentos/{id}/conciliacao` (originalmente para desfazer conciliação)
+é reutilizado para reativar lançamentos ignorados — o service faz um check mais permissivo para IGNORADO:
+- Para CONCILIADO: remove a `Conciliacao` do banco + volta para PENDENTE
+- Para IGNORADO: não tem `Conciliacao` no banco, apenas volta o status para PENDENTE
+
+**Atenção:** ao implementar o service, usar `@Transactional` e verificar status antes de deletar.
+
+### `ExtratoService` — injeção de `ConciliacaoRepository` + `ProducaoRepository`
+O construtor do `ExtratoService` ganhou dois novos parâmetros. Em testes que usam
+`@InjectMocks ExtratoService`, adicionar os respectivos `@Mock`:
+```java
+@Mock ConciliacaoRepository conciliacaoRepo;
+@Mock ProducaoRepository producaoRepo;
+```
+
+### `MatchingService.getSugestoes` — usa `ExtratoBancarioRepository`
+Para resolver o tenant do lançamento, `getSugestoes(lancamentoId)` agora injeta
+`ExtratoBancarioRepository` e faz lookup `lancamento.extratoId → extrato.cnpjIdTenant`.
+Em testes do `MatchingService`, adicionar `@Mock ExtratoBancarioRepository extratoRepo`.
+
+### `LancamentoExtratoResponse` — campo `ConciliacaoResumo` nullable
+O campo `conciliacao: ConciliacaoResumo | null` foi adicionado ao record.
+O factory `from(LancamentoExtrato l)` (sem conciliacao) delega para `from(l, null, null, 0L, null)`.
+O `listarLancamentos` no service faz dois batch loads (conciliações + producoes) para preencher o campo.
+
+### `ConciliacaoRepository` — métodos adicionais necessários para EPIC-07.5
+```java
+Optional<Conciliacao> findByLancamentoExtratoId(UUID lancamentoExtratoId);
+List<Conciliacao> findByLancamentoExtratoIdIn(List<UUID> lancamentoIds);
+
+@Transactional
+void deleteByLancamentoExtratoId(UUID lancamentoExtratoId);
+```
+
+### Sidebar — dois itens de conciliação
+```
+Upload Extrato  → /conciliacao/upload     (ícone Upload)
+Conciliação     → /conciliacao/assistida  (ícone ArrowLeftRight)
+```
+A rota `/conciliacao` também aponta para `ConciliacaoAssistidaPage` (redirect implícito por ordem de rota).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

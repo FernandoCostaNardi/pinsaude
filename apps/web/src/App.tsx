@@ -21,7 +21,8 @@ import { DashboardMedicoPage }      from './pages/DashboardMedicoPage'
 import { MinhasNotasPage }           from './pages/MinhasNotasPage'
 import { ExtratoPage }               from './pages/ExtratoPage'
 import { PortalProducaoNovaPage }    from './pages/PortalProducaoNovaPage'
-import { ConciliacaoUploadPage }     from './pages/ConciliacaoUploadPage'
+import { ConciliacaoUploadPage }      from './pages/ConciliacaoUploadPage'
+import { ConciliacaoAssistidaPage }  from './pages/ConciliacaoAssistidaPage'
 
 export default function App() {
   return (
@@ -55,8 +56,9 @@ export default function App() {
             <Route path="/portal/extrato"        element={<ExtratoPage />} />
             <Route path="/portal/producao/nova"  element={<PortalProducaoNovaPage />} />
             <Route path="/repasses"           element={<UnderConstruction title="Repasses" epic="EPIC-09" />} />
-            <Route path="/conciliacao"        element={<ConciliacaoUploadPage />} />
-            <Route path="/conciliacao/upload" element={<ConciliacaoUploadPage />} />
+            <Route path="/conciliacao"           element={<ConciliacaoAssistidaPage />} />
+            <Route path="/conciliacao/assistida" element={<ConciliacaoAssistidaPage />} />
+            <Route path="/conciliacao/upload"    element={<ConciliacaoUploadPage />} />
             <Route path="/gestao"      element={<UnderConstruction title="Gestão"      epic="EPIC-10" />} />
           </Route>
         </Routes>
