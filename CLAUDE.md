@@ -1865,6 +1865,47 @@ public void notificarNotaEmitida(NotaFiscal nota) {
 
 ---
 
+## Conciliação Bancária — Padrões e Armadilhas (EPIC-07.1)
+
+### Schema em `faturamento` service — não em serviço separado
+As tabelas de conciliação ficam no schema `faturamento` (migration V13), pois a conciliação
+associa lançamentos bancários às `fiscal.notas_fiscais` do serviço fiscal. Manter no faturamento
+evita dependência cross-service e simplifica queries de matching.
+
+### Hierarquia de isolamento multi-tenancy
+```
+extratos_bancarios      → cnpj_id_tenant (coluna direta)
+lancamentos_extrato     → subquery em extratos_bancarios por cnpj_id_tenant
+conciliacoes            → subquery dupla: lancamentos_extrato → extratos_bancarios → cnpj_id_tenant
+```
+Padrão já estabelecido para tabelas filhas sem coluna de tenant direta (ver EPIC-03.2).
+
+### `nota_id` em `conciliacoes` — FK lógica cross-service
+A coluna `nota_id` referencia `fiscal.notas_fiscais(id)` mas **não tem FK explícita** no banco.
+Motivo: FK cross-schema com schemas de serviços diferentes quebra independência de deploy.
+O serviço de conciliação valida existência da nota via chamada HTTP antes de gravar.
+
+### `score_match` e `score_confianca` — convenção 0-100
+- `0` = nenhum candidato encontrado / conciliação manual sem score calculado
+- `100` = match perfeito (valor, data e CNPJ idênticos)
+- `score_match` fica em `lancamentos_extrato` (calculado durante matching automático)
+- `score_confianca` fica em `conciliacoes` (herdado do `score_match` no momento da conciliação)
+- Ambos têm `CHECK (BETWEEN 0 AND 100)` no banco
+
+### `identificador_externo` em `lancamentos_extrato` — idempotência de reimportação
+Código único do banco (ex: número do documento OFX). Índice parcial `WHERE identificador_externo IS NOT NULL`.
+O serviço de upload deve verificar duplicata antes de inserir para evitar reimportação do mesmo arquivo.
+
+### `status_importacao` no extrato — ciclo de vida
+`PROCESSANDO` → `OK` (todos os lançamentos parseados) ou `ERRO` (falha no parse).
+`total_lancamentos` é atualizado pelo serviço após processar todo o arquivo.
+
+### RLS `WITH CHECK (true)` em todas as tabelas filhas
+Seguindo o padrão estabelecido em EPIC-03.2: `WITH CHECK (true)` em todas as políticas para
+permitir INSERT sem restrição de tenant, mantendo `USING` apenas para SELECT/UPDATE.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
