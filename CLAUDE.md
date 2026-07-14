@@ -1865,6 +1865,52 @@ public void notificarNotaEmitida(NotaFiscal nota) {
 
 ---
 
+## API Upload de Extrato Bancário — Padrões (EPIC-07.2)
+
+### Parsers sem dependência externa (OFX4J descartado)
+Os parsers CSV e OFX foram implementados sem biblioteca externa (OFX4J descartado por risco de SSL corporativo).
+O `OfxParser` detecta OFX 1.x SGML vs OFX 2.x XML e usa `javax.xml.parsers.DocumentBuilderFactory` para XML.
+Para SGML, converte inline com regex para transformar `<TAG>valor\n` em `<TAG>valor</TAG>` antes de parsear.
+
+### Interface `ExtratoBancarioParser` — seleção por banco + nome de arquivo
+```java
+boolean suporta(BancoEnum banco, String nomeArquivo);
+```
+`ExtratoService` injeta `List<ExtratoBancarioParser>` (todos os @Component) e usa `findFirst` filtrando por `suporta`.
+Para `BancoEnum.OUTRO`, os parsers usam o nome do arquivo como fallback (ex: `nomeArquivo.contains("inter")`).
+`OfxParser` suporta qualquer banco desde que o arquivo termine em `.ofx` ou `.qfx`.
+
+### Detecção de duplicatas — escopo tenant
+O check de duplicata usa `(nomeArquivo, periodoInicio, periodoFim, cnpjIdTenant)` — nunca cross-tenant.
+Retorna HTTP 409 imediatamente sem processar o arquivo.
+
+### Deduplicação interna de lançamentos — `identificadorExterno`
+Para OFX: usa o campo `FITID` (único por transação bancária).
+Para CSV: gera sintético `<BANCO>-<data>-<idx>-<valor>` — idempotente para reimportação do mesmo arquivo.
+O check `existsByExtratoIdAndIdentificadorExterno` previne duplicatas no mesmo extrato.
+
+### Ciclo de vida do extrato durante importação
+1. Salva `ExtratoBancario` com `statusImportacao = PROCESSANDO`
+2. Parseia o arquivo — em caso de erro: atualiza para `ERRO`, lança 400
+3. Salva lançamentos com `statusConciliacao = PENDENTE`
+4. Atualiza extrato para `OK` com `totalLancamentos = salvos`
+5. Publica `MatchingMessage(extratoId, cnpjTenant)` na fila `conciliacao.matching`
+
+### RabbitMQ — fila `conciliacao.matching`
+Declarada em `RabbitConciliacaoConfig` como queue durable. Formato JSON via `Jackson2JsonMessageConverter`.
+O producer captura exceções silenciosamente — falha de RabbitMQ não impede a resposta HTTP da importação.
+
+### Encoding CSV — BOM e ISO-8859-1
+Arquivos CSV de bancos brasileiros podem ter BOM UTF-8 (`EF BB BF`) ou encoding ISO-8859-1.
+Ambos os parsers removem o BOM e detectam ISO-8859-1 procurando o character replacement `�` no resultado UTF-8.
+
+### V14 migration — coluna `banco` adicionada pós-V13
+A coluna `banco VARCHAR(20)` foi esquecida na V13 inicial e adicionada na V14.
+Padrão documentado: ao esquecer coluna em uma migration já aplicada, criar nova migration (`ALTER TABLE ADD COLUMN`).
+**Nunca editar** uma migration já aplicada — o checksum do Flyway mudaria e causaria falha de validação.
+
+---
+
 ## Conciliação Bancária — Padrões e Armadilhas (EPIC-07.1)
 
 ### Schema em `faturamento` service — não em serviço separado
