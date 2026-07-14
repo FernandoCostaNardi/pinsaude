@@ -37,7 +37,7 @@ const navItems = [
   { to: '/notas',       label: 'Notas',         icon: FileText,         roles: null,       end: true  },
   { to: '/notas/lote',  label: 'Lotes NFS-e',   icon: Layers,           roles: ['operacao', 'gestao', 'contabil', 'financeiro'], end: true },
   { to: '/repasses',    label: 'Repasses',      icon: Banknote,         roles: null,       end: true  },
-  { to: '/conciliacao', label: 'Conciliação',   icon: ArrowLeftRight,   roles: null,       end: true  },
+  { to: '/conciliacao', label: 'Conciliação',   icon: ArrowLeftRight,   roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: false },
   { to: '/gestao',      label: 'Gestão',        icon: BarChart3,        roles: null,       end: true  },
   { to: '/usuarios',    label: 'Usuários',      icon: Users,            roles: ['gestao'], end: true  },
 ]
