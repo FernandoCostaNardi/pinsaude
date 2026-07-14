@@ -36,6 +36,10 @@ spring:
           uri: http://localhost:8082
           predicates:
             - Path=/api/servicos/**
+        - id: conciliacao
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/conciliacao/**
         - id: portal
           uri: http://localhost:8087
           predicates:

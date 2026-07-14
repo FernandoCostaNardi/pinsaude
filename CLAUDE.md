@@ -2011,6 +2011,64 @@ vai para a DLQ sem loop infinito.
 
 ---
 
+## Tela de Upload de Extrato Bancário — Padrões (EPIC-07.4)
+
+### Gateway: rota `/api/conciliacao/**` em faturamento service
+O `ConciliacaoController` vive no `faturamento` service (porta 8082). A rota no gateway
+usa o prefixo `/api/conciliacao/**` → `http://localhost:8082`. Sem essa rota, todas as
+chamadas da tela retornam 404 mesmo com o backend respondendo corretamente.
+
+### Parsers client-side — somente para preview, não substituem o backend
+O frontend implementa parsers em TypeScript (Inter CSV, BTG CSV, OFX SGML/XML) para exibir
+prévia dos 10 primeiros lançamentos antes do upload. O parsing real e o armazenamento são
+feitos pelo backend. Diferenças de interpretação entre os parsers client-side e backend são
+aceitáveis — apenas o preview é afetado.
+
+**Convenções dos parsers client-side:**
+- Remover BOM UTF-8 (`text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text`)
+- Ler com `FileReader.readAsText(file, 'ISO-8859-1')` para compatibilidade com arquivos pt-BR
+- Inter CSV: separador `;`, tipo "Entrada"/"Saída", valor `"1.500,00"` (remover pontos, substituir vírgula)
+- BTG CSV: separador `,` com aspas, valor `1500.00` ou `-500.00` (sinal indica tipo)
+- OFX: detectar XML vs SGML pelo presença de `<STMTTRN>...</STMTTRN>` com fechamento
+
+### `DragEvent<HTMLDivElement>` — import nomeado de 'react'
+Para tipar handlers de drag-and-drop sem `React.DragEvent` (que exige `import React`):
+```tsx
+import type { DragEvent, ElementType } from 'react'
+// ...
+const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => { ... }, [dep])
+```
+
+### Barra de progresso simulada sem polling
+Para uploads sem server-sent events, simular progresso com `setInterval`:
+```tsx
+progressTimerRef.current = setInterval(() => {
+  pct = Math.min(pct + 7, 82)   // nunca passa de 82% antes da resposta
+  setProgresso(pct)
+}, 350)
+// Ao receber resposta: clearInterval → setProgresso(95) → setTimeout → setProgresso(100)
+```
+O timer é limpo no `clearInterval` do `try/catch` e também no cleanup do `useEffect` com `[]`.
+
+### Detecção de duplicata no frontend — compara banco + periodoInicio + periodoFim
+O alerta de possível duplicata é exibido quando o extrato já importado tem o mesmo
+`banco`, `periodoInicio` e `periodoFim` detectados pelo parser client-side:
+```tsx
+const dup = extratos.find(e =>
+  e.banco === bancoSel &&
+  e.periodoInicio === pv.periodoInicio &&   // "YYYY-MM-DD"
+  e.periodoFim === pv.periodoFim,
+)
+if (dup) setAlerta('Atenção: já existe um extrato importado...')
+```
+O backend ainda realiza a verificação formal e retorna 409 se detectar duplicata real.
+
+### `ExtratoResponse.periodoInicio` / `periodoFim` — LocalDate serializado como "YYYY-MM-DD"
+Spring Boot + jackson-datatype-jsr310 auto-configurado serializa `LocalDate` como string ISO
+`"YYYY-MM-DD"` (não como array `[year, month, day]`). Tipos TypeScript: `periodoInicio: string`.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
