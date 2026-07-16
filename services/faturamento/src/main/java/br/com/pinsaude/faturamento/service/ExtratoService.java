@@ -8,8 +8,10 @@ import br.com.pinsaude.faturamento.config.TenantContext;
 import br.com.pinsaude.faturamento.domain.*;
 import br.com.pinsaude.faturamento.dto.ExtratoResponse;
 import br.com.pinsaude.faturamento.dto.LancamentoExtratoResponse;
+import br.com.pinsaude.faturamento.repository.ConciliacaoRepository;
 import br.com.pinsaude.faturamento.repository.ExtratoBancarioRepository;
 import br.com.pinsaude.faturamento.repository.LancamentoExtratoRepository;
+import br.com.pinsaude.faturamento.repository.ProducaoRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -24,25 +26,31 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.text.ParseException;
 import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class ExtratoService {
 
     private static final Logger log = LoggerFactory.getLogger(ExtratoService.class);
 
-    private final ExtratoBancarioRepository  extratoRepo;
+    private final ExtratoBancarioRepository   extratoRepo;
     private final LancamentoExtratoRepository lancamentoRepo;
+    private final ConciliacaoRepository       conciliacaoRepo;
+    private final ProducaoRepository          producaoRepo;
     private final List<ExtratoBancarioParser> parsers;
     private final MatchingProducer            matchingProducer;
 
     public ExtratoService(ExtratoBancarioRepository extratoRepo,
                           LancamentoExtratoRepository lancamentoRepo,
+                          ConciliacaoRepository conciliacaoRepo,
+                          ProducaoRepository producaoRepo,
                           List<ExtratoBancarioParser> parsers,
                           MatchingProducer matchingProducer) {
         this.extratoRepo      = extratoRepo;
         this.lancamentoRepo   = lancamentoRepo;
+        this.conciliacaoRepo  = conciliacaoRepo;
+        this.producaoRepo     = producaoRepo;
         this.parsers          = parsers;
         this.matchingProducer = matchingProducer;
     }
@@ -152,7 +160,93 @@ public class ExtratoService {
         } else {
             lancamentos = lancamentoRepo.findByExtratoIdOrderByDataLancamentoDesc(extratoId);
         }
-        return lancamentos.stream().map(LancamentoExtratoResponse::from).toList();
+
+        // Batch load conciliações para evitar N+1
+        List<UUID> lancamentoIds = lancamentos.stream().map(LancamentoExtrato::getId).toList();
+        Map<UUID, Conciliacao> conciliacaoMap = conciliacaoRepo
+                .findByLancamentoExtratoIdIn(lancamentoIds)
+                .stream()
+                .collect(Collectors.toMap(Conciliacao::getLancamentoExtratoId, c -> c));
+
+        // Batch load producoes para exibir dados da conciliação (tomador, valor, competência)
+        List<UUID> producaoIds = conciliacaoMap.values().stream()
+                .map(Conciliacao::getNotaId)
+                .distinct()
+                .toList();
+        Map<UUID, Producao> producaoMap = producaoIds.isEmpty()
+                ? Map.of()
+                : producaoRepo.findAllByIdWithTomador(producaoIds)
+                        .stream()
+                        .collect(Collectors.toMap(Producao::getId, p -> p));
+
+        return lancamentos.stream().map(l -> {
+            Conciliacao c = conciliacaoMap.get(l.getId());
+            if (c == null) return LancamentoExtratoResponse.from(l);
+
+            Producao p = producaoMap.get(c.getNotaId());
+            String tomadorNome = (p != null && p.getTomador() != null)
+                    ? p.getTomador().getRazaoSocialNome()
+                    : null;
+            long valorBruto = p != null ? p.getValorBruto() : 0L;
+            String competencia = p != null ? p.getCompetencia() : null;
+
+            return LancamentoExtratoResponse.from(l, c, tomadorNome, valorBruto, competencia);
+        }).toList();
+    }
+
+    @Transactional
+    public void conciliarManual(UUID lancamentoId, UUID producaoId, String usuarioId, String observacao) {
+        LancamentoExtrato lancamento = lancamentoRepo.findById(lancamentoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lançamento não encontrado"));
+
+        // Desfaz conciliação anterior se existir
+        if (StatusConciliacao.CONCILIADO.equals(lancamento.getStatusConciliacao())) {
+            conciliacaoRepo.deleteByLancamentoExtratoId(lancamentoId);
+        }
+
+        Conciliacao c = new Conciliacao();
+        c.setLancamentoExtratoId(lancamentoId);
+        c.setNotaId(producaoId);
+        c.setTipoMatch(TipoMatchEnum.MANUAL);
+        c.setScoreConfianca(0);
+        c.setUsuarioId(usuarioId);
+        c.setObservacao(observacao);
+        conciliacaoRepo.save(c);
+
+        lancamento.setStatusConciliacao(StatusConciliacao.CONCILIADO);
+        lancamentoRepo.save(lancamento);
+    }
+
+    @Transactional
+    public void ignorar(UUID lancamentoId) {
+        LancamentoExtrato lancamento = lancamentoRepo.findById(lancamentoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lançamento não encontrado"));
+
+        if (StatusConciliacao.CONCILIADO.equals(lancamento.getStatusConciliacao())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Lançamento já conciliado — desfaça a conciliação antes de ignorar.");
+        }
+
+        lancamento.setStatusConciliacao(StatusConciliacao.IGNORADO);
+        lancamentoRepo.save(lancamento);
+    }
+
+    @Transactional
+    public void desfazerConciliacao(UUID lancamentoId) {
+        LancamentoExtrato lancamento = lancamentoRepo.findById(lancamentoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Lançamento não encontrado"));
+
+        if (!StatusConciliacao.CONCILIADO.equals(lancamento.getStatusConciliacao())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Lançamento não está conciliado.");
+        }
+
+        conciliacaoRepo.deleteByLancamentoExtratoId(lancamentoId);
+        lancamento.setStatusConciliacao(StatusConciliacao.PENDENTE);
+        lancamentoRepo.save(lancamento);
     }
 
     private String resolverEmail() {

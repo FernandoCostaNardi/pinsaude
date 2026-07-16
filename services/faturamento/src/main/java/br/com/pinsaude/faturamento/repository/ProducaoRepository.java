@@ -29,4 +29,7 @@ public interface ProducaoRepository extends JpaRepository<Producao, UUID> {
             """)
     List<Producao> findCandidatasParaMatch(@Param("tenant") String tenant,
                                            @Param("statuses") List<StatusProducao> statuses);
+
+    @Query("SELECT p FROM Producao p JOIN FETCH p.tomador WHERE p.id IN :ids")
+    List<Producao> findAllByIdWithTomador(@Param("ids") List<UUID> ids);
 }
