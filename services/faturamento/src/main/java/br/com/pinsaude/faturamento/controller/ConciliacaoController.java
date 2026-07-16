@@ -6,7 +6,10 @@ import br.com.pinsaude.faturamento.dto.CandidatoMatchResponse;
 import br.com.pinsaude.faturamento.dto.ConciliarRequest;
 import br.com.pinsaude.faturamento.dto.ExtratoResponse;
 import br.com.pinsaude.faturamento.dto.LancamentoExtratoResponse;
+import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse;
+import br.com.pinsaude.faturamento.dto.ProducaoCandidataResponse;
 import br.com.pinsaude.faturamento.service.ExtratoService;
+import br.com.pinsaude.faturamento.service.PosicaoCaixaService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -26,12 +29,16 @@ import java.util.UUID;
 @RequestMapping("/api/conciliacao")
 public class ConciliacaoController {
 
-    private final ExtratoService  extratoService;
-    private final MatchingService matchingService;
+    private final ExtratoService    extratoService;
+    private final MatchingService   matchingService;
+    private final PosicaoCaixaService posicaoCaixaService;
 
-    public ConciliacaoController(ExtratoService extratoService, MatchingService matchingService) {
-        this.extratoService  = extratoService;
-        this.matchingService = matchingService;
+    public ConciliacaoController(ExtratoService extratoService,
+                                 MatchingService matchingService,
+                                 PosicaoCaixaService posicaoCaixaService) {
+        this.extratoService     = extratoService;
+        this.matchingService    = matchingService;
+        this.posicaoCaixaService = posicaoCaixaService;
     }
 
     @PostMapping(value = "/extratos/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -63,6 +70,12 @@ public class ConciliacaoController {
         return ResponseEntity.ok(extratoService.listarLancamentos(id, status));
     }
 
+    @GetMapping("/producoes/candidatas")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    public ResponseEntity<List<ProducaoCandidataResponse>> listarCandidatas() {
+        return ResponseEntity.ok(extratoService.listarCandidatas());
+    }
+
     @GetMapping("/lancamentos/{id}/sugestoes")
     @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
     public ResponseEntity<List<CandidatoMatchResponse>> getSugestoes(@PathVariable UUID id) {
@@ -91,5 +104,11 @@ public class ConciliacaoController {
     public ResponseEntity<Void> desfazer(@PathVariable UUID id) {
         extratoService.desfazerConciliacao(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/posicao-caixa")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    public ResponseEntity<PosicaoCaixaResponse> getPosicaoCaixa() {
+        return ResponseEntity.ok(posicaoCaixaService.calcular());
     }
 }

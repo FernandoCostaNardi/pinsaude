@@ -60,6 +60,7 @@ management:
 # Valores sobrescritos pelo Vault em produção — env vars para desenvolvimento local
 nfse:
   enabled: ${NFSE_ENABLED:false}
+  mock.enabled: ${NFSE_MOCK_ENABLED:true}
   api-token: ${NFSE_API_TOKEN:dev-mock-token}
   base-url: ${NFSE_BASE_URL:https://api.plugnotas.com.br}
   timeout-segundos: ${NFSE_TIMEOUT_SEGUNDOS:30}

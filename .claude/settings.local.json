@@ -200,7 +200,10 @@
       "PowerShell(Copy-Item *)",
       "Bash(Get-Content \"G:\\\\olisystem\\\\pinsaude\\\\services\\\\onboarding\\\\target\\\\classes\\\\application.yml\" -ErrorAction SilentlyContinue)",
       "Bash(Select-String -Pattern \"multipart|tomcat|max-\")",
-      "Bash(Format-Table)"
+      "Bash(Format-Table)",
+      "Bash(git rebase *)",
+      "Bash(grep -c *)",
+      "Bash(echo \"markers: $?\")"
     ]
   }
 }

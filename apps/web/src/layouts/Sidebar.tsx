@@ -20,6 +20,7 @@ import {
   TrendingUp,
   PlusCircle,
   Upload,
+  Wallet,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 
@@ -40,6 +41,7 @@ const navItems = [
   { to: '/repasses',    label: 'Repasses',      icon: Banknote,         roles: null,       end: true  },
   { to: '/conciliacao/upload',    label: 'Upload Extrato', icon: Upload,          roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true  },
   { to: '/conciliacao/assistida', label: 'Conciliação',   icon: ArrowLeftRight,  roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true  },
+  { to: '/conciliacao/caixa',     label: 'Posição de Caixa', icon: Wallet,       roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true  },
   { to: '/gestao',      label: 'Gestão',        icon: BarChart3,        roles: null,       end: true  },
   { to: '/usuarios',    label: 'Usuários',      icon: Users,            roles: ['gestao'], end: true  },
 ]
