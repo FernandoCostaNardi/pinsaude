@@ -450,6 +450,33 @@ export function ProducaoNovaPage() {
     return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current) }
   }, [servico?.id, tomador?.id, totalCentavos, competencia, tomadores, servicos])
 
+  // Serviços disponíveis para o tomador selecionado: se o tomador tem serviços cadastrados,
+  // só eles aparecem; caso contrário, cai no catálogo completo (fallback para tomadores sem vínculo).
+  const tomadorObj = tomador ? tomadores.find(t => t.id === tomador.id) ?? null : null
+  const servicosDisponiveis: Servico[] = tomadorObj && tomadorObj.servicos && tomadorObj.servicos.length > 0
+    ? servicos.filter(s => tomadorObj.servicos.some(v => v.servicoId === s.id))
+    : servicos
+
+  // Auto-seleciona quando há exatamente 1 opção disponível (serviço ou CNAE do tomador);
+  // limpa a seleção que deixou de ser válida para o tomador atual.
+  useEffect(() => {
+    // Serviço
+    if (servicosDisponiveis.length === 1) {
+      const only = servicosDisponiveis[0]
+      setServico(prev => prev?.id === only.id ? prev : { id: only.id, label: `${only.codigoLc116} — ${only.descricaoPadrao}` })
+    } else if (servico && !servicosDisponiveis.some(s => s.id === servico.id)) {
+      setServico(null)
+    }
+
+    // CNAE do tomador
+    const cnaesTomador = tomadorObj?.cnaes ?? []
+    if (cnaesTomador.length === 1) {
+      setCnaeCodigo(prev => prev === cnaesTomador[0].codigoCnae ? prev : cnaesTomador[0].codigoCnae)
+    } else if (cnaeCodigo && !cnaesTomador.some(c => c.codigoCnae === cnaeCodigo)) {
+      setCnaeCodigo('')
+    }
+  }, [tomador?.id, servicos, tomadores])
+
   const usedMedicoIds = new Set(participantes.map(p => p.medico?.id).filter(Boolean) as string[])
 
   function addParticipante() {
@@ -564,8 +591,8 @@ export function ProducaoNovaPage() {
               <Autocomplete
                 items={tomadorItems}
                 value={tomador}
-                onChange={item => { setTomador(item); setCnaeCodigo(''); setErrors(e => ({ ...e, tomador: '' })) }}
-                onClear={() => { setTomador(null); setCnaeCodigo(''); setPreview(null) }}
+                onChange={item => { setTomador(item); setCnaeCodigo(''); setServico(null); setErrors(e => ({ ...e, tomador: '' })) }}
+                onClear={() => { setTomador(null); setCnaeCodigo(''); setServico(null); setPreview(null) }}
                 placeholder="Buscar por nome ou CNPJ..."
               />
             </Field>
@@ -574,12 +601,14 @@ export function ProducaoNovaPage() {
             {(() => {
               const tomadorObj = tomadores.find(t => t.id === tomador?.id)
               if (!tomadorObj || !tomadorObj.cnaes || tomadorObj.cnaes.length === 0) return null
+              const cnaeUnico = tomadorObj.cnaes.length === 1
               return (
                 <Field label="CNAE (atividade econômica da nota)">
                   <select
                     value={cnaeCodigo}
                     onChange={e => setCnaeCodigo(e.target.value)}
-                    className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid"
+                    disabled={cnaeUnico}
+                    className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid disabled:bg-ds-surface disabled:text-ds-mid"
                   >
                     <option value="">Selecione o CNAE...</option>
                     {tomadorObj.cnaes.map(c => (
@@ -588,6 +617,11 @@ export function ProducaoNovaPage() {
                       </option>
                     ))}
                   </select>
+                  {cnaeUnico && (
+                    <p className="mt-1 text-[11px] text-ds-light">
+                      CNAE único do tomador — selecionado automaticamente.
+                    </p>
+                  )}
                 </Field>
               )
             })()}
@@ -596,19 +630,27 @@ export function ProducaoNovaPage() {
               <select
                 value={servico?.id ?? ''}
                 onChange={e => {
-                  const s = servicos.find(s => s.id === e.target.value)
+                  const s = servicosDisponiveis.find(s => s.id === e.target.value)
                   setServico(s ? { id: s.id, label: `${s.codigoLc116} — ${s.descricaoPadrao}` } : null)
                   setErrors(ex => ({ ...ex, servico: '' }))
                 }}
-                className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid"
+                disabled={servicosDisponiveis.length === 1}
+                className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid disabled:bg-ds-surface disabled:text-ds-mid"
               >
                 <option value="">Selecione o serviço...</option>
-                {servicos.map(s => (
+                {servicosDisponiveis.map(s => (
                   <option key={s.id} value={s.id}>
                     {s.codigoLc116} — {s.descricaoPadrao}
                   </option>
                 ))}
               </select>
+              {tomadorObj && tomadorObj.servicos && tomadorObj.servicos.length > 0 && (
+                <p className="mt-1 text-[11px] text-ds-light">
+                  {servicosDisponiveis.length === 1
+                    ? 'Serviço único do tomador — selecionado automaticamente.'
+                    : 'Exibindo apenas os serviços cadastrados para este tomador.'}
+                </p>
+              )}
             </Field>
 
             <Field label="Competência" required error={errors.competencia}>

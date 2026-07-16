@@ -6,9 +6,11 @@ import br.com.pinsaude.faturamento.domain.Tomador;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
+import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
+import br.com.pinsaude.faturamento.repository.TomadorServicoRepository;
 import br.com.pinsaude.faturamento.service.CryptoService;
 import br.com.pinsaude.faturamento.service.TomadorService;
 import jakarta.persistence.EntityNotFoundException;
@@ -45,10 +47,13 @@ class TomadorServiceTest {
     @Mock ConsultaCnpjPort consultaCnpjPort;
     @Mock TomadorAliquotaRepository aliquotaRepo;
     @Mock TomadorCnaeRepository cnaeRepo;
+    @Mock TomadorServicoRepository servicoVinculoRepo;
+    @Mock ServicoRepository servicoRepo;
 
     @InjectMocks TomadorService service;
 
     private static final String CNPJ_VALIDO   = "11222333000181";
+    private static final String CNPJ_ALT      = "45723174000110";
     private static final String CNPJ_INVALIDO = "11111111111111";
     private static final String CPF_VALIDO    = "52998224725";
     private static final String TENANT        = "12345678000195";
@@ -63,6 +68,7 @@ class TomadorServiceTest {
 
         when(aliquotaRepo.findByTomadorId(any())).thenReturn(Collections.emptyList());
         when(cnaeRepo.findByTomadorId(any())).thenReturn(Collections.emptyList());
+        when(servicoVinculoRepo.findByTomadorId(any())).thenReturn(Collections.emptyList());
     }
 
     // ─── buscar ──────────────────────────────────────────────────────────────
@@ -221,14 +227,21 @@ class TomadorServiceTest {
     @Test
     void atualizar_comCnpjDuplicadoDeOutroTomador_lanca409() {
         UUID id = UUID.randomUUID();
+        // existente tem um CNPJ atual diferente; a atualização quer mudá-lo para CNPJ_VALIDO,
+        // que já pertence a "outro" tomador → deve lançar 409.
+        byte[] encExistente = {1, 2, 3};
+        byte[] encOutro     = {9, 9, 9};
         Tomador existente = tomadorFixture(TENANT);
         existente.setId(id);
+        existente.setCnpjCpfTomadorCriptografado(encExistente);
 
         Tomador outro = tomadorFixture(TENANT);
+        outro.setCnpjCpfTomadorCriptografado(encOutro);
 
         when(repo.findById(id)).thenReturn(Optional.of(existente));
         when(repo.findAll()).thenReturn(List.of(existente, outro));
-        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+        when(crypto.decrypt(encExistente)).thenReturn(CNPJ_ALT); // CNPJ atual do existente
+        when(crypto.decrypt(encOutro)).thenReturn(CNPJ_VALIDO);  // outro já usa o CNPJ pretendido
 
         TomadorRequest req = new TomadorRequest(
             "OPERADORA", CNPJ_VALIDO, "Operadora Nova",
@@ -259,7 +272,75 @@ class TomadorServiceTest {
         verify(consultaCnpjPort).consultar(CNPJ_VALIDO);
     }
 
+    // ─── serviços por tomador ─────────────────────────────────────────────────
+
+    @Test
+    void adicionarServico_servicoInexistente_lanca400() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID servicoId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(servicoRepo.findById(servicoId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.adicionarServico(tomadorId,
+                new br.com.pinsaude.faturamento.dto.TomadorServicoRequest(servicoId)))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Serviço não encontrado");
+    }
+
+    @Test
+    void adicionarServico_duplicado_lanca409() {
+        UUID tomadorId = UUID.randomUUID();
+        br.com.pinsaude.faturamento.domain.Servico servico = servicoFixture();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(servicoRepo.findById(servico.getId())).thenReturn(Optional.of(servico));
+        when(servicoVinculoRepo.existsByTomadorIdAndServicoId(tomadorId, servico.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.adicionarServico(tomadorId,
+                new br.com.pinsaude.faturamento.dto.TomadorServicoRequest(servico.getId())))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("já cadastrado");
+    }
+
+    @Test
+    void adicionarServico_valido_salvaRetornaResponse() {
+        UUID tomadorId = UUID.randomUUID();
+        br.com.pinsaude.faturamento.domain.Servico servico = servicoFixture();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(servicoRepo.findById(servico.getId())).thenReturn(Optional.of(servico));
+        when(servicoVinculoRepo.existsByTomadorIdAndServicoId(tomadorId, servico.getId())).thenReturn(false);
+        when(servicoVinculoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = service.adicionarServico(tomadorId,
+                new br.com.pinsaude.faturamento.dto.TomadorServicoRequest(servico.getId()));
+
+        assertThat(result.servicoId()).isEqualTo(servico.getId());
+        assertThat(result.codigoLc116()).isEqualTo("4.01");
+        verify(servicoVinculoRepo).save(any());
+    }
+
+    @Test
+    void removerServico_deOutroTomador_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID vinculoId = UUID.randomUUID();
+        var vinculo = new br.com.pinsaude.faturamento.domain.TomadorServico();
+        vinculo.setTomadorId(UUID.randomUUID()); // pertence a outro tomador
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(servicoVinculoRepo.findById(vinculoId)).thenReturn(Optional.of(vinculo));
+
+        assertThatThrownBy(() -> service.removerServico(tomadorId, vinculoId))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Serviço não encontrado");
+    }
+
     // ─── fixtures ────────────────────────────────────────────────────────────
+
+    private br.com.pinsaude.faturamento.domain.Servico servicoFixture() {
+        var s = new br.com.pinsaude.faturamento.domain.Servico();
+        s.setId(UUID.randomUUID());
+        s.setCodigoLc116("4.01");
+        s.setDescricaoPadrao("Medicina e biomedicina");
+        return s;
+    }
 
     private Tomador tomadorFixture(String tenant) {
         Tomador t = new Tomador();

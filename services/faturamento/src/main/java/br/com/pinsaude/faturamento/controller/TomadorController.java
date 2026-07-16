@@ -7,6 +7,8 @@ import br.com.pinsaude.faturamento.dto.TomadorCnaeRequest;
 import br.com.pinsaude.faturamento.dto.TomadorCnaeResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
+import br.com.pinsaude.faturamento.dto.TomadorServicoRequest;
+import br.com.pinsaude.faturamento.dto.TomadorServicoResponse;
 import br.com.pinsaude.faturamento.service.TomadorService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -117,6 +119,31 @@ public class TomadorController {
             @PathVariable UUID id,
             @PathVariable UUID cnaeId) {
         service.removerCnae(id, cnaeId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Serviços por tomador ─────────────────────────────────────────────────
+
+    @GetMapping("/{id}/servicos")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<TomadorServicoResponse>> listarServicos(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarServicos(id));
+    }
+
+    @PostMapping("/{id}/servicos")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorServicoResponse> adicionarServico(
+            @PathVariable UUID id,
+            @Valid @RequestBody TomadorServicoRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.adicionarServico(id, req));
+    }
+
+    @DeleteMapping("/{id}/servicos/{vinculoId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerServico(
+            @PathVariable UUID id,
+            @PathVariable UUID vinculoId) {
+        service.removerServico(id, vinculoId);
         return ResponseEntity.noContent().build();
     }
 }

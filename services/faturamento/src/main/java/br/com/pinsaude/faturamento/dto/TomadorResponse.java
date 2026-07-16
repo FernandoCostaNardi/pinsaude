@@ -21,5 +21,6 @@ public record TomadorResponse(
     String uf,
     String pais,
     List<TomadorAliquotaResponse> aliquotas,
-    List<TomadorCnaeResponse> cnaes
+    List<TomadorCnaeResponse> cnaes,
+    List<TomadorServicoResponse> servicos
 ) {}
