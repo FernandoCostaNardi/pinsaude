@@ -360,7 +360,7 @@ function BuscaModal({ producoes, loading, onSelecionar, onFechar }: BuscaModalPr
                 <div className="flex gap-3 text-xs text-gray-500 mt-0.5">
                   <span>{formatCompetencia(p.competencia)}</span>
                   <span>{formatBRL(p.valorBruto)}</span>
-                  <span className="text-gray-400">{p.status}</span>
+                  {p.municipio && <span className="text-gray-400">{p.municipio}</span>}
                 </div>
               </button>
             ))
