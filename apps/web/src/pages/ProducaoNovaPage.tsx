@@ -457,13 +457,23 @@ export function ProducaoNovaPage() {
     ? servicos.filter(s => tomadorObj.servicos.some(v => v.servicoId === s.id))
     : servicos
 
-  // Auto-seleciona quando há exatamente 1 serviço disponível; limpa seleção que deixou de ser válida.
+  // Auto-seleciona quando há exatamente 1 opção disponível (serviço ou CNAE do tomador);
+  // limpa a seleção que deixou de ser válida para o tomador atual.
   useEffect(() => {
+    // Serviço
     if (servicosDisponiveis.length === 1) {
       const only = servicosDisponiveis[0]
       setServico(prev => prev?.id === only.id ? prev : { id: only.id, label: `${only.codigoLc116} — ${only.descricaoPadrao}` })
     } else if (servico && !servicosDisponiveis.some(s => s.id === servico.id)) {
       setServico(null)
+    }
+
+    // CNAE do tomador
+    const cnaesTomador = tomadorObj?.cnaes ?? []
+    if (cnaesTomador.length === 1) {
+      setCnaeCodigo(prev => prev === cnaesTomador[0].codigoCnae ? prev : cnaesTomador[0].codigoCnae)
+    } else if (cnaeCodigo && !cnaesTomador.some(c => c.codigoCnae === cnaeCodigo)) {
+      setCnaeCodigo('')
     }
   }, [tomador?.id, servicos, tomadores])
 
@@ -591,12 +601,14 @@ export function ProducaoNovaPage() {
             {(() => {
               const tomadorObj = tomadores.find(t => t.id === tomador?.id)
               if (!tomadorObj || !tomadorObj.cnaes || tomadorObj.cnaes.length === 0) return null
+              const cnaeUnico = tomadorObj.cnaes.length === 1
               return (
                 <Field label="CNAE (atividade econômica da nota)">
                   <select
                     value={cnaeCodigo}
                     onChange={e => setCnaeCodigo(e.target.value)}
-                    className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid"
+                    disabled={cnaeUnico}
+                    className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid disabled:bg-ds-surface disabled:text-ds-mid"
                   >
                     <option value="">Selecione o CNAE...</option>
                     {tomadorObj.cnaes.map(c => (
@@ -605,6 +617,11 @@ export function ProducaoNovaPage() {
                       </option>
                     ))}
                   </select>
+                  {cnaeUnico && (
+                    <p className="mt-1 text-[11px] text-ds-light">
+                      CNAE único do tomador — selecionado automaticamente.
+                    </p>
+                  )}
                 </Field>
               )
             })()}
