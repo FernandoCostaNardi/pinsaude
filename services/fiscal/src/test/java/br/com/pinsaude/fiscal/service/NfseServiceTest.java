@@ -4,17 +4,18 @@ import br.com.pinsaude.fiscal.domain.NotaFiscal;
 import br.com.pinsaude.fiscal.domain.StatusNota;
 import br.com.pinsaude.fiscal.dto.EmitirNfseRequest;
 import br.com.pinsaude.fiscal.dto.EmitirNfseResponse;
-import br.com.pinsaude.fiscal.messaging.NfseEmissaoMessage;
 import br.com.pinsaude.fiscal.messaging.EmailNotificacaoProducer;
+import br.com.pinsaude.fiscal.messaging.FaturamentoProducer;
+import br.com.pinsaude.fiscal.messaging.NfseEmissaoMessage;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoProducer;
 import br.com.pinsaude.fiscal.port.EmissaoNfsePort;
 import br.com.pinsaude.fiscal.port.ResultadoEmissao;
 import br.com.pinsaude.fiscal.repository.LoteEmissaoRepository;
 import br.com.pinsaude.fiscal.repository.NotaFiscalRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
@@ -39,10 +40,17 @@ class NfseServiceTest {
     @Mock EmissaoNfsePort emissaoPort;
     @Mock NfseEmissaoProducer producer;
     @Mock EmailNotificacaoProducer emailProducer;
+    @Mock FaturamentoProducer faturamentoProducer;
 
-    @InjectMocks NfseService nfseService;
+    NfseService nfseService;
 
     private static final String CNPJ_TENANT = "12345678000195";
+
+    @BeforeEach
+    void setUp() {
+        nfseService = new NfseService(notaRepo, loteRepo, emissaoPort, producer,
+                emailProducer, faturamentoProducer, false);
+    }
 
     // --- Critério: idempotência — mesma producaoId não emite duas vezes ---
 

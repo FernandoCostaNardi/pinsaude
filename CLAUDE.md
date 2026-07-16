@@ -2150,6 +2150,134 @@ A rota `/conciliacao` também aponta para `ConciliacaoAssistidaPage` (redirect i
 
 ---
 
+## Outbox Pattern — Race Condition com RabbitMQ (EPIC-07.6 / fiscal NfseService)
+
+### Sintoma
+Consumer recebe mensagem e lança `IllegalArgumentException: Nota não encontrada: <uuid>`.
+A nota existe no banco, mas o consumer a busca antes da transação do producer ter commitado.
+
+### Causa
+Publicar mensagem RabbitMQ dentro de um método `@Transactional` antes do commit:
+```java
+@Transactional
+public void emitir(Request req) {
+    var nota = notaRepo.save(buildNota(req));
+    producer.enviar(new NfseEmissaoMessage(nota.getId())); // ERRADO — tx ainda aberta
+}
+```
+O consumer (em outra thread/processo) recebe a mensagem e faz `notaRepo.findById(id)` — mas a
+transação ainda não foi commitada, então o SELECT retorna vazio.
+
+### Solução — `TransactionSynchronizationManager.afterCommit()`
+```java
+@Transactional
+public void emitir(Request req) {
+    var nota = notaRepo.save(buildNota(req));
+    final UUID notaId = nota.getId();
+    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+            producer.enviar(new NfseEmissaoMessage(notaId));
+        }
+    });
+}
+```
+O `afterCommit()` só executa após o commit bem-sucedido da transação. Se a transação fizer rollback,
+a mensagem não é publicada. Imports: `org.springframework.transaction.support.TransactionSynchronization`
+e `TransactionSynchronizationManager`.
+
+### Também se aplica a
+Qualquer método `@Transactional` que publica eventos (RabbitMQ, Kafka, webhooks) baseados em
+entidades recém-salvas. Padrão obrigatório no NfseService: `emitir()`, `aprovar()`, `reprocessarNota()`.
+
+---
+
+## Posição de Caixa — Padrões (EPIC-07.6)
+
+### `PosicaoCaixaService` — queries analíticas com JdbcTemplate
+Para queries de agregação cross-table sem JPA complexo, usar `JdbcTemplate` diretamente:
+```java
+@Service
+public class PosicaoCaixaService {
+    private final JdbcTemplate jdbc;
+    // ...
+    private long calcularAReceber() {
+        return jdbc.queryForObject("""
+            SELECT COALESCE(SUM(p.valor_bruto), 0)
+            FROM faturamento.producoes p
+            WHERE p.status = 'EMITIDA'
+              AND NOT EXISTS (
+                  SELECT 1 FROM faturamento.conciliacoes c WHERE c.nota_id = p.id
+              )
+            """, Long.class);
+    }
+}
+```
+
+### `nota_id` em `conciliacoes` armazena `producoes.id`
+A coluna `faturamento.conciliacoes.nota_id` referencia `faturamento.producoes(id)`, NÃO `fiscal.notas_fiscais(id)`.
+O nome é historicamente confuso — FK lógica sem constraint explícita (cross-service).
+
+### Gráfico de barras CSS sem biblioteca
+Implementar gráfico de barras como `flex divs` com altura percentual. Tooltip via `group-hover:opacity-100`:
+```tsx
+<div className="flex items-end gap-1.5 h-40 px-1">
+  {data.map((d) => {
+    const pct = Math.max((d.valor / max) * 100, 2)
+    return (
+      <div key={d.semanaKey} className="flex-1 flex flex-col items-center gap-1 group relative">
+        {/* Tooltip */}
+        <div className="absolute bottom-full mb-2 ... opacity-0 group-hover:opacity-100">
+          {formatBRL(d.valor)}
+        </div>
+        {/* Barra */}
+        <div className="w-full flex-1 flex items-end">
+          <div className="w-full bg-primary rounded-t" style={{ height: `${pct}%` }} />
+        </div>
+        <span className="text-[9px] text-ds-light">{d.semanaLabel}</span>
+      </div>
+    )
+  })}
+</div>
+```
+`Math.max(pct, 2)` garante que barras com valor muito pequeno ainda apareçam visivelmente.
+
+### Gráfico semanal — `DATE_TRUNC('week', ...)` retorna segunda-feira (ISO)
+PostgreSQL `DATE_TRUNC('week', data)` usa semana ISO (segunda = início).
+Usar `TO_CHAR(DATE_TRUNC('week', data), 'IYYY-"W"IW')` como key e `'DD/MM'` como label.
+
+### `repassadoNoMes = 0L` até EPIC-09
+EPIC-09 (repasses) não implementado. Hardcoded: `long repassado = 0L; // EPIC-09 pendente`.
+Quando EPIC-09 for implementado, substituir por query em `repasse.repasses WHERE status = 'LIQUIDADO'
+AND date_trunc('month', data_liquidacao) = date_trunc('month', CURRENT_DATE)`.
+
+### Destaque de dias em aberto — convensão de cores
+```typescript
+function diasEmAbertoClass(dias: number): string {
+  if (dias > 30) return 'text-red-600 font-bold'    // alerta crítico
+  if (dias > 15) return 'text-yellow-600 font-semibold' // atenção
+  return 'text-ds-mid'                               // normal
+}
+// Em >30 dias: adicionar AlertTriangle size={12} inline
+```
+
+### Mock NFS-e — `@ConditionalOnProperty` + `@Primary`
+Para testar o fluxo completo sem integrador real:
+```java
+@Primary
+@Component
+@ConditionalOnProperty(name = "nfse.mock.enabled", havingValue = "true")
+public class MockEmissaoNfseAdapter implements EmissaoNfsePort {
+    @Override
+    public ResultadoEmissao emitir(DadosEmissaoNfse dados) {
+        return ResultadoEmissao.sucesso("MOCK-" + System.currentTimeMillis(), "PROTOCOLO-MOCK");
+    }
+}
+```
+Ativar em `application.yml` com `nfse.mock.enabled: true`. `@Primary` garante que sobrepõe o adapter real.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

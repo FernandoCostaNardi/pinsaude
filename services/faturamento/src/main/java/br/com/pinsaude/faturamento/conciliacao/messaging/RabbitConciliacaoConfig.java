@@ -8,11 +8,17 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitConciliacaoConfig {
 
-    public static final String MATCHING_QUEUE = "conciliacao.matching";
+    public static final String MATCHING_QUEUE          = "conciliacao.matching";
+    public static final String PRODUCAO_EMITIDA_QUEUE  = "faturamento.producao.emitida";
 
     @Bean
     public Queue matchingQueue() {
         return new Queue(MATCHING_QUEUE, true);
+    }
+
+    @Bean
+    public Queue producaoEmitidaQueue() {
+        return new Queue(PRODUCAO_EMITIDA_QUEUE, true);
     }
 
     @Bean

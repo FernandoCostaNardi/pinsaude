@@ -21,14 +21,17 @@ public interface ProducaoRepository extends JpaRepository<Producao, UUID> {
 
     List<Producao> findByTomadorIdOrderByCreatedAtDesc(UUID tomadorId);
 
-    @Query("""
-            SELECT p FROM Producao p JOIN FETCH p.tomador t
-            WHERE p.cnpjIdTenant = :tenant
-            AND p.status IN :statuses
-            AND p.id NOT IN (SELECT c.notaId FROM Conciliacao c)
-            """)
+    // Native query com CAST(status AS varchar): evita conflito de :: com parser de parâmetros Spring Data
+    // e o "operator does not exist: status_producao_enum = character varying" do Hibernate.
+    // JOIN FETCH removido — tomador é lazy-loaded via @Transactional no caller.
+    @Query(value = """
+            SELECT * FROM faturamento.producoes
+            WHERE cnpj_id_tenant = :tenant
+              AND CAST(status AS varchar) IN (:statuses)
+              AND id NOT IN (SELECT nota_id FROM faturamento.conciliacoes WHERE nota_id IS NOT NULL)
+            """, nativeQuery = true)
     List<Producao> findCandidatasParaMatch(@Param("tenant") String tenant,
-                                           @Param("statuses") List<StatusProducao> statuses);
+                                           @Param("statuses") List<String> statuses);
 
     @Query("SELECT p FROM Producao p JOIN FETCH p.tomador WHERE p.id IN :ids")
     List<Producao> findAllByIdWithTomador(@Param("ids") List<UUID> ids);

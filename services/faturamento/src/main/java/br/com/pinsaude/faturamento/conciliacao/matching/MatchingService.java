@@ -60,12 +60,12 @@ public class MatchingService {
 
         List<LancamentoExtrato> lancamentos = lancamentoRepo
                 .findByExtratoIdAndTipoAndStatusConciliacao(
-                        extratoId, TipoLancamentoExtrato.CREDITO, StatusConciliacao.PENDENTE);
+                        extratoId, TipoLancamentoExtrato.CREDITO.name(), StatusConciliacao.PENDENTE.name());
 
         if (lancamentos.isEmpty()) return;
 
         List<Producao> candidatas = new ArrayList<>(producaoRepo.findCandidatasParaMatch(
-                cnpjTenant, List.of(StatusProducao.CONFIRMADA, StatusProducao.EMITIDA)));
+                cnpjTenant, List.of(StatusProducao.EMITIDA.name())));
 
         if (candidatas.isEmpty()) return;
 
@@ -127,7 +127,7 @@ public class MatchingService {
         if (cnpjTenant == null || cnpjTenant.isBlank()) return List.of();
 
         List<Producao> candidatas = new ArrayList<>(producaoRepo.findCandidatasParaMatch(
-                cnpjTenant, List.of(StatusProducao.CONFIRMADA, StatusProducao.EMITIDA)));
+                cnpjTenant, List.of(StatusProducao.EMITIDA.name())));
 
         if (candidatas.isEmpty()) return List.of();
 

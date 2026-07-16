@@ -126,10 +126,10 @@ class MatchingServiceTest {
         p.getTomador().setCnpjCpfTomadorCriptografado(new byte[]{1, 2, 3});
 
         when(lancamentoRepo.findByExtratoIdAndTipoAndStatusConciliacao(
-                extratoId, TipoLancamentoExtrato.CREDITO, StatusConciliacao.PENDENTE))
+                extratoId, TipoLancamentoExtrato.CREDITO.name(), StatusConciliacao.PENDENTE.name()))
                 .thenReturn(List.of(l));
         when(producaoRepo.findCandidatasParaMatch(tenant,
-                List.of(StatusProducao.CONFIRMADA, StatusProducao.EMITIDA)))
+                List.of(StatusProducao.EMITIDA.name())))
                 .thenReturn(new ArrayList<>(List.of(p)));
         when(conciliacaoRepo.existsByLancamentoExtratoId(any())).thenReturn(false);
         when(cryptoService.decrypt(any())).thenReturn("12345678000190");
@@ -254,7 +254,7 @@ class MatchingServiceTest {
         p.setId(UUID.randomUUID());
         p.setValorBruto(valorBruto);
         p.setCompetencia(competencia);
-        p.setStatus(StatusProducao.CONFIRMADA);
+        p.setStatus(StatusProducao.EMITIDA);
         Tomador tomador = new Tomador();
         tomador.setRazaoSocialNome("TOMADOR PADRAO");
         p.setTomador(tomador);

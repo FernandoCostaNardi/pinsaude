@@ -8,6 +8,7 @@ import br.com.pinsaude.faturamento.config.TenantContext;
 import br.com.pinsaude.faturamento.domain.*;
 import br.com.pinsaude.faturamento.dto.ExtratoResponse;
 import br.com.pinsaude.faturamento.dto.LancamentoExtratoResponse;
+import br.com.pinsaude.faturamento.dto.ProducaoCandidataResponse;
 import br.com.pinsaude.faturamento.repository.ConciliacaoRepository;
 import br.com.pinsaude.faturamento.repository.ExtratoBancarioRepository;
 import br.com.pinsaude.faturamento.repository.LancamentoExtratoRepository;
@@ -156,7 +157,7 @@ public class ExtratoService {
                         "Status inválido: " + statusParam);
             }
             lancamentos = lancamentoRepo
-                    .findByExtratoIdAndStatusConciliacaoOrderByDataLancamentoDesc(extratoId, status);
+                    .findByExtratoIdAndStatusConciliacaoOrderByDataLancamentoDesc(extratoId, status.name());
         } else {
             lancamentos = lancamentoRepo.findByExtratoIdOrderByDataLancamentoDesc(extratoId);
         }
@@ -194,15 +195,42 @@ public class ExtratoService {
         }).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<ProducaoCandidataResponse> listarCandidatas() {
+        String tenant = TenantContext.get();
+        if (tenant == null || tenant.isBlank()) return List.of();
+        return producaoRepo
+                .findCandidatasParaMatch(tenant, List.of(StatusProducao.EMITIDA.name()))
+                .stream()
+                .map(ProducaoCandidataResponse::from)
+                .toList();
+    }
+
     @Transactional
     public void conciliarManual(UUID lancamentoId, UUID producaoId, String usuarioId, String observacao) {
         LancamentoExtrato lancamento = lancamentoRepo.findById(lancamentoId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Lançamento não encontrado"));
 
-        // Desfaz conciliação anterior se existir
+        // Valida que a produção existe e tem NFS-e emitida
+        Producao producao = producaoRepo.findById(producaoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Produção não encontrada"));
+
+        if (producao.getStatus() != StatusProducao.EMITIDA) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Conciliação permitida apenas para produções com NFS-e emitida.");
+        }
+
+        // Desfaz conciliação anterior deste lançamento se existir
         if (StatusConciliacao.CONCILIADO.equals(lancamento.getStatusConciliacao())) {
             conciliacaoRepo.deleteByLancamentoExtratoId(lancamentoId);
+        }
+
+        // Valida que a produção não está conciliada com outro lançamento
+        if (conciliacaoRepo.existsByNotaId(producaoId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Esta produção já está conciliada com outro lançamento bancário.");
         }
 
         Conciliacao c = new Conciliacao();
@@ -239,12 +267,13 @@ public class ExtratoService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Lançamento não encontrado"));
 
-        if (!StatusConciliacao.CONCILIADO.equals(lancamento.getStatusConciliacao())) {
+        if (StatusConciliacao.CONCILIADO.equals(lancamento.getStatusConciliacao())) {
+            conciliacaoRepo.deleteByLancamentoExtratoId(lancamentoId);
+        } else if (!StatusConciliacao.IGNORADO.equals(lancamento.getStatusConciliacao())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Lançamento não está conciliado.");
+                    "Lançamento não está conciliado nem ignorado.");
         }
 
-        conciliacaoRepo.deleteByLancamentoExtratoId(lancamentoId);
         lancamento.setStatusConciliacao(StatusConciliacao.PENDENTE);
         lancamentoRepo.save(lancamento);
     }

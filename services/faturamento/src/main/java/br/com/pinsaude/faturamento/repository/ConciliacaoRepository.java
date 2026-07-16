@@ -13,6 +13,8 @@ public interface ConciliacaoRepository extends JpaRepository<Conciliacao, UUID> 
     Optional<Conciliacao> findByLancamentoExtratoId(UUID lancamentoExtratoId);
     List<Conciliacao> findByLancamentoExtratoIdIn(List<UUID> lancamentoIds);
 
+    boolean existsByNotaId(UUID notaId);
+
     @Transactional
     void deleteByLancamentoExtratoId(UUID lancamentoExtratoId);
 }
