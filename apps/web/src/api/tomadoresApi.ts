@@ -40,6 +40,13 @@ export interface TomadorCnae {
   descricao: string | null
 }
 
+export interface TomadorServico {
+  id: string          // id do vínculo tomador↔serviço
+  servicoId: string   // id do serviço no catálogo LC 116
+  codigoLc116: string | null
+  descricaoPadrao: string | null
+}
+
 export interface Tomador {
   id: string
   tipo: TipoTomador
@@ -59,6 +66,7 @@ export interface Tomador {
   pais: string | null
   aliquotas: TomadorAliquota[]
   cnaes: TomadorCnae[]
+  servicos: TomadorServico[]
 }
 
 export interface TomadorRequest {
@@ -182,6 +190,28 @@ export const tomadoresApi = {
 
   async removerCnae(tomadorId: string, cnaeId: string): Promise<void> {
     const res = await fetch(`/api/tomadores/${tomadorId}/cnaes/${cnaeId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
+
+  async listarServicos(tomadorId: string): Promise<TomadorServico[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/servicos`, { headers: authHeaders() })
+    return handleResponse<TomadorServico[]>(res)
+  },
+
+  async adicionarServico(tomadorId: string, servicoId: string): Promise<TomadorServico> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/servicos`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ servicoId }),
+    })
+    return handleResponse<TomadorServico>(res)
+  },
+
+  async removerServico(tomadorId: string, vinculoId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/servicos/${vinculoId}`, {
       method: 'DELETE',
       headers: authHeaders(),
     })

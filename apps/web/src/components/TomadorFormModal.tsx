@@ -4,7 +4,8 @@ import { Modal, Input, Button, Alert } from '@pinsaude/ui'
 import { CnpjInput } from './CnpjInput'
 import { CpfInput } from './CpfInput'
 import { isValidCnpj } from '../utils/cnpj'
-import { Tomador, TomadorRequest, TipoTomador, TomadorCnae, tomadoresApi } from '../api/tomadoresApi'
+import { Tomador, TomadorRequest, TipoTomador, TomadorCnae, TomadorServico, tomadoresApi } from '../api/tomadoresApi'
+import { Servico, servicosApi } from '../api/servicosApi'
 import { CnaeSelect, formatCnae } from './CnaeSelect'
 
 const TIPO_OPTIONS: { value: TipoTomador; label: string }[] = [
@@ -27,6 +28,7 @@ type Tributo = typeof TRIBUTOS[number]
 const EMPTY_ALIQ: Record<Tributo, string> = { ISS: '', IR: '', CSLL: '', PIS: '', COFINS: '' }
 
 interface PendingCnae { codigo: string; descricao: string; key: number }
+interface PendingServico { servicoId: string; key: number }
 
 interface Props {
   tomador: Tomador | null
@@ -53,6 +55,7 @@ const emptyForm = (): TomadorRequest => ({
 })
 
 let cnaeKey = 1
+let servicoKey = 1
 
 export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
   const isEditing = tomador !== null
@@ -73,6 +76,18 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
   const [novoCnae, setNovoCnae]         = useState({ codigo: '', descricao: '' })
   const [cnaeLoading, setCnaeLoading]   = useState(false)
   const [cnaeError, setCnaeError]       = useState<string | null>(null)
+
+  // Serviços (LC 116) — catálogo + vínculos do tomador
+  const [catalogoServicos, setCatalogoServicos] = useState<Servico[]>([])
+  const [servicos, setServicos]                 = useState<TomadorServico[]>([])
+  const [pendingServicos, setPendingServicos]   = useState<PendingServico[]>([])
+  const [novoServicoId, setNovoServicoId]       = useState('')
+  const [servicoLoading, setServicoLoading]     = useState(false)
+  const [servicoError, setServicoError]         = useState<string | null>(null)
+
+  useEffect(() => {
+    servicosApi.listar().then(setCatalogoServicos).catch(() => setCatalogoServicos([]))
+  }, [])
 
   useEffect(() => {
     if (tomador) {
@@ -100,17 +115,23 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
       setAliqForm(map)
       setCnaes(tomador.cnaes ?? [])
       setPendingCnaes([])
+      setServicos(tomador.servicos ?? [])
+      setPendingServicos([])
     } else {
       setForm(emptyForm())
       setAliqForm({ ...EMPTY_ALIQ })
       setCnaes([])
       setPendingCnaes([])
+      setServicos([])
+      setPendingServicos([])
     }
     setErrors({})
     setApiError(null)
     setReceitaOk(false)
     setCnaeError(null)
     setNovoCnae({ codigo: '', descricao: '' })
+    setServicoError(null)
+    setNovoServicoId('')
   }, [tomador])
 
   // Auto-fill Receita Federal
@@ -194,6 +215,9 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
         for (const cnae of pendingCnaes) {
           await tomadoresApi.adicionarCnae(id, cnae.codigo, cnae.descricao)
         }
+        for (const servico of pendingServicos) {
+          await tomadoresApi.adicionarServico(id, servico.servicoId)
+        }
       }
 
       const final = await tomadoresApi.buscarPorId(id)
@@ -239,12 +263,64 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
     }
   }
 
+  // IDs de serviço já vinculados (persistidos ou pendentes) — para não oferecer duplicados
+  const servicoIdsUsados = new Set<string>(
+    isEditing ? servicos.map(s => s.servicoId) : pendingServicos.map(s => s.servicoId),
+  )
+  const servicosDisponiveis = catalogoServicos.filter(s => !servicoIdsUsados.has(s.id))
+
+  async function handleAdicionarServico() {
+    if (!novoServicoId) { setServicoError('Selecione um serviço'); return }
+    setServicoError(null)
+
+    if (isEditing) {
+      setServicoLoading(true)
+      try {
+        const saved = await tomadoresApi.adicionarServico(tomador!.id, novoServicoId)
+        setServicos(prev => [...prev, saved])
+        setNovoServicoId('')
+      } catch (err) {
+        setServicoError(err instanceof Error ? err.message : 'Erro ao adicionar serviço')
+      } finally {
+        setServicoLoading(false)
+      }
+    } else {
+      if (pendingServicos.some(s => s.servicoId === novoServicoId)) {
+        setServicoError('Este serviço já foi adicionado')
+        return
+      }
+      setPendingServicos(prev => [...prev, { servicoId: novoServicoId, key: servicoKey++ }])
+      setNovoServicoId('')
+    }
+  }
+
+  async function handleRemoverServico(vinculo: TomadorServico) {
+    try {
+      await tomadoresApi.removerServico(tomador!.id, vinculo.id)
+      setServicos(prev => prev.filter(s => s.id !== vinculo.id))
+    } catch (err) {
+      setServicoError(err instanceof Error ? err.message : 'Erro ao remover serviço')
+    }
+  }
+
   const isPf = form.tipo === 'PACIENTE_PF'
 
   // Lista unificada para exibição de CNAEs (edit = persistidos; create = pendentes)
   const cnaesExibidos: { key: string; codigoCnae: string; descricao: string | null; isPending: boolean; pendingKey?: number; ref?: TomadorCnae }[] = isEditing
     ? cnaes.map(c => ({ key: c.id, codigoCnae: c.codigoCnae, descricao: c.descricao, isPending: false, ref: c }))
     : pendingCnaes.map(c => ({ key: String(c.key), codigoCnae: c.codigo, descricao: c.descricao, isPending: true, pendingKey: c.key }))
+
+  // Lista unificada para exibição de Serviços (edit = persistidos; create = pendentes)
+  function servicoLabel(servicoId: string, codigo?: string | null, descricao?: string | null): string {
+    const cat = catalogoServicos.find(s => s.id === servicoId)
+    const cod = codigo ?? cat?.codigoLc116 ?? ''
+    const desc = descricao ?? cat?.descricaoPadrao ?? ''
+    return `${cod}${desc ? ` — ${desc}` : ''}`
+  }
+
+  const servicosExibidos: { key: string; label: string; isPending: boolean; pendingKey?: number; ref?: TomadorServico }[] = isEditing
+    ? servicos.map(s => ({ key: s.id, label: servicoLabel(s.servicoId, s.codigoLc116, s.descricaoPadrao), isPending: false, ref: s }))
+    : pendingServicos.map(s => ({ key: String(s.key), label: servicoLabel(s.servicoId), isPending: true, pendingKey: s.key }))
 
   return (
     <Modal open title={isEditing ? 'Editar Tomador' : 'Novo Tomador'} onClose={onClose} size="lg">
@@ -533,6 +609,75 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
             </div>
           </div>
         )}
+
+        {/* ── Serviços (LC 116/2003) ── */}
+        <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
+          <p className="text-xs font-semibold text-ds-mid mb-0.5 uppercase tracking-wide">Serviços (LC 116/2003)</p>
+          <p className="text-[11px] text-ds-light mb-3">
+            Serviços disponíveis para seleção ao registrar a produção deste tomador.
+            Com apenas um serviço, ele é selecionado automaticamente. Se nenhum for cadastrado, todo o catálogo fica disponível.
+          </p>
+
+          {servicoError && (
+            <p className="text-xs text-red-600 mb-2">{servicoError}</p>
+          )}
+
+          {servicosExibidos.length > 0 && (
+            <div className="mb-3 space-y-1.5">
+              {servicosExibidos.map(s => (
+                <div key={s.key} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-ds-border">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-mono text-xs font-bold text-primary bg-primary-50 px-1.5 py-0.5 rounded shrink-0">
+                      {s.label.split(' — ')[0]}
+                    </span>
+                    <span className="text-xs text-ds-light truncate">
+                      {s.label.split(' — ').slice(1).join(' — ')}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (s.isPending) {
+                        setPendingServicos(prev => prev.filter(p => p.key !== s.pendingKey))
+                      } else {
+                        handleRemoverServico(s.ref!)
+                      }
+                    }}
+                    className="text-ds-light hover:text-red-500 transition-colors shrink-0 ml-2"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <select
+                value={novoServicoId}
+                onChange={e => setNovoServicoId(e.target.value)}
+                className="w-full h-[42px] rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
+              >
+                <option value="">Selecione um serviço...</option>
+                {servicosDisponiveis.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.codigoLc116} — {s.descricaoPadrao}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={handleAdicionarServico}
+              disabled={servicoLoading || !novoServicoId}
+              className="h-[42px] px-3 rounded-lg bg-primary text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-primary-600 disabled:opacity-50 transition-colors self-end"
+            >
+              {servicoLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              Adicionar
+            </button>
+          </div>
+        </div>
 
         {/* ── Ações ── */}
         <div className="flex justify-end gap-3 pt-1 border-t border-ds-border">

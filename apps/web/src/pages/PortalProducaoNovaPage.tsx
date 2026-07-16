@@ -311,6 +311,21 @@ export function PortalProducaoNovaPage() {
   const totalCentavos = parseBRL(valorStr)
   const canConfirm = !!tomador && !!servico && !!empresa && totalCentavos > 0 && !!perfil
 
+  // Serviços do tomador: se houver vínculos, só eles aparecem; senão, catálogo completo.
+  const servicosDisponiveis: Servico[] = tomador && tomador.servicos && tomador.servicos.length > 0
+    ? servicos.filter(s => tomador.servicos.some(v => v.servicoId === s.id))
+    : servicos
+
+  // Auto-seleciona quando há exatamente 1 serviço; limpa seleção que deixou de ser válida.
+  useEffect(() => {
+    if (servicosDisponiveis.length === 1) {
+      const only = servicosDisponiveis[0]
+      setServico(prev => prev?.id === only.id ? prev : only)
+    } else if (servico && !servicosDisponiveis.some(s => s.id === servico.id)) {
+      setServico(null)
+    }
+  }, [tomador?.id, servicos])
+
   // ─── Carregamento inicial ──────────────────────────────────────────────────
 
   const carregarHistorico = useCallback(async () => {
@@ -460,7 +475,7 @@ export function PortalProducaoNovaPage() {
             placeholder="Selecione o tomador..."
             items={tomadores}
             selected={tomador}
-            onSelect={t => { setTomador(t); setCnaeCodigo('') }}
+            onSelect={t => { setTomador(t); setCnaeCodigo(''); setServico(null) }}
             getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
           />
 
@@ -487,11 +502,19 @@ export function PortalProducaoNovaPage() {
           <SearchDropdown
             label="Serviço (LC 116/2003) *"
             placeholder="Selecione o serviço..."
-            items={servicos}
+            items={servicosDisponiveis}
             selected={servico}
             onSelect={setServico}
             getLabel={s => `${s.codigoLc116} — ${s.descricaoPadrao}`}
+            disabled={servicosDisponiveis.length === 1}
           />
+          {tomador && tomador.servicos && tomador.servicos.length > 0 && (
+            <p className="-mt-2 text-[11px] text-ds-light">
+              {servicosDisponiveis.length === 1
+                ? 'Serviço único do tomador — selecionado automaticamente.'
+                : 'Exibindo apenas os serviços cadastrados para este tomador.'}
+            </p>
+          )}
 
           {/* Competência */}
           <div>

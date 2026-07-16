@@ -1,10 +1,12 @@
 package br.com.pinsaude.faturamento.service;
 
 import br.com.pinsaude.faturamento.config.SecurityUtils;
+import br.com.pinsaude.faturamento.domain.Servico;
 import br.com.pinsaude.faturamento.domain.TipoTomador;
 import br.com.pinsaude.faturamento.domain.Tomador;
 import br.com.pinsaude.faturamento.domain.TomadorAliquota;
 import br.com.pinsaude.faturamento.domain.TomadorCnae;
+import br.com.pinsaude.faturamento.domain.TomadorServico;
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaResponse;
@@ -12,10 +14,14 @@ import br.com.pinsaude.faturamento.dto.TomadorCnaeRequest;
 import br.com.pinsaude.faturamento.dto.TomadorCnaeResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
+import br.com.pinsaude.faturamento.dto.TomadorServicoRequest;
+import br.com.pinsaude.faturamento.dto.TomadorServicoResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
+import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
+import br.com.pinsaude.faturamento.repository.TomadorServicoRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -23,8 +29,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class TomadorService {
@@ -34,17 +43,23 @@ public class TomadorService {
     private final ConsultaCnpjPort consultaCnpjPort;
     private final TomadorAliquotaRepository aliquotaRepo;
     private final TomadorCnaeRepository cnaeRepo;
+    private final TomadorServicoRepository servicoVinculoRepo;
+    private final ServicoRepository servicoRepo;
 
     public TomadorService(TomadorRepository repo,
                           CryptoService crypto,
                           ConsultaCnpjPort consultaCnpjPort,
                           TomadorAliquotaRepository aliquotaRepo,
-                          TomadorCnaeRepository cnaeRepo) {
+                          TomadorCnaeRepository cnaeRepo,
+                          TomadorServicoRepository servicoVinculoRepo,
+                          ServicoRepository servicoRepo) {
         this.repo = repo;
         this.crypto = crypto;
         this.consultaCnpjPort = consultaCnpjPort;
         this.aliquotaRepo = aliquotaRepo;
         this.cnaeRepo = cnaeRepo;
+        this.servicoVinculoRepo = servicoVinculoRepo;
+        this.servicoRepo = servicoRepo;
     }
 
     public List<TomadorResponse> buscar(String q) {
@@ -211,7 +226,50 @@ public class TomadorService {
         cnaeRepo.delete(cnae);
     }
 
+    // ─── Serviços por tomador ─────────────────────────────────────────────────
+
+    public List<TomadorServicoResponse> listarServicos(UUID tomadorId) {
+        findOrThrow(tomadorId);
+        List<TomadorServico> vinculos = servicoVinculoRepo.findByTomadorId(tomadorId);
+        Map<UUID, Servico> servicosPorId = servicosPorId(vinculos);
+        return vinculos.stream()
+            .map(v -> TomadorServicoResponse.from(v, servicosPorId.get(v.getServicoId())))
+            .toList();
+    }
+
+    @Transactional
+    public TomadorServicoResponse adicionarServico(UUID tomadorId, TomadorServicoRequest req) {
+        findOrThrow(tomadorId);
+        Servico servico = servicoRepo.findById(req.servicoId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Serviço não encontrado: " + req.servicoId()));
+        if (servicoVinculoRepo.existsByTomadorIdAndServicoId(tomadorId, req.servicoId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Serviço " + servico.getCodigoLc116() + " já cadastrado para este tomador");
+        }
+        TomadorServico vinculo = new TomadorServico();
+        vinculo.setTomadorId(tomadorId);
+        vinculo.setServicoId(req.servicoId());
+        return TomadorServicoResponse.from(servicoVinculoRepo.save(vinculo), servico);
+    }
+
+    @Transactional
+    public void removerServico(UUID tomadorId, UUID vinculoId) {
+        findOrThrow(tomadorId);
+        TomadorServico vinculo = servicoVinculoRepo.findById(vinculoId)
+            .filter(v -> tomadorId.equals(v.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Serviço não encontrado"));
+        servicoVinculoRepo.delete(vinculo);
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────────
+
+    private Map<UUID, Servico> servicosPorId(List<TomadorServico> vinculos) {
+        List<UUID> ids = vinculos.stream().map(TomadorServico::getServicoId).toList();
+        if (ids.isEmpty()) return Map.of();
+        return servicoRepo.findAllById(ids).stream()
+            .collect(Collectors.toMap(Servico::getId, Function.identity()));
+    }
 
     private void validarDocumentoDuplicado(String cnpjCpfLimpo, UUID idExcluir) {
         boolean existe = repo.findAll().stream()
@@ -255,6 +313,11 @@ public class TomadorService {
             .map(TomadorAliquotaResponse::from).toList();
         List<TomadorCnaeResponse> cnaes = cnaeRepo.findByTomadorId(t.getId()).stream()
             .map(TomadorCnaeResponse::from).toList();
+        List<TomadorServico> vinculosServico = servicoVinculoRepo.findByTomadorId(t.getId());
+        Map<UUID, Servico> servicosPorId = servicosPorId(vinculosServico);
+        List<TomadorServicoResponse> servicos = vinculosServico.stream()
+            .map(v -> TomadorServicoResponse.from(v, servicosPorId.get(v.getServicoId())))
+            .toList();
         return new TomadorResponse(
             t.getId(),
             t.getTipo().name(),
@@ -273,7 +336,8 @@ public class TomadorService {
             t.getUf(),
             t.getPais(),
             aliquotas,
-            cnaes
+            cnaes,
+            servicos
         );
     }
 }
