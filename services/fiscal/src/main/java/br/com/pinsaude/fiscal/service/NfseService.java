@@ -6,6 +6,7 @@ import br.com.pinsaude.fiscal.dto.EmitirNfseRequest;
 import br.com.pinsaude.fiscal.dto.EmitirNfseResponse;
 import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
 import br.com.pinsaude.fiscal.messaging.EmailNotificacaoProducer;
+import br.com.pinsaude.fiscal.messaging.FaturamentoProducer;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoMessage;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoProducer;
 import br.com.pinsaude.fiscal.port.DadosNota;
@@ -15,9 +16,12 @@ import br.com.pinsaude.fiscal.repository.LoteEmissaoRepository;
 import br.com.pinsaude.fiscal.repository.NotaFiscalRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
@@ -34,21 +38,27 @@ public class NfseService {
     private final EmissaoNfsePort emissaoPort;
     private final NfseEmissaoProducer producer;
     private final EmailNotificacaoProducer emailProducer;
+    private final FaturamentoProducer faturamentoProducer;
+    private final boolean mockEnabled;
 
     public NfseService(NotaFiscalRepository notaRepo,
                        LoteEmissaoRepository loteRepo,
                        EmissaoNfsePort emissaoPort,
                        NfseEmissaoProducer producer,
-                       EmailNotificacaoProducer emailProducer) {
-        this.notaRepo      = notaRepo;
-        this.loteRepo      = loteRepo;
-        this.emissaoPort   = emissaoPort;
-        this.producer      = producer;
-        this.emailProducer = emailProducer;
+                       EmailNotificacaoProducer emailProducer,
+                       FaturamentoProducer faturamentoProducer,
+                       @Value("${nfse.mock.enabled:false}") boolean mockEnabled) {
+        this.notaRepo             = notaRepo;
+        this.loteRepo             = loteRepo;
+        this.emissaoPort          = emissaoPort;
+        this.producer             = producer;
+        this.emailProducer        = emailProducer;
+        this.faturamentoProducer  = faturamentoProducer;
+        this.mockEnabled          = mockEnabled;
     }
 
     /**
-     * Cria NotaFiscal e publica na fila â€” ambos na mesma transaÃ§Ã£o (outbox pattern).
+     * Cria NotaFiscal e publica na fila â€" ambos na mesma transaÃ§Ã£o (outbox pattern).
      * Idempotente: mesma producaoId retorna a nota existente sem reemitir.
      * 1Âª nota de um mÃ©dico: fica em AGUARDANDO_VALIDACAO atÃ© aprovaÃ§Ã£o manual.
      */
@@ -61,8 +71,9 @@ public class NfseService {
                 .orElseThrow();
         }
 
-        // Multi-mÃ©dico (medicoId null) â†’ sem verificaÃ§Ã£o de primeira nota; vai direto para fila
-        boolean primeiraNotaMedico = req.medicoId() != null
+        // Em modo mock, pula validação manual — todas as notas vão direto para a fila
+        boolean primeiraNotaMedico = !mockEnabled
+            && req.medicoId() != null
             && !notaRepo.existsByMedicoIdAndStatus(req.medicoId(), StatusNota.EMITIDA);
         StatusNota statusInicial = primeiraNotaMedico ? StatusNota.AGUARDANDO_VALIDACAO : StatusNota.PENDENTE;
 
@@ -87,10 +98,16 @@ public class NfseService {
         nota = notaRepo.save(nota);
 
         if (statusInicial == StatusNota.PENDENTE) {
-            producer.enviar(new NfseEmissaoMessage(nota.getId()));
-            log.info("NotaFiscal criada id={} producaoId={} â€” enfileirada para processamento", nota.getId(), nota.getProducaoId());
+            final UUID notaIdParaFila = nota.getId();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    producer.enviar(new NfseEmissaoMessage(notaIdParaFila));
+                }
+            });
+            log.info("NotaFiscal criada id={} producaoId={} - enfileirada para processamento (apos commit)", nota.getId(), nota.getProducaoId());
         } else {
-            log.info("NotaFiscal criada id={} producaoId={} â€” aguardando validaÃ§Ã£o (1Âª nota do mÃ©dico)", nota.getId(), nota.getProducaoId());
+            log.info("NotaFiscal criada id={} producaoId={} - aguardando validacao (1a nota do medico)", nota.getId(), nota.getProducaoId());
         }
 
         return EmitirNfseResponse.from(nota, primeiraNotaMedico);
@@ -143,6 +160,7 @@ public class NfseService {
 
         if (nota.getStatus() == StatusNota.EMITIDA) {
             emailProducer.notificarNotaEmitida(nota);
+            faturamentoProducer.notificarProducaoEmitida(nota.getProducaoId(), nota.getCnpjIdTenant());
         }
 
         atualizarContadoresLote(nota.getCompetencia(), nota.getStatus());
@@ -158,7 +176,7 @@ public class NfseService {
     }
 
     /**
-     * Retorna o status atual de uma nota pelo producaoId â€” usado para polling do frontend.
+     * Retorna o status atual de uma nota pelo producaoId â€" usado para polling do frontend.
      */
     @Transactional(readOnly = true)
     public NotaFiscalStatusResponse getStatus(UUID producaoId) {
@@ -187,7 +205,7 @@ public class NfseService {
         var nota = notaRepo.findById(notaId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota nÃ£o encontrada"));
         if (nota.getXmlNota() == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "XML nÃ£o disponÃ­vel â€” nota ainda nÃ£o emitida");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "XML nao disponivel - nota ainda nao emitida");
         }
         return nota.getXmlNota();
     }
@@ -200,7 +218,7 @@ public class NfseService {
         var nota = notaRepo.findById(notaId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota nÃ£o encontrada"));
         if (nota.getPdfNota() == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "PDF nÃ£o disponÃ­vel â€” nota ainda nÃ£o emitida");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "PDF nao disponivel - nota ainda nao emitida");
         }
         return nota.getPdfNota();
     }
@@ -218,8 +236,14 @@ public class NfseService {
         }
         nota.setStatus(StatusNota.PENDENTE);
         notaRepo.save(nota);
-        producer.enviar(new NfseEmissaoMessage(nota.getId()));
-        log.info("1Âª nota do mÃ©dico aprovada â€” enfileirada: notaId={}", notaId);
+        final UUID aprovadaId = nota.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                producer.enviar(new NfseEmissaoMessage(aprovadaId));
+            }
+        });
+        log.info("1a nota do medico aprovada - enfileirada (apos commit): notaId={}", notaId);
     }
 
     /**
@@ -257,7 +281,7 @@ public class NfseService {
     }
 
     /**
-     * Lista notas na fila de exceÃ§Ãµes (AGUARDANDO_VALIDACAO â€” 1Âª nota de mÃ©dico pendente validaÃ§Ã£o).
+     * Lista notas na fila de exceÃ§Ãµes (AGUARDANDO_VALIDACAO â€" 1Âª nota de mÃ©dico pendente validaÃ§Ã£o).
      */
     @Transactional(readOnly = true)
     public List<NotaFiscalStatusResponse> listarExcecoes() {
@@ -269,7 +293,7 @@ public class NfseService {
 
     /**
      * Reprocessa uma nota individual com status ERRO ou AGUARDANDO_EMISSAO_MANUAL.
-     * Reset para PENDENTE e republica na fila â€” idempotente pelo consumer.
+     * Reset para PENDENTE e republica na fila â€" idempotente pelo consumer.
      */
     @Transactional
     public void reprocessarNota(UUID notaId) {
@@ -281,8 +305,13 @@ public class NfseService {
         }
         nota.setStatus(StatusNota.PENDENTE);
         notaRepo.save(nota);
-        producer.enviar(new NfseEmissaoMessage(nota.getId()));
-        log.info("NotaFiscal {} reenfileirada para reprocessamento", notaId);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                producer.enviar(new NfseEmissaoMessage(notaId));
+            }
+        });
+        log.info("NotaFiscal {} reenfileirada para reprocessamento (apos commit)", notaId);
     }
 }
 

@@ -4,6 +4,7 @@ import br.com.pinsaude.faturamento.conciliacao.matching.MatchingService;
 import br.com.pinsaude.faturamento.conciliacao.messaging.MatchingProducer;
 import br.com.pinsaude.faturamento.config.SecurityConfig;
 import br.com.pinsaude.faturamento.controller.ConciliacaoController;
+import br.com.pinsaude.faturamento.service.PosicaoCaixaService;
 import br.com.pinsaude.faturamento.domain.*;
 import br.com.pinsaude.faturamento.dto.ExtratoResponse;
 import br.com.pinsaude.faturamento.dto.LancamentoExtratoResponse;
@@ -46,6 +47,9 @@ class ConciliacaoControllerTest {
 
     @MockBean
     MatchingProducer matchingProducer;
+
+    @MockBean
+    PosicaoCaixaService posicaoCaixaService;
 
     private static final ExtratoResponse EXTRATO_MOCK = new ExtratoResponse(
             UUID.randomUUID(), "extrato-inter.csv", BancoEnum.INTER,
