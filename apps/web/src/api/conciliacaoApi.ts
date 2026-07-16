@@ -62,9 +62,9 @@ export interface CandidatoMatchResponse {
 export interface ProducaoResumo {
   id: string
   tomadorNome: string
+  municipio: string | null
   valorBruto: number
   competencia: string
-  status: string
 }
 
 export async function uploadExtrato(
