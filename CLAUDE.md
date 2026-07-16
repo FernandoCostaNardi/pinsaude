@@ -2278,6 +2278,60 @@ Ativar em `application.yml` com `nfse.mock.enabled: true`. `@Primary` garante qu
 
 ---
 
+## Ledger — Schema de Partidas Dobradas (EPIC-08.1)
+
+O serviço `services/ledger/` (porta 8083) mantém o livro-razão financeiro com **partidas
+dobradas** (double-entry). Três tabelas no schema `ledger`: `contas_ledger` (plano de contas,
+catálogo compartilhado sem RLS), `lancamentos_ledger` (cabeçalho imutável, RLS por tenant) e
+`partidas_ledger` (débitos/créditos, RLS via subquery no lançamento pai).
+
+### Constraint de equilíbrio — CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED
+A validação `SUM(DEBITO) = SUM(CREDITO)` **não pode** ser um trigger `AFTER INSERT` normal:
+ele dispararia após a primeira partida (quando débito≠crédito ainda) e bloquearia a construção
+do lançamento. A solução é uma **constraint trigger diferida**, validada apenas no `COMMIT`:
+```sql
+CREATE CONSTRAINT TRIGGER trg_equilibrio_partidas
+    AFTER INSERT OR UPDATE OR DELETE ON ledger.partidas_ledger
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION ledger.fn_verifica_equilibrio();
+```
+**Consequência para o app:** o lançamento e TODAS as suas partidas devem ser inseridos na
+**mesma transação**. Inserir partidas em transações separadas (autocommit) falha na primeira,
+pois cada COMMIT valida o equilíbrio. A função usa `SUM(...) FILTER (WHERE tipo='DEBITO')`.
+
+### Imutabilidade — trigger BEFORE UPDATE OR DELETE (append-only)
+`lancamentos_ledger` e `partidas_ledger` são append-only. Um trigger `BEFORE UPDATE OR DELETE`
+levanta exceção (`ERRCODE = 'restrict_violation'`). Correções são feitas via novo lançamento de
+`AJUSTE`, nunca alterando o histórico.
+
+**Armadilha de limpeza:** como o `DELETE` é bloqueado pelo trigger, para limpar dados de teste
+no dev use `TRUNCATE ledger.partidas_ledger, ledger.lancamentos_ledger;` — o `TRUNCATE` dispara
+apenas triggers `BEFORE TRUNCATE` (que não existem aqui), **não** o `BEFORE DELETE`. `TRUNCATE`
+também ignora RLS. `DELETE` normal jamais funcionará nessas tabelas.
+
+### Idempotência — correlation_id NOT NULL UNIQUE
+Cada lançamento tem `correlation_id VARCHAR(120) NOT NULL UNIQUE` (ex.: `"NOTA:<uuid-nfse>"`).
+Reprocessar o mesmo evento (retry de fila, replay) viola a constraint única e não duplica.
+Escolhido `NOT NULL UNIQUE` (não índice parcial) para garantir idempotência em 100% dos lançamentos.
+
+### gen_random_uuid() é nativo no PostgreSQL 13+
+O ledger **não** precisa de `CREATE EXTENSION pgcrypto`/`uuid-ossp` (diferente do faturamento/
+onboarding, que usam pgcrypto para criptografia). `gen_random_uuid()` é função core do PG 13+.
+Por isso `svc_ledger` **não** recebe `GRANT CREATE ON DATABASE` no `init.sql` — não cria extensões.
+
+### flyway-maven-plugin no ledger
+Adicionado ao `pom.xml` do `services/ledger/` com `svc_ledger / ledger_dev / porta 5433`.
+Rodar sempre `mvn process-resources -pl :pinsaude-ledger` antes de `mvn-flyway.js` para copiar os
+SQLs para `target/classes/` (o plugin lê de `classpath:db/migration`).
+
+### Valores em centavos e enums no schema
+`valor_centavos BIGINT CHECK (> 0)` — o sinal contábil vem do enum `tipo_partida_enum`
+(DEBITO/CREDITO), nunca do sinal do número. Enums: `tipo_conta_enum`
+(ATIVO/PASSIVO/RECEITA/DESPESA/INTERMEDIARIO), `tipo_origem_enum`
+(NOTA/CONCILIACAO/REPASSE/AJUSTE), `tipo_partida_enum` (DEBITO/CREDITO).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
