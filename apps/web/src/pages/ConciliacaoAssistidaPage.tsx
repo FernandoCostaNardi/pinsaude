@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ArrowLeftRight,
   Bot,
@@ -95,8 +95,8 @@ function DetalhePanel({
     setBusy(true); setErro(null)
     try {
       await onConciliar(lancamento.id, producaoId)
-    } catch (e: any) {
-      setErro(e.message)
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : 'Erro ao conciliar')
     } finally {
       setBusy(false)
     }
@@ -106,8 +106,8 @@ function DetalhePanel({
     setBusy(true); setErro(null)
     try {
       await onIgnorar(lancamento.id)
-    } catch (e: any) {
-      setErro(e.message)
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : 'Erro ao ignorar')
     } finally {
       setBusy(false)
     }
@@ -117,8 +117,8 @@ function DetalhePanel({
     setBusy(true); setErro(null)
     try {
       await onDesfazer(lancamento.id)
-    } catch (e: any) {
-      setErro(e.message)
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : 'Erro ao desfazer')
     } finally {
       setBusy(false)
     }
@@ -468,7 +468,9 @@ export function ConciliacaoAssistidaPage() {
 
   const handleConciliar = useCallback(async (lancId: string, prodId: string) => {
     await conciliarLancamento(lancId, prodId)
-    setCandidatesMap((prev) => ({ ...prev, [lancId]: undefined }))
+    setCandidatesMap((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([k]) => k !== lancId)) as Record<string, CandidatoMatchResponse[] | null>
+    )
     await recarregarLancamentos()
   }, [extratoId, selecionado, lancamentos])
 
@@ -479,11 +481,9 @@ export function ConciliacaoAssistidaPage() {
 
   const handleDesfazer = useCallback(async (lancId: string) => {
     await desfazerConciliacao(lancId)
-    setCandidatesMap((prev) => {
-      const next = { ...prev }
-      delete next[lancId]
-      return next
-    })
+    setCandidatesMap((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([k]) => k !== lancId)) as Record<string, CandidatoMatchResponse[] | null>
+    )
     await recarregarLancamentos()
   }, [extratoId, selecionado, lancamentos])
 
@@ -503,10 +503,12 @@ export function ConciliacaoAssistidaPage() {
     if (!selecionado) return
     try {
       await conciliarLancamento(selecionado.id, producaoId, 'Conciliação manual')
-      setCandidatesMap((prev) => ({ ...prev, [selecionado.id]: undefined }))
+      setCandidatesMap((prev) =>
+        Object.fromEntries(Object.entries(prev).filter(([k]) => k !== selecionado.id)) as Record<string, CandidatoMatchResponse[] | null>
+      )
       await recarregarLancamentos()
-    } catch (e: any) {
-      console.error('Erro ao conciliar:', e.message)
+    } catch (e: unknown) {
+      console.error('Erro ao conciliar:', e instanceof Error ? e.message : e)
     }
   }
 

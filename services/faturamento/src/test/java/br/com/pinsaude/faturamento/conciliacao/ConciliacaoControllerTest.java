@@ -1,5 +1,6 @@
 package br.com.pinsaude.faturamento.conciliacao;
 
+import br.com.pinsaude.faturamento.conciliacao.matching.MatchingService;
 import br.com.pinsaude.faturamento.conciliacao.messaging.MatchingProducer;
 import br.com.pinsaude.faturamento.config.SecurityConfig;
 import br.com.pinsaude.faturamento.controller.ConciliacaoController;
@@ -41,6 +42,9 @@ class ConciliacaoControllerTest {
     ExtratoService service;
 
     @MockBean
+    MatchingService matchingService;
+
+    @MockBean
     MatchingProducer matchingProducer;
 
     private static final ExtratoResponse EXTRATO_MOCK = new ExtratoResponse(
@@ -53,7 +57,7 @@ class ConciliacaoControllerTest {
             UUID.randomUUID(), UUID.randomUUID(),
             LocalDate.of(2026, 6, 1), "PIX RECEBIDO",
             150_000L, TipoLancamentoExtrato.CREDITO, "FIT001",
-            StatusConciliacao.PENDENTE, 0
+            StatusConciliacao.PENDENTE, 0, null
     );
 
     // ─── Upload ───────────────────────────────────────────────────────────────

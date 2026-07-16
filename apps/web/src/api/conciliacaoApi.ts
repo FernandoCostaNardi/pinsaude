@@ -159,15 +159,23 @@ export async function desfazerConciliacao(lancamentoId: string): Promise<void> {
   }
 }
 
+type RawProducao = {
+  id: string
+  tomador?: { razaoSocialNome?: string; nomeFantasia?: string } | null
+  valorBruto: number
+  competencia: string
+  municipio?: string | null
+}
+
 export async function listarProducoesParaBusca(): Promise<ProducaoResumo[]> {
   const res = await fetch('/api/producoes', { headers: authHeaders() })
   if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`)
-  const data: any[] = await res.json()
+  const data = (await res.json()) as RawProducao[]
   return data.map((p) => ({
     id: p.id,
     tomadorNome: p.tomador?.razaoSocialNome ?? p.tomador?.nomeFantasia ?? '—',
     valorBruto: p.valorBruto,
     competencia: p.competencia,
-    status: p.status,
+    municipio: p.municipio ?? null,
   }))
 }
