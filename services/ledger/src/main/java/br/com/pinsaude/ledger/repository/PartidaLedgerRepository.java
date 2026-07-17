@@ -32,13 +32,13 @@ public interface PartidaLedgerRepository extends JpaRepository<PartidaLedger, UU
      */
     @Query("""
         SELECT new br.com.pinsaude.ledger.dto.ExtratoLinha(
-            l.id, l.dataLancamento, l.competencia, l.tipoOrigem, l.descricao,
+            l.id, l.dataLancamento, l.competencia, l.tipoOrigem, l.origemId, l.descricao,
             COALESCE(SUM(CASE WHEN p.tipo = :credito THEN p.valorCentavos ELSE -p.valorCentavos END), 0))
         FROM PartidaLedger p
         JOIN p.lancamento l
         WHERE l.medicoId = :medicoId
           AND p.conta.codigo = :contaCodigo
-        GROUP BY l.id, l.dataLancamento, l.competencia, l.tipoOrigem, l.descricao, l.createdAt
+        GROUP BY l.id, l.dataLancamento, l.competencia, l.tipoOrigem, l.origemId, l.descricao, l.createdAt
         ORDER BY l.dataLancamento ASC, l.createdAt ASC
         """)
     List<ExtratoLinha> extratoBruto(@Param("medicoId") UUID medicoId,

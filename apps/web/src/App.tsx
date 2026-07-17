@@ -24,6 +24,7 @@ import { PortalProducaoNovaPage }    from './pages/PortalProducaoNovaPage'
 import { ConciliacaoUploadPage }      from './pages/ConciliacaoUploadPage'
 import { ConciliacaoAssistidaPage }  from './pages/ConciliacaoAssistidaPage'
 import { PosicaoCaixaPage }          from './pages/PosicaoCaixaPage'
+import { LedgerExtratoPage }         from './pages/LedgerExtratoPage'
 
 export default function App() {
   return (
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="/conciliacao/assistida" element={<ConciliacaoAssistidaPage />} />
             <Route path="/conciliacao/upload"    element={<ConciliacaoUploadPage />} />
             <Route path="/conciliacao/caixa"     element={<PosicaoCaixaPage />} />
+            <Route path="/financeiro/ledger"     element={<LedgerExtratoPage />} />
             <Route path="/gestao"      element={<UnderConstruction title="Gestão"      epic="EPIC-10" />} />
           </Route>
         </Routes>

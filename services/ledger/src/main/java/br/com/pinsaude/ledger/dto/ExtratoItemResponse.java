@@ -15,6 +15,7 @@ public record ExtratoItemResponse(
     LocalDate dataLancamento,
     String competencia,
     TipoOrigem tipoOrigem,
+    UUID origemId,
     String descricao,
     BigDecimal valor,
     BigDecimal saldoApos
@@ -22,7 +23,7 @@ public record ExtratoItemResponse(
     public static ExtratoItemResponse of(ExtratoLinha linha, long saldoAposCentavos) {
         return new ExtratoItemResponse(
             linha.lancamentoId(), linha.dataLancamento(), linha.competencia(),
-            linha.tipoOrigem(), linha.descricao(),
+            linha.tipoOrigem(), linha.origemId(), linha.descricao(),
             Money.reais(linha.netCentavos()), Money.reais(saldoAposCentavos)
         );
     }

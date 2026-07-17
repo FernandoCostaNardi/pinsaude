@@ -15,6 +15,7 @@ public record ExtratoLinha(
     LocalDate dataLancamento,
     String competencia,
     TipoOrigem tipoOrigem,
+    UUID origemId,
     String descricao,
     long netCentavos
 ) {}

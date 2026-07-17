@@ -42,6 +42,7 @@ const navItems = [
   { to: '/conciliacao/upload',    label: 'Upload Extrato', icon: Upload,          roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true  },
   { to: '/conciliacao/assistida', label: 'Conciliação',   icon: ArrowLeftRight,  roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true  },
   { to: '/conciliacao/caixa',     label: 'Posição de Caixa', icon: Wallet,       roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true  },
+  { to: '/financeiro/ledger',     label: 'Extrato Ledger',   icon: BookOpen,     roles: ['financeiro', 'gestao', 'contabil'], end: true  },
   { to: '/gestao',      label: 'Gestão',        icon: BarChart3,        roles: null,       end: true  },
   { to: '/usuarios',    label: 'Usuários',      icon: Users,            roles: ['gestao'], end: true  },
 ]
