@@ -5,8 +5,14 @@ import br.com.pinsaude.faturamento.dto.TomadorAliquotaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorCnaeRequest;
 import br.com.pinsaude.faturamento.dto.TomadorCnaeResponse;
+import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoRequest;
+import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoResponse;
+import br.com.pinsaude.faturamento.dto.TomadorModalidadeRequest;
+import br.com.pinsaude.faturamento.dto.TomadorModalidadeResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
+import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalRequest;
+import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorServicoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorServicoResponse;
 import br.com.pinsaude.faturamento.service.TomadorService;
@@ -144,6 +150,110 @@ public class TomadorController {
             @PathVariable UUID id,
             @PathVariable UUID vinculoId) {
         service.removerServico(id, vinculoId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Grupos de faturamento ────────────────────────────────────────────────
+
+    @GetMapping("/{id}/grupos")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<TomadorGrupoFaturamentoResponse>> listarGrupos(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarGrupos(id));
+    }
+
+    @PostMapping("/{id}/grupos")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorGrupoFaturamentoResponse> criarGrupo(
+            @PathVariable UUID id,
+            @Valid @RequestBody TomadorGrupoFaturamentoRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.criarGrupo(id, req));
+    }
+
+    @PutMapping("/{id}/grupos/{grupoId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorGrupoFaturamentoResponse> atualizarGrupo(
+            @PathVariable UUID id,
+            @PathVariable UUID grupoId,
+            @Valid @RequestBody TomadorGrupoFaturamentoRequest req) {
+        return ResponseEntity.ok(service.atualizarGrupo(id, grupoId, req));
+    }
+
+    @DeleteMapping("/{id}/grupos/{grupoId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerGrupo(
+            @PathVariable UUID id,
+            @PathVariable UUID grupoId) {
+        service.removerGrupo(id, grupoId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Modalidades ──────────────────────────────────────────────────────────
+
+    @GetMapping("/{id}/modalidades")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<TomadorModalidadeResponse>> listarModalidades(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarModalidades(id));
+    }
+
+    @PostMapping("/{id}/modalidades")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorModalidadeResponse> criarModalidade(
+            @PathVariable UUID id,
+            @Valid @RequestBody TomadorModalidadeRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.criarModalidade(id, req));
+    }
+
+    @PutMapping("/{id}/modalidades/{modalidadeId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorModalidadeResponse> atualizarModalidade(
+            @PathVariable UUID id,
+            @PathVariable UUID modalidadeId,
+            @Valid @RequestBody TomadorModalidadeRequest req) {
+        return ResponseEntity.ok(service.atualizarModalidade(id, modalidadeId, req));
+    }
+
+    @DeleteMapping("/{id}/modalidades/{modalidadeId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerModalidade(
+            @PathVariable UUID id,
+            @PathVariable UUID modalidadeId) {
+        service.removerModalidade(id, modalidadeId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Serviços operacionais (setores) ──────────────────────────────────────
+
+    @GetMapping("/{id}/servicos-operacionais")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<TomadorServicoOperacionalResponse>> listarServicosOperacionais(
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarServicosOperacionais(id));
+    }
+
+    @PostMapping("/{id}/servicos-operacionais")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorServicoOperacionalResponse> criarServicoOperacional(
+            @PathVariable UUID id,
+            @Valid @RequestBody TomadorServicoOperacionalRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(service.criarServicoOperacional(id, req));
+    }
+
+    @PutMapping("/{id}/servicos-operacionais/{servicoOperacionalId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorServicoOperacionalResponse> atualizarServicoOperacional(
+            @PathVariable UUID id,
+            @PathVariable UUID servicoOperacionalId,
+            @Valid @RequestBody TomadorServicoOperacionalRequest req) {
+        return ResponseEntity.ok(service.atualizarServicoOperacional(id, servicoOperacionalId, req));
+    }
+
+    @DeleteMapping("/{id}/servicos-operacionais/{servicoOperacionalId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerServicoOperacional(
+            @PathVariable UUID id,
+            @PathVariable UUID servicoOperacionalId) {
+        service.removerServicoOperacional(id, servicoOperacionalId);
         return ResponseEntity.noContent().build();
     }
 }
