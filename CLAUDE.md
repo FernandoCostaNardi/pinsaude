@@ -2330,6 +2330,65 @@ SQLs para `target/classes/` (o plugin lê de `classpath:db/migration`).
 (ATIVO/PASSIVO/RECEITA/DESPESA/INTERMEDIARIO), `tipo_origem_enum`
 (NOTA/CONCILIACAO/REPASSE/AJUSTE), `tipo_partida_enum` (DEBITO/CREDITO).
 
+**Nota (EPIC-08.2):** os enums nativos foram convertidos para VARCHAR+CHECK na `V2` — ver abaixo.
+
+---
+
+## Ledger — API REST e Consultas (EPIC-08.2)
+
+Endpoints em `services/ledger/` (porta 8083): `GET /api/ledger/lancamentos` (paginado, filtros
+médico/tipo_origem/datas), `GET /api/ledger/lancamentos/{id}` (detalhe com partidas),
+`GET /api/ledger/saldo/{medicoId}`, `GET /api/ledger/extrato/{medicoId}` e
+`POST /api/ledger/lancamentos` (criação — só service token).
+
+### Enums nativos PG → VARCHAR+CHECK quando a API filtra por eles (V2)
+A `V1` criou enums nativos (`tipo_origem_enum` etc.). A API filtra lançamentos por `tipo_origem`
+e o Hibernate 6 envia enums como `character varying` no WHERE → `operator does not exist: enum = varchar`.
+A `V2__convert_enums_to_varchar.sql` converte as 3 colunas para `VARCHAR(n) + CHECK` e dá `DROP TYPE`
+nos enums. Mesmo precedente do fiscal (`V6`). As triggers comparam com literais (`tipo = 'DEBITO'`),
+que continuam válidos com varchar — nenhuma trigger muda. Com colunas varchar, a camada JPA fica
+limpa: `@Enumerated(EnumType.STRING)` sem `@ColumnTransformer`, filtros JPQL diretos e `Pageable+Sort`
+por propriedade da entidade (sem native query com CAST).
+
+### Ordem de `@Valid` (400) vs `@PreAuthorize` (403) em POST
+Na resolução do `@RequestBody`, o `@Valid` dispara `MethodArgumentNotValidException` (400) **antes**
+do interceptor de método `@PreAuthorize` (403). Logo, um POST com corpo inválido de um usuário sem
+permissão retorna **400, não 403**. Para testar autorização de POST, envie um **corpo válido** — aí o
+único gate é o `@PreAuthorize`.
+
+### Service token — POST interno protegido por `ROLE_service`
+`POST /api/ledger/lancamentos` exige `hasRole('service')`; leituras exigem `financeiro/gestao/contabil`.
+Tokens de usuário final (medico/operacao/financeiro/gestao) **não** têm `ROLE_service` → 403.
+O realm role `service` foi declarado em `realm-export.json` (para service accounts / client credentials).
+
+### Saldo/extrato do médico = posição da conta de repasse (2.1.02), não a soma global
+Num ledger de partidas dobradas todo lançamento é balanceado, então
+`SUM(créditos) − SUM(débitos)` sobre **todas** as partidas do médico é sempre 0 (inútil). O saldo do
+médico é a **posição da conta "Repasses a Médicos a Pagar" (2.1.02)**: quanto a Pin ainda deve a ele.
+`SaldoCalculator.CONTA_REPASSE_MEDICO = "2.1.02"`. O extrato acumula o saldo running a partir do
+efeito líquido de cada lançamento nessa conta, em ordem cronológica (`data_lancamento`, `created_at`).
+O extrato bruto usa constructor expression JPQL com `SUM(CASE WHEN tipo=:credito ...)` + `GROUP BY`.
+
+### Centavos internamente, R$ nas respostas
+Armazenamento e cálculo em centavos (long/BIGINT). As respostas convertem para reais com 2 casas:
+`Money.reais(centavos) = BigDecimal.valueOf(centavos, 2)`. Requests de criação recebem `valorCentavos`.
+
+### Cache de saldo por médico
+`SaldoCalculator.saldoCentavos` é `@Cacheable("ledgerSaldo", key=medicoId)`; `LancamentoService.criar`
+chama `invalidarSaldo(medicoId)` (`@CacheEvict`) após persistir. `@EnableCaching` no `LedgerApplication`
+(ConcurrentMapCacheManager default). A evicção cross-bean funciona pois service → calculator são beans distintos (proxy AOP).
+
+### Idempotência e equilíbrio na criação
+`criar()` valida o equilíbrio em Java (`SUM(débitos)=SUM(créditos)` e total>0) → **422** antes de tocar
+o banco (a constraint diferida do banco é backstop). Idempotência: se `correlation_id` já existe,
+retorna o lançamento existente sem duplicar.
+
+### Multi-tenancy replicado do faturamento
+O ledger ganhou `TenantContext/TenantFilter/TenantAwareDataSource/TenantDataSourcePostProcessor`
+(idênticos ao faturamento) + `TenantFilter` registrado no `SecurityConfig` via `addFilterAfter(...,
+BearerTokenAuthenticationFilter.class)`. Nos testes Testcontainers, o usuário `test` (superuser)
+bypassa FORCE RLS, então os dados ficam visíveis independentemente do tenant propagado.
+
 ---
 
 ## Convenções de Commit e Branch

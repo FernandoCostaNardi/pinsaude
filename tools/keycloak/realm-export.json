@@ -68,6 +68,12 @@
         "description": "Gestor com acesso a relatórios — requer MFA",
         "composite": false,
         "clientRole": false
+      },
+      {
+        "name": "service",
+        "description": "Conta de serviço (client credentials) — chamadas internas entre serviços, ex.: POST no ledger",
+        "composite": false,
+        "clientRole": false
       }
     ]
   },
