@@ -2475,6 +2475,46 @@ testar solicitante `user-A/financeiro` vs aprovadores `user-B/financeiro` (422, 
 
 ---
 
+## Faturamento por Grupo — Cadastros do Tomador (EPIC-13.1)
+
+### Três novas entidades no schema `faturamento` (migration V17)
+
+- **`tomador_grupos_faturamento`**: um grupo = uma NFS-e. Campos: `nome`, `descricao_nota` (template com `{competencia}`), `servico_lc116_id` (FK fiscal), `ordem`, `ativo`. RLS via subquery em `tomadores.cnpj_id_tenant`.
+- **`tomador_modalidades`**: tabela de preços única por tomador. Campos: `turno` (DIURNO/NOTURNO), `horario` (ex: "19:00 as 07:00"), `horas` NUMERIC(6,2), `valor_centavos`, `deslocamento_centavos`. RLS idêntico.
+- **`tomador_servicos_operacionais`**: setores operacionais (Emergência Cardiológica, UTI-URCT…) vinculados a um grupo via `grupo_id`. Não confundir com `tomador_servicos` (catálogo LC116, V16).
+
+### Endpoints aninhados em `/api/tomadores/{id}/...`
+
+- `GET|POST|PUT|DELETE /grupos` — grupos de faturamento (com lista de setores no GET)
+- `GET|POST|PUT|DELETE /modalidades` — tabela de preços
+- `GET|POST|PUT|DELETE /servicos-operacionais` — setores operacionais
+
+Leitura: roles `operacao|gestao|financeiro|contabil|medico`. Escrita: roles `operacao|gestao`.
+
+### Padrão de teste com `@GeneratedValue` sem `setId()`
+
+Entidades com `@GeneratedValue(strategy = GenerationType.UUID)` não expõem `setId()`. Para setar IDs em fixtures de teste, usar reflection:
+```java
+var f = MinhaEntidade.class.getDeclaredField("id");
+f.setAccessible(true); f.set(obj, UUID.randomUUID());
+```
+
+### `listarGrupos` inclui setores aninhados — batch evita N+1
+
+O método carrega grupos, depois em batch `servicoRepo.findAllById(ids distintos)` + um `findByGrupoIdOrderByNomeAsc` por grupo. Aceitável dado que grupos por tomador são poucos (< 10); para volumes maiores, refatorar para query única.
+
+### `TomadorGrupoFaturamentoResponse.servicosOperacionais`
+
+O factory method tem duas sobrecargas: `from(g, servico)` (sem setores, para POST/PUT) e `from(g, servico, setores)` (com setores, para GET lista). Evita carregar setores em mutations.
+
+### Mocks obrigatórios em `TomadorServiceTest`
+
+`TomadorService` tem agora 10 dependências via construtor. Qualquer teste com `@InjectMocks TomadorService` deve declarar `@Mock` para:
+`TomadorGrupoFaturamentoRepository`, `TomadorModalidadeRepository`, `TomadorServicoOperacionalRepository`.
+Sem esses mocks, o `@InjectMocks` falha silenciosamente injetando `null`.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

@@ -6,21 +6,33 @@ import br.com.pinsaude.faturamento.domain.TipoTomador;
 import br.com.pinsaude.faturamento.domain.Tomador;
 import br.com.pinsaude.faturamento.domain.TomadorAliquota;
 import br.com.pinsaude.faturamento.domain.TomadorCnae;
+import br.com.pinsaude.faturamento.domain.TomadorGrupoFaturamento;
+import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorServico;
+import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorCnaeRequest;
 import br.com.pinsaude.faturamento.dto.TomadorCnaeResponse;
+import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoRequest;
+import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoResponse;
+import br.com.pinsaude.faturamento.dto.TomadorModalidadeRequest;
+import br.com.pinsaude.faturamento.dto.TomadorModalidadeResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
+import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalRequest;
+import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorServicoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorServicoResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
+import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
+import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
+import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.http.HttpStatus;
@@ -45,6 +57,9 @@ public class TomadorService {
     private final TomadorCnaeRepository cnaeRepo;
     private final TomadorServicoRepository servicoVinculoRepo;
     private final ServicoRepository servicoRepo;
+    private final TomadorGrupoFaturamentoRepository grupoRepo;
+    private final TomadorModalidadeRepository modalidadeRepo;
+    private final TomadorServicoOperacionalRepository servicoOperacionalRepo;
 
     public TomadorService(TomadorRepository repo,
                           CryptoService crypto,
@@ -52,7 +67,10 @@ public class TomadorService {
                           TomadorAliquotaRepository aliquotaRepo,
                           TomadorCnaeRepository cnaeRepo,
                           TomadorServicoRepository servicoVinculoRepo,
-                          ServicoRepository servicoRepo) {
+                          ServicoRepository servicoRepo,
+                          TomadorGrupoFaturamentoRepository grupoRepo,
+                          TomadorModalidadeRepository modalidadeRepo,
+                          TomadorServicoOperacionalRepository servicoOperacionalRepo) {
         this.repo = repo;
         this.crypto = crypto;
         this.consultaCnpjPort = consultaCnpjPort;
@@ -60,6 +78,9 @@ public class TomadorService {
         this.cnaeRepo = cnaeRepo;
         this.servicoVinculoRepo = servicoVinculoRepo;
         this.servicoRepo = servicoRepo;
+        this.grupoRepo = grupoRepo;
+        this.modalidadeRepo = modalidadeRepo;
+        this.servicoOperacionalRepo = servicoOperacionalRepo;
     }
 
     public List<TomadorResponse> buscar(String q) {
@@ -262,10 +283,180 @@ public class TomadorService {
         servicoVinculoRepo.delete(vinculo);
     }
 
+    // ─── Grupos de faturamento ────────────────────────────────────────────────
+
+    public List<TomadorGrupoFaturamentoResponse> listarGrupos(UUID tomadorId) {
+        findOrThrow(tomadorId);
+        List<TomadorGrupoFaturamento> grupos = grupoRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId);
+        Map<UUID, Servico> servicosPorId = servicosPorGrupoIds(grupos);
+        return grupos.stream()
+            .map(g -> {
+                List<TomadorServicoOperacional> setores =
+                    servicoOperacionalRepo.findByGrupoIdOrderByNomeAsc(g.getId());
+                return TomadorGrupoFaturamentoResponse.from(g, servicosPorId.get(g.getServicoLc116Id()), setores);
+            })
+            .toList();
+    }
+
+    @Transactional
+    public TomadorGrupoFaturamentoResponse criarGrupo(UUID tomadorId, TomadorGrupoFaturamentoRequest req) {
+        findOrThrow(tomadorId);
+        Servico servico = servicoRepo.findById(req.servicoLc116Id())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Serviço LC116 não encontrado: " + req.servicoLc116Id()));
+        TomadorGrupoFaturamento g = new TomadorGrupoFaturamento();
+        g.setTomadorId(tomadorId);
+        g.setServicoLc116Id(req.servicoLc116Id());
+        g.setNome(req.nome());
+        g.setDescricaoNota(req.descricaoNota());
+        g.setOrdem(req.ordem());
+        g.setAtivo(req.ativo());
+        return TomadorGrupoFaturamentoResponse.from(grupoRepo.save(g), servico);
+    }
+
+    @Transactional
+    public TomadorGrupoFaturamentoResponse atualizarGrupo(UUID tomadorId, UUID grupoId,
+                                                           TomadorGrupoFaturamentoRequest req) {
+        findOrThrow(tomadorId);
+        TomadorGrupoFaturamento g = grupoRepo.findById(grupoId)
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado"));
+        Servico servico = servicoRepo.findById(req.servicoLc116Id())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Serviço LC116 não encontrado: " + req.servicoLc116Id()));
+        g.setServicoLc116Id(req.servicoLc116Id());
+        g.setNome(req.nome());
+        g.setDescricaoNota(req.descricaoNota());
+        g.setOrdem(req.ordem());
+        g.setAtivo(req.ativo());
+        List<TomadorServicoOperacional> setores = servicoOperacionalRepo.findByGrupoIdOrderByNomeAsc(grupoId);
+        return TomadorGrupoFaturamentoResponse.from(grupoRepo.save(g), servico, setores);
+    }
+
+    @Transactional
+    public void removerGrupo(UUID tomadorId, UUID grupoId) {
+        findOrThrow(tomadorId);
+        TomadorGrupoFaturamento g = grupoRepo.findById(grupoId)
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado"));
+        grupoRepo.delete(g);
+    }
+
+    // ─── Modalidades ──────────────────────────────────────────────────────────
+
+    public List<TomadorModalidadeResponse> listarModalidades(UUID tomadorId) {
+        findOrThrow(tomadorId);
+        return modalidadeRepo.findByTomadorIdOrderByNomeAsc(tomadorId).stream()
+            .map(TomadorModalidadeResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public TomadorModalidadeResponse criarModalidade(UUID tomadorId, TomadorModalidadeRequest req) {
+        findOrThrow(tomadorId);
+        TomadorModalidade m = new TomadorModalidade();
+        m.setTomadorId(tomadorId);
+        m.setNome(req.nome());
+        m.setTurno(req.turno());
+        m.setHorario(req.horario());
+        m.setHoras(req.horas());
+        m.setValorCentavos(req.valorCentavos());
+        m.setDeslocamentoCentavos(req.deslocamentoCentavos());
+        m.setAtivo(req.ativo());
+        return TomadorModalidadeResponse.from(modalidadeRepo.save(m));
+    }
+
+    @Transactional
+    public TomadorModalidadeResponse atualizarModalidade(UUID tomadorId, UUID modalidadeId,
+                                                          TomadorModalidadeRequest req) {
+        findOrThrow(tomadorId);
+        TomadorModalidade m = modalidadeRepo.findById(modalidadeId)
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Modalidade não encontrada"));
+        m.setNome(req.nome());
+        m.setTurno(req.turno());
+        m.setHorario(req.horario());
+        m.setHoras(req.horas());
+        m.setValorCentavos(req.valorCentavos());
+        m.setDeslocamentoCentavos(req.deslocamentoCentavos());
+        m.setAtivo(req.ativo());
+        return TomadorModalidadeResponse.from(modalidadeRepo.save(m));
+    }
+
+    @Transactional
+    public void removerModalidade(UUID tomadorId, UUID modalidadeId) {
+        findOrThrow(tomadorId);
+        TomadorModalidade m = modalidadeRepo.findById(modalidadeId)
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Modalidade não encontrada"));
+        modalidadeRepo.delete(m);
+    }
+
+    // ─── Serviços operacionais (setores) ──────────────────────────────────────
+
+    public List<TomadorServicoOperacionalResponse> listarServicosOperacionais(UUID tomadorId) {
+        findOrThrow(tomadorId);
+        return servicoOperacionalRepo.findByTomadorIdOrderByNomeAsc(tomadorId).stream()
+            .map(TomadorServicoOperacionalResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public TomadorServicoOperacionalResponse criarServicoOperacional(UUID tomadorId,
+                                                                      TomadorServicoOperacionalRequest req) {
+        findOrThrow(tomadorId);
+        grupoRepo.findById(req.grupoId())
+            .filter(g -> tomadorId.equals(g.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Grupo não encontrado: " + req.grupoId()));
+        TomadorServicoOperacional s = new TomadorServicoOperacional();
+        s.setTomadorId(tomadorId);
+        s.setGrupoId(req.grupoId());
+        s.setNome(req.nome());
+        s.setAtivo(req.ativo());
+        return TomadorServicoOperacionalResponse.from(servicoOperacionalRepo.save(s));
+    }
+
+    @Transactional
+    public TomadorServicoOperacionalResponse atualizarServicoOperacional(UUID tomadorId,
+                                                                          UUID servicoOperacionalId,
+                                                                          TomadorServicoOperacionalRequest req) {
+        findOrThrow(tomadorId);
+        TomadorServicoOperacional s = servicoOperacionalRepo.findById(servicoOperacionalId)
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Serviço operacional não encontrado"));
+        grupoRepo.findById(req.grupoId())
+            .filter(g -> tomadorId.equals(g.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Grupo não encontrado: " + req.grupoId()));
+        s.setGrupoId(req.grupoId());
+        s.setNome(req.nome());
+        s.setAtivo(req.ativo());
+        return TomadorServicoOperacionalResponse.from(servicoOperacionalRepo.save(s));
+    }
+
+    @Transactional
+    public void removerServicoOperacional(UUID tomadorId, UUID servicoOperacionalId) {
+        findOrThrow(tomadorId);
+        TomadorServicoOperacional s = servicoOperacionalRepo.findById(servicoOperacionalId)
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Serviço operacional não encontrado"));
+        servicoOperacionalRepo.delete(s);
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     private Map<UUID, Servico> servicosPorId(List<TomadorServico> vinculos) {
         List<UUID> ids = vinculos.stream().map(TomadorServico::getServicoId).toList();
+        if (ids.isEmpty()) return Map.of();
+        return servicoRepo.findAllById(ids).stream()
+            .collect(Collectors.toMap(Servico::getId, Function.identity()));
+    }
+
+    private Map<UUID, Servico> servicosPorGrupoIds(List<TomadorGrupoFaturamento> grupos) {
+        List<UUID> ids = grupos.stream().map(TomadorGrupoFaturamento::getServicoLc116Id).distinct().toList();
         if (ids.isEmpty()) return Map.of();
         return servicoRepo.findAllById(ids).stream()
             .collect(Collectors.toMap(Servico::getId, Function.identity()));

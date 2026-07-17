@@ -9,7 +9,10 @@ import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
+import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
+import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
+import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoRepository;
 import br.com.pinsaude.faturamento.service.CryptoService;
 import br.com.pinsaude.faturamento.service.TomadorService;
@@ -49,6 +52,9 @@ class TomadorServiceTest {
     @Mock TomadorCnaeRepository cnaeRepo;
     @Mock TomadorServicoRepository servicoVinculoRepo;
     @Mock ServicoRepository servicoRepo;
+    @Mock TomadorGrupoFaturamentoRepository grupoRepo;
+    @Mock TomadorModalidadeRepository modalidadeRepo;
+    @Mock TomadorServicoOperacionalRepository servicoOperacionalRepo;
 
     @InjectMocks TomadorService service;
 
