@@ -46,6 +46,23 @@ public class SecurityUtils {
         return null;
     }
 
+    /** Subject (id) do usuário autenticado, independente do perfil. */
+    public static String currentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth instanceof JwtAuthenticationToken token) {
+            return token.getToken().getSubject();
+        }
+        return null;
+    }
+
+    /** Perfil de backoffice do usuário (o primeiro entre financeiro, gestao e contabil). */
+    public static String currentPerfil() {
+        for (String perfil : new String[]{"financeiro", "gestao", "contabil"}) {
+            if (hasRole(perfil)) return perfil;
+        }
+        return null;
+    }
+
     private static boolean hasRole(String role) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         return auth != null && auth.getAuthorities().stream()

@@ -2441,6 +2441,40 @@ valida os lançamentos. Para a DLQ, o profile de teste reduz `retry.initial-inte
 
 ---
 
+## Ledger — Tela de Extrato + Ajuste com Dupla Aprovação (EPIC-08.4)
+
+Tela `/financeiro/ledger` (`LedgerExtratoPage`, perfis financeiro/gestao/contabil): extrato
+contábil por médico (débito/crédito/saldo running), links de origem, ajuste manual com dupla
+aprovação e export CSV/PDF.
+
+### Ajuste manual com dupla aprovação (backend)
+Tabela `ledger.ajustes_manuais` (V4) é **mutável** (workflow) — diferente das tabelas do razão,
+que são append-only. Fluxo: o solicitante cria um ajuste `PENDENTE`; um **segundo usuário, com id
+E perfil diferentes**, aprova — só então o lançamento imutável é gerado (via `LancamentoService.criar`,
+reuso). Regras em `AjusteManualService.aprovar`: `aprovadorId != solicitanteId` (422) e
+`aprovadorPerfil != solicitantePerfil` (422); segunda decisão do mesmo ajuste → 409. O perfil vem de
+`SecurityUtils.currentPerfil()` (primeiro entre financeiro/gestao/contabil) e o usuário de
+`currentUserId()` (subject do JWT). O lançamento gerado usa `tipoOrigem=AJUSTE`, `origemId=ajusteId`,
+`correlationId="AJUSTE:<id>"` → aparece imediatamente no extrato.
+
+### Extrato reusa o endpoint do médico (08.2) — valores em REAIS no JSON
+A tela consome `GET /api/ledger/extrato/{medicoId}` (posição da conta de repasse). Os campos
+`valor` e `saldoApos` já vêm em **reais** (o backend converte de centavos com `Money.reais`,
+`BigDecimal.valueOf(centavos, 2)`), então o frontend **não divide por 100** — formata direto com
+`toLocaleString('pt-BR', {style:'currency'})`. As colunas Débito/Crédito derivam do **sinal de
+`valor`** (negativo = débito, positivo = crédito). O `origemId` (adicionado ao `ExtratoItemResponse`
+nesta task) alimenta os links da coluna Origem: NOTA→/notas, CONCILIACAO→/conciliacao/assistida,
+REPASSE→/repasses (AJUSTE não tem link).
+
+### Teste de aprovação — simular usuários distintos no MockMvc
+Para exercitar a dupla aprovação, o `jwt()` post-processor customiza o token:
+`jwt().jwt(j -> j.subject("user-A").claim("cnpj_id", TENANT)).authorities(...)`. Assim dá para
+testar solicitante `user-A/financeiro` vs aprovadores `user-B/financeiro` (422, mesmo perfil) e
+`user-C/gestao` (aprova). O teste desabilita os consumers com
+`spring.rabbitmq.listener.simple.auto-startup=false` (não precisa de broker).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
