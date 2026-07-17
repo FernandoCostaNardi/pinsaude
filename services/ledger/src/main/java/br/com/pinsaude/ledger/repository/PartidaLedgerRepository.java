@@ -58,4 +58,8 @@ public interface PartidaLedgerRepository extends JpaRepository<PartidaLedger, UU
         """)
     List<Object[]> totalPorLancamento(@Param("lancamentoIds") List<UUID> lancamentoIds,
                                       @Param("credito") TipoPartida credito);
+
+    /** Soma global de todas as partidas de um tipo — usada para checar o equilíbrio global do ledger. */
+    @Query("SELECT COALESCE(SUM(p.valorCentavos), 0) FROM PartidaLedger p WHERE p.tipo = :tipo")
+    long somaGlobalPorTipo(@Param("tipo") TipoPartida tipo);
 }
