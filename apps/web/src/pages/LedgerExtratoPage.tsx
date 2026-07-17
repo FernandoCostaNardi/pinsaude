@@ -148,16 +148,16 @@ export function LedgerExtratoPage() {
 
   // ─── Carregamentos ─────────────────────────────────────────────────────────
 
+  const carregarPendentes = useCallback(() => {
+    ledgerApi.listarAjustes('PENDENTE').then(setAjustesPendentes).catch(() => setAjustesPendentes([]))
+  }, [])
+
   useEffect(() => {
     if (!temAcesso) return
     medicosApi.listar(0, 1000, 'ATIVO').then((r) => setMedicos(r.content)).catch(() => setMedicos([]))
     ledgerApi.listarContas().then(setContas).catch(() => setContas([]))
     carregarPendentes()
   }, [temAcesso, carregarPendentes])
-
-  const carregarPendentes = useCallback(() => {
-    ledgerApi.listarAjustes('PENDENTE').then(setAjustesPendentes).catch(() => setAjustesPendentes([]))
-  }, [])
 
   const carregarExtrato = useCallback(async (medicoId: string) => {
     setLoading(true); setErro(null)
