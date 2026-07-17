@@ -2391,6 +2391,56 @@ bypassa FORCE RLS, então os dados ficam visíveis independentemente do tenant p
 
 ---
 
+## Ledger — Lançamentos via Eventos RabbitMQ (EPIC-08.3)
+
+O ledger consome 4 filas e gera lançamentos automáticos, reusando `LancamentoService.criar`
+(equilíbrio validado + idempotência por `correlation_id`):
+`ledger.nota.emitida`, `ledger.recebimento.conciliado`, `ledger.repasse.efetuado`, `ledger.ajuste.manual`.
+
+### Mapeamento evento → partidas (sempre balanceado)
+- **NotaEmitida** → DR "Honorários a Receber" (bruto) · CR "Repasses a Médicos a Pagar" (85% do médico)
+  · CR "Receita de Honorários" (margem da Pin = bruto − líquido − retenções) · CR uma retenção por imposto.
+  Credita 2.1.02 → o saldo do médico (EPIC-08.2) reflete o que a Pin passa a dever.
+- **RecebimentoConciliado** → DR "Caixa e Bancos" · CR "Honorários a Receber" (baixa do recebível).
+- **RepasseEfetuado** → DR "Repasses a Médicos a Pagar" · CR "Caixa e Bancos" (reduz o saldo do médico).
+- **AjusteManual** → exige **autorização dupla** (dois aprovadores distintos e não nulos); partidas
+  informadas no evento. Sem a dupla autorização, o consumer lança exceção → DLQ.
+
+A conta `1.1.02 Caixa e Bancos` foi adicionada na `V3` (necessária para recebimento/repasse).
+
+### Idempotência — correlation_id determinístico
+Cada evento vira um lançamento com `correlation_id` fixo: `"NOTA:<id>"`, `"CONCILIACAO:<id>"`,
+`"REPASSE:<id>"`, `"AJUSTE:<id>"`. Reprocessar o mesmo evento não duplica (índice único +
+`LancamentoService.criar` devolve o existente). É o "outbox / idempotent consumer": o `@Transactional`
+no listener liga a persistência ao processamento da mensagem; uma redelivery pós-commit é neutralizada
+pela idempotência.
+
+### DLQ com retry aplicado a factory customizado
+Filas principais têm `x-dead-letter-exchange` → `ledger.dlx` → `ledger.dlq` (uma DLQ única, routing key =
+nome da fila). O retry (`max-attempts=3`, `default-requeue-rejected=false`) vem do `application.yml`. Como
+há um `SimpleRabbitListenerContainerFactory` **customizado** (para o converter JSON), é preciso aplicar o
+yml a ele com `SimpleRabbitListenerContainerFactoryConfigurer.configure(factory, cf)` — senão o retry/DLQ
+não são aplicados. Após 3 tentativas, a mensagem é rejeitada e roteada à DLQ.
+
+### Jackson converter com TypePrecedence.INFERRED (eventos cross-service)
+Produtores em OUTROS serviços (fiscal, faturamento, repasse) publicam com o header `__TypeId__` da
+classe DELES. Para o ledger desserializar no contrato local, o `Jackson2JsonMessageConverter` usa
+`DefaultJackson2JavaTypeMapper` com `TypePrecedence.INFERRED` (usa o tipo do parâmetro do
+`@RabbitListener`, ignorando o header) + `setTrustedPackages("*")`.
+
+### Consumers rodam fora do request HTTP → sem TenantFilter
+Threads do listener não passam pelo `TenantFilter` (servlet filter). `TenantContext` fica nulo →
+`app.current_tenant` vazio → RLS bypass. O `cnpj_id_tenant` do lançamento vem do **payload do evento**,
+não do JWT. Padrão idêntico ao portal.
+
+### Testcontainers RabbitMQ + PostgreSQL
+`LedgerEventIntegrationTest` sobe `PostgreSQLContainer` + `RabbitMQContainer` (ambos `@ServiceConnection`).
+Publica eventos com `RabbitTemplate.convertAndSend`, aguarda o processamento assíncrono por polling e
+valida os lançamentos. Para a DLQ, o profile de teste reduz `retry.initial-interval` (100ms, multiplier
+1.0) e consome de `ledger.dlq` com `rabbitTemplate.receive(DLQ, timeout)`.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
