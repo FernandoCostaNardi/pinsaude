@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Search, Pencil, Trash2, Hospital,
-  CheckCircle2, Minus, AlertTriangle
+  CheckCircle2, Minus, AlertTriangle, Layers,
 } from 'lucide-react'
 import {
   Button, Spinner, Alert,
@@ -11,6 +11,7 @@ import { Tomador, TipoTomador, tomadoresApi } from '../api/tomadoresApi'
 import { formatCnpj } from '../utils/cnpj'
 import { formatCpf } from '../utils/cpf'
 import { TomadorFormModal } from '../components/TomadorFormModal'
+import { TomadorGruposModal } from '../components/TomadorGruposModal'
 import { useAuth } from '../auth/useAuth'
 
 // ─── Tipo badges ──────────────────────────────────────────────────────────────
@@ -145,6 +146,7 @@ export function TomadoresPage() {
   const [editing, setEditing] = useState<Tomador | null>(null)
   const [deleting, setDeleting] = useState<Tomador | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [gruposTomador, setGruposTomador] = useState<Tomador | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -361,11 +363,18 @@ export function TomadoresPage() {
                     <span>Federal</span>
                     <RetencaoIcon ativo={t.indicadorRetencaoIss} tooltip="Retenção ISS" />
                     <span>ISS</span>
+                    <button
+                      onClick={() => setGruposTomador(t)}
+                      className="ml-auto p-1.5 rounded text-ds-light hover:bg-primary-50 hover:text-primary transition-colors"
+                      title="Grupos de faturamento"
+                    >
+                      <Layers size={14} />
+                    </button>
                     {canWrite && (
                       <>
                         <button
                           onClick={() => { setEditing(t); setShowForm(true) }}
-                          className="ml-auto p-1.5 rounded text-ds-light hover:bg-ds-input hover:text-primary transition-colors"
+                          className="p-1.5 rounded text-ds-light hover:bg-ds-input hover:text-primary transition-colors"
                         >
                           <Pencil size={14} />
                         </button>
@@ -395,7 +404,7 @@ export function TomadoresPage() {
                     <TH className="text-center">
                       <span title="Retenção Federal e ISS">Retenções</span>
                     </TH>
-                    {canWrite && <TH className="text-right">Ações</TH>}
+                    <TH className="text-right">Ações</TH>
                   </TRow>
                 </THead>
                 <TBody>
@@ -422,26 +431,35 @@ export function TomadoresPage() {
                           />
                         </div>
                       </TD>
-                      {canWrite && (
-                        <TD className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <button
-                              onClick={() => { setEditing(t); setShowForm(true) }}
-                              className="p-1.5 rounded hover:bg-ds-input text-ds-light hover:text-primary transition-colors"
-                              title="Editar"
-                            >
-                              <Pencil size={15} />
-                            </button>
-                            <button
-                              onClick={() => setDeleting(t)}
-                              className="p-1.5 rounded hover:bg-red-50 text-ds-light hover:text-red-600 transition-colors"
-                              title="Remover"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
-                        </TD>
-                      )}
+                      <TD className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => setGruposTomador(t)}
+                            className="p-1.5 rounded hover:bg-primary-50 text-ds-light hover:text-primary transition-colors"
+                            title="Grupos de faturamento"
+                          >
+                            <Layers size={15} />
+                          </button>
+                          {canWrite && (
+                            <>
+                              <button
+                                onClick={() => { setEditing(t); setShowForm(true) }}
+                                className="p-1.5 rounded hover:bg-ds-input text-ds-light hover:text-primary transition-colors"
+                                title="Editar"
+                              >
+                                <Pencil size={15} />
+                              </button>
+                              <button
+                                onClick={() => setDeleting(t)}
+                                className="p-1.5 rounded hover:bg-red-50 text-ds-light hover:text-red-600 transition-colors"
+                                title="Remover"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </TD>
                     </TRow>
                   ))}
                 </TBody>
@@ -504,6 +522,13 @@ export function TomadoresPage() {
           onConfirm={handleDelete}
           onCancel={() => setDeleting(null)}
           loading={deleteLoading}
+        />
+      )}
+      {gruposTomador && (
+        <TomadorGruposModal
+          tomador={gruposTomador}
+          canWrite={canWrite}
+          onClose={() => setGruposTomador(null)}
         />
       )}
     </div>
