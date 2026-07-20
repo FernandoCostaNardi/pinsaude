@@ -13,7 +13,6 @@ import {
   TomadorServicoOperacionalRequest,
   tomadoresApi,
 } from '../api/tomadoresApi'
-import { Servico, servicosApi } from '../api/servicosApi'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -65,10 +64,8 @@ function syncByHorario(horario: string): Partial<ModalidadeForm> {
 // ─── Form state types ─────────────────────────────────────────────────────────
 
 interface GrupoForm {
-  servicoLc116Id: string
   nome: string
   descricaoNota: string
-  ordem: number
   ativo: boolean
 }
 
@@ -83,7 +80,7 @@ interface ModalidadeForm {
 }
 
 function emptyGrupoForm(): GrupoForm {
-  return { servicoLc116Id: '', nome: '', descricaoNota: '', ordem: 1, ativo: true }
+  return { nome: '', descricaoNota: '', ativo: true }
 }
 
 function emptyModalidadeForm(): ModalidadeForm {
@@ -96,10 +93,9 @@ function emptyModalidadeForm(): ModalidadeForm {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function GrupoFormInline({
-  form, catalogo, onChange, onSave, onCancel, saving, isNew,
+  form, onChange, onSave, onCancel, saving, isNew,
 }: {
   form: GrupoForm
-  catalogo: Servico[]
   onChange: (patch: Partial<GrupoForm>) => void
   onSave: () => void
   onCancel: () => void
@@ -108,8 +104,8 @@ function GrupoFormInline({
 }) {
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 gap-3">
+        <div>
           <Input
             label="Nome do grupo *"
             value={form.nome}
@@ -118,30 +114,6 @@ function GrupoFormInline({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Serviço LC116 *</label>
-          <select
-            value={form.servicoLc116Id}
-            onChange={e => onChange({ servicoLc116Id: e.target.value })}
-            className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white"
-          >
-            <option value="">Selecione o serviço fiscal...</option>
-            {catalogo.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.codigoLc116} — {s.descricaoPadrao}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Input
-            label="Ordem"
-            type="number"
-            value={String(form.ordem)}
-            onChange={e => onChange({ ordem: parseInt(e.target.value) || 1 })}
-            placeholder="1"
-          />
-        </div>
-        <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Descrição da nota *
             <span className="ml-1 text-xs font-normal text-ds-light">(use {'{competencia}'} para substituição automática)</span>
@@ -159,7 +131,7 @@ function GrupoFormInline({
             </p>
           )}
         </div>
-        <div className="col-span-2">
+        <div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -310,7 +282,6 @@ interface Props {
 
 export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   const [aba, setAba] = useState<'grupos' | 'modalidades'>('grupos')
-  const [catalogo, setCatalogo] = useState<Servico[]>([])
 
   // ── Grupos ────────────────────────────────────────────────────────────────
   const [grupos, setGrupos] = useState<TomadorGrupoFaturamento[]>([])
@@ -362,7 +333,6 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   }, [tomador.id])
 
   useEffect(() => {
-    servicosApi.listar().then(setCatalogo).catch(() => setCatalogo([]))
     carregarGrupos()
     carregarModalidades()
   }, [carregarGrupos, carregarModalidades])
@@ -370,20 +340,13 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   // ── Grupos CRUD ───────────────────────────────────────────────────────────
 
   function abrirNovoGrupo() {
-    const proximaOrdem = grupos.length > 0 ? Math.max(...grupos.map(g => g.ordem)) + 1 : 1
-    setGrupoForm({ ...emptyGrupoForm(), ordem: proximaOrdem })
+    setGrupoForm(emptyGrupoForm())
     setEditingGrupoId(null)
     setGrupoErr(null)
   }
 
   function abrirEditarGrupo(g: TomadorGrupoFaturamento) {
-    setGrupoForm({
-      servicoLc116Id: g.servicoLc116Id,
-      nome: g.nome,
-      descricaoNota: g.descricaoNota,
-      ordem: g.ordem,
-      ativo: g.ativo,
-    })
+    setGrupoForm({ nome: g.nome, descricaoNota: g.descricaoNota, ativo: g.ativo })
     setEditingGrupoId(g.id)
     setGrupoErr(null)
   }
@@ -396,18 +359,26 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
 
   async function salvarGrupo() {
     if (!grupoForm) return
-    if (!grupoForm.servicoLc116Id || !grupoForm.nome.trim() || !grupoForm.descricaoNota.trim()) {
-      setGrupoErr('Preencha nome, serviço LC116 e descrição da nota')
+    if (!grupoForm.nome.trim() || !grupoForm.descricaoNota.trim()) {
+      setGrupoErr('Preencha nome e descrição da nota')
       return
     }
+    const servicoLc116Id = tomador.servicos[0]?.servicoId ?? ''
+    if (!servicoLc116Id) {
+      setGrupoErr('Configure ao menos um serviço LC116 no tomador antes de criar grupos')
+      return
+    }
+    const ordem = editingGrupoId
+      ? (grupos.find(g => g.id === editingGrupoId)?.ordem ?? 1)
+      : (grupos.length > 0 ? Math.max(...grupos.map(g => g.ordem)) + 1 : 1)
     setGrupoSaving(true)
     setGrupoErr(null)
     try {
       const req: TomadorGrupoFaturamentoRequest = {
-        servicoLc116Id: grupoForm.servicoLc116Id,
+        servicoLc116Id,
         nome: grupoForm.nome.trim(),
         descricaoNota: grupoForm.descricaoNota.trim(),
-        ordem: grupoForm.ordem,
+        ordem,
         ativo: grupoForm.ativo,
       }
       if (editingGrupoId) {
@@ -610,7 +581,6 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
               {grupos.map(g => {
                 const expanded = expandedGrupos.has(g.id)
                 const isEditing = editingGrupoId === g.id
-                const servico = catalogo.find(s => s.id === g.servicoLc116Id)
                 return (
                   <div key={g.id} className="rounded-xl border border-ds-border bg-white overflow-hidden">
                     {/* Grupo header */}
@@ -638,9 +608,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                           </span>
                         </div>
                         <p className="text-[11px] text-ds-light mt-0.5">
-                          LC116: {servico?.codigoLc116 ?? '—'}
-                          {servico && ` · ${servico.descricaoPadrao}`}
-                          {' · '}
+                          {g.codigoLc116 && `LC116: ${g.codigoLc116}${g.descricaoServico ? ` · ${g.descricaoServico}` : ''} · `}
                           {g.servicosOperacionais.length} setor(es)
                         </p>
                       </div>
@@ -674,7 +642,6 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                             <p className="text-xs font-bold text-ds-mid uppercase mb-3">Editar grupo</p>
                             <GrupoFormInline
                               form={grupoForm}
-                              catalogo={catalogo}
                               onChange={patch => setGrupoForm(f => f ? { ...f, ...patch } : f)}
                               onSave={salvarGrupo}
                               onCancel={cancelarGrupo}
@@ -774,7 +741,6 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
               <p className="text-xs font-bold text-ds-mid uppercase mb-3">Novo grupo</p>
               <GrupoFormInline
                 form={grupoForm}
-                catalogo={catalogo}
                 onChange={patch => setGrupoForm(f => f ? { ...f, ...patch } : f)}
                 onSave={salvarGrupo}
                 onCancel={cancelarGrupo}
