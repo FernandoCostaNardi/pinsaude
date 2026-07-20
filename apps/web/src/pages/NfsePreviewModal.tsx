@@ -371,7 +371,9 @@ ${outerHtml}
             <div className="px-3 py-2.5 bg-white border-b border-gray-200">
               <pre className="text-[10px] text-gray-700 font-mono whitespace-pre-wrap leading-5">
 {[
-  `Serviços médicos prestados ref ${formatCompetenciaMesAno(competencia)}${medicoNomesStr ? ` — ${medicoNomesStr}` : ''}`,
+  producao.descricaoComplementar
+    ? producao.descricaoComplementar
+    : `Serviços médicos prestados ref ${formatCompetenciaMesAno(competencia)}${medicoNomesStr ? ` — ${medicoNomesStr}` : ''}`,
   cnaeCodigo ? `CNAE: ${cnaeCodigo}` : null,
   ``,
   `Dados bancários: Banco Inter: 077 / Agência: 0001 / Conta Corrente PJ: 3875500-9`,

@@ -78,6 +78,9 @@ public class NotaFiscal {
     @Column(name = "cnae_codigo", length = 20)
     private String cnaeCodigo;
 
+    @Column(name = "discriminacao", columnDefinition = "text")
+    private String discriminacao;
+
     @Column(name = "observacoes")
     private String observacoes;
 
@@ -137,6 +140,8 @@ public class NotaFiscal {
     public void setProtocoloEmissao(String v)        { this.protocoloEmissao = v; }
     public String getCnaeCodigo()                    { return cnaeCodigo; }
     public void setCnaeCodigo(String v)              { this.cnaeCodigo = v; }
+    public String getDiscriminacao()                 { return discriminacao; }
+    public void setDiscriminacao(String v)           { this.discriminacao = v; }
     public String getObservacoes()                   { return observacoes; }
     public void setObservacoes(String v)             { this.observacoes = v; }
     public OffsetDateTime getCreatedAt()             { return createdAt; }

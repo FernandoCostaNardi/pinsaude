@@ -79,7 +79,7 @@ class AgregadorFiscalAdapterTest {
         return new DadosNota(
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
             "12345678000195", "2026-06",
-            1000000L, 150000L, 50000L, 15000L, 10000L, 6500L, 30000L, 850000L
+            1000000L, 150000L, 50000L, 15000L, 10000L, 6500L, 30000L, 850000L, null
         );
     }
 

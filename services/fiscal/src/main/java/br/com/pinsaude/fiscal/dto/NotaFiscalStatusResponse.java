@@ -21,7 +21,8 @@ public record NotaFiscalStatusResponse(
     Long taxaPin,
     Long valorLiquidoMedico,
     OffsetDateTime emitidaAt,
-    OffsetDateTime createdAt
+    OffsetDateTime createdAt,
+    String discriminacao
 ) {
     public static NotaFiscalStatusResponse from(NotaFiscal n) {
         return new NotaFiscalStatusResponse(
@@ -29,7 +30,8 @@ public record NotaFiscalStatusResponse(
             n.getTomadorNome(), n.getCompetencia(),
             n.getStatus(), n.getNumeroNota(), n.getProtocoloEmissao(),
             n.getObservacoes(), n.getValorBruto(), n.getTaxaPin(),
-            n.getValorLiquidoMedico(), n.getEmitidaAt(), n.getCreatedAt()
+            n.getValorLiquidoMedico(), n.getEmitidaAt(), n.getCreatedAt(),
+            n.getDiscriminacao()
         );
     }
 }

@@ -36,6 +36,7 @@ export interface NotaFiscal {
   valorLiquidoMedico: number | null
   emitidaAt: string | null
   createdAt: string
+  discriminacao?: string | null
 }
 
 export interface EmitirNfseRequest {
@@ -52,6 +53,7 @@ export interface EmitirNfseRequest {
   valorCofins: number
   tomadorNome: string | null
   cnaeCodigo?: string | null
+  discriminacao?: string | null
 }
 
 export interface EmitirNfseResponse {

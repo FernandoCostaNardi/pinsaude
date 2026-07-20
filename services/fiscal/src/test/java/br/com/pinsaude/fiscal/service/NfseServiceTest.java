@@ -321,6 +321,56 @@ class NfseServiceTest {
         verify(producer, never()).enviar(any());
     }
 
+    // --- discriminacao: persiste na nota e propaga para o adapter ---
+
+    @Test
+    void emitir_comDiscriminacao_persisteNovaDescricao() throws Exception {
+        UUID producaoId = UUID.randomUUID();
+        UUID notaId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        String descricao = "Prestação de serviços médicos — JULHO de 2026";
+
+        when(notaRepo.existsByProducaoId(producaoId)).thenReturn(false);
+        when(notaRepo.existsByMedicoIdAndStatus(medicoId, StatusNota.EMITIDA)).thenReturn(true);
+        when(notaRepo.save(any())).thenAnswer(inv -> {
+            NotaFiscal n = inv.getArgument(0, NotaFiscal.class);
+            setId(n, notaId);
+            return n;
+        });
+
+        var req = new EmitirNfseRequest(
+            producaoId, medicoId, UUID.randomUUID(),
+            "2026-07", 1000000L, 150000L,
+            50000L, 15000L, 10000L, 6500L, 30000L, "Hospital Teste", null, descricao
+        );
+
+        nfseService.emitir(req, CNPJ_TENANT);
+
+        ArgumentCaptor<NotaFiscal> captor = ArgumentCaptor.forClass(NotaFiscal.class);
+        verify(notaRepo).save(captor.capture());
+        assertThat(captor.getValue().getDiscriminacao()).isEqualTo(descricao);
+    }
+
+    @Test
+    void processarEmissao_comDiscriminacao_passaParaAdapter() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        String descricao = "Prestação de serviços médicos — JULHO de 2026";
+        NotaFiscal nota = notaFiscalPendente(notaId);
+        nota.setDiscriminacao(descricao);
+
+        when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
+        when(notaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(emissaoPort.emitir(any())).thenReturn(
+            ResultadoEmissao.sucesso("NF-999", "PROTO-999", "<xml/>", "PDF".getBytes()));
+
+        nfseService.processarEmissao(notaId);
+
+        ArgumentCaptor<br.com.pinsaude.fiscal.port.DadosNota> dadosCaptor =
+            ArgumentCaptor.forClass(br.com.pinsaude.fiscal.port.DadosNota.class);
+        verify(emissaoPort).emitir(dadosCaptor.capture());
+        assertThat(dadosCaptor.getValue().discriminacao()).isEqualTo(descricao);
+    }
+
     // --- listarExcecoes: retorna apenas AGUARDANDO_VALIDACAO ---
 
     @Test
@@ -347,7 +397,7 @@ class NfseServiceTest {
         return new EmitirNfseRequest(
             producaoId, medicoId, UUID.randomUUID(),
             "2026-06", 1000000L, 150000L,
-            50000L, 15000L, 10000L, 6500L, 30000L, "Clínica Exemplo", null
+            50000L, 15000L, 10000L, 6500L, 30000L, "Clínica Exemplo", null, null
         );
     }
 

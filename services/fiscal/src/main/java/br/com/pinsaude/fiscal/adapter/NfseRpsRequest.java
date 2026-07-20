@@ -13,6 +13,9 @@ record NfseRpsRequest(
     String descricao
 ) {
     static NfseRpsRequest from(DadosNota d) {
+        String descricao = (d.discriminacao() != null && !d.discriminacao().isBlank())
+            ? d.discriminacao()
+            : "Serviços médicos — competência " + d.competencia();
         return new NfseRpsRequest(
             d.producaoId().toString(),
             d.cnpjIdTenant(),
@@ -21,7 +24,7 @@ record NfseRpsRequest(
             d.valorBruto(),
             d.valorIss(),
             d.valorIr(),
-            "Serviços médicos — competência " + d.competencia()
+            descricao
         );
     }
 }
