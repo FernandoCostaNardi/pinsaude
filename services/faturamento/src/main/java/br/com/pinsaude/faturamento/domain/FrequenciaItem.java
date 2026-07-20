@@ -1,0 +1,58 @@
+package br.com.pinsaude.faturamento.domain;
+
+import jakarta.persistence.*;
+
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+@Entity
+@Table(name = "frequencia_itens", schema = "faturamento")
+public class FrequenciaItem {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
+    @Column(name = "frequencia_id", nullable = false)
+    private UUID frequenciaId;
+
+    @Column(name = "modalidade_id", nullable = false)
+    private UUID modalidadeId;
+
+    @Column(name = "data_execucao", nullable = false)
+    private LocalDate dataExecucao;
+
+    @Column(name = "ocorrencia", length = 120)
+    private String ocorrencia;
+
+    // Snapshot dos preços da modalidade no momento do lançamento
+    @Column(name = "valor_unitario_centavos", nullable = false)
+    private long valorUnitarioCentavos;
+
+    @Column(name = "deslocamento_centavos", nullable = false)
+    private long deslocamentoCentavos;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private OffsetDateTime createdAt;
+
+    @PrePersist
+    void prePersist() {
+        if (createdAt == null) createdAt = OffsetDateTime.now();
+    }
+
+    public UUID getId()                          { return id; }
+    public UUID getFrequenciaId()                { return frequenciaId; }
+    public void setFrequenciaId(UUID v)         { this.frequenciaId = v; }
+    public UUID getModalidadeId()                { return modalidadeId; }
+    public void setModalidadeId(UUID v)         { this.modalidadeId = v; }
+    public LocalDate getDataExecucao()           { return dataExecucao; }
+    public void setDataExecucao(LocalDate v)    { this.dataExecucao = v; }
+    public String getOcorrencia()                { return ocorrencia; }
+    public void setOcorrencia(String v)         { this.ocorrencia = v; }
+    public long getValorUnitarioCentavos()       { return valorUnitarioCentavos; }
+    public void setValorUnitarioCentavos(long v){ this.valorUnitarioCentavos = v; }
+    public long getDeslocamentoCentavos()        { return deslocamentoCentavos; }
+    public void setDeslocamentoCentavos(long v) { this.deslocamentoCentavos = v; }
+    public OffsetDateTime getCreatedAt()         { return createdAt; }
+}
