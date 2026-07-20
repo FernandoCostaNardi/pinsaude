@@ -21,6 +21,7 @@ import {
   PlusCircle,
   Upload,
   Wallet,
+  CalendarDays,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 
@@ -28,13 +29,15 @@ const navItems = [
   { to: '/portal/dashboard', label: 'Meu Portal',   icon: HeartPulse,      roles: ['medico'], end: true  },
   { to: '/portal/notas',    label: 'Minhas Notas',  icon: Receipt,         roles: ['medico'], end: true  },
   { to: '/portal/extrato',        label: 'Extrato',          icon: TrendingUp, roles: ['medico'], end: true },
-  { to: '/portal/producao/nova', label: 'Informar Produção', icon: PlusCircle, roles: ['medico'], end: true },
+  { to: '/portal/producao/nova', label: 'Informar Produção', icon: PlusCircle,   roles: ['medico'], end: true },
+  { to: '/portal/frequencias',  label: 'Frequências',       icon: CalendarDays, roles: ['medico'], end: true },
   { to: '/',            label: 'Dashboard',    icon: LayoutDashboard,  roles: null,       end: true  },
   { to: '/medicos',           label: 'Médicos',     icon: Stethoscope,      roles: null,       end: false },
   { to: '/medicos/aprovacao', label: 'Aprovação',   icon: ClipboardCheck,   roles: ['gestao', 'operacao'],                         end: true },
   { to: '/empresas',          label: 'Empresas',    icon: Building2,        roles: ['gestao'],                                     end: true },
   { to: '/tomadores',         label: 'Tomadores',   icon: Hospital,         roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true },
   { to: '/producao',          label: 'Produção',    icon: ClipboardList,    roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: false },
+  { to: '/frequencias',       label: 'Frequências', icon: CalendarDays,     roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true },
   { to: '/fiscal/config', label: 'Fiscal', icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'], end: true },
   { to: '/notas',       label: 'Notas',         icon: FileText,         roles: null,       end: true  },
   { to: '/notas/lote',  label: 'Lotes NFS-e',   icon: Layers,           roles: ['operacao', 'gestao', 'contabil', 'financeiro'], end: true },

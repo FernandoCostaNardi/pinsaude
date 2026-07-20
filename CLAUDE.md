@@ -2515,6 +2515,55 @@ Sem esses mocks, o `@InjectMocks` falha silenciosamente injetando `null`.
 
 ---
 
+## Frequência Médica — Padrões e Armadilhas (EPIC-13.3)
+
+### Schema `frequencias_medicas` + `frequencia_itens` (migration V18)
+
+Uma **frequência médica** é o documento oficial de ponto por médico+setor+competência.
+Unicidade: `UNIQUE (medico_id, servico_operacional_id, competencia)` — uma folha por médico, setor e mês.
+RLS: `frequencias_medicas` tem `cnpj_id_tenant` diretamente (WITH CHECK true); `frequencia_itens` via subquery por `frequencia_id`.
+
+### Snapshot de preço obrigatório nos itens
+
+`frequencia_itens` armazena `valor_unitario_centavos` e `deslocamento_centavos` como **snapshot** da modalidade no momento do lançamento:
+```java
+item.setValorUnitarioCentavos(modalidade.getValorCentavos());
+item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
+```
+Isso garante que mudanças futuras na tabela de preços não retroagem em itens já lançados. O `totalItemCentavos` do response = `valorUnitario + deslocamento`.
+
+### Ciclo de vida de status — guard de FATURADA
+
+Status possíveis: `RASCUNHO → PDF_GERADO → AGUARDANDO_ASSINATURA → ASSINADA_RECEBIDA → ENVIADA_TOMADOR → FATURADA`
+
+Qualquer mutação (adicionar/editar/remover item) em frequência `FATURADA` lança **422**:
+```java
+if ("FATURADA".equals(f.getStatus())) {
+    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Não é possível modificar frequência já faturada");
+}
+```
+
+### Batch load em `listar()` — evitar N+1
+
+O service `listar()` usa discriminação por filtro primário (medicoId, tomadorId, setorId ou sem filtro), depois filtra em-stream com predicados independentes. O enriquecimento usa batch loads:
+1. `setorRepo.findAllById(setorIds distintos)` — um SELECT para todos os setores
+2. `itemRepo.findAll()` filtrado in-stream por `freqIds` (aceitável para volumes baixos por tenant; refatorar para `findByFrequenciaIdIn(freqIds)` quando volumes crescerem)
+3. `modalidadeRepo.findAllById(modalidadeIds distintos)` — um SELECT para todas as modalidades dos itens
+
+### `FrequenciaItemResponse.from()` — modalidade nullable
+
+O factory aceita `modalidade = null` para tolerância a orfa. Exibe `null` nos campos de nome/turno/horário quando a modalidade não for encontrada no batch — nunca lança NPE.
+
+### Mocks obrigatórios em `FrequenciaServiceTest`
+
+`FrequenciaService` tem 4 dependências: `FrequenciaMedicaRepository`, `FrequenciaItemRepository`, `TomadorServicoOperacionalRepository`, `TomadorModalidadeRepository`. Sempre declarar os 4 `@Mock` ao usar `@InjectMocks FrequenciaService`.
+
+### `SecurityUtils.currentCnpjTenant()` no faturamento = dígitos limpos
+
+O `TenantFilter` do faturamento faz `replaceAll("\\D", "")` no claim `cnpj_id`. O `cnpj_id_tenant` gravado em `frequencias_medicas` usa dígitos apenas (`VARCHAR(20)`). Nunca armazenar CNPJ com formatação neste serviço.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

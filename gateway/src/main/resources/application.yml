@@ -36,6 +36,10 @@ spring:
           uri: http://localhost:8082
           predicates:
             - Path=/api/servicos/**
+        - id: frequencias
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/frequencias/**
         - id: conciliacao
           uri: http://localhost:8082
           predicates:
