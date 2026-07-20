@@ -101,7 +101,7 @@ public class PortalService {
 
     public List<ProducaoPortalResponse> getProducoes(UUID medicoId, String competencia) {
         StringBuilder sql = new StringBuilder("""
-                SELECT p.id, p.competencia, t.razao_social AS tomador_nome,
+                SELECT p.id, p.competencia, t.razao_social_nome AS tomador_nome,
                        s.descricao_padrao AS servico_descricao,
                        pp.valor_bruto AS valor_bruto_medico,
                        COALESCE(pp.taxa_pin_pct, 0.15) AS taxa_pin_pct,
