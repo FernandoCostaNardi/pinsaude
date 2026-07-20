@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  CalendarDays, ChevronDown, ClipboardList, FileText,
-  Loader2, Plus, Printer, Search, Trash2, X,
+  CalendarDays, CheckCircle2, ChevronDown, ClipboardList, Download,
+  FileText, Loader2, Plus, Printer, Search, Trash2, Upload, X,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import { tomadoresApi, Tomador, TomadorGrupoFaturamento, TomadorModalidade } from '../api/tomadoresApi'
@@ -332,9 +332,12 @@ function PainelFrequencia({
   onAtualizar: (f: FrequenciaMedicaResp) => void
 }) {
   const { user } = useAuth()
-  const [adicionando, setAdicionando] = useState(false)
-  const [removendo,   setRemovendo]   = useState<string | null>(null)
-  const [gerandoPdf,  setGerandoPdf]  = useState(false)
+  const [adicionando,   setAdicionando]   = useState(false)
+  const [removendo,     setRemovendo]     = useState<string | null>(null)
+  const [gerandoPdf,    setGerandoPdf]    = useState(false)
+  const [uploadingDoc,  setUploadingDoc]  = useState(false)
+  const [uploadErr,     setUploadErr]     = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const isFaturada = freq.status === 'FATURADA'
 
   const tomador = tomadores.find(t => t.id === freq.tomadorId)
@@ -355,6 +358,29 @@ function PainelFrequencia({
       onAtualizar(atualizada)
     } catch { /* ignore */ }
     finally { setRemovendo(null) }
+  }
+
+  async function handleUploadDocumento(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadErr(null)
+    setUploadingDoc(true)
+    try {
+      const atualizada = await frequenciasApi.uploadDocumentoAssinado(freq.id, file)
+      onAtualizar(atualizada)
+    } catch (err: unknown) {
+      setUploadErr(err instanceof Error ? err.message : 'Erro ao fazer upload')
+    } finally {
+      setUploadingDoc(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleVerDocumento() {
+    try {
+      const url = await frequenciasApi.getDocumentoUrl(freq.id)
+      window.open(url, '_blank', 'noopener')
+    } catch { /* ignore */ }
   }
 
   async function handleGerarPdf() {
@@ -422,6 +448,48 @@ function PainelFrequencia({
           <span>{freq.especialidade}</span>
         </div>
       </div>
+
+      {/* Documento assinado */}
+      {(freq.status === 'AGUARDANDO_ASSINATURA' || freq.documentoAssinado) && (
+        <div className="px-4 py-3 border-b border-ds-border shrink-0 bg-yellow-50/50 space-y-2">
+          <p className="text-[10px] font-bold text-ds-light uppercase tracking-wider">Documento Assinado</p>
+          {uploadErr && (
+            <p className="text-xs text-red-600">{uploadErr}</p>
+          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            {freq.status === 'AGUARDANDO_ASSINATURA' && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  onChange={handleUploadDocumento}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingDoc}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-colors disabled:opacity-50">
+                  {uploadingDoc ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                  {freq.documentoAssinado ? 'Substituir Assinado' : 'Upload Assinado'}
+                </button>
+              </>
+            )}
+            {freq.documentoAssinado && (
+              <button
+                onClick={handleVerDocumento}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-300 text-purple-700 bg-white text-xs font-bold hover:bg-purple-50 transition-colors">
+                <Download size={12} /> Ver Documento
+              </button>
+            )}
+            {freq.documentoAssinado && (
+              <span className="flex items-center gap-1 text-xs text-green-700">
+                <CheckCircle2 size={12} /> Recebido
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Totalizador */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-ds-border shrink-0">

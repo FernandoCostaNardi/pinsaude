@@ -7,9 +7,13 @@ import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.service.FrequenciaService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Map;
 
 import java.util.List;
 import java.util.UUID;
@@ -51,6 +55,20 @@ public class FrequenciaController {
     @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
     public ResponseEntity<FrequenciaMedicaResponse> gerarPdf(@PathVariable UUID id) {
         return ResponseEntity.ok(service.gerarPdf(id));
+    }
+
+    @PostMapping(value = "/{id}/documento", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    public ResponseEntity<FrequenciaMedicaResponse> receberDocumentoAssinado(
+            @PathVariable UUID id,
+            @RequestParam("arquivo") MultipartFile arquivo) {
+        return ResponseEntity.ok(service.receberDocumentoAssinado(id, arquivo));
+    }
+
+    @GetMapping("/{id}/documento/url")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico','financeiro','contabil')")
+    public ResponseEntity<Map<String, String>> getDocumentoUrl(@PathVariable UUID id) {
+        return ResponseEntity.ok(Map.of("url", service.getDocumentoUrl(id)));
     }
 
     @PostMapping("/{id}/itens")

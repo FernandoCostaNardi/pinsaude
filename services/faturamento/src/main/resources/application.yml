@@ -28,6 +28,11 @@ spring:
           issuer-uri: http://localhost:8080/realms/pinsaude
 crypto:
   key: ${CRYPTO_KEY:pinsaude-dev-key-change-in-prod}
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket: ${MINIO_BUCKET:pinsaude-documentos}
 receita-federal:
   base-url: ${RECEITA_FEDERAL_URL:https://brasilapi.com.br}
 server:

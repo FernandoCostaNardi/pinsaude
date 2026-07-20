@@ -13,6 +13,8 @@ import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
 import br.com.pinsaude.faturamento.service.FrequenciaService;
+import br.com.pinsaude.faturamento.service.StorageService;
+import org.springframework.mock.web.MockMultipartFile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +36,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,6 +47,7 @@ class FrequenciaServiceTest {
     @Mock FrequenciaItemRepository   itemRepo;
     @Mock TomadorServicoOperacionalRepository setorRepo;
     @Mock TomadorModalidadeRepository modalidadeRepo;
+    @Mock StorageService storageService;
 
     @InjectMocks FrequenciaService service;
 
@@ -303,6 +307,86 @@ class FrequenciaServiceTest {
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    // ─── Receber Documento Assinado ───────────────────────────────────────────
+
+    @Test
+    void receberDocumentoAssinado_aguardandoAssinatura_mudaStatusParaAssinadaRecebida() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setStatus("AGUARDANDO_ASSINATURA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(storageService.upload(anyString(), any())).thenReturn("frequencias/" + freqId + "/doc.pdf");
+        when(frequenciaRepo.save(any())).thenReturn(f);
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(any())).thenReturn(List.of());
+
+        MockMultipartFile arquivo = new MockMultipartFile("arquivo", "doc.pdf", "application/pdf", new byte[10]);
+        FrequenciaMedicaResponse resp = service.receberDocumentoAssinado(freqId, arquivo);
+
+        assertThat(resp.status()).isEqualTo("ASSINADA_RECEBIDA");
+        assertThat(resp.documentoAssinado()).isTrue();
+        verify(storageService).upload(anyString(), any());
+        verify(storageService, never()).delete(any());
+    }
+
+    @Test
+    void receberDocumentoAssinado_reupload_deletaArquigoAnterior() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setStatus("AGUARDANDO_ASSINATURA");
+        f.setDocumentoAssinadoKey("frequencias/" + freqId + "/antigo.pdf");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(storageService.upload(anyString(), any())).thenReturn("frequencias/" + freqId + "/novo.pdf");
+        when(frequenciaRepo.save(any())).thenReturn(f);
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(any())).thenReturn(List.of());
+
+        MockMultipartFile arquivo = new MockMultipartFile("arquivo", "novo.pdf", "application/pdf", new byte[10]);
+        service.receberDocumentoAssinado(freqId, arquivo);
+
+        verify(storageService).delete("frequencias/" + freqId + "/antigo.pdf");
+        verify(storageService).upload(anyString(), any());
+    }
+
+    @Test
+    void receberDocumentoAssinado_statusNaoPermitido_lanca422() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setStatus("RASCUNHO");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        MockMultipartFile arquivo = new MockMultipartFile("arquivo", "doc.pdf", "application/pdf", new byte[10]);
+        assertThatThrownBy(() -> service.receberDocumentoAssinado(freqId, arquivo))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void getDocumentoUrl_semDocumento_lanca404() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        // documentoAssinadoKey é null por padrão
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        assertThatThrownBy(() -> service.getDocumentoUrl(freqId))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void getDocumentoUrl_comDocumento_retornaUrl() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setDocumentoAssinadoKey("frequencias/" + freqId + "/doc.pdf");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(storageService.getPresignedUrl(anyString())).thenReturn("http://minio/signed-url");
+
+        String url = service.getDocumentoUrl(freqId);
+
+        assertThat(url).isEqualTo("http://minio/signed-url");
+        verify(storageService).getPresignedUrl("frequencias/" + freqId + "/doc.pdf");
     }
 
     // ─── Fixtures ─────────────────────────────────────────────────────────────
