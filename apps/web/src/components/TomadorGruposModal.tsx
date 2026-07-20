@@ -38,6 +38,30 @@ function maskValor(e: React.ChangeEvent<HTMLInputElement>): string {
   return centavosParaBrl(parseInt(raw || '0', 10))
 }
 
+// ─── Mapeamento fixo turno × horas × horário ──────────────────────────────────
+
+const HORARIOS_FIXOS = [
+  { turno: 'DIURNO'  as const, horas: 6,  horario: '07:00 as 13:00', label: '☀️ Diurno 6h — 07:00 as 13:00' },
+  { turno: 'DIURNO'  as const, horas: 12, horario: '07:00 as 19:00', label: '☀️ Diurno 12h — 07:00 as 19:00' },
+  { turno: 'NOTURNO' as const, horas: 6,  horario: '19:00 as 00:00', label: '🌙 Noturno 6h — 19:00 as 00:00' },
+  { turno: 'NOTURNO' as const, horas: 12, horario: '19:00 as 07:00', label: '🌙 Noturno 12h — 19:00 as 07:00' },
+]
+
+function syncByTurnoHoras(
+  turno: 'DIURNO' | 'NOTURNO',
+  horasStr: string,
+): Partial<ModalidadeForm> {
+  const combo = HORARIOS_FIXOS.find(c => c.turno === turno && c.horas === Number(horasStr))
+  return combo ? { turno, horasStr, horario: combo.horario } : { turno, horasStr }
+}
+
+function syncByHorario(horario: string): Partial<ModalidadeForm> {
+  const combo = HORARIOS_FIXOS.find(c => c.horario === horario)
+  return combo
+    ? { horario, turno: combo.turno, horasStr: String(combo.horas) }
+    : { horario }
+}
+
 // ─── Form state types ─────────────────────────────────────────────────────────
 
 interface GrupoForm {
@@ -169,6 +193,8 @@ function ModalidadeFormInline({
   saving: boolean
   isNew: boolean
 }) {
+  const SELECT_CLS = 'w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white'
+
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
@@ -180,35 +206,51 @@ function ModalidadeFormInline({
             placeholder="ex: Plantão 12h Noturno"
           />
         </div>
+
+        {/* Horário — seleção primária que auto-preenche turno e horas */}
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Horário *</label>
+          <select
+            value={form.horario}
+            onChange={e => onChange(syncByHorario(e.target.value))}
+            className={SELECT_CLS}
+          >
+            <option value="">Selecione o horário...</option>
+            {HORARIOS_FIXOS.map(c => (
+              <option key={c.horario} value={c.horario}>{c.label}</option>
+            ))}
+          </select>
+          {form.horario && (
+            <p className="text-[11px] text-ds-light mt-1">
+              Turno e duração preenchidos automaticamente pelo horário selecionado
+            </p>
+          )}
+        </div>
+
+        {/* Turno — altera o horário se houver combo correspondente com horas atual */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Turno *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Turno</label>
           <select
             value={form.turno}
-            onChange={e => onChange({ turno: e.target.value as 'DIURNO' | 'NOTURNO' })}
-            className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white"
+            onChange={e => onChange(syncByTurnoHoras(e.target.value as 'DIURNO' | 'NOTURNO', form.horasStr))}
+            className={SELECT_CLS}
           >
             <option value="DIURNO">☀️ DIURNO</option>
             <option value="NOTURNO">🌙 NOTURNO</option>
           </select>
         </div>
+
+        {/* Horas — altera o horário se houver combo correspondente com turno atual */}
         <div>
-          <Input
-            label="Horário *"
-            value={form.horario}
-            onChange={e => onChange({ horario: e.target.value })}
-            placeholder="ex: 19:00 as 07:00"
-          />
-        </div>
-        <div>
-          <Input
-            label="Horas *"
-            type="number"
-            step="0.5"
-            min="0.5"
+          <label className="block text-sm font-medium text-gray-700 mb-1">Horas</label>
+          <select
             value={form.horasStr}
-            onChange={e => onChange({ horasStr: e.target.value })}
-            placeholder="12"
-          />
+            onChange={e => onChange(syncByTurnoHoras(form.turno, e.target.value))}
+            className={SELECT_CLS}
+          >
+            <option value="6">6 horas</option>
+            <option value="12">12 horas</option>
+          </select>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Valor *</label>
