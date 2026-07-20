@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, CalendarDays, ChevronDown, ChevronRight,
-  Loader2, Plus, Trash2, CheckCircle2,
+  Loader2, Plus, Printer, Trash2, CheckCircle2,
   FileText, X,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -14,6 +14,8 @@ import {
   FrequenciaMedicaRequest,
   FrequenciaItemRequest,
 } from '../api/frequenciasApi'
+import { useAuth } from '../auth/AuthContext'
+import { abrirPdfFrequencia } from '../utils/frequenciaPdf'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -322,13 +324,17 @@ function AdicionarItemRow({
 // ─── Painel de itens ──────────────────────────────────────────────────────────
 
 function FrequenciaItensPanel({
-  freq, onAtualizar,
+  freq, tomadorNome, perfil, onAtualizar,
 }: {
   freq: FrequenciaMedicaResp
+  tomadorNome: string
+  perfil: PerfilMedico
   onAtualizar: (f: FrequenciaMedicaResp) => void
 }) {
+  const { user } = useAuth()
   const [adicionando, setAdicionando] = useState(false)
   const [removendo,   setRemovendo]   = useState<string | null>(null)
+  const [gerandoPdf,  setGerandoPdf]  = useState(false)
   const isFaturada = freq.status === 'FATURADA'
 
   async function handleAdd(req: FrequenciaItemRequest) {
@@ -348,6 +354,28 @@ function FrequenciaItensPanel({
     finally { setRemovendo(null) }
   }
 
+  async function handleGerarPdf() {
+    if (gerandoPdf) return
+    setGerandoPdf(true)
+    try {
+      let freqAtual = freq
+      if (['RASCUNHO', 'PDF_GERADO'].includes(freq.status)) {
+        freqAtual = await frequenciasApi.gerarPdf(freq.id)
+        onAtualizar(freqAtual)
+      }
+      abrirPdfFrequencia({
+        freq:          freqAtual,
+        medicoNome:    perfil.nome,
+        medicoCrm:     perfil.crm,
+        medicoCrmUf:   perfil.crmUf,
+        tomadorNome,
+        empresaNome:   'Pin Saúde',
+        empresaCnpj:   user?.cnpj_id ?? '',
+      })
+    } catch { /* popup bloqueado já exibe alerta */ }
+    finally { setGerandoPdf(false) }
+  }
+
   return (
     <div className="bg-ds-surface rounded-xl border border-ds-border overflow-hidden">
       {/* Totalizador */}
@@ -355,10 +383,16 @@ function FrequenciaItensPanel({
         <p className="text-xs font-bold text-ds-mid">
           {freq.itens.length} plantão{freq.itens.length !== 1 ? 'ões' : ''} lançado{freq.itens.length !== 1 ? 's' : ''}
         </p>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <p className="text-xs text-ds-mid">
             Total: <span className="font-black text-ds-text tabular-nums">{formatBRL(freq.totalValorCentavos)}</span>
           </p>
+          <button onClick={handleGerarPdf} disabled={gerandoPdf}
+            title="Gerar PDF do Relatório de Frequência"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ds-border text-ds-mid text-xs font-semibold hover:border-primary hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-50">
+            {gerandoPdf ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
+            Gerar PDF
+          </button>
           {!isFaturada && (
             <button onClick={() => setAdicionando(true)} disabled={adicionando}
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-700 transition-colors disabled:opacity-50">
@@ -442,14 +476,16 @@ function FrequenciaItensPanel({
 // ─── Card de frequência ───────────────────────────────────────────────────────
 
 function FrequenciaCard({
-  freq, tomadores, onAtualizar,
+  freq, tomadores, perfil, onAtualizar,
 }: {
   freq: FrequenciaMedicaResp
   tomadores: Tomador[]
+  perfil: PerfilMedico
   onAtualizar: (f: FrequenciaMedicaResp) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const tomador = tomadores.find(t => t.id === freq.tomadorId)
+  const tomadorNome = tomador?.razaoSocialNome ?? '—'
 
   return (
     <div className="bg-white rounded-xl border border-ds-border shadow-sm overflow-hidden">
@@ -467,7 +503,7 @@ function FrequenciaCard({
             </span>
           </div>
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-            <p className="text-xs text-ds-mid truncate">{tomador?.razaoSocialNome ?? freq.tomadorId}</p>
+            <p className="text-xs text-ds-mid truncate">{tomadorNome}</p>
             {freq.servicoOperacionalNome && (
               <p className="text-xs text-ds-light">· {freq.servicoOperacionalNome}</p>
             )}
@@ -483,7 +519,7 @@ function FrequenciaCard({
 
       {expanded && (
         <div className="border-t border-ds-border p-4">
-          <FrequenciaItensPanel freq={freq} onAtualizar={onAtualizar} />
+          <FrequenciaItensPanel freq={freq} tomadorNome={tomadorNome} perfil={perfil} onAtualizar={onAtualizar} />
         </div>
       )}
     </div>
@@ -615,7 +651,7 @@ export function PortalFrequenciaPage() {
       ) : (
         <div className="space-y-3">
           {filtradas.map(f => (
-            <FrequenciaCard key={f.id} freq={f} tomadores={tomadoresSorted} onAtualizar={handleAtualizar} />
+            <FrequenciaCard key={f.id} freq={f} tomadores={tomadoresSorted} perfil={perfil!} onAtualizar={handleAtualizar} />
           ))}
         </div>
       )}

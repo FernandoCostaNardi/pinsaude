@@ -131,4 +131,12 @@ export const frequenciasApi = {
     })
     return handleResponse<void>(res)
   },
+
+  async gerarPdf(id: string): Promise<FrequenciaMedicaResp> {
+    const res = await fetch(`/api/frequencias/${id}/gerar-pdf`, {
+      method: 'PUT',
+      headers: authHeaders(),
+    })
+    return handleResponse<FrequenciaMedicaResp>(res)
+  },
 }

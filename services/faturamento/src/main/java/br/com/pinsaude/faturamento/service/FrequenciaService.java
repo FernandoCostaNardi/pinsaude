@@ -20,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -192,6 +193,29 @@ public class FrequenciaService {
                 "Item não encontrado: " + itemId));
 
         itemRepo.delete(item);
+    }
+
+    // ── Gerar PDF ─────────────────────────────────────────────────────────────
+
+    @Transactional
+    public FrequenciaMedicaResponse gerarPdf(UUID id) {
+        FrequenciaMedica f = findOrThrow(id);
+
+        // Estados permitidos para gerar PDF: RASCUNHO, PDF_GERADO e AGUARDANDO_ASSINATURA (idempotente)
+        // Estados além de AGUARDANDO_ASSINATURA já representam etapas posteriores
+        Set<String> permitidos = Set.of("RASCUNHO", "PDF_GERADO", "AGUARDANDO_ASSINATURA");
+        if (!permitidos.contains(f.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Não é possível gerar PDF de frequência com status: " + f.getStatus()
+                    + ". Apenas RASCUNHO e PDF_GERADO permitem transição para AGUARDANDO_ASSINATURA.");
+        }
+
+        if (!"AGUARDANDO_ASSINATURA".equals(f.getStatus())) {
+            f.setStatus("AGUARDANDO_ASSINATURA");
+            frequenciaRepo.save(f);
+        }
+
+        return toResponse(f);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
