@@ -245,6 +245,7 @@ export function NfseEmissaoPage() {
         valorPis: pisRetido, valorCofins: cofinsRetido,
         tomadorNome: tomador.razaoSocialNome ?? null,
         cnaeCodigo: cnaeSelecionado || null,
+        discriminacao: producao.descricaoComplementar ?? null,
       })
       setPrimeiraNotaMedico(res.primeiraNotaMedico)
       await atualizarStatus()

@@ -2855,6 +2855,60 @@ assertThat(captor.getValue().getDescricaoComplementar()).isEqualTo("JULHO DE 202
 
 ---
 
+## Discriminação da NFS-e — Propagação da Descrição do Grupo (EPIC-13.9)
+
+### Campo `discriminacao` — cadeia completa backend + frontend
+
+O campo `discriminacao TEXT` em `fiscal.notas_fiscais` propaga a descrição interpolada do grupo de faturamento até a nota fiscal emitida. Cadeia completa:
+
+```
+FechamentoService.executar()
+  → producao.descricaoComplementar ("Prestação de serviços... JULHO de 2026")
+  → NfseEmissaoPage.tsx emitirNfse({ discriminacao: producao.descricaoComplementar })
+  → EmitirNfseRequest.discriminacao (campo String, nullable)
+  → NfseService.emitir() → nota.setDiscriminacao(req.discriminacao())
+  → DadosNota.discriminacao (14º campo do record)
+  → NfseRpsRequest.from(d): descricao = d.discriminacao() ?? "Serviços médicos — competência..."
+  → Nota emitida na prefeitura com a discriminação correta
+```
+
+Backward compat: `discriminacao = null` → fallback para texto genérico em toda a cadeia.
+
+### Migration Flyway — V13 no fiscal service
+
+Migrations do `fiscal` service têm numeração própria e independente do `faturamento`.
+V13 do fiscal: `ALTER TABLE fiscal.notas_fiscais ADD COLUMN discriminacao TEXT;`
+Sempre rodar `mvn process-resources -pl :pinsaude-fiscal` antes de `mvn-flyway.js` ao criar novo SQL.
+
+### `TransactionSynchronizationManager.isSynchronizationActive()` — guard obrigatório
+
+Métodos `@Transactional` que chamam `registerSynchronization()` falham em testes unitários sem contexto de transação ativa. Adicionar o guard:
+```java
+if (TransactionSynchronizationManager.isSynchronizationActive()) {
+    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() { producer.enviar(msg); }
+    });
+} else {
+    producer.enviar(msg); // testes unitários sem transação: publica diretamente
+}
+```
+Este padrão deve ser aplicado em todo método que usa outbox via `afterCommit()`:
+`emitir()`, `aprovar()`, `reprocessarNota()` no `NfseService`.
+
+### `NotaFiscalStatusResponse` — incluir `discriminacao` no DTO
+
+Sempre que `NotaFiscal` ganhar um campo novo, incluir em `NotaFiscalStatusResponse.from()` e no record.
+Frontend: adicionar o campo como `discriminacao?: string | null` nas interfaces TypeScript (`NotaFiscal` em `nfseApi.ts`).
+
+### Frontend — exibir discriminação no painel lateral e no preview
+
+- `NotasPage.tsx` `DetalhePanel`: renderizar `{nota.discriminacao && <p>...</p>}` antes das observações.
+- `NfsePreviewModal.tsx`: usar `producao.descricaoComplementar` como primeira linha da discriminação quando presente, fallback para texto genérico.
+- `NfseEmissaoPage.tsx`: passar `discriminacao: producao.descricaoComplementar ?? null` no `emitirNfse({...})`.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

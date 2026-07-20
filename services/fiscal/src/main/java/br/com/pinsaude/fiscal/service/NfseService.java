@@ -93,18 +93,23 @@ public class NfseService {
         nota.setValorCofins(req.valorCofins() != null ? req.valorCofins() : 0L);
         nota.setTomadorNome(req.tomadorNome());
         nota.setCnaeCodigo(req.cnaeCodigo());
+        nota.setDiscriminacao(req.discriminacao());
         nota.setStatus(statusInicial);
 
         nota = notaRepo.save(nota);
 
         if (statusInicial == StatusNota.PENDENTE) {
             final UUID notaIdParaFila = nota.getId();
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    producer.enviar(new NfseEmissaoMessage(notaIdParaFila));
-                }
-            });
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        producer.enviar(new NfseEmissaoMessage(notaIdParaFila));
+                    }
+                });
+            } else {
+                producer.enviar(new NfseEmissaoMessage(notaIdParaFila));
+            }
             log.info("NotaFiscal criada id={} producaoId={} - enfileirada para processamento (apos commit)", nota.getId(), nota.getProducaoId());
         } else {
             log.info("NotaFiscal criada id={} producaoId={} - aguardando validacao (1a nota do medico)", nota.getId(), nota.getProducaoId());
@@ -135,7 +140,8 @@ public class NfseService {
             nota.getCnpjIdTenant(), nota.getCompetencia(),
             nota.getValorBruto(), nota.getTaxaPin(),
             nota.getValorIss(), nota.getValorIr(), nota.getValorCsll(),
-            nota.getValorPis(), nota.getValorCofins(), nota.getValorLiquidoMedico()
+            nota.getValorPis(), nota.getValorCofins(), nota.getValorLiquidoMedico(),
+            nota.getDiscriminacao()
         );
 
         ResultadoEmissao resultado = emissaoPort.emitir(dados);
@@ -237,12 +243,16 @@ public class NfseService {
         nota.setStatus(StatusNota.PENDENTE);
         notaRepo.save(nota);
         final UUID aprovadaId = nota.getId();
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                producer.enviar(new NfseEmissaoMessage(aprovadaId));
-            }
-        });
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    producer.enviar(new NfseEmissaoMessage(aprovadaId));
+                }
+            });
+        } else {
+            producer.enviar(new NfseEmissaoMessage(aprovadaId));
+        }
         log.info("1a nota do medico aprovada - enfileirada (apos commit): notaId={}", notaId);
     }
 
@@ -305,12 +315,16 @@ public class NfseService {
         }
         nota.setStatus(StatusNota.PENDENTE);
         notaRepo.save(nota);
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                producer.enviar(new NfseEmissaoMessage(notaId));
-            }
-        });
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    producer.enviar(new NfseEmissaoMessage(notaId));
+                }
+            });
+        } else {
+            producer.enviar(new NfseEmissaoMessage(notaId));
+        }
         log.info("NotaFiscal {} reenfileirada para reprocessamento (apos commit)", notaId);
     }
 }

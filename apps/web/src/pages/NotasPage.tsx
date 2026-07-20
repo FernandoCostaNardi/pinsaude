@@ -277,6 +277,14 @@ function DetalhePanel({ nota, onClose, onAprovar, onCancelar, onRejeitar, isGest
           )}
         </div>
 
+        {/* Discriminação (descrição do grupo de faturamento) */}
+        {nota.discriminacao && (
+          <div className="space-y-1.5">
+            <p className="text-xs text-ds-light font-medium uppercase tracking-wide">Discriminação</p>
+            <p className="text-sm text-ds-mid bg-ds-surface rounded-xl p-3 leading-relaxed whitespace-pre-wrap">{nota.discriminacao}</p>
+          </div>
+        )}
+
         {/* Observações */}
         {nota.observacoes && (
           <div className="space-y-1.5">

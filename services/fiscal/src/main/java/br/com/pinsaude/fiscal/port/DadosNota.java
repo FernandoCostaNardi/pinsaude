@@ -15,5 +15,6 @@ public record DadosNota(
     long valorCsll,
     long valorPis,
     long valorCofins,
-    long valorLiquidoMedico
+    long valorLiquidoMedico,
+    String discriminacao        // Descrição/discriminação (grupo de faturamento), nullable
 ) {}

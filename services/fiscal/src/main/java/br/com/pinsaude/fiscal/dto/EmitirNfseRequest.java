@@ -19,5 +19,6 @@ public record EmitirNfseRequest(
     Long valorPis,
     Long valorCofins,
     String tomadorNome,
-    String cnaeCodigo           // CNAE selecionado na emissão (opcional)
+    String cnaeCodigo,          // CNAE selecionado na emissão (opcional)
+    String discriminacao        // Descrição/discriminação da nota (grupo de faturamento, opcional)
 ) {}
