@@ -47,6 +47,12 @@ public class FrequenciaController {
         return ResponseEntity.ok(service.buscarPorId(id));
     }
 
+    @PutMapping("/{id}/gerar-pdf")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    public ResponseEntity<FrequenciaMedicaResponse> gerarPdf(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.gerarPdf(id));
+    }
+
     @PostMapping("/{id}/itens")
     @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
     public ResponseEntity<FrequenciaItemResponse> adicionarItem(

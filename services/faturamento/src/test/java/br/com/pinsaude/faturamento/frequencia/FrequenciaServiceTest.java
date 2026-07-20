@@ -262,6 +262,49 @@ class FrequenciaServiceTest {
                 .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
+    // ─── Gerar PDF ────────────────────────────────────────────────────────────
+
+    @Test
+    void gerarPdf_rascunho_mudaStatusParaAguardandoAssinatura() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(frequenciaRepo.save(any())).thenReturn(f);
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(any())).thenReturn(List.of());
+
+        FrequenciaMedicaResponse resp = service.gerarPdf(freqId);
+
+        assertThat(resp.status()).isEqualTo("AGUARDANDO_ASSINATURA");
+        verify(frequenciaRepo).save(any());
+    }
+
+    @Test
+    void gerarPdf_aguardandoAssinatura_idempotente() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setStatus("AGUARDANDO_ASSINATURA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(any())).thenReturn(List.of());
+
+        FrequenciaMedicaResponse resp = service.gerarPdf(freqId);
+
+        assertThat(resp.status()).isEqualTo("AGUARDANDO_ASSINATURA");
+        verify(frequenciaRepo, never()).save(any());
+    }
+
+    @Test
+    void gerarPdf_faturada_lanca422() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setStatus("FATURADA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        assertThatThrownBy(() -> service.gerarPdf(freqId))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
     // ─── Fixtures ─────────────────────────────────────────────────────────────
 
     private FrequenciaMedica frequenciaFixture(UUID medicoId, UUID setorId, String competencia) {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   CalendarDays, ChevronDown, ClipboardList, FileText,
-  Loader2, Plus, Search, Trash2, X,
+  Loader2, Plus, Printer, Search, Trash2, X,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import { tomadoresApi, Tomador, TomadorGrupoFaturamento, TomadorModalidade } from '../api/tomadoresApi'
@@ -12,6 +12,8 @@ import {
   FrequenciaMedicaRequest,
   FrequenciaItemRequest,
 } from '../api/frequenciasApi'
+import { useAuth } from '../auth/AuthContext'
+import { abrirPdfFrequencia } from '../utils/frequenciaPdf'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -329,8 +331,10 @@ function PainelFrequencia({
   onClose: () => void
   onAtualizar: (f: FrequenciaMedicaResp) => void
 }) {
+  const { user } = useAuth()
   const [adicionando, setAdicionando] = useState(false)
   const [removendo,   setRemovendo]   = useState<string | null>(null)
+  const [gerandoPdf,  setGerandoPdf]  = useState(false)
   const isFaturada = freq.status === 'FATURADA'
 
   const tomador = tomadores.find(t => t.id === freq.tomadorId)
@@ -353,6 +357,30 @@ function PainelFrequencia({
     finally { setRemovendo(null) }
   }
 
+  async function handleGerarPdf() {
+    if (gerandoPdf) return
+    setGerandoPdf(true)
+    try {
+      let freqAtual = freq
+      // Transição de status apenas se ainda não enviada/assinada
+      const podeTransicionar = ['RASCUNHO', 'PDF_GERADO'].includes(freq.status)
+      if (podeTransicionar) {
+        freqAtual = await frequenciasApi.gerarPdf(freq.id)
+        onAtualizar(freqAtual)
+      }
+      abrirPdfFrequencia({
+        freq: freqAtual,
+        medicoNome:   medico?.nome  ?? '—',
+        medicoCrm:    medico?.crm   ?? '—',
+        medicoCrmUf:  medico?.crmUf ?? '—',
+        tomadorNome:  tomador?.razaoSocialNome ?? '—',
+        empresaNome:  'Pin Saúde',
+        empresaCnpj:  user?.cnpj_id ?? '',
+      })
+    } catch { /* ignore — alert já vem do browser se popup bloqueado */ }
+    finally { setGerandoPdf(false) }
+  }
+
   return (
     <div className="w-[480px] xl:w-[560px] shrink-0 bg-white border-l border-ds-border flex flex-col h-full">
       {/* Header */}
@@ -365,6 +393,13 @@ function PainelFrequencia({
           <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${STATUS_CLS[freq.status] ?? 'bg-gray-100 text-gray-500'}`}>
             {STATUS_LABEL[freq.status] ?? freq.status}
           </span>
+          <button
+            onClick={handleGerarPdf}
+            disabled={gerandoPdf}
+            title="Gerar PDF do Relatório de Frequência"
+            className="p-1.5 rounded-lg text-ds-light hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-50">
+            {gerandoPdf ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+          </button>
           <button onClick={onClose} className="p-1 rounded-lg text-ds-light hover:bg-ds-input transition-colors">
             <X size={16} />
           </button>
