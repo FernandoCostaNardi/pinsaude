@@ -22,4 +22,6 @@ public interface FrequenciaMedicaRepository extends JpaRepository<FrequenciaMedi
 
     boolean existsByMedicoIdAndServicoOperacionalIdAndCompetencia(
             UUID medicoId, UUID servicoOperacionalId, String competencia);
+
+    List<FrequenciaMedica> findByTomadorIdAndCompetencia(UUID tomadorId, String competencia);
 }

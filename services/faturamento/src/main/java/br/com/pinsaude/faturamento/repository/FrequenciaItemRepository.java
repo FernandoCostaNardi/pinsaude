@@ -11,4 +11,6 @@ public interface FrequenciaItemRepository extends JpaRepository<FrequenciaItem, 
     List<FrequenciaItem> findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(UUID frequenciaId);
 
     void deleteByFrequenciaId(UUID frequenciaId);
+
+    List<FrequenciaItem> findByFrequenciaIdIn(List<UUID> frequenciaIds);
 }

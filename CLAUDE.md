@@ -2564,6 +2564,297 @@ O `TenantFilter` do faturamento faz `replaceAll("\\D", "")` no claim `cnpj_id`. 
 
 ---
 
+## PDF Formulário Oficial — Geração Client-Side (EPIC-13.5)
+
+### Geração de PDF de formulário governamental via `window.open()` + HTML template
+
+Para formulários oficiais (ex.: Relatório de Frequência Médica Individual — Governo do Estado de PE / SES-PE), a abordagem é gerar um HTML print-friendly completo no frontend e abrir em nova janela, sem dependência de biblioteca externa:
+```typescript
+export function abrirPdfFrequencia(params: FrequenciaPdfParams): void {
+  const html = buildHtml(params)
+  const win = window.open('', '_blank', 'width=900,height=1100,scrollbars=yes')
+  if (!win) {
+    alert('Habilite pop-ups para gerar o PDF desta frequência.')
+    return
+  }
+  win.document.write(html)
+  win.document.close()
+}
+```
+O auto-print usa `window.onload` com delay de 300ms para o browser renderizar antes de imprimir:
+```html
+<script>
+  window.onload = function() {
+    setTimeout(function() { window.print(); }, 300);
+  };
+</script>
+```
+CSS: `@page { size: A4 portrait; margin: 0; }` + `@media print { ... }` para garantir formato A4 sem margens extras.
+
+### Fontes de dados para o PDF — usar estado já disponível no frontend
+
+O PDF precisa de: nome/CRM do médico, nome do tomador, CNPJ da empresa, itens da frequência.
+**Nunca fazer uma chamada extra à API para montar o PDF** — os dados já estão disponíveis:
+- `medicoNome` / `medicoCrm` / `medicoCrmUf`: do `medicosApi.listar()` (backoffice) ou `portalApi.getPerfil()` (portal)
+- `tomadorNome`: da lista de tomadores já carregada na página
+- `empresaCnpj`: do claim `cnpj_id` do JWT via `user?.cnpj_id` do `useAuth()`
+- `freq` (itens, competência, setor): do estado local da página
+
+### `gerarPdf()` no backend — regras de transição e idempotência
+
+Status permitidos para gerar PDF (transicionam para AGUARDANDO_ASSINATURA):
+- `RASCUNHO` → chama `frequenciaRepo.save(f)` com novo status
+- `PDF_GERADO` → chama `frequenciaRepo.save(f)` com novo status
+- `AGUARDANDO_ASSINATURA` → **idempotente**: não chama `save()`, apenas retorna o response
+
+Status que lançam 422 (não podem gerar PDF da transição):
+- `ASSINADA_RECEBIDA`, `ENVIADA_TOMADOR`, `FATURADA`
+
+```java
+@Transactional
+public FrequenciaMedicaResponse gerarPdf(UUID id) {
+    FrequenciaMedica f = findOrThrow(id);
+    Set<String> permitidos = Set.of("RASCUNHO", "PDF_GERADO", "AGUARDANDO_ASSINATURA");
+    if (!permitidos.contains(f.getStatus())) {
+        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "...");
+    }
+    if (!"AGUARDANDO_ASSINATURA".equals(f.getStatus())) {
+        f.setStatus("AGUARDANDO_ASSINATURA");
+        frequenciaRepo.save(f);
+    }
+    return toResponse(f);
+}
+```
+
+### Botão de reimpressão — não chamar API para status avançados
+
+No frontend, o botão "Gerar PDF" deve verificar o status antes de chamar a API:
+```typescript
+const handleGerarPdf = async () => {
+  const statusNovos = ['RASCUNHO', 'PDF_GERADO']
+  if (statusNovos.includes(freq.status)) {
+    // chama API → atualiza status → abre PDF
+    const updated = await frequenciasApi.gerarPdf(freq.id)
+    atualizarLista(updated)
+    abrirPdfFrequencia({ freq: updated, ... })
+  } else {
+    // reimpressão: só abre o PDF sem chamar a API
+    abrirPdfFrequencia({ freq, ... })
+  }
+}
+```
+Isso garante que frequências em `ASSINADA_RECEBIDA`, `ENVIADA_TOMADOR` ou `FATURADA` ainda possam ser reimpresas sem erro 422.
+
+### Linhas em branco no PDF para preenchimento manual
+
+O formulário oficial exige espaço para plantões adicionados manualmente pelo médico após impressão.
+Garantir mínimo de 20 linhas visíveis na tabela:
+```typescript
+const totalLinhas = Math.max(20, freq.itens.length + 5)
+const linhasVazias = Array.from({ length: totalLinhas - freq.itens.length }, () => `
+  <tr><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+`).join('')
+```
+
+---
+
+## Recebimento de Documento Assinado — MinIO no Faturamento (EPIC-13.6)
+
+### MinIO como dependência do faturamento service
+
+O onboarding já tinha `io.minio:minio:8.5.7`. O faturamento não tinha MinIO até o EPIC-13.6.
+Ao adicionar a mesma dependência no `pom.xml` do faturamento, reusar o padrão de
+`StorageConfig.java` (MinioClient bean) e `StorageService.java` do onboarding — porém
+com o método `upload(String prefix, MultipartFile arquivo)` genérico (sem acoplamento
+a `medicoId` ou `tipoDocumento`):
+```java
+String objectKey = storageService.upload("frequencias/" + frequenciaId, arquivo);
+```
+Propriedades em `application.yml` do faturamento:
+```yaml
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket: ${MINIO_BUCKET:pinsaude-documentos}
+```
+
+### Regras de status para `receberDocumentoAssinado`
+
+Upload de documento assinado **só é permitido** quando `status = AGUARDANDO_ASSINATURA` → 422 caso contrário.
+Após upload com sucesso: `status → ASSINADA_RECEBIDA`.
+Re-upload (quando já há `documentoAssinadoKey`): o arquivo anterior é deletado do MinIO antes do novo upload.
+```java
+if (!"AGUARDANDO_ASSINATURA".equals(f.getStatus())) {
+    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "...");
+}
+if (f.getDocumentoAssinadoKey() != null) {
+    storageService.delete(f.getDocumentoAssinadoKey());  // silencioso se órfão
+}
+String objectKey = storageService.upload("frequencias/" + id, arquivo);
+f.setDocumentoAssinadoKey(objectKey);
+f.setStatus("ASSINADA_RECEBIDA");
+```
+
+### Upload multipart sem Content-Type (mesmo padrão EPIC-03.4)
+
+O frontend usa `FormData` com apenas `Authorization` no header — **sem** `Content-Type`:
+```typescript
+async uploadDocumentoAssinado(id: string, arquivo: File): Promise<FrequenciaMedicaResp> {
+  const token = JSON.parse(sessionStorage.getItem('pinsaude_tokens') ?? '{}').accessToken ?? ''
+  const form = new FormData()
+  form.append('arquivo', arquivo)
+  const res = await fetch(`/api/frequencias/${id}/documento`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },  // SEM Content-Type
+    body: form,
+  })
+  return handleResponse<FrequenciaMedicaResp>(res)
+},
+```
+O browser define o `Content-Type: multipart/form-data; boundary=...` automaticamente.
+
+### MockMultipartFile em testes unitários do faturamento
+
+Para testar o serviço com upload:
+```java
+import org.springframework.mock.web.MockMultipartFile;
+// ...
+MockMultipartFile arquivo = new MockMultipartFile(
+    "arquivo", "doc.pdf", "application/pdf", new byte[10]);
+service.receberDocumentoAssinado(freqId, arquivo);
+```
+O `spring-boot-starter-test` já inclui `spring-mock`, não precisa de dependência extra.
+Mockar `StorageService` com `@Mock` e adicionar ao `@InjectMocks`:
+```java
+@Mock StorageService storageService;
+@InjectMocks FrequenciaService service;
+// O construtor de FrequenciaService recebe StorageService como 5º parâmetro
+```
+
+### URL pré-assinada — endpoint `GET /api/frequencias/{id}/documento/url`
+
+Segue o padrão de `GET /api/medicos/{id}/documentos/{docId}/url` do onboarding:
+```java
+@GetMapping("/{id}/documento/url")
+@PreAuthorize("hasAnyRole('operacao','gestao','medico','financeiro','contabil')")
+public ResponseEntity<Map<String, String>> getDocumentoUrl(@PathVariable UUID id) {
+    return ResponseEntity.ok(Map.of("url", service.getDocumentoUrl(id)));
+}
+```
+No frontend: `window.open(url, '_blank', 'noopener')` — a URL pré-assinada é acessível
+diretamente pelo browser sem JWT.
+
+### `fileInputRef.current.value = ''` ao final do upload
+
+Após processar o arquivo (sucesso ou erro), zerar o value do input para permitir
+re-upload do mesmo arquivo sem precisar escolher outro:
+```typescript
+} finally {
+  setUploadingDoc(false)
+  if (fileInputRef.current) fileInputRef.current.value = ''
+}
+```
+Sem isso, `onChange` não dispara se o usuário escolhe o mesmo arquivo novamente.
+
+---
+
+## Fechamento por Grupo — Padrões e Armadilhas (EPIC-13.8)
+
+### Modelo: agregação de frequência_itens → grupo → uma producao por grupo
+O fechamento agrega os `frequencia_itens` de todas as frequências não-FATURADA do tomador+competência:
+```
+frequencia_medica (setor)
+  └── frequencia_itens (valor_unitario + deslocamento)
+        → setor.grupo_id
+            → grupo de faturamento (nome, descricao_nota, servico_lc116_id)
+                → Producao (valor = Σ itens de todos os médicos do grupo)
+                    └── ParticipacaoProducao (por médico: valor = Σ dos itens deste médico)
+```
+Grupos com total = 0 são ignorados (nenhuma `producao` criada). Frequências sem itens ainda participam do fechamento e ficam marcadas como FATURADA.
+
+### Idempotência — UNIQUE (tomador_id, competencia) + status check
+O fechamento é idempotente via duas camadas:
+1. UNIQUE constraint no banco: impede dois fechamentos para a mesma competência
+2. Status check em `executar()`: se já existe com `status = 'FECHADO'`, lança 409
+
+```java
+fechamentoRepo.findByTomadorIdAndCompetencia(req.tomadorId(), req.competencia())
+    .filter(f -> "FECHADO".equals(f.getStatus()))
+    .ifPresent(f -> { throw new ResponseStatusException(HttpStatus.CONFLICT, "..."); });
+```
+
+### Ordem de persistência: Fechamento ABERTO primeiro, depois produções, depois FECHADO
+```java
+// 1. Salva o fechamento em status ABERTO para obter o UUID (referenciado pelas frequências)
+fechamentoRepo.save(fechamento); // status = ABERTO
+
+// 2. Para cada grupo: cria producao + participacoes + marca frequencias como FATURADA
+// (dentro do loop, passando fechamento.getId() para freq.setFechamentoId())
+
+// 3. Atualiza o fechamento para FECHADO ao final
+fechamento.setStatus("FECHADO");
+fechamento.setTotalCentavos(totalGeral);
+fechamentoRepo.save(fechamento);
+```
+Essa ordem garante que o UUID do fechamento existe quando as frequências são atualizadas.
+
+### Interpolação de competência em descrição de nota
+`{competencia}` no template `descricao_nota` do grupo é substituído por mês por extenso + ano:
+```java
+public static String interpolarDescricao(String template, String competencia) {
+    String[] parts = competencia.split("-");
+    int mes = Integer.parseInt(parts[1]);
+    String mesNome = MESES[mes - 1]; // "JULHO"
+    return template.replace("{competencia}", mesNome + " DE " + parts[0]);
+}
+// "JULHO DE 2026"
+```
+Método `public static` para permitir testes unitários diretos.
+
+### AggregationResult — record privado para compartilhar computação entre preview e executar
+```java
+private record AggregationResult(
+    List<FrequenciaMedica> frequencias,
+    Map<UUID, TomadorServicoOperacional> setoresMap,
+    Map<UUID, TomadorGrupoFaturamento> gruposMap,
+    Map<UUID, Map<UUID, Long>> agrupado  // grupoId → (medicoId → totalCentavos)
+) {}
+```
+`computeAggregation()` é chamado por `preview()` e por `executar()` — sem duplicação de lógica.
+
+### Batch load em dois níveis — evitar N+1
+```java
+// 1. Carrega todos os itens das frequências em um único SELECT
+List<FrequenciaItem> todosItens = itemRepo.findByFrequenciaIdIn(freqIds);
+
+// 2. Carrega todos os setores em um único SELECT
+Map<UUID, TomadorServicoOperacional> setoresMap = setorRepo.findAllById(setorIds)...
+
+// 3. Carrega todos os grupos necessários em um único SELECT (após agrupar)
+Map<UUID, TomadorGrupoFaturamento> gruposMap = grupoRepo.findAllById(grupoIds)...
+```
+Nenhuma query dentro de loops.
+
+### RLS em `fechamentos`: FORCE com bypass para gestão
+Mesmo padrão das demais tabelas do faturamento: `FORCE ROW LEVEL SECURITY` com `WITH CHECK (true)`.
+`cnpj_id_tenant` vem de `SecurityUtils.currentCnpjTenant()` (dígitos sem formatação).
+
+### ArgumentCaptor com save() que usa thenAnswer — não redifinir stub no corpo do teste
+Se o `@BeforeEach` define `when(producaoRepo.save(any())).thenAnswer(...)` (para setar UUID via reflection),
+redefinir esse stub dentro de um teste corpo causa NPE: o setUp lambda (lambda$setUp$1) pode ser
+invocado com argumento null quando o stub é sobrescrito.
+
+**Solução:** usar `ArgumentCaptor` no lugar da redefinição do thenAnswer:
+```java
+// No teste — NÃO redefinir when(producaoRepo.save(any()))
+ArgumentCaptor<Producao> captor = ArgumentCaptor.forClass(Producao.class);
+verify(producaoRepo).save(captor.capture());
+assertThat(captor.getValue().getDescricaoComplementar()).isEqualTo("JULHO DE 2026...");
+```
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
