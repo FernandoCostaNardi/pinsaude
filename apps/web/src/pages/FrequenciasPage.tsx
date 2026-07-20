@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   CalendarDays, CheckCircle2, ChevronDown, ClipboardList, Download,
-  FileText, Loader2, Plus, Printer, Search, Trash2, Upload, X,
+  FileText, Loader2, Pencil, Plus, Printer, Search, Trash2, Upload, X,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import { tomadoresApi, Tomador, TomadorGrupoFaturamento, TomadorModalidade } from '../api/tomadoresApi'
@@ -11,6 +11,7 @@ import {
   FrequenciaMedicaResp,
   FrequenciaMedicaRequest,
   FrequenciaItemRequest,
+  FrequenciaItemResp,
 } from '../api/frequenciasApi'
 import { useAuth } from '../auth/AuthContext'
 import { abrirPdfFrequencia } from '../utils/frequenciaPdf'
@@ -320,7 +321,93 @@ function AdicionarItemRow({
   )
 }
 
-// ─── Painel lateral ───────────────────────────────────────────────────────────
+// ─── Row de editar item ───────────────────────────────────────────────────────
+
+function EditarItemRow({
+  item, tomadorId, onSave, onCancel,
+}: {
+  item: FrequenciaItemResp
+  tomadorId: string
+  onSave: (req: FrequenciaItemRequest) => Promise<void>
+  onCancel: () => void
+}) {
+  const [modalidades, setModalidades] = useState<TomadorModalidade[]>([])
+  const [modalidade,  setModalidade]  = useState<TomadorModalidade | null>(null)
+  const [data,        setData]        = useState(item.dataExecucao)
+  const [ocorrencia,  setOcorrencia]  = useState(item.ocorrencia ?? '')
+  const [saving,      setSaving]      = useState(false)
+  const [err,         setErr]         = useState<string | null>(null)
+
+  useEffect(() => {
+    tomadoresApi.listarModalidades(tomadorId)
+      .then(ms => {
+        const ativas = ms.filter(m => m.ativo)
+        setModalidades(ativas)
+        // pré-seleciona a modalidade atual do item (incluindo inativas para exibir a atual)
+        const atual = ms.find(m => m.id === item.modalidadeId) ?? null
+        setModalidade(atual)
+      })
+      .catch(() => {})
+  }, [tomadorId, item.modalidadeId])
+
+  async function handleSave() {
+    if (!modalidade) return
+    setSaving(true); setErr(null)
+    try {
+      await onSave({ modalidadeId: modalidade.id, dataExecucao: data, ocorrencia: ocorrencia || undefined })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Erro ao salvar')
+    } finally { setSaving(false) }
+  }
+
+  const total = modalidade ? modalidade.valorCentavos + modalidade.deslocamentoCentavos : 0
+
+  return (
+    <tr className="bg-yellow-50/60 border-b border-ds-border">
+      <td className="px-3 py-2">
+        <input type="date" value={data} onChange={e => setData(e.target.value)}
+          className="w-full border border-ds-border rounded-lg px-2 py-1.5 text-xs text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30" />
+      </td>
+      <td className="px-3 py-2">
+        <Dropdown
+          placeholder={modalidades.length === 0 ? 'Sem modalidades' : 'Selecione...'}
+          items={modalidades} value={modalidade} onChange={setModalidade}
+          getLabel={m => `${m.nome} (${m.turno})`}
+          disabled={modalidades.length === 0}
+        />
+        {err && <p className="text-[10px] text-red-600 mt-1">{err}</p>}
+      </td>
+      <td className="px-3 py-2">
+        <input type="text" value={ocorrencia} onChange={e => setOcorrencia(e.target.value)}
+          placeholder="(opcional)"
+          className="w-full border border-ds-border rounded-lg px-2 py-1.5 text-xs text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30" />
+      </td>
+      <td className="px-3 py-2 text-xs tabular-nums text-right text-ds-mid">
+        {modalidade ? formatBRL(modalidade.valorCentavos) : '—'}
+      </td>
+      <td className="px-3 py-2 text-xs tabular-nums text-right text-ds-mid">
+        {modalidade && modalidade.deslocamentoCentavos > 0 ? formatBRL(modalidade.deslocamentoCentavos) : '—'}
+      </td>
+      <td className="px-3 py-2 text-xs tabular-nums font-bold text-right text-ds-text">
+        {total > 0 ? formatBRL(total) : '—'}
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1 justify-end">
+          <button type="button" onClick={handleSave} disabled={!modalidade || saving}
+            className="px-2 py-1 rounded-lg bg-primary text-white text-xs font-bold disabled:opacity-50 hover:bg-primary-700 transition-colors">
+            {saving ? <Loader2 size={12} className="animate-spin" /> : 'Salvar'}
+          </button>
+          <button type="button" onClick={onCancel}
+            className="px-2 py-1 rounded-lg border border-ds-border text-xs text-ds-mid hover:bg-ds-input transition-colors">
+            ✕
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+// ─── Modal de detalhe/edição ───────────────────────────────────────────────────
 
 function PainelFrequencia({
   freq, tomadores, medicos, onClose, onAtualizar,
@@ -333,6 +420,7 @@ function PainelFrequencia({
 }) {
   const { user } = useAuth()
   const [adicionando,   setAdicionando]   = useState(false)
+  const [editandoId,    setEditandoId]    = useState<string | null>(null)
   const [removendo,     setRemovendo]     = useState<string | null>(null)
   const [gerandoPdf,    setGerandoPdf]    = useState(false)
   const [uploadingDoc,  setUploadingDoc]  = useState(false)
@@ -348,6 +436,13 @@ function PainelFrequencia({
     const atualizada = await frequenciasApi.buscarPorId(freq.id)
     onAtualizar(atualizada)
     setAdicionando(false)
+  }
+
+  async function handleEdit(itemId: string, req: FrequenciaItemRequest) {
+    await frequenciasApi.atualizarItem(freq.id, itemId, req)
+    const atualizada = await frequenciasApi.buscarPorId(freq.id)
+    onAtualizar(atualizada)
+    setEditandoId(null)
   }
 
   async function handleRemove(itemId: string) {
@@ -483,7 +578,9 @@ function PainelFrequencia({
             Total: <span className="font-black text-primary tabular-nums ml-1">{formatBRL(freq.totalValorCentavos)}</span>
           </p>
           {!isFaturada && (
-            <button onClick={() => setAdicionando(true)} disabled={adicionando}
+            <button
+              onClick={() => { setAdicionando(true); setEditandoId(null) }}
+              disabled={adicionando}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-700 transition-colors disabled:opacity-50">
               <Plus size={12} /> Adicionar Plantão
             </button>
@@ -502,8 +599,16 @@ function PainelFrequencia({
                 </tr>
               </thead>
               <tbody className="divide-y divide-ds-border">
-                {freq.itens.map(item => (
-                  <tr key={item.id} className="hover:bg-ds-surface/50 transition-colors">
+                {freq.itens.map(item => editandoId === item.id ? (
+                  <EditarItemRow
+                    key={item.id}
+                    item={item}
+                    tomadorId={freq.tomadorId}
+                    onSave={req => handleEdit(item.id, req)}
+                    onCancel={() => setEditandoId(null)}
+                  />
+                ) : (
+                  <tr key={item.id} className="hover:bg-ds-surface/50 transition-colors group">
                     <td className="px-4 py-2.5 text-xs font-medium text-ds-text whitespace-nowrap">{formatDate(item.dataExecucao)}</td>
                     <td className="px-4 py-2.5">
                       <p className="text-xs font-semibold text-ds-text">{item.modalidadeNome ?? '—'}</p>
@@ -519,10 +624,22 @@ function PainelFrequencia({
                     <td className="px-4 py-2.5 text-xs tabular-nums font-bold text-right text-ds-text whitespace-nowrap">{formatBRL(item.totalItemCentavos)}</td>
                     <td className="px-4 py-2.5">
                       {!isFaturada && (
-                        <button onClick={() => handleRemove(item.id)} disabled={removendo === item.id}
-                          className="p-1 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors">
-                          {removendo === item.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                        </button>
+                        <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => { setEditandoId(item.id); setAdicionando(false) }}
+                            disabled={editandoId !== null}
+                            title="Editar plantão"
+                            className="p-1 rounded-lg text-ds-light hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-30">
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            onClick={() => handleRemove(item.id)}
+                            disabled={removendo === item.id}
+                            title="Remover plantão"
+                            className="p-1 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors">
+                            {removendo === item.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
