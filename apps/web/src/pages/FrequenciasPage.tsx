@@ -408,159 +408,145 @@ function PainelFrequencia({
   }
 
   return (
-    <div className="w-[480px] xl:w-[560px] shrink-0 bg-white border-l border-ds-border flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-ds-border bg-ds-surface shrink-0">
-        <div>
-          <p className="text-sm font-bold text-ds-text">{formatCompetencia(freq.competencia)}</p>
-          <p className="text-xs text-ds-light mt-0.5">{freq.servicoOperacionalNome ?? '—'}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${STATUS_CLS[freq.status] ?? 'bg-gray-100 text-gray-500'}`}>
-            {STATUS_LABEL[freq.status] ?? freq.status}
-          </span>
-          <button
-            onClick={handleGerarPdf}
-            disabled={gerandoPdf}
-            title="Gerar PDF do Relatório de Frequência"
-            className="p-1.5 rounded-lg text-ds-light hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-50">
-            {gerandoPdf ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
-          </button>
-          <button onClick={onClose} className="p-1 rounded-lg text-ds-light hover:bg-ds-input transition-colors">
-            <X size={16} />
-          </button>
-        </div>
-      </div>
-
-      {/* Info */}
-      <div className="px-4 py-3 border-b border-ds-border bg-ds-surface/50 shrink-0 space-y-1">
-        <div className="flex gap-2 flex-wrap text-xs text-ds-mid">
-          <span className="font-semibold">Médico:</span>
-          <span>{medico?.nome ?? freq.medicoId}</span>
-          {medico && <span className="text-ds-light">CRM {medico.crm}/{medico.crmUf}</span>}
-        </div>
-        <div className="flex gap-2 flex-wrap text-xs text-ds-mid">
-          <span className="font-semibold">Tomador:</span>
-          <span className="truncate">{tomador?.razaoSocialNome ?? freq.tomadorId}</span>
-        </div>
-        <div className="flex gap-2 text-xs text-ds-mid">
-          <span className="font-semibold">Especialidade:</span>
-          <span>{freq.especialidade}</span>
-        </div>
-      </div>
-
-      {/* Documento assinado */}
-      {(freq.status === 'AGUARDANDO_ASSINATURA' || freq.documentoAssinado) && (
-        <div className="px-4 py-3 border-b border-ds-border shrink-0 bg-yellow-50/50 space-y-2">
-          <p className="text-[10px] font-bold text-ds-light uppercase tracking-wider">Documento Assinado</p>
-          {uploadErr && (
-            <p className="text-xs text-red-600">{uploadErr}</p>
-          )}
-          <div className="flex items-center gap-2 flex-wrap">
-            {freq.status === 'AGUARDANDO_ASSINATURA' && (
-              <>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf,image/*"
-                  className="hidden"
-                  onChange={handleUploadDocumento}
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingDoc}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-colors disabled:opacity-50">
-                  {uploadingDoc ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                  {freq.documentoAssinado ? 'Substituir Assinado' : 'Upload Assinado'}
-                </button>
-              </>
-            )}
-            {freq.documentoAssinado && (
-              <button
-                onClick={handleVerDocumento}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-300 text-purple-700 bg-white text-xs font-bold hover:bg-purple-50 transition-colors">
-                <Download size={12} /> Ver Documento
-              </button>
-            )}
-            {freq.documentoAssinado && (
-              <span className="flex items-center gap-1 text-xs text-green-700">
-                <CheckCircle2 size={12} /> Recebido
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ds-border shrink-0">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3 flex-wrap">
+              <p className="text-base font-bold text-ds-text">{formatCompetencia(freq.competencia)}</p>
+              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${STATUS_CLS[freq.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                {STATUS_LABEL[freq.status] ?? freq.status}
               </span>
-            )}
+            </div>
+            <p className="text-xs text-ds-light mt-0.5">{freq.servicoOperacionalNome ?? '—'}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            <button
+              onClick={handleGerarPdf}
+              disabled={gerandoPdf}
+              title="Gerar PDF do Relatório de Frequência"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ds-border text-xs font-semibold text-ds-mid hover:text-primary hover:border-primary/40 hover:bg-primary-50 transition-colors disabled:opacity-50">
+              {gerandoPdf ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
+              PDF
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg text-ds-light hover:bg-ds-input transition-colors">
+              <X size={18} />
+            </button>
           </div>
         </div>
-      )}
 
-      {/* Totalizador */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-ds-border shrink-0">
-        <p className="text-xs text-ds-mid">
-          <span className="font-bold text-ds-text">{freq.itens.length}</span> plantão{freq.itens.length !== 1 ? 'ões' : ''} ·
-          Total: <span className="font-black text-ds-text tabular-nums ml-1">{formatBRL(freq.totalValorCentavos)}</span>
-        </p>
-        {!isFaturada && (
-          <button onClick={() => setAdicionando(true)} disabled={adicionando}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-700 transition-colors disabled:opacity-50">
-            <Plus size={12} /> Adicionar
-          </button>
-        )}
-      </div>
+        {/* Info + Documento em linha */}
+        <div className="px-5 py-3 border-b border-ds-border bg-ds-surface/50 shrink-0">
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-ds-mid">
+            <span><span className="font-semibold">Médico:</span> {medico?.nome ?? freq.medicoId}{medico ? ` — CRM ${medico.crm}/${medico.crmUf}` : ''}</span>
+            <span className="truncate"><span className="font-semibold">Tomador:</span> {tomador?.razaoSocialNome ?? freq.tomadorId}</span>
+            <span><span className="font-semibold">Especialidade:</span> {freq.especialidade}</span>
+          </div>
 
-      {/* Itens */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[400px]">
-            <thead className="sticky top-0 bg-white">
-              <tr className="border-b border-ds-border">
-                {['Data', 'Modalidade', 'Ocorrência', 'Val.Unit.', 'Desl.', 'Total', ''].map(h => (
-                  <th key={h} className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-ds-border">
-              {freq.itens.map(item => (
-                <tr key={item.id} className="hover:bg-ds-surface/50 transition-colors">
-                  <td className="px-3 py-2 text-xs font-medium text-ds-text whitespace-nowrap">{formatDate(item.dataExecucao)}</td>
-                  <td className="px-3 py-2">
-                    <p className="text-xs font-semibold text-ds-text">{item.modalidadeNome ?? '—'}</p>
-                    {item.modalidadeTurno && (
-                      <p className="text-[10px] text-ds-light">{item.modalidadeTurno} · {item.modalidadeHorario}</p>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-ds-mid max-w-[80px] truncate">{item.ocorrencia ?? '—'}</td>
-                  <td className="px-3 py-2 text-xs tabular-nums text-right text-ds-mid whitespace-nowrap">{formatBRL(item.valorUnitarioCentavos)}</td>
-                  <td className="px-3 py-2 text-xs tabular-nums text-right text-ds-mid whitespace-nowrap">
-                    {item.deslocamentoCentavos > 0 ? formatBRL(item.deslocamentoCentavos) : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-xs tabular-nums font-bold text-right text-ds-text whitespace-nowrap">{formatBRL(item.totalItemCentavos)}</td>
-                  <td className="px-3 py-2">
-                    {!isFaturada && (
-                      <button onClick={() => handleRemove(item.id)} disabled={removendo === item.id}
-                        className="p-1 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors">
-                        {removendo === item.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-
-              {adicionando && (
-                <AdicionarItemRow
-                  tomadorId={freq.tomadorId}
-                  onAdd={handleAdd}
-                  onCancel={() => setAdicionando(false)}
-                />
+          {/* Documento assinado */}
+          {(freq.status === 'AGUARDANDO_ASSINATURA' || freq.documentoAssinado) && (
+            <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-bold text-ds-light uppercase tracking-wider mr-1">Doc. Assinado:</span>
+              {uploadErr && <span className="text-xs text-red-600">{uploadErr}</span>}
+              {freq.status === 'AGUARDANDO_ASSINATURA' && (
+                <>
+                  <input ref={fileInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={handleUploadDocumento} />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingDoc}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-colors disabled:opacity-50">
+                    {uploadingDoc ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                    {freq.documentoAssinado ? 'Substituir' : 'Upload Assinado'}
+                  </button>
+                </>
               )}
+              {freq.documentoAssinado && (
+                <>
+                  <button onClick={handleVerDocumento}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-purple-300 text-purple-700 bg-white text-xs font-bold hover:bg-purple-50 transition-colors">
+                    <Download size={11} /> Ver Documento
+                  </button>
+                  <span className="flex items-center gap-1 text-xs text-green-700">
+                    <CheckCircle2 size={11} /> Recebido
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
-              {freq.itens.length === 0 && !adicionando && (
+        {/* Barra de totais + ação */}
+        <div className="flex items-center justify-between px-5 py-2.5 border-b border-ds-border shrink-0 bg-white">
+          <p className="text-xs text-ds-mid">
+            <span className="font-bold text-ds-text">{freq.itens.length}</span> plantão{freq.itens.length !== 1 ? 'ões' : ''} ·
+            Total: <span className="font-black text-primary tabular-nums ml-1">{formatBRL(freq.totalValorCentavos)}</span>
+          </p>
+          {!isFaturada && (
+            <button onClick={() => setAdicionando(true)} disabled={adicionando}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-700 transition-colors disabled:opacity-50">
+              <Plus size={12} /> Adicionar Plantão
+            </button>
+          )}
+        </div>
+
+        {/* Itens */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px]">
+              <thead className="sticky top-0 bg-white z-10 border-b border-ds-border">
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-xs text-ds-light">
-                    <FileText size={22} className="mx-auto mb-2 opacity-20" />
-                    Nenhum plantão lançado.
-                  </td>
+                  {['Data', 'Modalidade', 'Ocorrência', 'Val.Unit.', 'Desl.', 'Total', ''].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left whitespace-nowrap">{h}</th>
+                  ))}
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-ds-border">
+                {freq.itens.map(item => (
+                  <tr key={item.id} className="hover:bg-ds-surface/50 transition-colors">
+                    <td className="px-4 py-2.5 text-xs font-medium text-ds-text whitespace-nowrap">{formatDate(item.dataExecucao)}</td>
+                    <td className="px-4 py-2.5">
+                      <p className="text-xs font-semibold text-ds-text">{item.modalidadeNome ?? '—'}</p>
+                      {item.modalidadeTurno && (
+                        <p className="text-[10px] text-ds-light">{item.modalidadeTurno} · {item.modalidadeHorario}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-ds-mid max-w-[120px] truncate">{item.ocorrencia ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-xs tabular-nums text-right text-ds-mid whitespace-nowrap">{formatBRL(item.valorUnitarioCentavos)}</td>
+                    <td className="px-4 py-2.5 text-xs tabular-nums text-right text-ds-mid whitespace-nowrap">
+                      {item.deslocamentoCentavos > 0 ? formatBRL(item.deslocamentoCentavos) : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs tabular-nums font-bold text-right text-ds-text whitespace-nowrap">{formatBRL(item.totalItemCentavos)}</td>
+                    <td className="px-4 py-2.5">
+                      {!isFaturada && (
+                        <button onClick={() => handleRemove(item.id)} disabled={removendo === item.id}
+                          className="p-1 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors">
+                          {removendo === item.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+
+                {adicionando && (
+                  <AdicionarItemRow
+                    tomadorId={freq.tomadorId}
+                    onAdd={handleAdd}
+                    onCancel={() => setAdicionando(false)}
+                  />
+                )}
+
+                {freq.itens.length === 0 && !adicionando && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-xs text-ds-light">
+                      <FileText size={28} className="mx-auto mb-2 opacity-20" />
+                      Nenhum plantão lançado. Clique em "Adicionar Plantão" para começar.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -690,10 +676,8 @@ export function FrequenciasPage() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-hidden flex">
-        {/* Lista */}
-        <div className="flex-1 overflow-auto">
-          {filtradas.length === 0 ? (
+      <div className="flex-1 overflow-auto">
+        {filtradas.length === 0 ? (
             <div className="flex flex-col items-center py-20 text-ds-light">
               <ClipboardList size={40} className="mb-3 opacity-20" />
               <p className="text-sm font-medium">Nenhuma frequência encontrada</p>
@@ -746,19 +730,18 @@ export function FrequenciasPage() {
               </tbody>
             </table>
           )}
-        </div>
-
-        {/* Painel lateral */}
-        {selecionada && (
-          <PainelFrequencia
-            freq={selecionada}
-            tomadores={tomadores}
-            medicos={medicos}
-            onClose={() => setSelecionada(null)}
-            onAtualizar={handleAtualizar}
-          />
-        )}
       </div>
+
+      {/* Modal de detalhe/edição da frequência */}
+      {selecionada && (
+        <PainelFrequencia
+          freq={selecionada}
+          tomadores={tomadores}
+          medicos={medicos}
+          onClose={() => setSelecionada(null)}
+          onAtualizar={handleAtualizar}
+        />
+      )}
 
       {/* Modal nova frequência */}
       {showNova && (
