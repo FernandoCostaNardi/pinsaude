@@ -28,8 +28,11 @@ public class FrequenciaMedica {
     @Column(name = "competencia", nullable = false, length = 7)
     private String competencia;
 
-    @Column(name = "especialidade", nullable = false, length = 120)
+    @Column(name = "especialidade", length = 120)
     private String especialidade;
+
+    @Column(name = "tipo_medico", length = 20)
+    private String tipoMedico;
 
     @Column(name = "status", nullable = false, length = 30)
     private String status = "RASCUNHO";
@@ -67,6 +70,8 @@ public class FrequenciaMedica {
     public void setCompetencia(String v)          { this.competencia = v; }
     public String getEspecialidade()               { return especialidade; }
     public void setEspecialidade(String v)        { this.especialidade = v; }
+    public String getTipoMedico()                  { return tipoMedico; }
+    public void setTipoMedico(String v)           { this.tipoMedico = v; }
     public String getStatus()                      { return status; }
     public void setStatus(String v)               { this.status = v; }
     public String getDocumentoAssinadoKey()        { return documentoAssinadoKey; }

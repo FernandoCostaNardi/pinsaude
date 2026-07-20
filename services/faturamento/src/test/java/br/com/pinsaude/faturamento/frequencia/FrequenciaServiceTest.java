@@ -102,12 +102,12 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "MEDICO PLANTONISTA");
+            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA");
 
         FrequenciaMedicaResponse resp = service.criar(req);
 
         assertThat(resp.competencia()).isEqualTo("2026-07");
-        assertThat(resp.especialidade()).isEqualTo("MEDICO PLANTONISTA");
+        assertThat(resp.tipoMedico()).isEqualTo("PLANTONISTA");
         assertThat(resp.status()).isEqualTo("RASCUNHO");
         assertThat(resp.servicoOperacionalNome()).isEqualTo("Emergência Cardiológica");
         assertThat(resp.totalValorCentavos()).isZero();
@@ -120,7 +120,7 @@ class FrequenciaServiceTest {
                 medicoId, setorId, "2026-07")).thenReturn(true);
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "MEDICO PLANTONISTA");
+            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA");
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)

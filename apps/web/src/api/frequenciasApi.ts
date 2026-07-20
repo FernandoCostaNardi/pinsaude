@@ -49,7 +49,8 @@ export interface FrequenciaMedicaResp {
   servicoOperacionalId: string
   servicoOperacionalNome: string | null
   competencia: string
-  especialidade: string
+  especialidade: string | null
+  tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null
   status: string
   documentoAssinado: boolean
   enviadaTomadorEm: string | null
@@ -65,7 +66,7 @@ export interface FrequenciaMedicaRequest {
   medicoId: string
   servicoOperacionalId: string
   competencia: string
-  especialidade: string
+  tipoMedico: 'PLANTONISTA' | 'DIARISTA'
 }
 
 export interface FrequenciaItemRequest {

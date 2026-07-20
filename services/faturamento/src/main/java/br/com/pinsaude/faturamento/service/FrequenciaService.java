@@ -69,7 +69,7 @@ public class FrequenciaService {
         f.setMedicoId(req.medicoId());
         f.setServicoOperacionalId(req.servicoOperacionalId());
         f.setCompetencia(req.competencia());
-        f.setEspecialidade(req.especialidade());
+        f.setTipoMedico(req.tipoMedico());
         f.setStatus("RASCUNHO");
         frequenciaRepo.save(f);
 

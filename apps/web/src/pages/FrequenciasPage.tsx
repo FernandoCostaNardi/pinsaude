@@ -138,7 +138,7 @@ function NovaFrequenciaModal({
   const [medico,      setMedico]      = useState<Medico | null>(null)
   const [setor,       setSetor]       = useState<{ id: string; nome: string } | null>(null)
   const [competencia, setCompetencia] = useState(COMPETENCIAS[0])
-  const [especialidade, setEspecialidade] = useState('')
+  const [tipoMedico, setTipoMedico] = useState<'PLANTONISTA' | 'DIARISTA'>('PLANTONISTA')
   const [grupos,      setGrupos]      = useState<TomadorGrupoFaturamento[]>([])
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
@@ -152,7 +152,7 @@ function NovaFrequenciaModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!tomador || !medico || !setor || !especialidade.trim()) return
+    if (!tomador || !medico || !setor) return
     setSaving(true); setErr(null)
     try {
       const req: FrequenciaMedicaRequest = {
@@ -160,7 +160,7 @@ function NovaFrequenciaModal({
         medicoId: medico.id,
         servicoOperacionalId: setor.id,
         competencia,
-        especialidade: especialidade.trim().toUpperCase(),
+        tipoMedico,
       }
       const criada = await frequenciasApi.criar(req)
       onCriada(criada)
@@ -169,7 +169,7 @@ function NovaFrequenciaModal({
     } finally { setSaving(false) }
   }
 
-  const canSave = !!tomador && !!medico && !!setor && !!especialidade.trim()
+  const canSave = !!tomador && !!medico && !!setor
   const medicosFiltrados = medicos.filter(m => m.status === 'ATIVO')
 
   return (
@@ -192,7 +192,7 @@ function NovaFrequenciaModal({
             placeholder="Selecione o médico..."
             items={medicosFiltrados}
             value={medico}
-            onChange={m => { setMedico(m); setEspecialidade(m.especialidade ?? '') }}
+            onChange={m => { setMedico(m) }}
             getLabel={m => `${m.nome} — CRM ${m.crm}/${m.crmUf}`}
           />
 
@@ -224,10 +224,12 @@ function NovaFrequenciaModal({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-ds-mid mb-1">Especialidade *</label>
-            <input type="text" value={especialidade} onChange={e => setEspecialidade(e.target.value)}
-              placeholder="Ex.: MÉDICO PLANTONISTA"
-              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            <label className="block text-xs font-bold text-ds-mid mb-1">Tipo de Escala *</label>
+            <select value={tipoMedico} onChange={e => setTipoMedico(e.target.value as 'PLANTONISTA' | 'DIARISTA')}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+              <option value="PLANTONISTA">Plantonista</option>
+              <option value="DIARISTA">Diarista</option>
+            </select>
           </div>
 
           <div className="flex gap-3 pt-1">
@@ -536,7 +538,7 @@ function PainelFrequencia({
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-ds-mid">
             <span><span className="font-semibold">Médico:</span> {medico?.nome ?? freq.medicoId}{medico ? ` — CRM ${medico.crm}/${medico.crmUf}` : ''}</span>
             <span className="truncate"><span className="font-semibold">Tomador:</span> {tomador?.razaoSocialNome ?? freq.tomadorId}</span>
-            <span><span className="font-semibold">Especialidade:</span> {freq.especialidade}</span>
+            <span><span className="font-semibold">Tipo:</span> {freq.tipoMedico ?? '—'}</span>
           </div>
 
           {/* Documento assinado */}
@@ -738,7 +740,8 @@ export function FrequenciasPage() {
     const qL = q.toLowerCase()
     const tomNome = tomadoresMap[f.tomadorId]?.razaoSocialNome?.toLowerCase() ?? ''
     const medNome = medicosMap[f.medicoId]?.nome?.toLowerCase() ?? ''
-    return tomNome.includes(qL) || medNome.includes(qL) || f.especialidade.toLowerCase().includes(qL)
+    return tomNome.includes(qL) || medNome.includes(qL)
+      || (f.tipoMedico ?? '').toLowerCase().includes(qL)
       || (f.servicoOperacionalNome ?? '').toLowerCase().includes(qL)
   })
 
@@ -822,7 +825,7 @@ export function FrequenciasPage() {
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-xs font-semibold text-ds-text">{medicosMap[f.medicoId]?.nome ?? '—'}</p>
-                        <p className="text-[10px] text-ds-light">{f.especialidade}</p>
+                        <p className="text-[10px] text-ds-light">{f.tipoMedico ?? '—'}</p>
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-xs text-ds-mid max-w-[160px] truncate">{tomadoresMap[f.tomadorId]?.razaoSocialNome ?? '—'}</p>

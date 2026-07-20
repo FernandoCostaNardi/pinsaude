@@ -49,6 +49,11 @@ function buildHtml(p: FrequenciaPdfParams): string {
   const { freq, medicoNome, medicoCrm, medicoCrmUf, tomadorNome, empresaNome, empresaCnpj } = p
   const competenciaExt = competenciaPorExtenso(freq.competencia)
   const cnpjFormatado  = formatCnpj(empresaCnpj)
+  const logoUrl        = `${window.location.origin}/logo-formulario.png`
+
+  // Mês por extenso apenas (sem o ano) para o campo Competência
+  const [anoComp, mesComp] = freq.competencia.split('-')
+  const mesExt = MESES_EXT[parseInt(mesComp, 10) - 1]
 
   const linhasPreenchidas = freq.itens
     .slice()
@@ -92,94 +97,110 @@ function buildHtml(p: FrequenciaPdfParams): string {
       margin: 0 auto;
     }
 
-    /* === Header Governo === */
-    .gov-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding-bottom: 6px;
-      border-bottom: 2.5px solid #333;
-      margin-bottom: 8px;
+    /* === Header Governo (tabela 2 colunas com borda) === */
+    .gov-header-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid #000;
+      margin-bottom: 0;
     }
-    .gov-brasao {
-      font-size: 36pt;
-      line-height: 1;
-      flex-shrink: 0;
+    .gov-header-table td {
+      border: none;
+      padding: 0;
+      vertical-align: middle;
     }
-    .gov-text h1 { font-size: 10.5pt; font-weight: bold; letter-spacing: 0.5px; }
-    .gov-text h2 { font-size: 9pt; font-weight: normal; letter-spacing: 0.3px; }
-    .gov-text h3 { font-size: 8pt; color: #555; margin-top: 1px; }
+    .gov-logo-cell {
+      width: 175px;
+      border-right: 1.5px solid #000 !important;
+      text-align: center;
+      padding: 4px 6px !important;
+    }
+    .gov-logo-cell img {
+      height: 72px;
+      display: block;
+      margin: 0 auto;
+    }
+    .gov-text-cell {
+      padding: 6px 10px !important;
+      vertical-align: middle;
+    }
+    .gov-text-cell p {
+      font-size: 9pt;
+      font-weight: bold;
+      line-height: 1.45;
+      color: #000;
+      margin: 0;
+    }
 
     /* === Título do Formulário === */
-    .form-title {
+    .form-title-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid #000;
+      border-top: none;
+      margin-bottom: 0;
+    }
+    .form-title-table td {
       text-align: center;
-      font-size: 11.5pt;
+      font-size: 11pt;
       font-weight: bold;
       text-transform: uppercase;
-      letter-spacing: 0.8px;
-      border: 2px solid #000;
+      letter-spacing: 0.5px;
       padding: 5px 10px;
-      margin: 8px 0;
-      background: #f2f2f2;
+      border: none;
     }
 
-    /* === Campos do Formulário === */
-    .fields-section {
-      border: 1px solid #000;
+    /* === Campos do Formulário (tabela de linhas) === */
+    .fields-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid #000;
+      border-top: none;
       margin-bottom: 6px;
     }
-    .field-row {
-      display: flex;
-      border-bottom: 1px solid #000;
-      min-height: 24px;
-      align-items: stretch;
+    .fields-table td {
+      border: none;
+      border-top: 1px solid #000;
+      padding: 0;
+      vertical-align: middle;
     }
-    .field-row:last-child { border-bottom: none; }
-    .field-cell {
-      padding: 3px 6px;
-      border-right: 1px solid #000;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
-    .field-cell:last-child { border-right: none; }
-    .field-cell.w2 { flex: 2; }
-    .field-cell.w3 { flex: 3; }
-    .field-label {
-      font-size: 6.5pt;
-      font-weight: bold;
-      text-transform: uppercase;
-      color: #555;
-      letter-spacing: 0.2px;
-      display: block;
-      margin-bottom: 1px;
-    }
-    .field-value {
-      font-size: 9pt;
-      font-weight: 600;
-      display: block;
-    }
-
-    /* === Seção título === */
-    .section-bar {
+    .field-label-cell {
+      width: 185px;
+      border-right: 1px solid #000 !important;
+      padding: 3px 6px !important;
       font-size: 8pt;
+      font-style: italic;
+      color: #c25a00;
+      white-space: nowrap;
+      text-align: right;
+    }
+    .field-value-cell {
+      padding: 3px 8px !important;
+      font-size: 9pt;
       font-weight: bold;
-      text-transform: uppercase;
-      background: #444;
-      color: #fff;
-      padding: 3px 6px;
-      letter-spacing: 0.5px;
-      margin-bottom: 0;
+    }
+    .field-value-empresa { color: #c25a00; }
+    .field-value-medico  { color: #0047ab; }
+    .field-value-normal  { color: #000; }
+    .field-value-center  { text-align: center; color: #000; }
+
+    /* Célula do setor na linha Especialidade Médica */
+    .field-setor-cell {
+      border-left: 1px solid #000 !important;
+      padding: 3px 8px !important;
+      font-size: 9pt;
+      font-weight: bold;
+      color: #000;
+      white-space: nowrap;
     }
 
     /* === Tabela de Plantões === */
-    table {
+    table.plantoes {
       width: 100%;
       border-collapse: collapse;
     }
-    thead tr { background: #e0e0e0; }
-    th {
+    table.plantoes thead tr { background: #e0e0e0; }
+    table.plantoes th {
       border: 1px solid #000;
       padding: 4px 3px;
       font-size: 7.5pt;
@@ -188,14 +209,14 @@ function buildHtml(p: FrequenciaPdfParams): string {
       text-transform: uppercase;
       white-space: nowrap;
     }
-    td {
+    table.plantoes td {
       border: 1px solid #aaa;
       padding: 2.5px 4px;
       font-size: 8.5pt;
       height: 17px;
       vertical-align: middle;
     }
-    tbody tr:nth-child(even) { background: #fafafa; }
+    table.plantoes tbody tr:nth-child(even) { background: #fafafa; }
     .col-data    { width: 55px; }
     .col-turno   { width: 70px; }
     .col-horario { width: 105px; }
@@ -261,60 +282,56 @@ function buildHtml(p: FrequenciaPdfParams): string {
 <body>
 <div class="page">
 
-  <!-- Header institucional -->
-  <div class="gov-header">
-    <div class="gov-brasao">⚖</div>
-    <div class="gov-text">
-      <h1>GOVERNO DO ESTADO DE PERNAMBUCO</h1>
-      <h2>Secretaria de Saúde de Pernambuco — SES/PE</h2>
-      <h3>Gestão de Recursos Humanos em Saúde</h3>
-    </div>
-  </div>
+  <!-- Header institucional: logo | texto oficial -->
+  <table class="gov-header-table">
+    <tr>
+      <td class="gov-logo-cell">
+        <img src="${logoUrl}" alt="Secretaria de Saúde de Pernambuco" />
+      </td>
+      <td class="gov-text-cell">
+        <p>GOVERNO DO ESTADO DE PERNAMBUCO</p>
+        <p>SECRETARIA DE SAÚDE DO ESTADO DE PERNAMBUCO</p>
+        <p>SECRETARIA EXECUTIVA DE ADMINISTRAÇÃO E FINANÇAS</p>
+        <p>DIRETORIA GERAL DE FINANÇAS</p>
+        <p>RELATÓRIO DE FREQUÊNCIA MÉDICA</p>
+      </td>
+    </tr>
+  </table>
 
-  <!-- Título -->
-  <div class="form-title">Relatório de Frequência Médica Individual</div>
+  <!-- Título do formulário -->
+  <table class="form-title-table">
+    <tr>
+      <td>FREQUÊNCIA MÉDICA INDIVIDUAL</td>
+    </tr>
+  </table>
 
-  <!-- Campos -->
-  <div class="fields-section">
-    <div class="field-row">
-      <div class="field-cell w3">
-        <span class="field-label">Unidade de Saúde</span>
-        <span class="field-value">${tomadorNome}</span>
-      </div>
-      <div class="field-cell w2">
-        <span class="field-label">Empresa Prestadora</span>
-        <span class="field-value">${empresaNome}${cnpjFormatado ? ' — CNPJ: ' + cnpjFormatado : ''}</span>
-      </div>
-    </div>
-    <div class="field-row">
-      <div class="field-cell w3">
-        <span class="field-label">Nome do(a) Médico(a)</span>
-        <span class="field-value">${medicoNome}</span>
-      </div>
-      <div class="field-cell w2">
-        <span class="field-label">Identificação Funcional (CRM)</span>
-        <span class="field-value">${medicoCrm}/${medicoCrmUf}</span>
-      </div>
-    </div>
-    <div class="field-row">
-      <div class="field-cell">
-        <span class="field-label">Competência</span>
-        <span class="field-value">${competenciaExt}</span>
-      </div>
-      <div class="field-cell w2">
-        <span class="field-label">Especialidade Médica</span>
-        <span class="field-value">${freq.especialidade}</span>
-      </div>
-      <div class="field-cell">
-        <span class="field-label">Setor</span>
-        <span class="field-value">${freq.servicoOperacionalNome ?? ''}</span>
-      </div>
-    </div>
-  </div>
+  <!-- Campos do formulário -->
+  <table class="fields-table">
+    <tr>
+      <td class="field-label-cell">Unidade de Saúde:</td>
+      <td class="field-value-cell field-value-normal" colspan="2">${tomadorNome}</td>
+    </tr>
+    <tr>
+      <td class="field-label-cell">Empresa Prestadora do Serviço:</td>
+      <td class="field-value-cell field-value-empresa" colspan="2">${empresaNome} CNPJ: ${cnpjFormatado}</td>
+    </tr>
+    <tr>
+      <td class="field-label-cell">Nome do Médico Prestador:</td>
+      <td class="field-value-cell field-value-medico" colspan="2">${medicoNome} CRM-${medicoCrmUf} ${medicoCrm}</td>
+    </tr>
+    <tr>
+      <td class="field-label-cell">Competência:</td>
+      <td class="field-value-cell field-value-center" colspan="2">${mesExt}</td>
+    </tr>
+    <tr>
+      <td class="field-label-cell">Especialidade Médica:</td>
+      <td class="field-value-cell field-value-normal">${freq.tipoMedico ?? ''}</td>
+      <td class="field-setor-cell">${freq.servicoOperacionalNome ?? ''}</td>
+    </tr>
+  </table>
 
   <!-- Tabela de plantões -->
-  <div class="section-bar">Registro de Frequência / Plantões</div>
-  <table>
+  <table class="plantoes">
     <thead>
       <tr>
         <th class="col-data">Data</th>
@@ -366,7 +383,6 @@ function buildHtml(p: FrequenciaPdfParams): string {
 </div>
 <script>
   window.onload = function() {
-    // Pequeno delay para o navegador renderizar completamente antes de imprimir
     setTimeout(function() { window.print(); }, 300);
   };
 </script>
