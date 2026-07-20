@@ -217,4 +217,148 @@ export const tomadoresApi = {
     })
     return handleResponse<void>(res)
   },
+
+  // ─── Grupos de faturamento ────────────────────────────────────────────────
+
+  async listarGrupos(tomadorId: string): Promise<TomadorGrupoFaturamento[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/grupos`, { headers: authHeaders() })
+    return handleResponse<TomadorGrupoFaturamento[]>(res)
+  },
+
+  async criarGrupo(tomadorId: string, req: TomadorGrupoFaturamentoRequest): Promise<TomadorGrupoFaturamento> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/grupos`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorGrupoFaturamento>(res)
+  },
+
+  async atualizarGrupo(tomadorId: string, grupoId: string, req: TomadorGrupoFaturamentoRequest): Promise<TomadorGrupoFaturamento> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/grupos/${grupoId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorGrupoFaturamento>(res)
+  },
+
+  async removerGrupo(tomadorId: string, grupoId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/grupos/${grupoId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
+
+  // ─── Modalidades (tabela de preços) ───────────────────────────────────────
+
+  async listarModalidades(tomadorId: string): Promise<TomadorModalidade[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/modalidades`, { headers: authHeaders() })
+    return handleResponse<TomadorModalidade[]>(res)
+  },
+
+  async criarModalidade(tomadorId: string, req: TomadorModalidadeRequest): Promise<TomadorModalidade> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/modalidades`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorModalidade>(res)
+  },
+
+  async atualizarModalidade(tomadorId: string, modalidadeId: string, req: TomadorModalidadeRequest): Promise<TomadorModalidade> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/modalidades/${modalidadeId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorModalidade>(res)
+  },
+
+  async removerModalidade(tomadorId: string, modalidadeId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/modalidades/${modalidadeId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
+
+  // ─── Serviços operacionais (setores) ─────────────────────────────────────
+
+  async criarServicoOperacional(tomadorId: string, req: TomadorServicoOperacionalRequest): Promise<TomadorServicoOperacional> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/servicos-operacionais`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorServicoOperacional>(res)
+  },
+
+  async removerServicoOperacional(tomadorId: string, setorId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/servicos-operacionais/${setorId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
+}
+
+// ─── Tipos para grupos / modalidades / setores ────────────────────────────────
+
+export interface TomadorServicoOperacional {
+  id: string
+  tomadorId: string
+  grupoId: string
+  nome: string
+  ativo: boolean
+}
+
+export interface TomadorGrupoFaturamento {
+  id: string
+  tomadorId: string
+  servicoLc116Id: string
+  codigoLc116: string | null
+  descricaoServico: string | null
+  nome: string
+  descricaoNota: string
+  ordem: number
+  ativo: boolean
+  servicosOperacionais: TomadorServicoOperacional[]
+}
+
+export interface TomadorGrupoFaturamentoRequest {
+  servicoLc116Id: string
+  nome: string
+  descricaoNota: string
+  ordem: number
+  ativo: boolean
+}
+
+export interface TomadorModalidade {
+  id: string
+  tomadorId: string
+  nome: string
+  turno: 'DIURNO' | 'NOTURNO'
+  horario: string
+  horas: number
+  valorCentavos: number
+  deslocamentoCentavos: number
+  ativo: boolean
+}
+
+export interface TomadorModalidadeRequest {
+  nome: string
+  turno: 'DIURNO' | 'NOTURNO'
+  horario: string
+  horas: number
+  valorCentavos: number
+  deslocamentoCentavos: number
+  ativo: boolean
+}
+
+export interface TomadorServicoOperacionalRequest {
+  grupoId: string
+  nome: string
+  ativo: boolean
 }
