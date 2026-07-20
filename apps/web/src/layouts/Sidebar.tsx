@@ -22,6 +22,7 @@ import {
   Upload,
   Wallet,
   CalendarDays,
+  PackageCheck,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 
@@ -38,6 +39,7 @@ const navItems = [
   { to: '/tomadores',         label: 'Tomadores',   icon: Hospital,         roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true },
   { to: '/producao',          label: 'Produção',    icon: ClipboardList,    roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: false },
   { to: '/frequencias',       label: 'Frequências', icon: CalendarDays,     roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true },
+  { to: '/fechamentos',       label: 'Fechamento',  icon: PackageCheck,     roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true },
   { to: '/fiscal/config', label: 'Fiscal', icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'], end: true },
   { to: '/notas',       label: 'Notas',         icon: FileText,         roles: null,       end: true  },
   { to: '/notas/lote',  label: 'Lotes NFS-e',   icon: Layers,           roles: ['operacao', 'gestao', 'contabil', 'financeiro'], end: true },
