@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ArrowLeft, CalendarDays, ChevronDown, ChevronRight,
-  Loader2, Plus, Printer, Trash2, CheckCircle2,
-  FileText, X,
+  ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronRight,
+  Download, FileText, Loader2, Plus, Printer, Trash2, Upload, X,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
@@ -332,9 +331,12 @@ function FrequenciaItensPanel({
   onAtualizar: (f: FrequenciaMedicaResp) => void
 }) {
   const { user } = useAuth()
-  const [adicionando, setAdicionando] = useState(false)
-  const [removendo,   setRemovendo]   = useState<string | null>(null)
-  const [gerandoPdf,  setGerandoPdf]  = useState(false)
+  const [adicionando,  setAdicionando]  = useState(false)
+  const [removendo,    setRemovendo]    = useState<string | null>(null)
+  const [gerandoPdf,   setGerandoPdf]   = useState(false)
+  const [uploadingDoc, setUploadingDoc] = useState(false)
+  const [uploadErr,    setUploadErr]    = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const isFaturada = freq.status === 'FATURADA'
 
   async function handleAdd(req: FrequenciaItemRequest) {
@@ -376,6 +378,29 @@ function FrequenciaItensPanel({
     finally { setGerandoPdf(false) }
   }
 
+  async function handleUploadDocumento(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadErr(null)
+    setUploadingDoc(true)
+    try {
+      const atualizada = await frequenciasApi.uploadDocumentoAssinado(freq.id, file)
+      onAtualizar(atualizada)
+    } catch (err: unknown) {
+      setUploadErr(err instanceof Error ? err.message : 'Erro ao fazer upload')
+    } finally {
+      setUploadingDoc(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleVerDocumento() {
+    try {
+      const url = await frequenciasApi.getDocumentoUrl(freq.id)
+      window.open(url, '_blank', 'noopener')
+    } catch { /* ignore */ }
+  }
+
   return (
     <div className="bg-ds-surface rounded-xl border border-ds-border overflow-hidden">
       {/* Totalizador */}
@@ -401,6 +426,46 @@ function FrequenciaItensPanel({
           )}
         </div>
       </div>
+
+      {/* Documento assinado */}
+      {(freq.status === 'AGUARDANDO_ASSINATURA' || freq.documentoAssinado) && (
+        <div className="flex items-center gap-3 flex-wrap px-4 py-2.5 border-b border-ds-border bg-yellow-50/60">
+          <span className="text-[10px] font-bold text-yellow-800 uppercase tracking-wider">
+            Documento Assinado
+          </span>
+          {uploadErr && <span className="text-xs text-red-600">{uploadErr}</span>}
+          {freq.status === 'AGUARDANDO_ASSINATURA' && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf,image/*"
+                className="hidden"
+                onChange={handleUploadDocumento}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingDoc}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-colors disabled:opacity-50">
+                {uploadingDoc ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                {freq.documentoAssinado ? 'Substituir' : 'Enviar Assinado'}
+              </button>
+            </>
+          )}
+          {freq.documentoAssinado && (
+            <>
+              <button
+                onClick={handleVerDocumento}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-purple-300 text-purple-700 bg-white text-xs font-semibold hover:bg-purple-50 transition-colors">
+                <Download size={11} /> Ver Documento
+              </button>
+              <span className="flex items-center gap-1 text-xs text-green-700 font-semibold">
+                <CheckCircle2 size={12} /> Recebido
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Tabela */}
       <div className="overflow-x-auto">

@@ -16,6 +16,7 @@ import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepositor
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -32,15 +33,18 @@ public class FrequenciaService {
     private final FrequenciaItemRepository itemRepo;
     private final TomadorServicoOperacionalRepository setorRepo;
     private final TomadorModalidadeRepository modalidadeRepo;
+    private final StorageService storageService;
 
     public FrequenciaService(FrequenciaMedicaRepository frequenciaRepo,
                              FrequenciaItemRepository itemRepo,
                              TomadorServicoOperacionalRepository setorRepo,
-                             TomadorModalidadeRepository modalidadeRepo) {
+                             TomadorModalidadeRepository modalidadeRepo,
+                             StorageService storageService) {
         this.frequenciaRepo = frequenciaRepo;
         this.itemRepo       = itemRepo;
         this.setorRepo      = setorRepo;
         this.modalidadeRepo = modalidadeRepo;
+        this.storageService = storageService;
     }
 
     // ── Frequência CRUD ───────────────────────────────────────────────────────
@@ -216,6 +220,41 @@ public class FrequenciaService {
         }
 
         return toResponse(f);
+    }
+
+    // ── Documento assinado ────────────────────────────────────────────────────
+
+    @Transactional
+    public FrequenciaMedicaResponse receberDocumentoAssinado(UUID id, MultipartFile arquivo) {
+        FrequenciaMedica f = findOrThrow(id);
+
+        if (!"AGUARDANDO_ASSINATURA".equals(f.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Upload do documento assinado só é permitido quando o status é AGUARDANDO_ASSINATURA. "
+                    + "Status atual: " + f.getStatus());
+        }
+
+        // Remover arquivo anterior se houver (re-upload)
+        if (f.getDocumentoAssinadoKey() != null) {
+            storageService.delete(f.getDocumentoAssinadoKey());
+        }
+
+        String objectKey = storageService.upload("frequencias/" + id, arquivo);
+        f.setDocumentoAssinadoKey(objectKey);
+        f.setStatus("ASSINADA_RECEBIDA");
+        frequenciaRepo.save(f);
+
+        return toResponse(f);
+    }
+
+    @Transactional(readOnly = true)
+    public String getDocumentoUrl(UUID id) {
+        FrequenciaMedica f = findOrThrow(id);
+        if (f.getDocumentoAssinadoKey() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Esta frequência não possui documento assinado");
+        }
+        return storageService.getPresignedUrl(f.getDocumentoAssinadoKey());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -139,4 +139,22 @@ export const frequenciasApi = {
     })
     return handleResponse<FrequenciaMedicaResp>(res)
   },
+
+  async uploadDocumentoAssinado(id: string, arquivo: File): Promise<FrequenciaMedicaResp> {
+    const token = JSON.parse(sessionStorage.getItem('pinsaude_tokens') ?? '{}').accessToken ?? ''
+    const form = new FormData()
+    form.append('arquivo', arquivo)
+    const res = await fetch(`/api/frequencias/${id}/documento`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    })
+    return handleResponse<FrequenciaMedicaResp>(res)
+  },
+
+  async getDocumentoUrl(id: string): Promise<string> {
+    const res = await fetch(`/api/frequencias/${id}/documento/url`, { headers: authHeaders() })
+    const data = await handleResponse<{ url: string }>(res)
+    return data.url
+  },
 }
