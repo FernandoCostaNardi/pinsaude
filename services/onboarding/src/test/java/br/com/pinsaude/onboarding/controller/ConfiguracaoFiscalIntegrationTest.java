@@ -34,9 +34,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 class ConfiguracaoFiscalIntegrationTest {
 
+    // withInitScript cria svc_onboarding/svc_portal antes do Flyway rodar — sem isso,
+    // V14/V15 falham com "role svc_onboarding does not exist" (ver EPIC-14.1).
     @Container
     @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16");
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")
+        .withInitScript("db/test-roles-init.sql");
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;

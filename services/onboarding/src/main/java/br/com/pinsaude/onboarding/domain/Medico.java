@@ -55,6 +55,15 @@ public class Medico {
     @Column(name = "status_junta_comercial", nullable = false, length = 20)
     private String statusJuntaComercial = "AGUARDANDO";
 
+    // MANUAL (criado por operação/gestão) | AUTO_CADASTRO (formulário público, EPIC-14)
+    @Column(name = "origem_cadastro", nullable = false, length = 20)
+    private String origemCadastro = "MANUAL";
+
+    // Usuário Keycloak vinculado (criado desabilitado ao final do auto-cadastro público,
+    // habilitado quando o médico é aprovado/ativado — ver EPIC-14.4).
+    @Column(name = "keycloak_user_id", length = 64)
+    private String keycloakUserId;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -98,6 +107,12 @@ public class Medico {
 
     public String getStatusJuntaComercial() { return statusJuntaComercial; }
     public void setStatusJuntaComercial(String statusJuntaComercial) { this.statusJuntaComercial = statusJuntaComercial; }
+
+    public String getOrigemCadastro() { return origemCadastro; }
+    public void setOrigemCadastro(String origemCadastro) { this.origemCadastro = origemCadastro; }
+
+    public String getKeycloakUserId() { return keycloakUserId; }
+    public void setKeycloakUserId(String keycloakUserId) { this.keycloakUserId = keycloakUserId; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
