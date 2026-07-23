@@ -14,6 +14,53 @@ export type TipoRecebimento = 'PIX' | 'TED'
 export type TipoConta = 'CORRENTE' | 'POUPANCA'
 export type TipoDocumentoMedico = 'CRM' | 'DIPLOMA' | 'IDENTIDADE' | 'RESIDENCIA' | 'CONTRATO' | 'ESPECIALIDADES'
 export type StatusValidacaoDocumento = 'PENDENTE' | 'APROVADO' | 'REPROVADO'
+export type OrigemCadastro = 'MANUAL' | 'AUTO_CADASTRO'
+export type EstadoCivil =
+  | 'SOLTEIRO'
+  | 'CASADO_COMUNHAO_PARCIAL'
+  | 'CASADO_SEPARACAO_TOTAL'
+  | 'CASADO_COMUNHAO_UNIVERSAL'
+  | 'UNIAO_ESTAVEL'
+  | 'DIVORCIADO'
+  | 'VIUVO'
+  | 'PARTICIPACAO_FINAL_AQUESTOS'
+  | 'OUTRO'
+
+// Presentes apenas para médicos vindos do auto-cadastro público (EPIC-14.1/14.2/14.8) —
+// médicos cadastrados manualmente (origemCadastro = MANUAL) não têm essas linhas.
+export interface DadosCivisMedico {
+  dataNascimento?: string
+  nacionalidade?: string
+  naturalidade?: string
+  estadoCivil?: EstadoCivil
+  nomeMae?: string
+  nomePai?: string
+  logradouro?: string
+  numero?: string
+  complemento?: string
+  bairro?: string
+  cidade?: string
+  uf?: string
+  cep?: string
+  rgNumero?: string
+  rgOrgaoExpedidor?: string
+  rgUf?: string
+  rqe?: string
+  canalOrigem?: string
+  nomeIndicador?: string
+  situacaoFormacao?: string[]
+  areasAtuacao?: string
+  procedimentosRealiza?: string
+}
+
+export interface DeclaracaoLgpd {
+  aceiteDeclaracaoVeracidade: boolean
+  autorizacaoUsoDados: boolean
+  autorizacaoCompartilhamento: boolean
+  avisoPrivacidadeLido: boolean
+  assinaturaNome?: string
+  assinadoEm?: string
+}
 
 export interface DadosBancariosMedico {
   tipoRecebimento?: TipoRecebimento
@@ -76,6 +123,9 @@ export interface Medico {
   checklist?: ChecklistConduta
   contratoAssinatura?: ContratoAssinatura
   ultimoConvite?: ConviteMedico
+  origemCadastro?: OrigemCadastro
+  dadosCivis?: DadosCivisMedico
+  declaracoesLgpd?: DeclaracaoLgpd
   createdAt: string
   updatedAt: string
 }

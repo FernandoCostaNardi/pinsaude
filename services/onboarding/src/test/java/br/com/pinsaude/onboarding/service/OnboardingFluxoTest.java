@@ -41,6 +41,8 @@ class OnboardingFluxoTest {
     @Mock RabbitTemplate                 rabbitTemplate;
     @Mock EmpresaRepository              empresaRepo;
     @Mock KeycloakAdminService           keycloakAdminService;
+    @Mock DadosCivisMedicoRepository     dadosCivisRepo;
+    @Mock DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo;
 
     @InjectMocks MedicoService medicoService;
 

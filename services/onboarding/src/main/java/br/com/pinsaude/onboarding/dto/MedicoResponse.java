@@ -27,6 +27,9 @@ public record MedicoResponse(
     ChecklistCondutaResponse checklist,
     ContratoAssinaturaResponse contratoAssinatura,
     EnviarConviteResponse ultimoConvite,
+    String origemCadastro,
+    DadosCivisMedicoResponse dadosCivis,
+    DeclaracaoLgpdResponse declaracoesLgpd,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
 ) {
@@ -38,7 +41,9 @@ public record MedicoResponse(
             List<DocumentoMedicoResponse> documentos,
             ChecklistCondutaResponse checklist,
             ContratoAssinaturaResponse contratoAssinatura,
-            EnviarConviteResponse ultimoConvite) {
+            EnviarConviteResponse ultimoConvite,
+            DadosCivisMedicoResponse dadosCivis,
+            DeclaracaoLgpdResponse declaracoesLgpd) {
         UUID primeiraEmpresaId = empresas.isEmpty() ? null : empresas.get(0).empresaId();
         return new MedicoResponse(
             m.getId(), cpfDecriptografado, m.getNome(),
@@ -47,6 +52,7 @@ public record MedicoResponse(
             m.getStatusJuntaComercial(),
             primeiraEmpresaId, empresas, dadosBancarios, documentos, checklist,
             contratoAssinatura, ultimoConvite,
+            m.getOrigemCadastro(), dadosCivis, declaracoesLgpd,
             m.getCreatedAt(), m.getUpdatedAt()
         );
     }
