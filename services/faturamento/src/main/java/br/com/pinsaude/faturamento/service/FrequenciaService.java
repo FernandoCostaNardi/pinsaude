@@ -228,10 +228,11 @@ public class FrequenciaService {
     public FrequenciaMedicaResponse receberDocumentoAssinado(UUID id, MultipartFile arquivo) {
         FrequenciaMedica f = findOrThrow(id);
 
-        if (!"AGUARDANDO_ASSINATURA".equals(f.getStatus())) {
+        // Permite upload inicial (AGUARDANDO_ASSINATURA) e substituição (ASSINADA_RECEBIDA, ENVIADA_TOMADOR)
+        Set<String> permitidos = Set.of("AGUARDANDO_ASSINATURA", "ASSINADA_RECEBIDA", "ENVIADA_TOMADOR");
+        if (!permitidos.contains(f.getStatus())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Upload do documento assinado só é permitido quando o status é AGUARDANDO_ASSINATURA. "
-                    + "Status atual: " + f.getStatus());
+                "Upload do documento assinado não é permitido no status atual: " + f.getStatus());
         }
 
         // Remover arquivo anterior se houver (re-upload)
@@ -241,7 +242,10 @@ public class FrequenciaService {
 
         String objectKey = storageService.upload("frequencias/" + id, arquivo);
         f.setDocumentoAssinadoKey(objectKey);
-        f.setStatus("ASSINADA_RECEBIDA");
+        // Só transiciona status no upload inicial — substituição mantém o status atual
+        if ("AGUARDANDO_ASSINATURA".equals(f.getStatus())) {
+            f.setStatus("ASSINADA_RECEBIDA");
+        }
         frequenciaRepo.save(f);
 
         return toResponse(f);

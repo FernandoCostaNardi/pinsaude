@@ -31,12 +31,32 @@ export interface MedicoParticipacaoPreview {
   totalCentavos: number
 }
 
+export interface ModalidadeDetalhe {
+  modalidadeId: string
+  nome: string
+  turno: string
+  horas: number
+  valorUnitarioCentavos: number
+  deslocamentoCentavos: number
+  valorItemCentavos: number
+  quantidade: number
+  totalCentavos: number
+  fds: boolean
+}
+
+export interface SetorDetalhe {
+  setorId: string
+  setorNome: string
+  totalCentavos: number
+}
+
 export interface GrupoPreview {
   grupoId: string
   nome: string
   descricaoNota: string
   descricaoInterpolada: string
   servicoLc116Id: string
+  setores: SetorDetalhe[]
   medicos: MedicoParticipacaoPreview[]
   totalCentavos: number
 }
@@ -44,6 +64,7 @@ export interface GrupoPreview {
 export interface FechamentoPreviewResp {
   tomadorId: string
   competencia: string
+  modalidades: ModalidadeDetalhe[]
   grupos: GrupoPreview[]
   totalCentavos: number
   totalFrequencias: number

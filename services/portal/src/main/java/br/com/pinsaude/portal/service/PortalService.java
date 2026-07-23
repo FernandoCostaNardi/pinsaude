@@ -2,7 +2,6 @@ package br.com.pinsaude.portal.service;
 
 import br.com.pinsaude.portal.dto.DashboardResponse;
 import br.com.pinsaude.portal.dto.EmpresaPortalResponse;
-import br.com.pinsaude.portal.dto.ExtratoLancamentoResponse;
 import br.com.pinsaude.portal.dto.ExtratoResponse;
 import br.com.pinsaude.portal.dto.NotaPortalResponse;
 import br.com.pinsaude.portal.dto.PerfilMedicoResponse;
@@ -18,7 +17,6 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -177,100 +175,9 @@ public class PortalService {
     }
 
     public ExtratoResponse getExtrato(UUID medicoId, LocalDate dtInicio, LocalDate dtFim) {
-        StringBuilder sql = new StringBuilder(notasSql());
-        List<Object> params = new ArrayList<>();
-        params.add(medicoId);
-        params.add(medicoId);
-
-        sql.append(" AND nf.status = 'EMITIDA'");
-        if (dtInicio != null) {
-            sql.append(" AND DATE(COALESCE(nf.emitida_at, nf.created_at)) >= ?");
-            params.add(dtInicio);
-        }
-        if (dtFim != null) {
-            sql.append(" AND DATE(COALESCE(nf.emitida_at, nf.created_at)) <= ?");
-            params.add(dtFim);
-        }
-        sql.append(" ORDER BY COALESCE(nf.emitida_at, nf.created_at) ASC");
-
-        List<NotaPortalResponse> notas = jdbc.query(
-                sql.toString(), (rs, row) -> mapNota(rs), params.toArray());
-
-        List<ExtratoLancamentoResponse> lancamentos = new ArrayList<>();
-        long saldo = 0;
-        long totalCreditos = 0;
-        long totalRetencoes = 0;
-        long totalTaxaPin = 0;
-
-        for (NotaPortalResponse nota : notas) {
-            String dataRef = nota.emitidaAt() != null
-                    ? nota.emitidaAt().toString()
-                    : nota.createdAt().toString();
-            String ref = nota.numeroNota() != null
-                    ? nota.numeroNota()
-                    : nota.id().toString().substring(0, 8).toUpperCase();
-            String tom = nota.tomadorNome() != null ? " — " + nota.tomadorNome() : "";
-
-            // Crédito: valor bruto da nota
-            saldo += nota.valorBrutoCentavos();
-            totalCreditos += nota.valorBrutoCentavos();
-            lancamentos.add(new ExtratoLancamentoResponse(
-                    "CREDITO", "NFS_E",
-                    "NFS-e nº " + ref + tom,
-                    nota.valorBrutoCentavos(), saldo,
-                    nota.competencia(), ref, dataRef));
-
-            // Débitos: cada tributo, somente quando > 0
-            if (nota.valorIss() > 0) {
-                saldo -= nota.valorIss();
-                totalRetencoes += nota.valorIss();
-                lancamentos.add(new ExtratoLancamentoResponse(
-                        "DEBITO", "ISS", "ISS retido — NFS-e nº " + ref,
-                        nota.valorIss(), saldo, nota.competencia(), ref, dataRef));
-            }
-            if (nota.valorIr() > 0) {
-                saldo -= nota.valorIr();
-                totalRetencoes += nota.valorIr();
-                lancamentos.add(new ExtratoLancamentoResponse(
-                        "DEBITO", "IR", "IR retido na fonte — NFS-e nº " + ref,
-                        nota.valorIr(), saldo, nota.competencia(), ref, dataRef));
-            }
-            if (nota.valorCsll() > 0) {
-                saldo -= nota.valorCsll();
-                totalRetencoes += nota.valorCsll();
-                lancamentos.add(new ExtratoLancamentoResponse(
-                        "DEBITO", "CSLL", "CSLL retida — NFS-e nº " + ref,
-                        nota.valorCsll(), saldo, nota.competencia(), ref, dataRef));
-            }
-            if (nota.valorPis() > 0) {
-                saldo -= nota.valorPis();
-                totalRetencoes += nota.valorPis();
-                lancamentos.add(new ExtratoLancamentoResponse(
-                        "DEBITO", "PIS", "PIS retido — NFS-e nº " + ref,
-                        nota.valorPis(), saldo, nota.competencia(), ref, dataRef));
-            }
-            if (nota.valorCofins() > 0) {
-                saldo -= nota.valorCofins();
-                totalRetencoes += nota.valorCofins();
-                lancamentos.add(new ExtratoLancamentoResponse(
-                        "DEBITO", "COFINS", "COFINS retida — NFS-e nº " + ref,
-                        nota.valorCofins(), saldo, nota.competencia(), ref, dataRef));
-            }
-
-            // Débito: taxa Pin Saúde (15%)
-            saldo -= nota.taxaPinCentavos();
-            totalTaxaPin += nota.taxaPinCentavos();
-            lancamentos.add(new ExtratoLancamentoResponse(
-                    "DEBITO", "TAXA_PIN", "Taxa Pin Saúde (15%) — NFS-e nº " + ref,
-                    nota.taxaPinCentavos(), saldo, nota.competencia(), ref, dataRef));
-        }
-
-        // Retorna mais recentes primeiro (leitura natural de extrato)
-        Collections.reverse(lancamentos);
-
-        long totalDebitos = totalRetencoes + totalTaxaPin;
-        return new ExtratoResponse(
-                saldo, totalCreditos, totalDebitos, totalRetencoes, totalTaxaPin, lancamentos);
+        // Repasses efetivos serão consultados aqui quando EPIC-09 for implementado.
+        // Apenas transferências liquidadas para a conta do médico devem aparecer.
+        return new ExtratoResponse(0L, 0L, 0L, 0L, 0L, List.of());
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────────

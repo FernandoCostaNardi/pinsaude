@@ -26,30 +26,34 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 
+const BACKOFFICE = ['operacao', 'gestao', 'financeiro', 'contabil']
+
 const navItems = [
-  { to: '/portal/dashboard', label: 'Meu Portal',   icon: HeartPulse,      roles: ['medico'], end: true  },
-  { to: '/portal/notas',    label: 'Minhas Notas',  icon: Receipt,         roles: ['medico'], end: true  },
-  { to: '/portal/extrato',        label: 'Extrato',          icon: TrendingUp, roles: ['medico'], end: true },
-  { to: '/portal/producao/nova', label: 'Informar Produção', icon: PlusCircle,   roles: ['medico'], end: true },
-  { to: '/portal/frequencias',  label: 'Frequências',       icon: CalendarDays, roles: ['medico'], end: true },
-  { to: '/',            label: 'Dashboard',    icon: LayoutDashboard,  roles: null,       end: true  },
-  { to: '/medicos',           label: 'Médicos',     icon: Stethoscope,      roles: null,       end: false },
-  { to: '/medicos/aprovacao', label: 'Aprovação',   icon: ClipboardCheck,   roles: ['gestao', 'operacao'],                         end: true },
-  { to: '/empresas',          label: 'Empresas',    icon: Building2,        roles: ['gestao'],                                     end: true },
-  { to: '/tomadores',         label: 'Tomadores',   icon: Hospital,         roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true },
-  { to: '/producao',          label: 'Produção',    icon: ClipboardList,    roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: false },
-  { to: '/frequencias',       label: 'Frequências', icon: CalendarDays,     roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true },
-  { to: '/fechamentos',       label: 'Fechamento',  icon: PackageCheck,     roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true },
-  { to: '/fiscal/config', label: 'Fiscal', icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'], end: true },
-  { to: '/notas',       label: 'Notas',         icon: FileText,         roles: null,       end: true  },
-  { to: '/notas/lote',  label: 'Lotes NFS-e',   icon: Layers,           roles: ['operacao', 'gestao', 'contabil', 'financeiro'], end: true },
-  { to: '/repasses',    label: 'Repasses',      icon: Banknote,         roles: null,       end: true  },
-  { to: '/conciliacao/upload',    label: 'Upload Extrato', icon: Upload,          roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true  },
-  { to: '/conciliacao/assistida', label: 'Conciliação',   icon: ArrowLeftRight,  roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true  },
-  { to: '/conciliacao/caixa',     label: 'Posição de Caixa', icon: Wallet,       roles: ['operacao', 'gestao', 'financeiro', 'contabil'], end: true  },
-  { to: '/financeiro/ledger',     label: 'Extrato Ledger',   icon: BookOpen,     roles: ['financeiro', 'gestao', 'contabil'], end: true  },
-  { to: '/gestao',      label: 'Gestão',        icon: BarChart3,        roles: null,       end: true  },
-  { to: '/usuarios',    label: 'Usuários',      icon: Users,            roles: ['gestao'], end: true  },
+  // ── Portal do Médico ─────────────────────────────────────────────────────────
+  { to: '/portal/dashboard',     label: 'Meu Portal',        icon: HeartPulse,       roles: ['medico'], end: true  },
+  { to: '/portal/notas',         label: 'Minhas Notas',      icon: Receipt,          roles: ['medico'], end: true  },
+  { to: '/portal/extrato',       label: 'Extrato',           icon: TrendingUp,       roles: ['medico'], end: true  },
+  { to: '/portal/producao/nova', label: 'Informar Produção', icon: PlusCircle,       roles: ['medico'], end: true  },
+  { to: '/portal/frequencias',   label: 'Frequências',       icon: CalendarDays,     roles: ['medico'], end: true  },
+  // ── Backoffice ───────────────────────────────────────────────────────────────
+  { to: '/',                       label: 'Dashboard',        icon: LayoutDashboard,  roles: BACKOFFICE,                        end: true  },
+  { to: '/medicos',                label: 'Médicos',          icon: Stethoscope,      roles: ['gestao', 'operacao'],            end: false },
+  { to: '/medicos/aprovacao',      label: 'Aprovação',        icon: ClipboardCheck,   roles: ['gestao', 'operacao'],            end: true  },
+  { to: '/empresas',               label: 'Empresas',         icon: Building2,        roles: ['gestao'],                        end: true  },
+  { to: '/tomadores',              label: 'Tomadores',        icon: Hospital,         roles: BACKOFFICE,                        end: true  },
+  { to: '/producao',               label: 'Produção',         icon: ClipboardList,    roles: BACKOFFICE,                        end: false },
+  { to: '/frequencias',            label: 'Frequências',      icon: CalendarDays,     roles: BACKOFFICE,                        end: true  },
+  { to: '/fechamentos',            label: 'Fechamento',       icon: PackageCheck,     roles: BACKOFFICE,                        end: true  },
+  { to: '/fiscal/config',          label: 'Fiscal',           icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'], end: true },
+  { to: '/notas',                  label: 'Notas',            icon: FileText,         roles: BACKOFFICE,                        end: true  },
+  { to: '/notas/lote',             label: 'Lotes NFS-e',      icon: Layers,           roles: ['operacao', 'gestao', 'contabil', 'financeiro'], end: true },
+  { to: '/repasses',               label: 'Repasses',         icon: Banknote,         roles: BACKOFFICE,                        end: true  },
+  { to: '/conciliacao/upload',     label: 'Upload Extrato',   icon: Upload,           roles: BACKOFFICE,                        end: true  },
+  { to: '/conciliacao/assistida',  label: 'Conciliação',      icon: ArrowLeftRight,   roles: BACKOFFICE,                        end: true  },
+  { to: '/conciliacao/caixa',      label: 'Posição de Caixa', icon: Wallet,           roles: BACKOFFICE,                        end: true  },
+  { to: '/financeiro/ledger',      label: 'Extrato Ledger',   icon: BookOpen,         roles: ['financeiro', 'gestao', 'contabil'], end: true },
+  { to: '/gestao',                 label: 'Gestão',           icon: BarChart3,        roles: ['gestao'],                        end: true  },
+  { to: '/usuarios',               label: 'Usuários',         icon: Users,            roles: ['gestao'],                        end: true  },
 ]
 
 interface SidebarProps {

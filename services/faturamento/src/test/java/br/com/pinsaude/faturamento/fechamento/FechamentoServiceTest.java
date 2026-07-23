@@ -39,6 +39,7 @@ class FechamentoServiceTest {
     @Mock FrequenciaItemRepository itemRepo;
     @Mock TomadorServicoOperacionalRepository setorRepo;
     @Mock TomadorGrupoFaturamentoRepository grupoRepo;
+    @Mock TomadorModalidadeRepository modalidadeRepo;
     @Mock TomadorRepository tomadorRepo;
     @Mock ServicoRepository servicoRepo;
     @Mock ProducaoRepository producaoRepo;

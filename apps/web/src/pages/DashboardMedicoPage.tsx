@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Banknote, TrendingUp, FileText, ClipboardList,
+  Banknote, TrendingUp, FileText,
   RefreshCw, Bell, CheckCircle2, Clock, XCircle,
   AlertTriangle, Loader2, ShieldCheck, PlusCircle,
 } from 'lucide-react'
@@ -262,10 +262,9 @@ export function DashboardMedicoPage() {
       {error && <Alert variant="error">{error}</Alert>}
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {loading ? (
           <>
-            <SkeletonKpiCard />
             <SkeletonKpiCard />
             <SkeletonKpiCard />
             <SkeletonKpiCard />
@@ -274,7 +273,7 @@ export function DashboardMedicoPage() {
           <>
             <KpiCard
               icon={Banknote}
-              label="Saldo Disponível"
+              label="Repasse Disponível"
               value={formatBRL(dashboard.saldoDisponivelCentavos)}
               sub={<Link to="/portal/extrato" className="hover:text-primary transition-colors">Ver extrato →</Link>}
               iconBg="bg-green-50"
@@ -287,14 +286,6 @@ export function DashboardMedicoPage() {
               sub="Notas em processamento"
               iconBg="bg-primary-50"
               iconColor="text-primary"
-            />
-            <KpiCard
-              icon={ClipboardList}
-              label="Total Produzido"
-              value={formatBRL(dashboard.totalProduzidoCentavos)}
-              sub={`${dashboard.totalProducoes} produção${dashboard.totalProducoes !== 1 ? 'ões' : ''}`}
-              iconBg="bg-purple-50"
-              iconColor="text-purple-600"
             />
             <KpiCard
               icon={FileText}
@@ -312,7 +303,7 @@ export function DashboardMedicoPage() {
       <div className="bg-white rounded-xl border border-ds-border shadow-sm overflow-hidden">
         <div className="flex items-center gap-4 px-5 py-4 border-b border-ds-border">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-ds-text">Valor Líquido por Competência</p>
+            <p className="text-sm font-bold text-ds-text">Meu Repasse por Competência</p>
             <p className="text-xs text-ds-light mt-0.5">Últimas 12 competências — notas emitidas</p>
           </div>
           {refreshing && <Spinner size="sm" />}
@@ -369,8 +360,7 @@ export function DashboardMedicoPage() {
                   <tr className="bg-ds-surface">
                     <th className="text-left px-5 py-2.5 text-xs font-semibold text-ds-mid">Competência</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-ds-mid">Tomador</th>
-                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-ds-mid">Valor Bruto</th>
-                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-ds-mid">Líquido</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-ds-mid">Meu Repasse</th>
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-ds-mid">Status</th>
                     <th className="text-right px-5 py-2.5 text-xs font-semibold text-ds-mid">Emissão</th>
                   </tr>
@@ -383,9 +373,6 @@ export function DashboardMedicoPage() {
                       </td>
                       <td className="px-4 py-3 text-xs text-ds-text max-w-[180px] truncate">
                         {nota.tomadorNome ?? '—'}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-right text-ds-text font-medium">
-                        {formatBRL(nota.valorBrutoCentavos)}
                       </td>
                       <td className="px-4 py-3 text-xs text-right font-bold text-green-700">
                         {formatBRL(nota.valorLiquidoMedicoCentavos)}
@@ -412,7 +399,7 @@ export function DashboardMedicoPage() {
                   </div>
                   <p className="text-xs text-ds-mid truncate">{nota.tomadorNome ?? '—'}</p>
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-ds-light">Bruto: {formatBRL(nota.valorBrutoCentavos)}</span>
+                    <span className="text-[11px] text-ds-light">Meu repasse</span>
                     <span className="text-xs font-bold text-green-700">{formatBRL(nota.valorLiquidoMedicoCentavos)}</span>
                   </div>
                 </div>

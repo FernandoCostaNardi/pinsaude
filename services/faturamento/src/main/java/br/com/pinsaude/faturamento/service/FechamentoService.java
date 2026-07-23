@@ -33,6 +33,7 @@ public class FechamentoService {
     private final FrequenciaItemRepository itemRepo;
     private final TomadorServicoOperacionalRepository setorRepo;
     private final TomadorGrupoFaturamentoRepository grupoRepo;
+    private final TomadorModalidadeRepository modalidadeRepo;
     private final TomadorRepository tomadorRepo;
     private final ServicoRepository servicoRepo;
     private final ProducaoRepository producaoRepo;
@@ -43,6 +44,7 @@ public class FechamentoService {
                              FrequenciaItemRepository itemRepo,
                              TomadorServicoOperacionalRepository setorRepo,
                              TomadorGrupoFaturamentoRepository grupoRepo,
+                             TomadorModalidadeRepository modalidadeRepo,
                              TomadorRepository tomadorRepo,
                              ServicoRepository servicoRepo,
                              ProducaoRepository producaoRepo,
@@ -52,6 +54,7 @@ public class FechamentoService {
         this.itemRepo        = itemRepo;
         this.setorRepo       = setorRepo;
         this.grupoRepo       = grupoRepo;
+        this.modalidadeRepo  = modalidadeRepo;
         this.tomadorRepo     = tomadorRepo;
         this.servicoRepo     = servicoRepo;
         this.producaoRepo    = producaoRepo;
@@ -64,6 +67,29 @@ public class FechamentoService {
     public FechamentoPreviewResponse preview(UUID tomadorId, String competencia) {
         AggregationResult agg = computeAggregation(tomadorId, competencia);
 
+        // Tabela global de modalidades
+        List<FechamentoPreviewResponse.ModalidadeDetalhe> modalidades = new ArrayList<>();
+        for (Map.Entry<UUID, long[]> entry : agg.modalidadeAgg().entrySet()) {
+            UUID modalidadeId = entry.getKey();
+            long[] countTotal = entry.getValue();
+            TomadorModalidade m = agg.modalidadesMap().get(modalidadeId);
+            if (m == null) continue;
+            long valorItem = m.getValorCentavos() + m.getDeslocamentoCentavos();
+            boolean fds = m.getNome() != null && m.getNome().toUpperCase().contains("FDS");
+            modalidades.add(new FechamentoPreviewResponse.ModalidadeDetalhe(
+                modalidadeId,
+                m.getNome(),
+                m.getTurno(),
+                m.getHoras(),
+                m.getValorCentavos(),
+                m.getDeslocamentoCentavos(),
+                valorItem,
+                (int) countTotal[0],
+                countTotal[1],
+                fds
+            ));
+        }
+
         long totalGeral = 0;
         List<FechamentoPreviewResponse.GrupoPreview> grupos = new ArrayList<>();
 
@@ -75,6 +101,17 @@ public class FechamentoService {
 
             long totalGrupo = medicoValores.values().stream().mapToLong(Long::longValue).sum();
 
+            // Setor breakdown dentro do grupo
+            Map<UUID, Long> setorTotais = agg.grupoSetorTotal().getOrDefault(grupoId, Map.of());
+            List<FechamentoPreviewResponse.SetorDetalhe> setores = setorTotais.entrySet().stream()
+                .map(se -> {
+                    TomadorServicoOperacional setor = agg.setoresMap().get(se.getKey());
+                    String setorNome = setor != null ? setor.getNome() : se.getKey().toString().substring(0, 8);
+                    return new FechamentoPreviewResponse.SetorDetalhe(se.getKey(), setorNome, se.getValue());
+                })
+                .sorted(Comparator.comparing(FechamentoPreviewResponse.SetorDetalhe::setorNome))
+                .toList();
+
             List<FechamentoPreviewResponse.MedicoParticipacao> medicos = medicoValores.entrySet().stream()
                 .map(me -> new FechamentoPreviewResponse.MedicoParticipacao(me.getKey(), me.getValue()))
                 .toList();
@@ -85,6 +122,7 @@ public class FechamentoService {
                 grupo.getDescricaoNota(),
                 interpolarDescricao(grupo.getDescricaoNota(), competencia),
                 grupo.getServicoLc116Id(),
+                setores,
                 medicos,
                 totalGrupo
             ));
@@ -94,6 +132,7 @@ public class FechamentoService {
         return new FechamentoPreviewResponse(
             tomadorId,
             competencia,
+            modalidades,
             grupos,
             totalGeral,
             agg.frequencias().size()
@@ -124,7 +163,6 @@ public class FechamentoService {
         if (tenant == null) tenant = "";
         String finalTenant = tenant;
 
-        // Salva o fechamento (ABERTO) primeiro para obter o UUID
         Fechamento fechamento = fechamentoRepo
             .findByTomadorIdAndCompetencia(req.tomadorId(), req.competencia())
             .orElseGet(Fechamento::new);
@@ -176,7 +214,6 @@ public class FechamentoService {
             refs.add(new FechamentoResponse.ProducaoRef(grupoId, grupo.getNome(), p.getId(), totalGrupo));
             totalGeral += totalGrupo;
 
-            // Marca frequencias deste grupo como FATURADA
             UUID producaoId = p.getId();
             UUID fechamentoId = fechamento.getId();
             for (FrequenciaMedica freq : agg.frequencias()) {
@@ -224,7 +261,10 @@ public class FechamentoService {
         List<FrequenciaMedica> frequencias,
         Map<UUID, TomadorServicoOperacional> setoresMap,
         Map<UUID, TomadorGrupoFaturamento> gruposMap,
-        Map<UUID, Map<UUID, Long>> agrupado
+        Map<UUID, TomadorModalidade> modalidadesMap,
+        Map<UUID, long[]> modalidadeAgg,          // modalidadeId → [count, total]
+        Map<UUID, Map<UUID, Long>> grupoSetorTotal, // grupoId → setorId → total
+        Map<UUID, Map<UUID, Long>> agrupado        // grupoId → medicoId → total
     ) {}
 
     private AggregationResult computeAggregation(UUID tomadorId, String competencia) {
@@ -235,40 +275,69 @@ public class FechamentoService {
             .toList();
 
         if (frequencias.isEmpty()) {
-            return new AggregationResult(List.of(), Map.of(), Map.of(), new LinkedHashMap<>());
+            return new AggregationResult(List.of(), Map.of(), Map.of(), Map.of(),
+                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
         }
 
         List<UUID> freqIds = frequencias.stream().map(FrequenciaMedica::getId).toList();
         List<FrequenciaItem> todosItens = itemRepo.findByFrequenciaIdIn(freqIds);
 
-        Map<UUID, List<FrequenciaItem>> itensPorFreq = todosItens.stream()
-            .collect(Collectors.groupingBy(FrequenciaItem::getFrequenciaId));
+        // freqId → FrequenciaMedica (para lookup rápido)
+        Map<UUID, FrequenciaMedica> freqMap = frequencias.stream()
+            .collect(Collectors.toMap(FrequenciaMedica::getId, Function.identity()));
 
+        // Batch load setores
         Set<UUID> setorIds = frequencias.stream()
             .map(FrequenciaMedica::getServicoOperacionalId)
             .collect(Collectors.toSet());
         Map<UUID, TomadorServicoOperacional> setoresMap = setorRepo.findAllById(setorIds).stream()
             .collect(Collectors.toMap(TomadorServicoOperacional::getId, Function.identity()));
 
-        // grupoId → (medicoId → totalCentavos)
+        // Batch load modalidades
+        Set<UUID> modalidadeIds = todosItens.stream()
+            .map(FrequenciaItem::getModalidadeId)
+            .collect(Collectors.toSet());
+        Map<UUID, TomadorModalidade> modalidadesMap = modalidadeRepo.findAllById(modalidadeIds).stream()
+            .collect(Collectors.toMap(TomadorModalidade::getId, Function.identity()));
+
+        // Accumulators — single pass sobre todos os itens
+        Map<UUID, long[]> modalidadeAgg    = new LinkedHashMap<>();
+        Map<UUID, Map<UUID, Long>> grupoSetorTotal = new LinkedHashMap<>();
         Map<UUID, Map<UUID, Long>> agrupado = new LinkedHashMap<>();
-        for (FrequenciaMedica freq : frequencias) {
+
+        for (FrequenciaItem item : todosItens) {
+            FrequenciaMedica freq = freqMap.get(item.getFrequenciaId());
+            if (freq == null) continue;
+
             TomadorServicoOperacional setor = setoresMap.get(freq.getServicoOperacionalId());
             if (setor == null) continue;
             UUID grupoId = setor.getGrupoId();
-            List<FrequenciaItem> itens = itensPorFreq.getOrDefault(freq.getId(), List.of());
-            long totalFreq = itens.stream()
-                .mapToLong(i -> i.getValorUnitarioCentavos() + i.getDeslocamentoCentavos())
-                .sum();
+
+            long itemTotal = item.getValorUnitarioCentavos() + item.getDeslocamentoCentavos();
+
+            // Global modalidade aggregation
+            modalidadeAgg.computeIfAbsent(item.getModalidadeId(), k -> new long[]{0L, 0L});
+            long[] ct = modalidadeAgg.get(item.getModalidadeId());
+            ct[0]++;
+            ct[1] += itemTotal;
+
+            // Setor breakdown per grupo
+            grupoSetorTotal.computeIfAbsent(grupoId, k -> new LinkedHashMap<>())
+                .merge(freq.getServicoOperacionalId(), itemTotal, Long::sum);
+
+            // Medico total per grupo
             agrupado.computeIfAbsent(grupoId, k -> new LinkedHashMap<>())
-                .merge(freq.getMedicoId(), totalFreq, Long::sum);
+                .merge(freq.getMedicoId(), itemTotal, Long::sum);
         }
 
         Set<UUID> grupoIds = agrupado.keySet();
         Map<UUID, TomadorGrupoFaturamento> gruposMap = grupoRepo.findAllById(grupoIds).stream()
             .collect(Collectors.toMap(TomadorGrupoFaturamento::getId, Function.identity()));
 
-        return new AggregationResult(frequencias, setoresMap, gruposMap, agrupado);
+        return new AggregationResult(
+            frequencias, setoresMap, gruposMap, modalidadesMap,
+            modalidadeAgg, grupoSetorTotal, agrupado
+        );
     }
 
     public static String interpolarDescricao(String template, String competencia) {
