@@ -52,7 +52,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
   const logoUrl        = `${window.location.origin}/logo-formulario.png`
 
   // Mês por extenso apenas (sem o ano) para o campo Competência
-  const [anoComp, mesComp] = freq.competencia.split('-')
+  const [, mesComp] = freq.competencia.split('-')
   const mesExt = MESES_EXT[parseInt(mesComp, 10) - 1]
 
   const linhasPreenchidas = freq.itens
