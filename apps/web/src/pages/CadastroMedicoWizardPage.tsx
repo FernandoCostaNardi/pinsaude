@@ -1,23 +1,25 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   User, Home, FileText, ShieldCheck, HeartHandshake, Stethoscope,
-  Upload, CheckCircle2, Loader2,
+  CheckCircle2, Loader2,
 } from 'lucide-react'
 import { Input, Button, Alert, StepWizard } from '@pinsaude/ui'
 import { CpfInput } from '../components/CpfInput'
+import { PhoneInput } from '../components/PhoneInput'
+import { BancoSelect, BancoAvatar, bancos } from '../components/BancoSelect'
+import { MultiFileUploadField, UploadedFileRef } from '../components/MultiFileUploadField'
 import {
   CandidaturaPublicaRequest, CandidaturaPublicaResponse, EstadoCivil,
-  TipoDocumentoCandidatura, candidaturaMedicoApi,
+  TipoDocumentoCandidatura, TipoPix, TipoConta, CandidaturaDadosBancariosRequest,
+  DeclaracaoLgpdRequest, candidaturaMedicoApi,
 } from '../api/candidaturaMedicoApi'
 import { isValidCpf, formatCpf } from '../utils/cpf'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const STORAGE_KEY_ID = 'pinsaude_candidatura_id'
+const LAST_STEP = 5
 
-// Todos os 6 passos da jornada completa (EPIC-14.6 implementa 1-3; 14.7 implementa 4-6
-// no mesmo arquivo). Mostrar os 6 dá ao médico o contexto de quanto falta, mesmo que os
-// últimos 3 ainda não sejam navegáveis (maxVisited nunca ultrapassa o índice 2 aqui).
 const STEPS = [
   { label: 'Dados Pessoais',           icon: User },
   { label: 'Contato e Endereço',       icon: Home },
@@ -46,6 +48,23 @@ const ESTADO_CIVIL_OPTIONS: { value: EstadoCivil; label: string }[] = [
 ]
 
 const CANAL_ORIGEM_OPTIONS = ['Google', 'Instagram', 'Facebook', 'Indicação', 'Outro']
+
+const SITUACAO_FORMACAO_OPTIONS = [
+  'Graduação em Medicina',
+  'Residência Médica',
+  'Especialização',
+  'Título de Especialista',
+  'Pós-graduação / MBA',
+  'Outro',
+]
+
+const TIPO_PIX_OPTIONS: { value: TipoPix; label: string }[] = [
+  { value: 'CPF',       label: 'CPF' },
+  { value: 'CNPJ',      label: 'CNPJ' },
+  { value: 'EMAIL',     label: 'E-mail' },
+  { value: 'TELEFONE',  label: 'Telefone' },
+  { value: 'ALEATORIA', label: 'Chave Aleatória' },
+]
 
 function isCasadoOuUniao(estadoCivil: EstadoCivil | ''): boolean {
   return estadoCivil === 'UNIAO_ESTAVEL' || estadoCivil.startsWith('CASADO_') || estadoCivil === 'PARTICIPACAO_FINAL_AQUESTOS'
@@ -79,6 +98,9 @@ interface FormState {
   rqe: string
   canalOrigem: string
   nomeIndicador: string
+  situacaoFormacao: string[]
+  areasAtuacao: string
+  procedimentosRealiza: string
 }
 
 const emptyForm = (): FormState => ({
@@ -88,6 +110,7 @@ const emptyForm = (): FormState => ({
   logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '', cep: '',
   rgNumero: '', rgOrgaoExpedidor: '', rgUf: '', rqe: '',
   canalOrigem: '', nomeIndicador: '',
+  situacaoFormacao: [], areasAtuacao: '', procedimentosRealiza: '',
 })
 
 function fromResponse(r: CandidaturaPublicaResponse): FormState {
@@ -101,6 +124,8 @@ function fromResponse(r: CandidaturaPublicaResponse): FormState {
     bairro: r.bairro ?? '', cidade: r.cidade ?? '', uf: r.uf ?? '', cep: r.cep ?? '',
     rgNumero: r.rgNumero ?? '', rgOrgaoExpedidor: r.rgOrgaoExpedidor ?? '', rgUf: r.rgUf ?? '',
     rqe: r.rqe ?? '', canalOrigem: r.canalOrigem ?? '', nomeIndicador: r.nomeIndicador ?? '',
+    situacaoFormacao: r.situacaoFormacao ?? [], areasAtuacao: r.areasAtuacao ?? '',
+    procedimentosRealiza: r.procedimentosRealiza ?? '',
   }
 }
 
@@ -131,11 +156,45 @@ function toRequest(f: FormState): CandidaturaPublicaRequest {
     rqe: f.rqe.trim() || null,
     canalOrigem: f.canalOrigem || null,
     nomeIndicador: f.canalOrigem === 'Indicação' ? (f.nomeIndicador.trim() || null) : null,
-    situacaoFormacao: null,
-    areasAtuacao: null,
-    procedimentosRealiza: null,
+    situacaoFormacao: f.situacaoFormacao.length > 0 ? f.situacaoFormacao : null,
+    areasAtuacao: f.areasAtuacao.trim() || null,
+    procedimentosRealiza: f.procedimentosRealiza.trim() || null,
   }
 }
+
+interface BankForm {
+  tipoRecebimento: 'PIX' | 'TED'
+  tipoPix: TipoPix | ''
+  chavePix: string
+  cpfsAdicionaisSplit: string
+  bancoCodigo: string
+  bancoNome: string
+  agencia: string
+  conta: string
+  tipoConta: TipoConta | ''
+}
+
+const emptyBank = (): BankForm => ({
+  tipoRecebimento: 'PIX',
+  tipoPix: '', chavePix: '', cpfsAdicionaisSplit: '',
+  bancoCodigo: '', bancoNome: '', agencia: '', conta: '', tipoConta: '',
+})
+
+interface LgpdForm {
+  aceiteDeclaracaoVeracidade: boolean
+  autorizacaoUsoDados: boolean
+  autorizacaoCompartilhamento: boolean
+  avisoPrivacidadeLido: boolean
+  assinaturaNome: string
+}
+
+const emptyLgpd = (): LgpdForm => ({
+  aceiteDeclaracaoVeracidade: false,
+  autorizacaoUsoDados: false,
+  autorizacaoCompartilhamento: false,
+  avisoPrivacidadeLido: false,
+  assinaturaNome: '',
+})
 
 // ─── Página ───────────────────────────────────────────────────────────────────
 
@@ -143,15 +202,18 @@ export function CadastroMedicoWizardPage() {
   const [step, setStep]             = useState(0)
   const [maxVisited, setMaxVisited] = useState(0)
   const [form, setForm]             = useState<FormState>(emptyForm)
+  const [bank, setBank]             = useState<BankForm>(emptyBank)
+  const [lgpd, setLgpd]             = useState<LgpdForm>(emptyLgpd)
   const [candidaturaId, setCandidaturaId] = useState<string | null>(null)
-  const [errors, setErrors]     = useState<Partial<Record<keyof FormState, string>>>({})
-  const [apiError, setApiError] = useState<string | null>(null)
-  const [saving, setSaving]     = useState(false)
-  const [restoring, setRestoring] = useState(true)
+  const [errors, setErrors]         = useState<Partial<Record<string, string>>>({})
+  const [apiError, setApiError]     = useState<string | null>(null)
+  const [saving, setSaving]         = useState(false)
+  const [restoring, setRestoring]   = useState(true)
   const [resumeNotice, setResumeNotice] = useState(false)
-  const [concluido, setConcluido] = useState(false)
+  const [enviado, setEnviado]       = useState(false)
+  const [mensagemFinal, setMensagemFinal] = useState('')
 
-  const [docsEnviados, setDocsEnviados] = useState<Partial<Record<TipoDocumentoCandidatura, string>>>({})
+  const [docsEnviados, setDocsEnviados] = useState<Partial<Record<TipoDocumentoCandidatura, UploadedFileRef[]>>>({})
 
   // ── Retomar candidatura salva (reload / voltou depois) ──
   useEffect(() => {
@@ -176,8 +238,27 @@ export function CadastroMedicoWizardPage() {
     setErrors(e => ({ ...e, [key]: undefined }))
   }
 
+  function toggleSituacaoFormacao(opcao: string) {
+    setForm(f => ({
+      ...f,
+      situacaoFormacao: f.situacaoFormacao.includes(opcao)
+        ? f.situacaoFormacao.filter(o => o !== opcao)
+        : [...f.situacaoFormacao, opcao],
+    }))
+  }
+
+  function setBankField<K extends keyof BankForm>(key: K, value: BankForm[K]) {
+    setBank(b => ({ ...b, [key]: value }))
+    setErrors(e => ({ ...e, [key]: undefined }))
+  }
+
+  function setLgpdField<K extends keyof LgpdForm>(key: K, value: LgpdForm[K]) {
+    setLgpd(l => ({ ...l, [key]: value }))
+    setErrors(e => ({ ...e, [key]: undefined }))
+  }
+
   function validateStep(s: number): boolean {
-    const errs: Partial<Record<keyof FormState, string>> = {}
+    const errs: Partial<Record<string, string>> = {}
     if (s === 0) {
       if (!form.nome.trim()) errs.nome = 'Obrigatório'
       if (!form.cpf || !isValidCpf(form.cpf)) errs.cpf = 'CPF inválido'
@@ -186,6 +267,28 @@ export function CadastroMedicoWizardPage() {
       if (!form.crmUf) errs.crmUf = 'Obrigatório'
       if (!form.nomeMae.trim()) errs.nomeMae = 'Obrigatório'
     }
+    if (s === 3) {
+      if (bank.tipoRecebimento === 'PIX') {
+        if (!bank.tipoPix) errs.tipoPix = 'Obrigatório'
+        if (!bank.chavePix.trim()) errs.chavePix = 'Obrigatório'
+      } else {
+        if (!bank.bancoNome.trim()) errs.bancoNome = 'Obrigatório'
+        if (!bank.agencia.trim()) errs.agencia = 'Obrigatório'
+        if (!bank.conta.trim()) errs.conta = 'Obrigatório'
+        if (!bank.tipoConta) errs.tipoConta = 'Obrigatório'
+      }
+    }
+    setErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  function validateLgpd(): boolean {
+    const errs: Partial<Record<string, string>> = {}
+    if (!lgpd.aceiteDeclaracaoVeracidade) errs.aceiteDeclaracaoVeracidade = 'Obrigatório'
+    if (!lgpd.autorizacaoUsoDados) errs.autorizacaoUsoDados = 'Obrigatório'
+    if (!lgpd.autorizacaoCompartilhamento) errs.autorizacaoCompartilhamento = 'Obrigatório'
+    if (!lgpd.avisoPrivacidadeLido) errs.avisoPrivacidadeLido = 'Obrigatório'
+    if (!lgpd.assinaturaNome.trim()) errs.assinaturaNome = 'Obrigatório'
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -209,6 +312,35 @@ export function CadastroMedicoWizardPage() {
     }
   }
 
+  async function persistBank(): Promise<boolean> {
+    if (!candidaturaId) {
+      setApiError('Conclua a etapa 1 antes de informar dados bancários.')
+      return false
+    }
+    setApiError(null)
+    setSaving(true)
+    try {
+      const req: CandidaturaDadosBancariosRequest = {
+        tipoRecebimento: bank.tipoRecebimento,
+        tipoPix: bank.tipoRecebimento === 'PIX' ? bank.tipoPix || null : null,
+        chavePix: bank.tipoRecebimento === 'PIX' ? bank.chavePix.trim() || null : null,
+        cpfsAdicionaisSplit: bank.tipoRecebimento === 'PIX' ? bank.cpfsAdicionaisSplit.trim() || null : null,
+        bancoCodigo: bank.tipoRecebimento === 'TED' ? bank.bancoCodigo.trim() || null : null,
+        bancoNome: bank.tipoRecebimento === 'TED' ? bank.bancoNome.trim() || null : null,
+        agencia: bank.tipoRecebimento === 'TED' ? bank.agencia.trim() || null : null,
+        conta: bank.tipoRecebimento === 'TED' ? bank.conta.trim() || null : null,
+        tipoConta: bank.tipoRecebimento === 'TED' ? bank.tipoConta || null : null,
+      }
+      await candidaturaMedicoApi.atualizarDadosBancarios(candidaturaId, req)
+      return true
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Erro ao salvar dados bancários')
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function goTo(target: number) {
     if (target > maxVisited) return
     setErrors({})
@@ -217,28 +349,53 @@ export function CadastroMedicoWizardPage() {
   }
 
   async function handleNext() {
-    if (!validateStep(step)) return
-    const saved = await persist()
-    if (!saved) return
+    if (step === 3) {
+      if (!validateStep(step)) return
+      const ok = await persistBank()
+      if (!ok) return
+    } else {
+      if (!validateStep(step)) return
+      const saved = await persist()
+      if (!saved) return
+    }
     const next = step + 1
     if (next > maxVisited) setMaxVisited(next)
     setStep(next)
   }
 
-  async function handleConcluirEtapa3() {
-    const saved = await persist()
-    if (!saved) return
-    setConcluido(true)
+  async function handleEnviar() {
+    if (!validateLgpd()) return
+    if (!candidaturaId) {
+      setApiError('Conclua as etapas anteriores antes de enviar.')
+      return
+    }
+    setApiError(null)
+    setSaving(true)
+    try {
+      const req: DeclaracaoLgpdRequest = { ...lgpd }
+      await candidaturaMedicoApi.registrarDeclaracaoLgpd(candidaturaId, req)
+      const fin = await candidaturaMedicoApi.finalizar(candidaturaId)
+      setMensagemFinal(fin.mensagem)
+      setEnviado(true)
+      sessionStorage.removeItem(STORAGE_KEY_ID)
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Erro ao enviar candidatura')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function handleDocUpload(tipo: TipoDocumentoCandidatura, file: File) {
     if (!candidaturaId) {
       setApiError('Conclua a etapa 1 antes de enviar documentos.')
-      return
+      return Promise.resolve()
     }
     setApiError(null)
-    candidaturaMedicoApi.uploadDocumento(candidaturaId, tipo, file)
-      .then(doc => setDocsEnviados(d => ({ ...d, [tipo]: doc.nomeArquivo })))
+    return candidaturaMedicoApi.uploadDocumento(candidaturaId, tipo, file)
+      .then(doc => setDocsEnviados(d => ({
+        ...d,
+        [tipo]: [...(d[tipo] ?? []), { id: doc.id, nomeArquivo: doc.nomeArquivo }],
+      })))
       .catch(err => setApiError(err instanceof Error ? err.message : 'Erro ao enviar arquivo'))
   }
 
@@ -275,7 +432,7 @@ export function CadastroMedicoWizardPage() {
         </div>
 
         <div className="w-full max-w-2xl">
-          {!concluido && (
+          {!enviado && (
             <>
               <div className="mb-6 text-center">
                 <h2 className="text-2xl font-bold text-gray-900">Credenciamento de Médico</h2>
@@ -317,6 +474,29 @@ export function CadastroMedicoWizardPage() {
                     onUpload={handleDocUpload}
                   />
                 )}
+                {step === 3 && (
+                  <StepDadosBancarios
+                    bank={bank}
+                    errors={errors}
+                    onChange={setBankField}
+                    onBancoSelect={(nome, compe) => {
+                      setBank(b => ({ ...b, bancoNome: nome, bancoCodigo: compe }))
+                      setErrors(e => ({ ...e, bancoNome: undefined }))
+                    }}
+                  />
+                )}
+                {step === 4 && (
+                  <StepFormacao
+                    form={form}
+                    onChange={setField}
+                    onToggleSituacao={toggleSituacaoFormacao}
+                    docsEnviados={docsEnviados}
+                    onUpload={handleDocUpload}
+                  />
+                )}
+                {step === 5 && (
+                  <StepLgpd lgpd={lgpd} errors={errors} onChange={setLgpdField} />
+                )}
               </div>
 
               <div className="flex justify-between pt-5 mt-2 border-t border-gray-200">
@@ -328,33 +508,32 @@ export function CadastroMedicoWizardPage() {
                 >
                   ← Voltar
                 </Button>
-                {step < 2 ? (
+                {step < LAST_STEP ? (
                   <Button type="button" onClick={handleNext} loading={saving}>
                     Próximo →
                   </Button>
                 ) : (
-                  <Button type="button" onClick={handleConcluirEtapa3} loading={saving}>
-                    Concluir por enquanto
+                  <Button type="button" onClick={handleEnviar} loading={saving}>
+                    Enviar candidatura ✓
                   </Button>
                 )}
               </div>
             </>
           )}
 
-          {concluido && (
+          {enviado && (
             <div className="flex flex-col items-center text-center gap-4 py-10">
               <div className="w-16 h-16 rounded-full bg-secondary-100 flex items-center justify-center">
                 <CheckCircle2 className="text-secondary-600" size={32} />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900">Recebemos seus dados até aqui!</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Candidatura enviada com sucesso!</h2>
               <p className="text-sm text-gray-500 max-w-md">
-                Suas informações pessoais, de contato e documentos profissionais foram salvos com sucesso.
-                Em breve disponibilizaremos as próximas etapas (dados bancários, formação e declarações LGPD)
-                para você concluir sua candidatura. Você pode fechar esta página — seu progresso está salvo.
+                {mensagemFinal || 'Você receberá um e-mail assim que a análise for concluída.'}
               </p>
-              <Button type="button" variant="outline" onClick={() => setConcluido(false)}>
-                ← Revisar meus dados
-              </Button>
+              <p className="text-xs text-gray-400 max-w-md">
+                Nossa equipe vai revisar seus dados e documentos. Assim que sua candidatura for
+                aprovada, você poderá acessar o sistema com o e-mail informado.
+              </p>
             </div>
           )}
 
@@ -375,7 +554,7 @@ function StepDadosPessoais({
   onChange,
 }: {
   form: FormState
-  errors: Partial<Record<keyof FormState, string>>
+  errors: Partial<Record<string, string>>
   onChange: <K extends keyof FormState>(k: K, v: FormState[K]) => void
 }) {
   return (
@@ -406,11 +585,10 @@ function StepDadosPessoais({
           placeholder="seu@email.com.br"
           hint="Este será o seu login de acesso ao sistema"
         />
-        <Input
+        <PhoneInput
           label="Telefone / WhatsApp"
           value={form.telefone}
-          onChange={e => onChange('telefone', e.target.value)}
-          placeholder="(00) 00000-0000"
+          onChange={v => onChange('telefone', v)}
         />
         <Input
           label="Data de nascimento"
@@ -478,8 +656,8 @@ function StepContatoEndereco({
 }: {
   form: FormState
   onChange: <K extends keyof FormState>(k: K, v: FormState[K]) => void
-  docsEnviados: Partial<Record<TipoDocumentoCandidatura, string>>
-  onUpload: (tipo: TipoDocumentoCandidatura, file: File) => void
+  docsEnviados: Partial<Record<TipoDocumentoCandidatura, UploadedFileRef[]>>
+  onUpload: (tipo: TipoDocumentoCandidatura, file: File) => Promise<unknown>
 }) {
   const mostrarCertidao = isCasadoOuUniao(form.estadoCivil)
 
@@ -563,18 +741,20 @@ function StepContatoEndereco({
       </div>
 
       <div className="flex flex-col gap-3 pt-2">
-        <UploadField
+        <MultiFileUploadField
           label="Comprovante de endereço"
           tipo="COMPROVANTE_ENDERECO"
-          arquivoEnviado={docsEnviados.COMPROVANTE_ENDERECO}
+          arquivos={docsEnviados.COMPROVANTE_ENDERECO ?? []}
           onUpload={onUpload}
+          multiplos={false}
         />
         {mostrarCertidao && (
-          <UploadField
+          <MultiFileUploadField
             label="Certidão de casamento / união estável"
             tipo="CERTIDAO_CASAMENTO"
-            arquivoEnviado={docsEnviados.CERTIDAO_CASAMENTO}
+            arquivos={docsEnviados.CERTIDAO_CASAMENTO ?? []}
             onUpload={onUpload}
+            multiplos={false}
           />
         )}
       </div>
@@ -592,11 +772,13 @@ function StepDocumentosProfissionais({
   onUpload,
 }: {
   form: FormState
-  errors: Partial<Record<keyof FormState, string>>
+  errors: Partial<Record<string, string>>
   onChange: <K extends keyof FormState>(k: K, v: FormState[K]) => void
-  docsEnviados: Partial<Record<TipoDocumentoCandidatura, string>>
-  onUpload: (tipo: TipoDocumentoCandidatura, file: File) => void
+  docsEnviados: Partial<Record<TipoDocumentoCandidatura, UploadedFileRef[]>>
+  onUpload: (tipo: TipoDocumentoCandidatura, file: File) => Promise<unknown>
 }) {
+  const crmEnviado = (docsEnviados.CRM ?? []).length > 0
+
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-gray-500">
@@ -611,23 +793,25 @@ function StepDocumentosProfissionais({
       />
 
       <div className="flex flex-col gap-3 pt-2">
-        <UploadField
+        <MultiFileUploadField
           label="Foto ou digitalização do CRM *"
           tipo="CRM"
-          arquivoEnviado={docsEnviados.CRM}
+          arquivos={docsEnviados.CRM ?? []}
           onUpload={onUpload}
+          multiplos={false}
         />
         {form.rqe.trim() !== '' && (
-          <UploadField
+          <MultiFileUploadField
             label="Documento do RQE"
             tipo="RQE"
-            arquivoEnviado={docsEnviados.RQE}
+            arquivos={docsEnviados.RQE ?? []}
             onUpload={onUpload}
+            multiplos={false}
           />
         )}
       </div>
 
-      {!docsEnviados.CRM && (
+      {!crmEnviado && (
         <Alert variant="warning">
           O documento do CRM é obrigatório para a conclusão da sua candidatura.
         </Alert>
@@ -636,59 +820,260 @@ function StepDocumentosProfissionais({
   )
 }
 
-// ─── Upload field (simplificado — extração completa do padrão de drag-and-drop
-// multi-arquivo fica para a 14.7, junto com os componentes de upload das etapas
-// 4-6) ──────────────────────────────────────────────────────────────────────
+// ─── Step 3: Dados Bancários ──────────────────────────────────────────────────
 
-function UploadField({
-  label,
-  tipo,
-  arquivoEnviado,
-  onUpload,
+function StepDadosBancarios({
+  bank,
+  errors,
+  onChange,
+  onBancoSelect,
 }: {
-  label: string
-  tipo: TipoDocumentoCandidatura
-  arquivoEnviado?: string
-  onUpload: (tipo: TipoDocumentoCandidatura, file: File) => void
+  bank: BankForm
+  errors: Partial<Record<string, string>>
+  onChange: <K extends keyof BankForm>(k: K, v: BankForm[K]) => void
+  onBancoSelect: (nome: string, compe: string) => void
 }) {
-  const [dragging, setDragging] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  function handleFile(file: File | undefined) {
-    if (!file) return
-    setUploading(true)
-    Promise.resolve(onUpload(tipo, file)).finally(() => setUploading(false))
-  }
+  const isTed = bank.tipoRecebimento === 'TED'
+  const bancoSelecionado = bancos.find(b => b.compe === bank.bancoCodigo) ?? null
 
   return (
-    <div
-      onDragOver={e => { e.preventDefault(); setDragging(true) }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={e => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]) }}
-      onClick={() => inputRef.current?.click()}
-      className={[
-        'flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-colors',
-        dragging ? 'border-primary bg-primary-50' : 'border-gray-200 hover:border-primary hover:bg-primary-50',
-      ].join(' ')}
-    >
-      {arquivoEnviado ? (
-        <CheckCircle2 className="text-secondary-600 shrink-0" size={18} />
-      ) : (
-        <Upload className={['shrink-0', dragging ? 'text-primary' : 'text-gray-400'].join(' ')} size={18} />
-      )}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-700">{label}</p>
-        <p className="text-xs text-gray-400 truncate">
-          {uploading ? 'Enviando...' : arquivoEnviado ? `Enviado: ${arquivoEnviado}` : 'Clique ou arraste o arquivo aqui (PDF, JPG, PNG)'}
-        </p>
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-gray-500">
+        Informe como você prefere receber seus repasses. Esses dados podem ser alterados depois.
+      </p>
+
+      <div className="flex rounded-lg border border-gray-200 overflow-hidden self-start">
+        {(['PIX', 'TED'] as const).map(tipo => (
+          <button
+            key={tipo}
+            type="button"
+            onClick={() => onChange('tipoRecebimento', tipo)}
+            className={[
+              'px-6 py-2 text-sm font-medium transition-colors',
+              bank.tipoRecebimento === tipo
+                ? 'bg-primary text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50',
+            ].join(' ')}
+          >
+            {tipo}
+          </button>
+        ))}
       </div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".pdf,.jpg,.jpeg,.png"
-        className="hidden"
-        onChange={e => { handleFile(e.target.files?.[0]); e.target.value = '' }}
+
+      {!isTed ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <SelectField
+            label="Tipo de chave PIX *"
+            value={bank.tipoPix}
+            onChange={v => onChange('tipoPix', v as TipoPix | '')}
+            error={errors.tipoPix}
+          >
+            {TIPO_PIX_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </SelectField>
+          <Input
+            label="Chave PIX *"
+            value={bank.chavePix}
+            onChange={e => onChange('chavePix', e.target.value)}
+            error={errors.chavePix}
+            disabled={!bank.tipoPix}
+          />
+          <div className="sm:col-span-2">
+            <Input
+              label="CPFs para split acima de R$ 40.000 (separados por vírgula)"
+              value={bank.cpfsAdicionaisSplit}
+              onChange={e => onChange('cpfsAdicionaisSplit', e.target.value)}
+              placeholder="Ex: 000.000.000-00, 111.111.111-11"
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <BancoSelect
+              value={bank.bancoNome}
+              onChange={onBancoSelect}
+              error={errors.bancoNome}
+            />
+          </div>
+          <Input
+            label="Agência *"
+            value={bank.agencia}
+            onChange={e => onChange('agencia', e.target.value)}
+            error={errors.agencia}
+            placeholder="Ex: 1234"
+          />
+          <Input
+            label="Conta *"
+            value={bank.conta}
+            onChange={e => onChange('conta', e.target.value)}
+            error={errors.conta}
+            placeholder="Ex: 12345-6"
+          />
+          <div className="sm:col-span-2 flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">Tipo de conta *</label>
+            <div className="flex gap-4">
+              {(['CORRENTE', 'POUPANCA'] as TipoConta[]).map(tipo => (
+                <label key={tipo} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tipoConta"
+                    value={tipo}
+                    checked={bank.tipoConta === tipo}
+                    onChange={() => onChange('tipoConta', tipo)}
+                    className="accent-primary"
+                  />
+                  <span className="text-sm text-gray-700">
+                    {tipo === 'CORRENTE' ? 'Corrente' : 'Poupança'}
+                  </span>
+                </label>
+              ))}
+            </div>
+            {errors.tipoConta && <p className="text-xs text-red-500">{errors.tipoConta}</p>}
+          </div>
+          {bank.bancoCodigo && bank.agencia && bank.conta && (
+            <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Resumo TED</p>
+              <div className="mt-1 flex items-center gap-2">
+                {bancoSelecionado && <BancoAvatar banco={bancoSelecionado} size={20} />}
+                <p className="text-sm font-semibold text-gray-900">
+                  {bank.bancoNome || `Banco ${bank.bancoCodigo}`} · Ag. {bank.agencia} · Cc. {bank.conta}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Step 4: Formação e Currículo ─────────────────────────────────────────────
+
+function StepFormacao({
+  form,
+  onChange,
+  onToggleSituacao,
+  docsEnviados,
+  onUpload,
+}: {
+  form: FormState
+  onChange: <K extends keyof FormState>(k: K, v: FormState[K]) => void
+  onToggleSituacao: (opcao: string) => void
+  docsEnviados: Partial<Record<TipoDocumentoCandidatura, UploadedFileRef[]>>
+  onUpload: (tipo: TipoDocumentoCandidatura, file: File) => Promise<unknown>
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-gray-500">Conte um pouco sobre sua formação e área de atuação.</p>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-sm font-medium text-gray-700">Situação de formação</label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {SITUACAO_FORMACAO_OPTIONS.map(opcao => (
+            <label key={opcao} className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.situacaoFormacao.includes(opcao)}
+                onChange={() => onToggleSituacao(opcao)}
+                className="w-4 h-4 accent-primary rounded"
+              />
+              <span className="text-sm text-gray-700">{opcao}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-sm font-medium text-gray-700">Áreas de atuação</label>
+        <textarea
+          value={form.areasAtuacao}
+          onChange={e => onChange('areasAtuacao', e.target.value)}
+          rows={3}
+          placeholder="Ex: Clínica geral, cardiologia, plantões de urgência..."
+          className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary resize-none"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-sm font-medium text-gray-700">Procedimentos que realiza</label>
+        <textarea
+          value={form.procedimentosRealiza}
+          onChange={e => onChange('procedimentosRealiza', e.target.value)}
+          rows={3}
+          placeholder="Descreva os principais procedimentos que você realiza"
+          className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary resize-none"
+        />
+      </div>
+
+      <div className="flex flex-col gap-3 pt-2">
+        <MultiFileUploadField
+          label="Certificado de residência / especialização (opcional)"
+          tipo="RESIDENCIA"
+          arquivos={docsEnviados.RESIDENCIA ?? []}
+          onUpload={onUpload}
+          multiplos
+        />
+        <MultiFileUploadField
+          label="Títulos de especialista (envie quantos tiver)"
+          tipo="ESPECIALIDADES"
+          arquivos={docsEnviados.ESPECIALIDADES ?? []}
+          onUpload={onUpload}
+          multiplos
+        />
+      </div>
+    </div>
+  )
+}
+
+// ─── Step 5: LGPD e Assinatura Eletrônica ─────────────────────────────────────
+
+function StepLgpd({
+  lgpd,
+  errors,
+  onChange,
+}: {
+  lgpd: LgpdForm
+  errors: Partial<Record<string, string>>
+  onChange: <K extends keyof LgpdForm>(k: K, v: LgpdForm[K]) => void
+}) {
+  const checks: { key: keyof LgpdForm; label: string }[] = [
+    { key: 'aceiteDeclaracaoVeracidade', label: 'Declaro que todas as informações prestadas neste formulário são verdadeiras.' },
+    { key: 'autorizacaoUsoDados', label: 'Autorizo o uso dos meus dados pessoais para fins de contratação e credenciamento junto à Pin Saúde.' },
+    { key: 'autorizacaoCompartilhamento', label: 'Autorizo o compartilhamento dos meus dados com terceiros quando necessário para o credenciamento.' },
+    { key: 'avisoPrivacidadeLido', label: 'Li e concordo com o Aviso de Privacidade (LGPD) da Pin Saúde.' },
+  ]
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-gray-500">
+        Para finalizar, confirme as declarações abaixo e assine eletronicamente.
+      </p>
+
+      <div className="flex flex-col gap-3">
+        {checks.map(({ key, label }) => (
+          <label key={key} className="flex items-start gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={lgpd[key] as boolean}
+              onChange={e => onChange(key, e.target.checked as LgpdForm[typeof key])}
+              className="w-4 h-4 mt-0.5 accent-primary rounded shrink-0"
+            />
+            <span className="text-sm text-gray-700">{label}</span>
+          </label>
+        ))}
+        {(errors.aceiteDeclaracaoVeracidade || errors.autorizacaoUsoDados
+          || errors.autorizacaoCompartilhamento || errors.avisoPrivacidadeLido) && (
+          <p className="text-xs text-red-500">Todas as declarações acima são obrigatórias.</p>
+        )}
+      </div>
+
+      <Input
+        label="Assinatura eletrônica — digite seu nome completo *"
+        value={lgpd.assinaturaNome}
+        onChange={e => onChange('assinaturaNome', e.target.value)}
+        error={errors.assinaturaNome}
+        placeholder="Seu nome completo"
+        hint="Ao digitar seu nome, você confirma eletronicamente as declarações acima"
       />
     </div>
   )
