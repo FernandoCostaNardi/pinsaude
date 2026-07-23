@@ -51,6 +51,7 @@ public class MedicoService {
     private final NotificacaoService notificacaoService;
     private final EmpresaRepository empresaRepo;
     private final HistoricoTaxaPinRepository historicoTaxaPinRepo;
+    private final KeycloakAdminService keycloakAdminService;
 
     private static final BigDecimal TAXA_PIN_DEFAULT = new BigDecimal("0.1500");
 
@@ -69,7 +70,8 @@ public class MedicoService {
             ContratoAssinaturaPort contratoPort,
             NotificacaoService notificacaoService,
             EmpresaRepository empresaRepo,
-            HistoricoTaxaPinRepository historicoTaxaPinRepo) {
+            HistoricoTaxaPinRepository historicoTaxaPinRepo,
+            KeycloakAdminService keycloakAdminService) {
         this.medicoRepo = medicoRepo;
         this.vinculoRepo = vinculoRepo;
         this.dadosBancariosRepo = dadosBancariosRepo;
@@ -85,6 +87,7 @@ public class MedicoService {
         this.notificacaoService = notificacaoService;
         this.empresaRepo = empresaRepo;
         this.historicoTaxaPinRepo = historicoTaxaPinRepo;
+        this.keycloakAdminService = keycloakAdminService;
     }
 
     public List<MedicoResponse> listarFilaAprovacao() {
@@ -210,6 +213,7 @@ public class MedicoService {
         medicoRepo.save(medico);
         registrarHistorico(id, TipoAcaoMedico.ATIVACAO, "Médico ativado manualmente");
         notificacaoService.notificarMedicoAtivado(medico);
+        liberarAcessoKeycloak(medico);
         return toFullResponse(medico);
     }
 
@@ -513,8 +517,27 @@ public class MedicoService {
             registrarHistorico(medico.getId(), TipoAcaoMedico.ATIVACAO_AUTOMATICA,
                 "Médico ativado automaticamente — todos os requisitos de onboarding cumpridos");
             log.info("Médico {} ativado automaticamente", medico.getId());
+            liberarAcessoKeycloak(medico);
         } catch (ResponseStatusException e) {
             log.debug("Auto-ativação não disparada para médico {}: {}", medico.getId(), e.getReason());
+        }
+    }
+
+    // Habilita o usuário Keycloak criado (desabilitado) ao final do auto-cadastro público
+    // (EPIC-14.3/14.4) e atribui a role medico. Médicos cadastrados manualmente (sem
+    // keycloakUserId) não passam por aqui — o acesso deles continua sendo criado à parte
+    // pela tela de Usuários (services/gestao). Falhas aqui são logadas, não bloqueiam a
+    // ativação em si — o médico já está corretamente ATIVO no onboarding independente do
+    // Keycloak; um operador pode liberar manualmente no Keycloak se isso falhar.
+    private void liberarAcessoKeycloak(Medico medico) {
+        if (medico.getKeycloakUserId() == null) return;
+        try {
+            keycloakAdminService.assignRole(medico.getKeycloakUserId(), "medico");
+            keycloakAdminService.updateUserEnabled(medico.getKeycloakUserId(), true);
+            log.info("Acesso Keycloak liberado para médico {}", medico.getId());
+        } catch (Exception e) {
+            log.error("Falha ao liberar acesso Keycloak para médico {} (keycloakUserId={}): {}",
+                medico.getId(), medico.getKeycloakUserId(), e.getMessage());
         }
     }
 

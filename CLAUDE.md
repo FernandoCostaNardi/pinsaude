@@ -3030,6 +3030,103 @@ esse caminho.
 
 ---
 
+## Auto-cadastro Público de Médico — Documentos, Bancário e LGPD (EPIC-14.3)
+
+### `finalizar()` valida completude mas NÃO cria usuário Keycloak — isso é a 14.4
+`POST .../candidaturas/{id}/finalizar` só valida que os documentos obrigatórios
+(`CRM`, `COMPROVANTE_ENDERECO` — os únicos sem "(Opcional)" no formulário original) e as
+declarações LGPD estão completos, registra histórico (`CANDIDATURA_FINALIZADA`) e dispara o
+e-mail de confirmação. A criação do usuário Keycloak (`enabled=false`) é responsabilidade da
+EPIC-14.4 — o ponto de extensão é `CadastroPublicoService.finalizar()`, que deve ganhar a chamada
+ao futuro `KeycloakAdminService.createUser(...)` + persistir `medico.keycloakUserId` logo após a
+validação de completude passar.
+
+### `TipoAcaoMedico` é `VARCHAR` puro — adicionar valor novo não precisa de migration
+Diferente de `StatusMedico`/`TipoDocumentoMedico` (enums Postgres nativos, exigem
+`ALTER TYPE ... ADD VALUE` isolado), `HistoricoMedico.tipoAcao` é uma coluna `VARCHAR(50)` comum —
+`TipoAcaoMedico` é só um enum Java usado via `.name()`. Adicionar `CANDIDATURA_FINALIZADA` (ou
+qualquer novo tipo de ação) não exige nenhuma migration, só editar o enum.
+
+### `@AssertTrue` do Jakarta Validation para aceites legais obrigatórios
+Os 4 aceites de `DeclaracaoLgpdRequest` (veracidade, uso de dados, compartilhamento, aviso de
+privacidade) usam `@AssertTrue` (não `@NotNull Boolean`) — força o valor a ser exatamente `true`,
+retornando 400 automaticamente se qualquer um vier `false`. Mais direto que validar manualmente no
+service para esse tipo de consentimento onde "false" nunca é uma resposta válida.
+
+### Testando upload multipart sem depender de MinIO real — `@MockBean StorageService`
+Nenhum teste do onboarding antes desta task exercitava upload de documento com Spring context real
+(os existentes usam `@Mock` em testes unitários). Para testar o round-trip HTTP completo
+(multipart, `permitAll`, persistência no Postgres) sem exigir um MinIO rodando — o que tornaria o
+teste dependente de infraestrutura externa e diferente entre local/CI — usar `@MockBean
+StorageService` no teste `@SpringBootTest`: substitui só esse bean por um mock, mantendo o resto
+do contexto (JPA, RLS, Postgres via Testcontainers) real. Ver
+`CadastroPublicoControllerIntegrationTest`.
+
+### IP de origem atrás do gateway — `X-Forwarded-For` antes de `getRemoteAddr()`
+Como toda requisição pública passa pelo Spring Cloud Gateway (que injeta `X-Forwarded-For` por
+padrão), `HttpServletRequest.getRemoteAddr()` sozinho captura o IP do gateway, não do médico. Ler
+`X-Forwarded-For` primeiro (pegando o primeiro IP da lista, caso haja múltiplos proxies) e só cair
+para `getRemoteAddr()` se o header não vier — usado para popular `declaracoes_lgpd_medico.ip_origem`.
+
+### Documentos obrigatórios para finalizar — só os sem "(Opcional)" no formulário original
+Do formulário fornecido pelo usuário, só "Foto do CRM" e "Comprovante de Endereço" não têm
+indicação de opcional — RQE, certidão de casamento, certificado de residência e títulos de
+especialista são todos "(Opcional)". `CadastroPublicoService.DOCUMENTOS_OBRIGATORIOS` reflete só
+esses dois; qualquer ajuste de regra de negócio deve mexer nessa lista, não espalhar validação
+pelo controller.
+
+---
+
+## Auto-cadastro Público de Médico — Integração Keycloak (EPIC-14.4)
+
+### `KeycloakAdminService` duplicado no onboarding — só o subconjunto usado
+Mesmo padrão do `services/gestao/.../KeycloakAdminService.java` (mesmo mecanismo de cache de
+token via `RestClient` + `/realms/master/protocol/openid-connect/token`), mas **não** é uma cópia
+1:1: o onboarding só implementa `createUserDesabilitado`, `getRoleByName` e `assignRole`/
+`updateUserEnabled` — não duplica `listUsers`/`removeRole`/`sendInvitationEmail`/`getUser`, que
+não são usados neste fluxo. `RestClient.Builder` já vem auto-configurado pelo
+`spring-boot-starter-web` (Spring Boot 3.2+), não precisa de bean extra — só
+`@EnableConfigurationProperties(KeycloakAdminProperties.class)` num `@Configuration` vazio
+(`KeycloakAdminConfig`), reaproveitando o mesmo `record` de properties do gestao com o prefixo
+`keycloak.admin`.
+
+### `createUserDesabilitado` sempre `enabled=false`, `cnpj_id` só se não for nulo/vazio
+Diferente do `gestao` (sempre `enabled=true`, sempre seta `attributes.cnpj_id`), o onboarding
+cria o usuário do médico **desabilitado** e só inclui o atributo `cnpj_id` no corpo da requisição
+se vier não-nulo/não-vazio (`Map.of("cnpj_id", List.of(cnpjId))` com `cnpjId=null` lançaria NPE
+em `List.of`). Hoje sempre é chamado com `cnpjId=null` — o médico não tem empresa definida no
+momento do auto-cadastro (ver EPIC-14 no plano) — mas o método aceita o parâmetro para o caso de,
+no futuro, o vínculo já ser conhecido nesse ponto.
+
+### Idempotência de `finalizar()` — só cria o usuário Keycloak se `keycloakUserId` ainda for nulo
+`CadastroPublicoService.finalizar()` só chama `createUserDesabilitado` quando
+`medico.getKeycloakUserId() == null`; como só persistimos o ID DEPOIS de a chamada ao Keycloak
+retornar com sucesso, uma falha nunca deixa o `Medico` num estado inconsistente — a transação não
+tem nada para desfazer (historico/e-mail só acontecem depois) e uma nova chamada a `finalizar()`
+tenta de novo. Falha na criação lança **502 Bad Gateway** (não 422/500) — sinaliza ao cliente que é
+um problema transitório de infraestrutura, não um erro de validação do usuário.
+
+### Liberação de acesso é tolerante a falha — ativação nunca é bloqueada pelo Keycloak
+Em `MedicoService.ativar()`/`verificarAtivacaoAutomatica()`, `liberarAcessoKeycloak()` (novo
+helper privado) só roda se `medico.getKeycloakUserId() != null` (médicos cadastrados manualmente,
+sem Keycloak, não passam por aqui) e **captura qualquer exceção só com log.error**, sem propagar —
+diferente da criação em `finalizar()` (que propaga como 502). Justificativa: a ativação do médico
+no onboarding já é um fato consumado e correto independente do Keycloak; se a chamada
+`assignRole`/`updateUserEnabled` falhar, um operador pode liberar manualmente pelo Console do
+Keycloak sem precisar reverter/reprocessar a ativação. Mesmo padrão tolerante já usado em
+`NotificacaoService.publicar()` para notificações por e-mail.
+
+### Testando `finalizar()`/`ativar()` com Keycloak — `@MockBean`/`@Mock`, sem WireMock
+Assim como `services/gestao` não tem teste dedicado testando as chamadas HTTP internas do seu
+`KeycloakAdminService` (nenhum WireMock), o onboarding segue o mesmo padrão: `KeycloakAdminService`
+é mockado na fronteira (`@Mock` nos testes unitários de `CadastroPublicoService`/`MedicoService` via
+`OnboardingFluxoTest`, `@MockBean` no `CadastroPublicoControllerIntegrationTest`) — sem tentar
+simular a API HTTP do Keycloak em si. Consistente com como `@MockBean StorageService` já evita
+depender de MinIO real (EPIC-14.3): sem isso, `finalizar()` chamaria `http://localhost:8080` de
+verdade e falharia com 502 em qualquer ambiente sem Keycloak rodando (ex.: CI).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

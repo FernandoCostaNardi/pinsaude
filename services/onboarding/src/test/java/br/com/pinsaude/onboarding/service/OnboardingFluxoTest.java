@@ -40,6 +40,7 @@ class OnboardingFluxoTest {
     @Mock NotificacaoService             notificacaoService;
     @Mock RabbitTemplate                 rabbitTemplate;
     @Mock EmpresaRepository              empresaRepo;
+    @Mock KeycloakAdminService           keycloakAdminService;
 
     @InjectMocks MedicoService medicoService;
 
@@ -180,6 +181,79 @@ class OnboardingFluxoTest {
         ArgumentCaptor<Medico> captor = ArgumentCaptor.forClass(Medico.class);
         verify(medicoRepo, atLeast(2)).save(captor.capture());
         assertThat(captor.getAllValues()).anyMatch(m -> m.getStatus() == StatusMedico.ATIVO);
+        // Médico sem keycloakUserId (cadastro manual) — não deve nem tentar chamar o Keycloak.
+        verifyNoInteractions(keycloakAdminService);
+    }
+
+    @Test
+    void atualizarJunta_aprovado_medicoComKeycloakUserId_liberaAcessoAutomaticamente() {
+        UUID medicoId = UUID.randomUUID();
+        var medico = medicoComEmail(medicoId);
+        medico.setKeycloakUserId("kc-user-999");
+        var checklist = checklistCompleto(medicoId);
+        var docs = List.of(
+            docAprovado(medicoId, TipoDocumentoMedico.CRM),
+            docAprovado(medicoId, TipoDocumentoMedico.DIPLOMA),
+            docAprovado(medicoId, TipoDocumentoMedico.IDENTIDADE),
+            docAprovado(medicoId, TipoDocumentoMedico.RESIDENCIA)
+        );
+        var contrato = new ContratoAssinatura();
+        contrato.setMedicoId(medicoId);
+        contrato.setStatus("ASSINADO");
+
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medico));
+        when(medicoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(checklistRepo.findById(medicoId)).thenReturn(Optional.of(checklist));
+        when(documentoRepo.findByMedicoId(medicoId)).thenReturn(docs);
+        when(contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.of(contrato));
+        when(dadosBancariosRepo.findByMedicoId(medicoId)).thenReturn(Optional.empty());
+        when(cryptoService.decrypt(any())).thenReturn("000.000.000-00");
+        when(vinculoRepo.findByIdMedicoId(medicoId)).thenReturn(List.of());
+        when(conviteRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.empty());
+
+        var req = new AtualizarJuntaComercialRequest("APROVADO", null);
+        medicoService.atualizarJuntaComercial(medicoId, req);
+
+        verify(keycloakAdminService).assignRole("kc-user-999", "medico");
+        verify(keycloakAdminService).updateUserEnabled("kc-user-999", true);
+    }
+
+    @Test
+    void atualizarJunta_aprovado_falhaAoLiberarKeycloak_naoImpedeAtivacao() {
+        // Falha no Keycloak não deve propagar/reverter a ativação — só é logada.
+        UUID medicoId = UUID.randomUUID();
+        var medico = medicoComEmail(medicoId);
+        medico.setKeycloakUserId("kc-user-999");
+        var checklist = checklistCompleto(medicoId);
+        var docs = List.of(
+            docAprovado(medicoId, TipoDocumentoMedico.CRM),
+            docAprovado(medicoId, TipoDocumentoMedico.DIPLOMA),
+            docAprovado(medicoId, TipoDocumentoMedico.IDENTIDADE),
+            docAprovado(medicoId, TipoDocumentoMedico.RESIDENCIA)
+        );
+        var contrato = new ContratoAssinatura();
+        contrato.setMedicoId(medicoId);
+        contrato.setStatus("ASSINADO");
+
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medico));
+        when(medicoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(checklistRepo.findById(medicoId)).thenReturn(Optional.of(checklist));
+        when(documentoRepo.findByMedicoId(medicoId)).thenReturn(docs);
+        when(contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.of(contrato));
+        when(dadosBancariosRepo.findByMedicoId(medicoId)).thenReturn(Optional.empty());
+        when(cryptoService.decrypt(any())).thenReturn("000.000.000-00");
+        when(vinculoRepo.findByIdMedicoId(medicoId)).thenReturn(List.of());
+        when(conviteRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.empty());
+        doThrow(new RuntimeException("Keycloak indisponível"))
+            .when(keycloakAdminService).assignRole(any(), any());
+
+        var req = new AtualizarJuntaComercialRequest("APROVADO", null);
+        // Não deve lançar — a ativação em si é bem-sucedida mesmo com falha no Keycloak.
+        medicoService.atualizarJuntaComercial(medicoId, req);
+
+        ArgumentCaptor<Medico> captor = ArgumentCaptor.forClass(Medico.class);
+        verify(medicoRepo, atLeast(2)).save(captor.capture());
+        assertThat(captor.getAllValues()).anyMatch(m -> m.getStatus() == StatusMedico.ATIVO);
     }
 
     @Test
@@ -264,5 +338,37 @@ class OnboardingFluxoTest {
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(org.springframework.http.HttpStatusCode.valueOf(422));
+    }
+
+    @Test
+    void ativar_manual_medicoComKeycloakUserId_liberaAcesso() {
+        UUID medicoId = UUID.randomUUID();
+        var medico = medicoComEmail(medicoId);
+        medico.setKeycloakUserId("kc-user-777");
+        medico.setStatusJuntaComercial("APROVADO");
+        var checklist = checklistCompleto(medicoId);
+        var docs = List.of(
+            docAprovado(medicoId, TipoDocumentoMedico.CRM),
+            docAprovado(medicoId, TipoDocumentoMedico.DIPLOMA),
+            docAprovado(medicoId, TipoDocumentoMedico.IDENTIDADE),
+            docAprovado(medicoId, TipoDocumentoMedico.RESIDENCIA)
+        );
+        var contrato = new ContratoAssinatura();
+        contrato.setMedicoId(medicoId);
+        contrato.setStatus("ASSINADO");
+
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medico));
+        when(checklistRepo.findById(medicoId)).thenReturn(Optional.of(checklist));
+        when(documentoRepo.findByMedicoId(medicoId)).thenReturn(docs);
+        when(contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.of(contrato));
+        when(vinculoRepo.findByIdMedicoId(medicoId)).thenReturn(List.of());
+        when(dadosBancariosRepo.findByMedicoId(medicoId)).thenReturn(Optional.empty());
+        when(cryptoService.decrypt(any())).thenReturn("000.000.000-00");
+        when(conviteRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.empty());
+
+        medicoService.ativar(medicoId);
+
+        verify(keycloakAdminService).assignRole("kc-user-777", "medico");
+        verify(keycloakAdminService).updateUserEnabled("kc-user-777", true);
     }
 }
