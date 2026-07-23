@@ -3223,6 +3223,66 @@ correto (branch atualizado).
 
 ---
 
+## Jornada Pública de Auto-cadastro — Etapas 4-6 e Envio Final (EPIC-14.7)
+
+### Componente de upload compartilhado — extraído sem tocar em `DocumentosModal.tsx`
+`apps/web/src/components/MultiFileUploadField.tsx` extrai o padrão de drag-and-drop + preview de
+status + múltiplos arquivos por tipo de `DocumentosModal.tsx`, mas como um componente **novo e
+genérico** (`<T extends string>`), aceitando `onUpload: (tipo: T, file: File) => Promise<unknown>`
+injetado — funciona tanto com `candidaturaMedicoApi` (sem token) quanto, no futuro, com
+`medicosApi` (autenticado). **Decisão deliberada:** `DocumentosModal.tsx` (autenticado, já em
+produção) não foi refatorado para consumir este componente nesta task — o ticket pedia extração
+"reaproveitada nas etapas 3 e 5 do wizard público", não a substituição de uma tela autenticada já
+estável. Evita risco de regressão em uma tela madura por uma tarefa cujo escopo é a jornada
+pública.
+
+### `MultiFileUploadField` com `multiplos` por tipo de documento
+Prop `multiplos?: boolean` (default `true`) controla se o campo aceita reenvio após o primeiro
+arquivo: `multiplos={false}` para documentos oficiais únicos (CRM, comprovante de endereço,
+certidão de casamento, RQE) — mostra apenas "Enviado: nome.ext" e desabilita novo upload;
+`multiplos={true}` (om ausência de prop) para os campos da Etapa 5 que decisão do usuário definiu
+como "quantidade livre" (títulos de especialista) ou plausivelmente múltiplos (certificado de
+residência/especialização) — mostra contador "N arquivo(s) enviado(s) — clique para adicionar
+mais" + lista dos nomes.
+
+### PhoneInput — mesmo padrão de CpfInput, sem validação de dígito verificador
+`apps/web/src/components/PhoneInput.tsx` + `apps/web/src/utils/phone.ts` replicam a estrutura de
+`CpfInput.tsx`/`utils/cpf.ts` (máscara aplicada em `onChange`, `forwardRef`), mas sem estado de
+validade (telefone não tem dígito verificador) — só formata `(DD) NNNNN-NNNN` conforme o usuário
+digita. Usado no campo "Telefone/WhatsApp" da Etapa 1 do wizard público.
+
+### Etapa 4 (Dados Bancários) usa endpoint próprio, não o `atualizar()` geral
+Diferente das etapas 1/2/3/5 (que persistem via `candidaturaMedicoApi.atualizar(id, toRequest(form))`,
+substituindo o recurso inteiro), a Etapa 4 chama `atualizarDadosBancarios(id, req)` — um sub-recurso
+separado no backend (`dados_bancarios_medico`, EPIC-14.3). `persistBank()` é uma função dedicada,
+com sua própria validação (`validateStep(3)`), independente da validação geral de `form`.
+
+### Envio final = 2 chamadas sequenciais, nunca uma só
+`handleEnviar()` (Etapa 6 — LGPD) primeiro chama `registrarDeclaracaoLgpd(id, req)` e só then
+`finalizar(id)` — são dois endpoints distintos no backend (EPIC-14.2/14.3), sem endpoint combinado.
+Se `registrarDeclaracaoLgpd` falhar, `finalizar` nunca é chamado (a candidatura fica incompleta e
+o usuário pode tentar de novo). Só após ambos terem sucesso o `sessionStorage` é limpo
+(`STORAGE_KEY_ID` removido) — diferente das etapas 1-5, que sempre persistem o id para retomada,
+aqui a candidatura está genuinamente finalizada (status avança além de `RASCUNHO`, e
+`findEditavelOrThrow` no backend passa a rejeitar novas edições com 422).
+
+### Validação de teste ponta-a-ponta: e-mail + Keycloak confirmados via API, não só a UI
+Além do teste manual no navegador, a finalização foi confirmada consultando diretamente o Mailhog
+(`http://localhost:8025`, e-mail "Recebemos sua candidatura" recebido) e o Keycloak Admin API
+(`GET /admin/realms/pinsaude/users?email=...` retornando `enabled: false`) — validação que a
+cadeia completa (candidatura → LGPD → finalizar → criar usuário Keycloak desabilitado → notificar
+e-mail) funciona de ponta a ponta, não apenas que a tela de sucesso aparece.
+
+### Armadilha de automação: viewport grande faz `left_click` por coordenada errar o alvo
+Em uma sessão de teste manual com uma nova aba do Chrome cujo viewport lógico era muito maior
+(2390×1142) que a screenshot retornada (1568×750, escala ~0.656), cliques por coordenada (mesmo
+recalculados a partir do screenshot) erraram o campo alvo, fazendo texto ser digitado no campo
+errado ou em nenhum campo. **Solução:** usar `form_input` (via `ref` do `read_page`/`find`) para
+todos os campos de texto/select quando o viewport parecer desproporcional ao screenshot — `form_input`
+manipula o elemento diretamente via referência, sem depender de coordenadas de tela.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
