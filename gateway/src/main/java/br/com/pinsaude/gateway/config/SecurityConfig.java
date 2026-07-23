@@ -23,7 +23,11 @@ public class SecurityConfig {
         http
             .csrf(ServerHttpSecurity.CsrfSpec::disable)
             .authorizeExchange(auth -> auth
-                .pathMatchers("/actuator/health", "/actuator/info").permitAll()
+                // Auto-cadastro público de médico (EPIC-14) — sem JWT, precisa passar pelo
+                // gateway sem exigir Bearer token (o SecurityConfig do onboarding também
+                // libera esse path; sem essa liberação aqui, o gateway bloqueia com 401
+                // antes mesmo da requisição chegar ao serviço).
+                .pathMatchers("/actuator/health", "/actuator/info", "/api/onboarding/publico/**").permitAll()
                 .anyExchange().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

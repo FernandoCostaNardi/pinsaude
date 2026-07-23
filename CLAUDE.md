@@ -2974,6 +2974,62 @@ relacionado ao onboarding/EPIC-14 — sinalizado aqui para quem for mexer nesses
 
 ---
 
+## Auto-cadastro Público de Médico — API de Candidatura (EPIC-14.2)
+
+### Novo serviço/controller isolados, nunca reaproveitar `MedicoService`/`MedicoController`
+`CadastroPublicoService`/`CadastroPublicoController` são componentes **novos e separados** de
+`MedicoService`/`MedicoController` — o fluxo público não deve reaproveitar os métodos existentes
+porque eles assumem sempre um operador/gestão autenticado (`getCurrentUser()` via
+`SecurityContextHolder`, `@PreAuthorize` em todo endpoint). O serviço público só enxerga/edita
+médicos com `origemCadastro = "AUTO_CADASTRO"` — nunca cadastros manuais, mesmo sabendo o UUID.
+
+### UUID da candidatura funciona como "capability handle" — sem tabela de token
+`POST /api/onboarding/publico/candidaturas` retorna o `id` do `Medico` recém-criado; esse mesmo
+UUID é usado depois em `PUT/GET .../candidaturas/{id}` para continuar o preenchimento — não existe
+tabela de token separada (mesmo espírito do token opaco de `ConviteMedico`, mas reaproveitando o
+próprio ID gerado). `GET` funciona em qualquer status (somente leitura); `PUT` só funciona enquanto
+`status = RASCUNHO` — depois de aprovado/ativado, a candidatura fica travada para edição pública.
+
+### Duas camadas de `SecurityConfig` precisam liberar o mesmo path
+Rota pública nova precisa de **dois** ajustes, não só um:
+1. `services/onboarding/.../config/SecurityConfig.java` — `.requestMatchers("/api/onboarding/publico/**").permitAll()`.
+2. `gateway/.../config/SecurityConfig.java` — `.pathMatchers("/api/onboarding/publico/**").permitAll()`.
+
+O gateway hoje faz `anyExchange().authenticated()` para tudo exceto `/actuator/health`/`/actuator/info`
+— **isso bloqueia até o webhook do Clicksign** (`/api/onboarding/webhooks/**`, permitAll só no
+onboarding, nunca liberado no gateway). Não corrigimos o webhook nesta task (integração externa já
+em produção, fora do escopo do EPIC-14), mas documentamos aqui: qualquer novo endpoint público de
+qualquer serviço só é realmente público se **ambos** os SecurityConfig liberarem o mesmo path.
+
+### Testcontainers — `search_path` não replica `ALTER USER ... SET search_path` do Postgres real
+Além das roles `svc_onboarding`/`svc_portal` (EPIC-14.1), o Postgres real tem
+`ALTER USER svc_onboarding SET search_path TO onboarding, public` (`tools/db/init.sql`). Isso faz
+com que `pgcrypto` (instalado no schema `onboarding` pois `spring.flyway.schemas=onboarding`) seja
+resolvido também nas conexões normais da aplicação — `onboarding.encrypt_sensitive()` chama
+`pgp_sym_encrypt()` sem qualificar o schema, contando com esse `search_path`. O usuário `test` do
+Testcontainers não tem esse `ALTER`, então qualquer teste que exercite `CryptoService` de verdade
+(não mockado) falha com `function pgp_sym_encrypt(text, text) does not exist`. Nenhum teste
+anterior ao EPIC-14.2 tinha exercitado esse caminho com banco real (todos usam `CryptoService`
+mockado). Corrigido incluindo no mesmo `test-roles-init.sql` (EPIC-14.1):
+```sql
+ALTER DATABASE test SET search_path TO onboarding, public;
+```
+
+### Gateway — testando "este path é público" sem depender de um backend real no ar
+Um teste que faz round-trip completo (`WebTestClient` num `@SpringBootTest` do gateway) para um
+path que tem rota configurada (`Path=/api/onboarding/**` → `localhost:8085`) pode **acidentalmente
+bater num serviço onboarding real** rodando localmente (ex.: IDE com run configuration ativa) — e
+nesse caso o 401 vem do *downstream* (que pode estar com código desatualizado), não do gateway.
+Testar apenas `status != 401` é frágil por isso. Sinal confiável: o header `Vary` só aparece quando
+o request passa da checagem de autorização e entra no roteamento reativo do WebFlux — o 401
+imediato do próprio `SecurityConfig` (rota não permitida) nunca tem esse header. Ver
+`gateway/src/test/java/.../SecurityIntegrationTest.cadastroPublico_semToken_naoEhBloqueadoPeloGateway`.
+Tentar sobrescrever `spring.cloud.gateway.routes[N].uri` via `@DynamicPropertySource` para apontar
+a uma porta morta quebrou o carregamento do `ApplicationContext` — não investigado a fundo, evitar
+esse caminho.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
