@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { Landmark, CreditCard, CheckCircle, Star } from 'lucide-react'
-import { Modal, Input, Button, Alert } from '@pinsaude/ui'
+import { Modal, Input, Button, Alert, StepWizard } from '@pinsaude/ui'
 import { BancoSelect, BancoAvatar, bancos } from './BancoSelect'
 import { ContaBancaria, ContaBancariaRequest, TipoConta, contasBancariasApi } from '../api/contasBancariasApi'
 
 const STEPS = [
-  { label: 'Banco', Icon: Landmark },
-  { label: 'Conta e PIX', Icon: CreditCard },
-  { label: 'Revisão', Icon: CheckCircle },
-] as const
+  { label: 'Banco', icon: Landmark },
+  { label: 'Conta e PIX', icon: CreditCard },
+  { label: 'Revisão', icon: CheckCircle },
+]
 
 const TIPO_LABELS: Record<TipoConta, string> = {
   CORRENTE: 'Corrente',
@@ -102,7 +102,7 @@ export function ContaBancariaWizardModal({ empresaId, conta, onClose, onSaved }:
       size="md"
     >
       <div className="flex flex-col gap-6">
-        <WizardSteps current={step} maxVisited={maxVisited} onGo={goTo} />
+        <StepWizard steps={STEPS} current={step} maxVisited={maxVisited} onStepClick={goTo} />
 
         <div className="min-h-[180px]">
           {step === 0 && (
@@ -138,78 +138,6 @@ export function ContaBancariaWizardModal({ empresaId, conta, onClose, onSaved }:
         </div>
       </div>
     </Modal>
-  )
-}
-
-// ─── Step Indicator ───────────────────────────────────────────────────────────
-
-function WizardSteps({
-  current,
-  maxVisited,
-  onGo,
-}: {
-  current: number
-  maxVisited: number
-  onGo: (s: number) => void
-}) {
-  return (
-    <nav className="flex items-start justify-center">
-      {STEPS.map(({ label, Icon }, i) => {
-        const isDone = i < current
-        const isActive = i === current
-        const isClickable = i <= maxVisited
-
-        return (
-          <div key={i} className="flex items-start">
-            <button
-              type="button"
-              onClick={() => isClickable && onGo(i)}
-              disabled={!isClickable}
-              className="flex flex-col items-center gap-1 w-14 sm:w-24"
-            >
-              <div
-                className={[
-                  'w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center border-2 transition-all duration-300',
-                  isDone
-                    ? 'bg-secondary-100 border-secondary-400 text-secondary-700'
-                    : isActive
-                    ? 'bg-primary border-primary text-white shadow-lg shadow-primary/20'
-                    : 'bg-white border-gray-200 text-gray-300',
-                ].join(' ')}
-              >
-                {isDone
-                  ? <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-secondary-600" />
-                  : <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
-                }
-              </div>
-              {/* Label visível apenas no desktop */}
-              <span className={[
-                'hidden sm:block text-xs font-medium text-center leading-tight w-20',
-                isDone ? 'text-secondary-700' : isActive ? 'text-primary-700' : 'text-gray-400',
-              ].join(' ')}>
-                {label}
-              </span>
-              {/* Número compacto no mobile */}
-              <span className={[
-                'sm:hidden text-[10px] font-semibold',
-                isDone ? 'text-secondary-600' : isActive ? 'text-primary' : 'text-gray-400',
-              ].join(' ')}>
-                {i + 1}
-              </span>
-            </button>
-
-            {i < STEPS.length - 1 && (
-              <div className="flex-1 h-0.5 mt-[18px] sm:mt-5 mx-1 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all duration-500"
-                  style={{ width: i < current ? '100%' : '0%' }}
-                />
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </nav>
   )
 }
 
