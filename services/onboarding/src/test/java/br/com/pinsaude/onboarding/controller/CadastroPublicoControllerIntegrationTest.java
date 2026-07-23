@@ -2,18 +2,27 @@ package br.com.pinsaude.onboarding.controller;
 
 import br.com.pinsaude.onboarding.domain.Medico;
 import br.com.pinsaude.onboarding.domain.StatusMedico;
+import br.com.pinsaude.onboarding.domain.TipoDocumentoMedico;
+import br.com.pinsaude.onboarding.dto.CandidaturaDadosBancariosRequest;
 import br.com.pinsaude.onboarding.dto.CandidaturaPublicaRequest;
+import br.com.pinsaude.onboarding.dto.DeclaracaoLgpdRequest;
 import br.com.pinsaude.onboarding.repository.DadosCivisMedicoRepository;
+import br.com.pinsaude.onboarding.repository.DadosBancariosMedicoRepository;
+import br.com.pinsaude.onboarding.repository.DeclaracoesLgpdMedicoRepository;
+import br.com.pinsaude.onboarding.repository.DocumentoMedicoRepository;
 import br.com.pinsaude.onboarding.repository.MedicoRepository;
 import br.com.pinsaude.onboarding.service.CryptoService;
+import br.com.pinsaude.onboarding.service.StorageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -22,6 +31,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -54,10 +67,22 @@ class CadastroPublicoControllerIntegrationTest {
     @Autowired ObjectMapper objectMapper;
     @Autowired MedicoRepository medicoRepo;
     @Autowired DadosCivisMedicoRepository dadosCivisRepo;
+    @Autowired DocumentoMedicoRepository documentoRepo;
+    @Autowired DadosBancariosMedicoRepository dadosBancariosRepo;
+    @Autowired DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo;
     @Autowired CryptoService cryptoService;
+
+    // MinIO não faz parte da infra deste teste (só Postgres via Testcontainers) — mockar
+    // StorageService evita depender de um MinIO real rodando para testar o round-trip
+    // HTTP completo do upload (multipart, permitAll, persistência), sem tornar o teste
+    // dependente de infraestrutura externa (rodaria diferente localmente vs CI).
+    @MockBean StorageService storageService;
 
     @BeforeEach
     void limparBanco() {
+        declaracoesLgpdRepo.deleteAll();
+        dadosBancariosRepo.deleteAll();
+        documentoRepo.deleteAll();
         dadosCivisRepo.deleteAll();
         medicoRepo.deleteAll();
     }
@@ -215,7 +240,155 @@ class CadastroPublicoControllerIntegrationTest {
             .andExpect(status().isNotFound());
     }
 
+    // ── documentos ───────────────────────────────────────────────────────────
+
+    @Test
+    void uploadDocumento_semAutenticacao_persisteSemLimiteDeQuantidade() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70001");
+        when(storageService.upload(any(), any(), any())).thenReturn("documentos/fake/path.pdf");
+
+        for (int i = 0; i < 3; i++) {
+            var arquivo = new MockMultipartFile("arquivo", "titulo" + i + ".pdf",
+                "application/pdf", ("conteudo-" + i).getBytes());
+            mockMvc.perform(multipart("/api/onboarding/publico/candidaturas/{id}/documentos", id)
+                    .file(arquivo)
+                    .param("tipo", "ESPECIALIDADES"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tipo").value("ESPECIALIDADES"));
+        }
+
+        long total = documentoRepo.findByMedicoId(id).stream()
+            .filter(d -> d.getTipo() == TipoDocumentoMedico.ESPECIALIDADES)
+            .count();
+        assertThat(total).isEqualTo(3);
+    }
+
+    @Test
+    void uploadDocumento_novosTiposDeDocumento_saoAceitos() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70002");
+        when(storageService.upload(any(), any(), any())).thenReturn("documentos/fake/path.pdf");
+
+        for (TipoDocumentoMedico tipo : List.of(
+                TipoDocumentoMedico.CERTIDAO_CASAMENTO,
+                TipoDocumentoMedico.COMPROVANTE_ENDERECO,
+                TipoDocumentoMedico.RQE)) {
+            var arquivo = new MockMultipartFile("arquivo", "doc.pdf", "application/pdf", new byte[]{1});
+            mockMvc.perform(multipart("/api/onboarding/publico/candidaturas/{id}/documentos", id)
+                    .file(arquivo)
+                    .param("tipo", tipo.name()))
+                .andExpect(status().isCreated());
+        }
+    }
+
+    @Test
+    void uploadDocumento_candidaturaJaAtivada_retorna422() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70003");
+        Medico medico = medicoRepo.findById(id).orElseThrow();
+        medico.setStatus(StatusMedico.ATIVO);
+        medicoRepo.save(medico);
+
+        var arquivo = new MockMultipartFile("arquivo", "crm.pdf", "application/pdf", new byte[]{1});
+        mockMvc.perform(multipart("/api/onboarding/publico/candidaturas/{id}/documentos", id)
+                .file(arquivo)
+                .param("tipo", "CRM"))
+            .andExpect(status().isUnprocessableEntity());
+    }
+
+    // ── dados bancários ──────────────────────────────────────────────────────
+
+    @Test
+    void atualizarDadosBancarios_semCampoConfirmarAlteracao_persistePix() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70004");
+        var req = new CandidaturaDadosBancariosRequest(
+            "PIX", br.com.pinsaude.onboarding.domain.TipoPix.EMAIL, "maria@exemplo.com",
+            null, null, null, null, null, null);
+
+        mockMvc.perform(put("/api/onboarding/publico/candidaturas/{id}/dados-bancarios", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.tipoRecebimento").value("PIX"))
+            .andExpect(jsonPath("$.chavePix").value("maria@exemplo.com"));
+
+        assertThat(dadosBancariosRepo.findByMedicoId(id)).isPresent();
+    }
+
+    // ── declarações LGPD ─────────────────────────────────────────────────────
+
+    @Test
+    void registrarDeclaracaoLgpd_todosAceites_persisteAssinaturaEIp() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70005");
+        var req = new DeclaracaoLgpdRequest(true, true, true, true, "Maria Teste");
+
+        mockMvc.perform(post("/api/onboarding/publico/candidaturas/{id}/declaracoes-lgpd", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.assinaturaNome").value("Maria Teste"));
+
+        var salvo = declaracoesLgpdRepo.findById(id).orElseThrow();
+        assertThat(salvo.isCompleto()).isTrue();
+        assertThat(salvo.getIpOrigem()).isNotBlank();
+    }
+
+    @Test
+    void registrarDeclaracaoLgpd_aceiteFaltando_retorna400() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70006");
+        var req = new DeclaracaoLgpdRequest(true, true, false, true, "Maria Teste");
+
+        mockMvc.perform(post("/api/onboarding/publico/candidaturas/{id}/declaracoes-lgpd", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isBadRequest());
+    }
+
+    // ── finalizar ────────────────────────────────────────────────────────────
+
+    @Test
+    void finalizar_semDocumentosObrigatorios_retorna422ComPendenciasNaMensagem() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70007");
+
+        mockMvc.perform(post("/api/onboarding/publico/candidaturas/{id}/finalizar", id))
+            .andExpect(status().isUnprocessableEntity())
+            .andExpect(jsonPath("$.mensagem", containsString("CRM")))
+            .andExpect(jsonPath("$.mensagem", containsString("LGPD")));
+    }
+
+    @Test
+    void finalizar_completo_retorna200() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70008");
+        when(storageService.upload(any(), any(), any())).thenReturn("documentos/fake/path.pdf");
+
+        for (TipoDocumentoMedico tipo : List.of(TipoDocumentoMedico.CRM, TipoDocumentoMedico.COMPROVANTE_ENDERECO)) {
+            var arquivo = new MockMultipartFile("arquivo", "doc.pdf", "application/pdf", new byte[]{1});
+            mockMvc.perform(multipart("/api/onboarding/publico/candidaturas/{id}/documentos", id)
+                    .file(arquivo)
+                    .param("tipo", tipo.name()))
+                .andExpect(status().isCreated());
+        }
+
+        mockMvc.perform(post("/api/onboarding/publico/candidaturas/{id}/declaracoes-lgpd", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(
+                    new DeclaracaoLgpdRequest(true, true, true, true, "Maria Teste"))))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/onboarding/publico/candidaturas/{id}/finalizar", id))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("RASCUNHO"))
+            .andExpect(jsonPath("$.mensagem", containsStringIgnoringCase("recebida")));
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private UUID criarCandidatura(String cpf, String crm) throws Exception {
+        String resposta = mockMvc.perform(post("/api/onboarding/publico/candidaturas")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(requestValido(cpf, crm))))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        return UUID.fromString(objectMapper.readTree(resposta).get("id").asText());
+    }
 
     private void assertThatOrigemEhAutoCadastro(Medico medico) {
         assertThat(medico.getOrigemCadastro()).isEqualTo("AUTO_CADASTRO");

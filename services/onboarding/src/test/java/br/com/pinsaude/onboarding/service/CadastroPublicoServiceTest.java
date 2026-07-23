@@ -1,11 +1,8 @@
 package br.com.pinsaude.onboarding.service;
 
 import br.com.pinsaude.onboarding.domain.*;
-import br.com.pinsaude.onboarding.dto.CandidaturaPublicaRequest;
-import br.com.pinsaude.onboarding.dto.CandidaturaPublicaResponse;
-import br.com.pinsaude.onboarding.repository.DadosCivisMedicoRepository;
-import br.com.pinsaude.onboarding.repository.HistoricoMedicoRepository;
-import br.com.pinsaude.onboarding.repository.MedicoRepository;
+import br.com.pinsaude.onboarding.dto.*;
+import br.com.pinsaude.onboarding.repository.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -13,6 +10,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
@@ -29,8 +27,13 @@ class CadastroPublicoServiceTest {
 
     @Mock MedicoRepository medicoRepo;
     @Mock DadosCivisMedicoRepository dadosCivisRepo;
+    @Mock DadosBancariosMedicoRepository dadosBancariosRepo;
+    @Mock DocumentoMedicoRepository documentoRepo;
+    @Mock DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo;
     @Mock HistoricoMedicoRepository historicoRepo;
     @Mock CryptoService cryptoService;
+    @Mock StorageService storageService;
+    @Mock NotificacaoService notificacaoService;
 
     @InjectMocks CadastroPublicoService service;
 
@@ -266,6 +269,186 @@ class CadastroPublicoServiceTest {
         CandidaturaPublicaResponse resp = service.buscar(MEDICO_ID);
 
         assertThat(resp.status()).isEqualTo("ATIVO");
+    }
+
+    // ── uploadDocumento ────────────────────────────────────────────────────
+
+    @Test
+    void uploadDocumento_sucesso_salvaSemLimiteDeQuantidade() {
+        Medico medico = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.RASCUNHO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
+        when(storageService.upload(any(), any(), any())).thenReturn("documentos/x/CRM/123-arq.pdf");
+        when(documentoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        var arquivo = new MockMultipartFile("arquivo", "crm.pdf", "application/pdf", new byte[]{1, 2, 3});
+
+        DocumentoMedicoResponse resp = service.uploadDocumento(MEDICO_ID, TipoDocumentoMedico.CRM, arquivo);
+
+        assertThat(resp.tipo()).isEqualTo(TipoDocumentoMedico.CRM);
+        assertThat(resp.statusValidacao()).isEqualTo(StatusValidacaoDocumento.PENDENTE);
+        verify(historicoRepo).save(any(HistoricoMedico.class));
+        // Sem verify(documentoRepo, times(N)).save — não há checagem de contagem/limite.
+    }
+
+    @Test
+    void uploadDocumento_arquivoVazio_lancaBadRequest() {
+        Medico medico = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.RASCUNHO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
+        var vazio = new MockMultipartFile("arquivo", "vazio.pdf", "application/pdf", new byte[0]);
+
+        assertThatThrownBy(() -> service.uploadDocumento(MEDICO_ID, TipoDocumentoMedico.CRM, vazio))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void uploadDocumento_candidaturaNaoEditavel_lancaUnprocessableEntity() {
+        Medico ativo = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.ATIVO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(ativo));
+        var arquivo = new MockMultipartFile("arquivo", "crm.pdf", "application/pdf", new byte[]{1});
+
+        assertThatThrownBy(() -> service.uploadDocumento(MEDICO_ID, TipoDocumentoMedico.CRM, arquivo))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    // ── atualizarDadosBancarios ────────────────────────────────────────────
+
+    @Test
+    void atualizarDadosBancarios_pix_persisteChavePixSemConfirmarAlteracao() {
+        Medico medico = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.RASCUNHO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
+        when(cryptoService.encrypt(any())).thenReturn(new byte[]{9, 9});
+        when(cryptoService.decrypt(any())).thenReturn("medico@exemplo.com");
+        when(dadosBancariosRepo.findByMedicoId(MEDICO_ID)).thenReturn(Optional.empty());
+        when(dadosBancariosRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var req = new CandidaturaDadosBancariosRequest(
+            "PIX", TipoPix.EMAIL, "medico@exemplo.com", null, null, null, null, null, null);
+
+        DadosBancariosMedicoResponse resp = service.atualizarDadosBancarios(MEDICO_ID, req);
+
+        assertThat(resp.tipoRecebimento()).isEqualTo("PIX");
+        assertThat(resp.tipoPix()).isEqualTo(TipoPix.EMAIL);
+        verify(historicoRepo).save(any(HistoricoMedico.class));
+    }
+
+    @Test
+    void atualizarDadosBancarios_candidaturaNaoEditavel_lancaUnprocessableEntity() {
+        Medico ativo = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.ATIVO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(ativo));
+
+        var req = new CandidaturaDadosBancariosRequest(
+            "TED", null, null, null, "341", "Itaú", "1234", "56789-0", "CORRENTE");
+
+        assertThatThrownBy(() -> service.atualizarDadosBancarios(MEDICO_ID, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    // ── registrarDeclaracaoLgpd ────────────────────────────────────────────
+
+    @Test
+    void registrarDeclaracaoLgpd_sucesso_persisteAssinaturaEIp() {
+        Medico medico = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.RASCUNHO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
+        when(declaracoesLgpdRepo.findById(MEDICO_ID)).thenReturn(Optional.empty());
+        ArgumentCaptor<DeclaracoesLgpdMedico> captor = ArgumentCaptor.forClass(DeclaracoesLgpdMedico.class);
+        when(declaracoesLgpdRepo.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+        var req = new DeclaracaoLgpdRequest(true, true, true, true, "Maria Teste");
+
+        DeclaracaoLgpdResponse resp = service.registrarDeclaracaoLgpd(MEDICO_ID, req, "200.100.50.25");
+
+        assertThat(resp.assinaturaNome()).isEqualTo("Maria Teste");
+        assertThat(captor.getValue().getIpOrigem()).isEqualTo("200.100.50.25");
+        assertThat(captor.getValue().isCompleto()).isTrue();
+        verify(historicoRepo).save(any(HistoricoMedico.class));
+    }
+
+    // ── finalizar ──────────────────────────────────────────────────────────
+
+    @Test
+    void finalizar_todosRequisitosCumpridos_sucesso() {
+        Medico medico = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.RASCUNHO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
+
+        DocumentoMedico crm = new DocumentoMedico();
+        crm.setTipo(TipoDocumentoMedico.CRM);
+        DocumentoMedico comprovante = new DocumentoMedico();
+        comprovante.setTipo(TipoDocumentoMedico.COMPROVANTE_ENDERECO);
+        when(documentoRepo.findByMedicoId(MEDICO_ID)).thenReturn(List.of(crm, comprovante));
+
+        var lgpd = new DeclaracoesLgpdMedico(MEDICO_ID);
+        lgpd.setAceiteDeclaracaoVeracidade(true);
+        lgpd.setAutorizacaoUsoDados(true);
+        lgpd.setAutorizacaoCompartilhamento(true);
+        lgpd.setAvisoPrivacidadeLido(true);
+        when(declaracoesLgpdRepo.findById(MEDICO_ID)).thenReturn(Optional.of(lgpd));
+
+        FinalizarCandidaturaResponse resp = service.finalizar(MEDICO_ID);
+
+        assertThat(resp.id()).isEqualTo(MEDICO_ID);
+        assertThat(resp.status()).isEqualTo("RASCUNHO");
+        verify(notificacaoService).notificarCandidaturaRecebida(medico);
+        verify(historicoRepo).save(any(HistoricoMedico.class));
+    }
+
+    @Test
+    void finalizar_semDocumentosObrigatorios_lancaUnprocessableEntity() {
+        Medico medico = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.RASCUNHO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
+        when(documentoRepo.findByMedicoId(MEDICO_ID)).thenReturn(List.of());
+        when(declaracoesLgpdRepo.findById(MEDICO_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.finalizar(MEDICO_ID))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> {
+                var rse = (ResponseStatusException) ex;
+                assertThat(rse.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                assertThat(rse.getReason()).contains("CRM").contains("COMPROVANTE_ENDERECO").contains("LGPD");
+            });
+
+        verify(notificacaoService, never()).notificarCandidaturaRecebida(any());
+    }
+
+    @Test
+    void finalizar_lgpdIncompleta_lancaUnprocessableEntity() {
+        Medico medico = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.RASCUNHO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
+
+        DocumentoMedico crm = new DocumentoMedico();
+        crm.setTipo(TipoDocumentoMedico.CRM);
+        DocumentoMedico comprovante = new DocumentoMedico();
+        comprovante.setTipo(TipoDocumentoMedico.COMPROVANTE_ENDERECO);
+        when(documentoRepo.findByMedicoId(MEDICO_ID)).thenReturn(List.of(crm, comprovante));
+
+        var lgpdIncompleta = new DeclaracoesLgpdMedico(MEDICO_ID);
+        lgpdIncompleta.setAceiteDeclaracaoVeracidade(true);
+        // autorizacaoUsoDados/autorizacaoCompartilhamento/avisoPrivacidadeLido continuam false
+        when(declaracoesLgpdRepo.findById(MEDICO_ID)).thenReturn(Optional.of(lgpdIncompleta));
+
+        assertThatThrownBy(() -> service.finalizar(MEDICO_ID))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(notificacaoService, never()).notificarCandidaturaRecebida(any());
+    }
+
+    @Test
+    void finalizar_candidaturaJaAtivada_lancaUnprocessableEntity() {
+        Medico ativo = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.ATIVO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(ativo));
+
+        assertThatThrownBy(() -> service.finalizar(MEDICO_ID))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(notificacaoService, never()).notificarCandidaturaRecebida(any());
     }
 
     // ── helper: gera CPF válido a partir de uma base de 9 dígitos ──────────
