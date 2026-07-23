@@ -1,20 +1,21 @@
 package br.com.pinsaude.onboarding.service;
 
 import br.com.pinsaude.onboarding.domain.*;
-import br.com.pinsaude.onboarding.dto.CandidaturaPublicaRequest;
-import br.com.pinsaude.onboarding.dto.CandidaturaPublicaResponse;
-import br.com.pinsaude.onboarding.repository.DadosCivisMedicoRepository;
-import br.com.pinsaude.onboarding.repository.HistoricoMedicoRepository;
-import br.com.pinsaude.onboarding.repository.MedicoRepository;
+import br.com.pinsaude.onboarding.dto.*;
+import br.com.pinsaude.onboarding.repository.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -28,20 +29,44 @@ public class CadastroPublicoService {
     private static final String USUARIO_SISTEMA = "auto-cadastro-publico";
     private static final String CANAL_INDICACAO = "Indicação";
 
+    // Documentos obrigatórios para finalizar a candidatura — os demais tipos (RQE,
+    // certidão de casamento, títulos/especialidades, residência) são opcionais e
+    // validados apenas na triagem manual pelo operador (ver notas do EPIC-14.3).
+    private static final List<TipoDocumentoMedico> DOCUMENTOS_OBRIGATORIOS =
+        List.of(TipoDocumentoMedico.CRM, TipoDocumentoMedico.COMPROVANTE_ENDERECO);
+
     private final MedicoRepository medicoRepo;
     private final DadosCivisMedicoRepository dadosCivisRepo;
+    private final DadosBancariosMedicoRepository dadosBancariosRepo;
+    private final DocumentoMedicoRepository documentoRepo;
+    private final DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo;
     private final HistoricoMedicoRepository historicoRepo;
     private final CryptoService cryptoService;
+    private final StorageService storageService;
+    private final NotificacaoService notificacaoService;
+    private final KeycloakAdminService keycloakAdminService;
 
     public CadastroPublicoService(
             MedicoRepository medicoRepo,
             DadosCivisMedicoRepository dadosCivisRepo,
+            DadosBancariosMedicoRepository dadosBancariosRepo,
+            DocumentoMedicoRepository documentoRepo,
+            DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo,
             HistoricoMedicoRepository historicoRepo,
-            CryptoService cryptoService) {
+            CryptoService cryptoService,
+            StorageService storageService,
+            NotificacaoService notificacaoService,
+            KeycloakAdminService keycloakAdminService) {
         this.medicoRepo = medicoRepo;
         this.dadosCivisRepo = dadosCivisRepo;
+        this.dadosBancariosRepo = dadosBancariosRepo;
+        this.documentoRepo = documentoRepo;
+        this.declaracoesLgpdRepo = declaracoesLgpdRepo;
         this.historicoRepo = historicoRepo;
         this.cryptoService = cryptoService;
+        this.storageService = storageService;
+        this.notificacaoService = notificacaoService;
+        this.keycloakAdminService = keycloakAdminService;
     }
 
     @Transactional
@@ -104,7 +129,155 @@ public class CadastroPublicoService {
         return CandidaturaPublicaResponse.from(medico, cpf, dadosCivis);
     }
 
+    @Transactional
+    public DocumentoMedicoResponse uploadDocumento(UUID id, TipoDocumentoMedico tipo, MultipartFile arquivo) {
+        findEditavelOrThrow(id);
+        if (arquivo.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Arquivo não pode estar vazio");
+        }
+
+        // Sem limite de quantidade por tipo — decisão explícita do usuário (ver EPIC-14
+        // no plano): o médico pode enviar quantos títulos/documentos quiser.
+        String caminho = storageService.upload(id, tipo.name(), arquivo);
+
+        var doc = new DocumentoMedico();
+        doc.setMedicoId(id);
+        doc.setTipo(tipo);
+        doc.setNomeArquivo(arquivo.getOriginalFilename());
+        doc.setCaminhoStorage(caminho);
+        doc.setStatusValidacao(StatusValidacaoDocumento.PENDENTE);
+        doc = documentoRepo.save(doc);
+
+        registrarHistorico(id, TipoAcaoMedico.UPLOAD_DOCUMENTO,
+            "Documento enviado pelo próprio médico: " + tipo.name());
+
+        return DocumentoMedicoResponse.from(doc);
+    }
+
+    @Transactional
+    public DadosBancariosMedicoResponse atualizarDadosBancarios(UUID id, CandidaturaDadosBancariosRequest req) {
+        findEditavelOrThrow(id);
+
+        var dados = dadosBancariosRepo.findByMedicoId(id)
+            .orElseGet(() -> {
+                var novo = new DadosBancariosMedico();
+                novo.setMedicoId(id);
+                return novo;
+            });
+
+        dados.setTipoRecebimento(req.tipoRecebimento() != null ? req.tipoRecebimento() : "PIX");
+        if ("TED".equals(req.tipoRecebimento())) {
+            dados.setTipoPix(null);
+            dados.setChavePIXCriptografada(null);
+            dados.setCpfsAdicionaisSplit(null);
+            dados.setBancoCodigo(req.bancoCodigo());
+            dados.setBancoNome(req.bancoNome());
+            dados.setAgencia(req.agencia());
+            dados.setConta(req.conta());
+            dados.setTipoConta(req.tipoConta());
+        } else {
+            dados.setTipoPix(req.tipoPix());
+            dados.setChavePIXCriptografada(
+                req.chavePix() != null ? cryptoService.encrypt(req.chavePix()) : null);
+            dados.setCpfsAdicionaisSplit(req.cpfsAdicionaisSplit());
+            dados.setBancoCodigo(null);
+            dados.setBancoNome(null);
+            dados.setAgencia(null);
+            dados.setConta(null);
+            dados.setTipoConta(null);
+        }
+        dados = dadosBancariosRepo.save(dados);
+
+        registrarHistorico(id, TipoAcaoMedico.ATUALIZACAO_DADOS_BANCARIOS,
+            "Dados bancários informados pelo próprio médico");
+
+        String chavePIXDecriptografada = dados.getChavePIXCriptografada() != null
+            ? cryptoService.decrypt(dados.getChavePIXCriptografada()) : null;
+        return DadosBancariosMedicoResponse.from(dados, chavePIXDecriptografada);
+    }
+
+    @Transactional
+    public DeclaracaoLgpdResponse registrarDeclaracaoLgpd(UUID id, DeclaracaoLgpdRequest req, String ipOrigem) {
+        findEditavelOrThrow(id);
+
+        var declaracao = declaracoesLgpdRepo.findById(id).orElseGet(() -> new DeclaracoesLgpdMedico(id));
+        declaracao.setAceiteDeclaracaoVeracidade(req.aceiteDeclaracaoVeracidade());
+        declaracao.setAutorizacaoUsoDados(req.autorizacaoUsoDados());
+        declaracao.setAutorizacaoCompartilhamento(req.autorizacaoCompartilhamento());
+        declaracao.setAvisoPrivacidadeLido(req.avisoPrivacidadeLido());
+        declaracao.setAssinaturaNome(req.assinaturaNome());
+        declaracao.setAssinadoEm(OffsetDateTime.now());
+        declaracao.setIpOrigem(ipOrigem);
+        declaracao = declaracoesLgpdRepo.save(declaracao);
+
+        registrarHistorico(id, TipoAcaoMedico.ATUALIZACAO_DADOS,
+            "Declarações LGPD e assinatura eletrônica registradas pelo próprio médico");
+
+        return DeclaracaoLgpdResponse.from(declaracao);
+    }
+
+    @Transactional
+    public FinalizarCandidaturaResponse finalizar(UUID id) {
+        Medico medico = findEditavelOrThrow(id);
+        validarCompletudeParaFinalizar(id);
+
+        // Idempotente: se finalizar() for chamado de novo (retry de rede), não cria um
+        // segundo usuário Keycloak — só tenta de novo se a chamada anterior falhou (o que
+        // deixaria keycloakUserId ainda nulo, já que só persistimos após sucesso).
+        if (medico.getKeycloakUserId() == null) {
+            String keycloakUserId = criarUsuarioKeycloakDesabilitado(medico);
+            medico.setKeycloakUserId(keycloakUserId);
+            medico = medicoRepo.save(medico);
+        }
+
+        registrarHistorico(id, TipoAcaoMedico.CANDIDATURA_FINALIZADA,
+            "Candidatura finalizada e enviada para triagem");
+        notificacaoService.notificarCandidaturaRecebida(medico);
+
+        return new FinalizarCandidaturaResponse(id, medico.getStatus().name(),
+            "Candidatura recebida com sucesso! Você receberá um e-mail assim que a análise for concluída.");
+    }
+
     // ---- Helpers ----
+
+    private String criarUsuarioKeycloakDesabilitado(Medico medico) {
+        try {
+            return keycloakAdminService.createUserDesabilitado(medico.getEmail(), medico.getNome(), null);
+        } catch (Exception e) {
+            // Falha aqui não deve deixar o Medico num estado inconsistente: como só
+            // persistimos keycloakUserId DEPOIS do sucesso, e nada mais foi salvo ainda
+            // nesta chamada (historico/e-mail vêm depois), a transação não tem nada para
+            // desfazer — o médico continua RASCUNHO e editável, pronto para tentar de novo.
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                "Não foi possível concluir o cadastro no momento (falha ao criar acesso). " +
+                "Tente novamente em alguns minutos ou contate falecom@pinsaude.com.br: " + e.getMessage());
+        }
+    }
+
+    private void validarCompletudeParaFinalizar(UUID id) {
+        List<String> pendencias = new ArrayList<>();
+
+        List<TipoDocumentoMedico> tiposEnviados = documentoRepo.findByMedicoId(id).stream()
+            .map(DocumentoMedico::getTipo)
+            .toList();
+        for (TipoDocumentoMedico obrigatorio : DOCUMENTOS_OBRIGATORIOS) {
+            if (!tiposEnviados.contains(obrigatorio)) {
+                pendencias.add("documento " + obrigatorio.name());
+            }
+        }
+
+        boolean lgpdCompleta = declaracoesLgpdRepo.findById(id)
+            .map(DeclaracoesLgpdMedico::isCompleto)
+            .orElse(false);
+        if (!lgpdCompleta) {
+            pendencias.add("declarações LGPD e assinatura eletrônica");
+        }
+
+        if (!pendencias.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Não é possível finalizar a candidatura — pendências: " + String.join(", ", pendencias));
+        }
+    }
 
     private void validarDuplicidade(String cpfHash, String crm, String crmUf, Medico medicoAtual) {
         boolean cpfMudou = medicoAtual == null || !cpfHash.equals(medicoAtual.getCpfHash());
@@ -169,9 +342,13 @@ public class CadastroPublicoService {
     }
 
     private void registrarHistorico(UUID medicoId, String descricao) {
+        registrarHistorico(medicoId, TipoAcaoMedico.CADASTRO, descricao);
+    }
+
+    private void registrarHistorico(UUID medicoId, TipoAcaoMedico tipo, String descricao) {
         var h = new HistoricoMedico();
         h.setMedicoId(medicoId);
-        h.setTipoAcao(TipoAcaoMedico.CADASTRO.name());
+        h.setTipoAcao(tipo.name());
         h.setDescricao(descricao);
         h.setUsuario(USUARIO_SISTEMA);
         historicoRepo.save(h);

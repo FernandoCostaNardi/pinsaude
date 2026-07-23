@@ -20,12 +20,13 @@ public class EmailTemplateService {
     private static final Logger log = LoggerFactory.getLogger(EmailTemplateService.class);
 
     private static final Map<String, String> TIPO_TEMPLATE = Map.of(
-        "CONVITE_CADASTRO",     "email/convite-cadastro",
-        "DOCUMENTO_REPROVADO",  "email/documento-reprovado",
-        "MEDICO_ATIVADO",       "email/medico-ativado",
-        "NOTA_FISCAL_EMITIDA",  "email/nota-fiscal-emitida",
-        "ALERTA_TETO_FISCAL",   "email/alerta-teto-fiscal",
-        "REPASSE_EFETUADO",     "email/repasse-efetuado"
+        "CONVITE_CADASTRO",       "email/convite-cadastro",
+        "DOCUMENTO_REPROVADO",    "email/documento-reprovado",
+        "MEDICO_ATIVADO",         "email/medico-ativado",
+        "NOTA_FISCAL_EMITIDA",    "email/nota-fiscal-emitida",
+        "ALERTA_TETO_FISCAL",     "email/alerta-teto-fiscal",
+        "REPASSE_EFETUADO",       "email/repasse-efetuado",
+        "CANDIDATURA_RECEBIDA",   "email/candidatura-recebida"
     );
 
     private final JavaMailSender mailSender;

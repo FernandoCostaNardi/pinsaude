@@ -66,6 +66,13 @@ clicksign:
   access-token: ${CLICKSIGN_ACCESS_TOKEN:}
   template-key: ${CLICKSIGN_TEMPLATE_KEY:}
 
+keycloak:
+  admin:
+    server-url: ${KEYCLOAK_URL:http://localhost:8080}
+    realm: pinsaude
+    username: ${KEYCLOAK_ADMIN:admin}
+    password: ${KEYCLOAK_ADMIN_PASSWORD:admin}
+
 management:
   endpoints:
     web:

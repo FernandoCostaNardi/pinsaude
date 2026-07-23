@@ -43,6 +43,20 @@ public class NotificacaoService {
         ));
     }
 
+    public void notificarCandidaturaRecebida(Medico medico) {
+        if (medico.getEmail() == null || medico.getEmail().isBlank()) return;
+        var dados = Map.<String, Object>of(
+            "nome", medico.getNome()
+        );
+        publicar(new EmailEnvioMessage(
+            "CANDIDATURA_RECEBIDA",
+            medico.getEmail(),
+            medico.getId().toString(),
+            "Pin Saúde — Recebemos sua candidatura",
+            dados
+        ));
+    }
+
     public void notificarMedicoAtivado(Medico medico) {
         if (medico.getEmail() == null || medico.getEmail().isBlank()) return;
         var dados = Map.<String, Object>of(
