@@ -3,15 +3,52 @@ import {
   CheckCircle2, XCircle, FileText, ChevronRight,
   RefreshCw, User, Award, GraduationCap, Home, CreditCard,
   Mail, Send, Landmark, UserCheck, AlertCircle, ExternalLink,
-  BookOpen,
+  BookOpen, Sparkles, ShieldCheck, MapPin, Info, KeyRound,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import {
   Medico, StatusJuntaComercial, StatusContrato,
-  TipoDocumentoMedico, DocumentoMedico,
+  TipoDocumentoMedico, DocumentoMedico, EstadoCivil,
   medicosApi,
 } from '../api/medicosApi'
 import { useAuth } from '../auth/useAuth'
+
+// ─── Auto-cadastro (EPIC-14.8) ────────────────────────────────────────────────
+
+const ESTADO_CIVIL_LABELS: Record<EstadoCivil, string> = {
+  SOLTEIRO: 'Solteiro(a)',
+  CASADO_COMUNHAO_PARCIAL: 'Casado(a) — Comunhão Parcial de Bens',
+  CASADO_SEPARACAO_TOTAL: 'Casado(a) — Separação Total de Bens',
+  CASADO_COMUNHAO_UNIVERSAL: 'Casado(a) — Comunhão Universal de Bens',
+  UNIAO_ESTAVEL: 'União Estável',
+  DIVORCIADO: 'Divorciado(a)',
+  VIUVO: 'Viúvo(a)',
+  PARTICIPACAO_FINAL_AQUESTOS: 'Casado(a) — Participação Final nos Aquestos',
+  OUTRO: 'Outro',
+}
+
+function formatDate(iso?: string) {
+  if (!iso) return null
+  const d = iso.includes('T') ? new Date(iso) : new Date(`${iso}T00:00:00`)
+  return d.toLocaleDateString('pt-BR')
+}
+
+function AutoCadastroBadge({ className = '' }: { className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200 ${className}`}>
+      <Sparkles size={10} /> Auto-cadastro
+    </span>
+  )
+}
+
+function DadoCampo({ label, value, full = false }: { label: string; value?: string | null; full?: boolean }) {
+  return (
+    <div className={full ? 'col-span-2' : undefined}>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ds-light">{label}</p>
+      <p className="text-xs text-ds-text">{value || '—'}</p>
+    </div>
+  )
+}
 
 // ─── Tipos de estágio ────────────────────────────────────────────────────────
 
@@ -317,7 +354,10 @@ function DetalhePanel({
           </span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-base font-bold text-ds-text truncate">{medico.nome}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-base font-bold text-ds-text truncate">{medico.nome}</p>
+            {medico.origemCadastro === 'AUTO_CADASTRO' && <AutoCadastroBadge />}
+          </div>
           <p className="text-xs text-ds-mid">CRM {medico.crm}/{medico.crmUf.trim()} · {medico.especialidade ?? '—'}</p>
           {medico.email && <p className="text-[11px] text-ds-light mt-0.5">{medico.email}</p>}
         </div>
@@ -388,6 +428,91 @@ function DetalhePanel({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Dados Civis e Profissionais (auto-cadastro — EPIC-14.8) */}
+      {medico.dadosCivis && (
+        <div className="border border-ds-border rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <MapPin size={14} className="text-primary" />
+            <p className="text-xs font-semibold text-ds-mid uppercase tracking-wide">Dados Civis e Profissionais</p>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+            <DadoCampo label="Data de nascimento" value={formatDate(medico.dadosCivis.dataNascimento)} />
+            <DadoCampo label="Estado civil" value={medico.dadosCivis.estadoCivil ? ESTADO_CIVIL_LABELS[medico.dadosCivis.estadoCivil] : null} />
+            <DadoCampo label="Nacionalidade" value={medico.dadosCivis.nacionalidade} />
+            <DadoCampo label="Naturalidade" value={medico.dadosCivis.naturalidade} />
+            <DadoCampo label="Nome da mãe" value={medico.dadosCivis.nomeMae} />
+            <DadoCampo label="Nome do pai" value={medico.dadosCivis.nomePai} />
+            <DadoCampo
+              label="RG"
+              value={[medico.dadosCivis.rgNumero, medico.dadosCivis.rgOrgaoExpedidor, medico.dadosCivis.rgUf].filter(Boolean).join(' / ') || null}
+            />
+            <DadoCampo label="RQE" value={medico.dadosCivis.rqe} />
+            <DadoCampo
+              label="Endereço"
+              value={[
+                [medico.dadosCivis.logradouro, medico.dadosCivis.numero].filter(Boolean).join(', '),
+                medico.dadosCivis.complemento,
+                medico.dadosCivis.bairro,
+                [medico.dadosCivis.cidade, medico.dadosCivis.uf].filter(Boolean).join('/'),
+                medico.dadosCivis.cep,
+              ].filter(Boolean).join(' · ') || null}
+              full
+            />
+            <DadoCampo
+              label="Origem"
+              value={medico.dadosCivis.canalOrigem
+                ? medico.dadosCivis.canalOrigem + (medico.dadosCivis.nomeIndicador ? ` (indicado por ${medico.dadosCivis.nomeIndicador})` : '')
+                : null}
+              full
+            />
+            <DadoCampo
+              label="Situação de formação"
+              value={medico.dadosCivis.situacaoFormacao && medico.dadosCivis.situacaoFormacao.length > 0
+                ? medico.dadosCivis.situacaoFormacao.join(', ') : null}
+              full
+            />
+            <DadoCampo label="Áreas de atuação" value={medico.dadosCivis.areasAtuacao} full />
+            <DadoCampo label="Procedimentos que realiza" value={medico.dadosCivis.procedimentosRealiza} full />
+          </div>
+        </div>
+      )}
+
+      {/* Declarações LGPD (auto-cadastro — EPIC-14.8) */}
+      {medico.declaracoesLgpd && (
+        <div className="border border-ds-border rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldCheck size={14} className="text-green-600" />
+            <p className="text-xs font-semibold text-ds-mid uppercase tracking-wide">Declarações LGPD</p>
+          </div>
+          <div className="flex flex-col gap-1.5 mb-2">
+            {[
+              { label: 'Declaração de veracidade', ok: medico.declaracoesLgpd.aceiteDeclaracaoVeracidade },
+              { label: 'Autorização de uso de dados', ok: medico.declaracoesLgpd.autorizacaoUsoDados },
+              { label: 'Autorização de compartilhamento', ok: medico.declaracoesLgpd.autorizacaoCompartilhamento },
+              { label: 'Aviso de privacidade lido', ok: medico.declaracoesLgpd.avisoPrivacidadeLido },
+            ].map(({ label, ok }) => (
+              <div key={label} className="flex items-center gap-2">
+                {ok
+                  ? <CheckCircle2 size={12} className="text-green-500 shrink-0" />
+                  : <XCircle size={12} className="text-gray-300 shrink-0" />}
+                <span className={`text-xs ${ok ? 'text-ds-text' : 'text-ds-light'}`}>{label}</span>
+              </div>
+            ))}
+          </div>
+          {medico.declaracoesLgpd.assinaturaNome && (
+            <div className="rounded-lg bg-ds-input px-3 py-2">
+              <p className="text-[11px] text-ds-light">Assinatura eletrônica</p>
+              <p className="text-xs font-semibold text-ds-text">{medico.declaracoesLgpd.assinaturaNome}</p>
+              {medico.declaracoesLgpd.assinadoEm && (
+                <p className="text-[10px] text-ds-light mt-0.5">
+                  Assinado em {new Date(medico.declaracoesLgpd.assinadoEm).toLocaleString('pt-BR')}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -552,6 +677,14 @@ function DetalhePanel({
               ? 'Ativar Médico'
               : 'Ativar Médico (requisitos pendentes)'}
       </button>
+      {medico.origemCadastro === 'AUTO_CADASTRO' && medico.status !== 'ATIVO' && (
+        <p className="flex items-start gap-1.5 text-[11px] text-ds-light -mt-2">
+          <KeyRound size={12} className="shrink-0 mt-0.5" />
+          Este médico veio do auto-cadastro público. Ao clicar em "Ativar Médico", o acesso ao
+          sistema (usuário Keycloak) será liberado automaticamente — não é necessário nenhuma
+          ação adicional de cadastro de usuário.
+        </p>
+      )}
     </div>
   )
 }
@@ -561,7 +694,9 @@ function DetalhePanel({
 export function AprovacaoOnboardingPage() {
   const { user } = useAuth()
   const userRoles = user?.realm_access?.roles ?? []
-  const canAccess = userRoles.includes('operacao') || userRoles.includes('gestao')
+  const isGestao   = userRoles.includes('gestao')
+  const isOperacao = userRoles.includes('operacao')
+  const canAccess  = isOperacao || isGestao
 
   const [medicos,    setMedicos]    = useState<Medico[]>([])
   const [loading,    setLoading]    = useState(true)
@@ -649,6 +784,17 @@ export function AprovacaoOnboardingPage() {
 
       {error && <Alert variant="error" onClose={() => setError(null)}>{error}</Alert>}
 
+      {isOperacao && !isGestao && (
+        <Alert variant="info">
+          <span className="flex items-start gap-1.5">
+            <Info size={13} className="shrink-0 mt-0.5" />
+            Candidaturas de auto-cadastro público ainda sem empresa vinculada só aparecem para o
+            perfil Gestão. Assim que uma empresa for atribuída ao médico, a candidatura passa a
+            aparecer também para Operação.
+          </span>
+        </Alert>
+      )}
+
       {/* Filtros */}
       <div className="flex flex-wrap gap-2">
         {FILTER_ITEMS.map(({ key, label, cls }) => (
@@ -707,11 +853,14 @@ export function AprovacaoOnboardingPage() {
                     </div>
                     <ChevronRight size={14} className={`shrink-0 mt-0.5 ${isSelected ? 'text-primary' : 'text-ds-light'}`} />
                   </div>
-                  <div className="flex items-center justify-between mt-2">
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${cfg.cls}`}>
-                      {cfg.label}
-                    </span>
-                    <span className="text-[10px] text-ds-light">
+                  <div className="flex items-center justify-between mt-2 gap-1.5">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${cfg.cls}`}>
+                        {cfg.label}
+                      </span>
+                      {m.origemCadastro === 'AUTO_CADASTRO' && <AutoCadastroBadge />}
+                    </div>
+                    <span className="text-[10px] text-ds-light shrink-0">
                       {dias === 0 ? 'hoje' : `${dias}d atrás`}
                     </span>
                   </div>

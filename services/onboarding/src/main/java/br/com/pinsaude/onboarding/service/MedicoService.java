@@ -52,6 +52,8 @@ public class MedicoService {
     private final EmpresaRepository empresaRepo;
     private final HistoricoTaxaPinRepository historicoTaxaPinRepo;
     private final KeycloakAdminService keycloakAdminService;
+    private final DadosCivisMedicoRepository dadosCivisRepo;
+    private final DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo;
 
     private static final BigDecimal TAXA_PIN_DEFAULT = new BigDecimal("0.1500");
 
@@ -71,7 +73,9 @@ public class MedicoService {
             NotificacaoService notificacaoService,
             EmpresaRepository empresaRepo,
             HistoricoTaxaPinRepository historicoTaxaPinRepo,
-            KeycloakAdminService keycloakAdminService) {
+            KeycloakAdminService keycloakAdminService,
+            DadosCivisMedicoRepository dadosCivisRepo,
+            DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo) {
         this.medicoRepo = medicoRepo;
         this.vinculoRepo = vinculoRepo;
         this.dadosBancariosRepo = dadosBancariosRepo;
@@ -88,6 +92,8 @@ public class MedicoService {
         this.empresaRepo = empresaRepo;
         this.historicoTaxaPinRepo = historicoTaxaPinRepo;
         this.keycloakAdminService = keycloakAdminService;
+        this.dadosCivisRepo = dadosCivisRepo;
+        this.declaracoesLgpdRepo = declaracoesLgpdRepo;
     }
 
     public List<MedicoResponse> listarFilaAprovacao() {
@@ -669,8 +675,21 @@ public class MedicoService {
             .map(EnviarConviteResponse::from)
             .orElse(null);
 
+        // Presentes apenas para médicos vindos do auto-cadastro público (EPIC-14.1/14.2) —
+        // cadastros manuais (origemCadastro = MANUAL) não têm essas linhas.
+        DadosCivisMedicoResponse dadosCivis = dadosCivisRepo
+            .findById(medico.getId())
+            .map(DadosCivisMedicoResponse::from)
+            .orElse(null);
+
+        DeclaracaoLgpdResponse declaracoesLgpd = declaracoesLgpdRepo
+            .findById(medico.getId())
+            .map(DeclaracaoLgpdResponse::from)
+            .orElse(null);
+
         return MedicoResponse.from(medico, cpfDecriptografado, empresas,
-            dadosBancarios, documentos, checklist, contratoAssinatura, ultimoConvite);
+            dadosBancarios, documentos, checklist, contratoAssinatura, ultimoConvite,
+            dadosCivis, declaracoesLgpd);
     }
 
     @Transactional

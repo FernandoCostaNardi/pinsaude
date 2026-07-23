@@ -3283,6 +3283,52 @@ manipula o elemento diretamente via referência, sem depender de coordenadas de 
 
 ---
 
+## Ajustes na Tela de Aprovação de Onboarding (EPIC-14.8)
+
+### `MedicoResponse` não expunha `origemCadastro`/dados civis/LGPD — precisou de novo DTO e novo `from()`
+O endpoint autenticado `GET /api/medicos/fila-aprovacao` (usado por `AprovacaoOnboardingPage.tsx`)
+retornava `MedicoResponse`, que **não** incluía `origemCadastro`, `DadosCivisMedico` nem
+`DeclaracoesLgpdMedico` — só a API pública (`CandidaturaPublicaResponse`, EPIC-14.2) tinha esses
+dados. Criado `DadosCivisMedicoResponse` (novo DTO, análogo aos campos civis de
+`CandidaturaPublicaResponse` mas sem duplicar nome/cpf/crm, que já existem no `MedicoResponse`
+pai) e reaproveitado `DeclaracaoLgpdResponse` (já existia, criado na 14.3 para a API pública —
+sem acoplamento a "público", reutilizável como está). `MedicoResponse.from(...)` ganhou 2 novos
+parâmetros (`dadosCivis`, `declaracoesLgpd`); `MedicoService.toFullResponse()` faz mais dois
+`findById(medico.getId())` (em `DadosCivisMedicoRepository`/`DeclaracoesLgpdMedicoRepository`)
+com `.orElse(null)` — médicos `MANUAL` não têm essas linhas, então os campos vêm `null` no JSON
+sem quebrar nada no frontend.
+
+### Só `OnboardingFluxoTest` precisou dos 2 novos `@Mock` — não todos os testes de `MedicoService`
+`MedicoServiceDadosBancariosTest`/`MedicoServiceDocumentosTest` **não** foram alterados: eles só
+exercitam `atualizarDadosBancarios`/`validarDocumento`, que nunca chamam `toFullResponse()` (o
+único método que agora usa os 2 repositórios novos). Só `OnboardingFluxoTest` (que testa
+`ativar()`/`atualizarJuntaComercial()` com sucesso, ambos retornando `toFullResponse()`) precisou
+ganhar `@Mock DadosCivisMedicoRepository` e `@Mock DeclaracoesLgpdMedicoRepository`. Sem stub
+explícito, o comportamento padrão do Mockito para métodos que retornam `Optional` já é
+`Optional.empty()` — suficiente para os testes passarem sem setup adicional. Confirma o padrão já
+documentado no projeto: nem todo teste com `@InjectMocks MedicoService` precisa de todos os mocks,
+só os que exercitam o caminho de sucesso que efetivamente toca aquele campo.
+
+### Frontend — badge, seções novas e nota de liberação automática, tudo condicional a `dadosCivis`/`origemCadastro`
+`AprovacaoOnboardingPage.tsx`: badge "Auto-cadastro" (ícone `Sparkles`) no cabeçalho do
+`DetalhePanel` e em cada item da lista lateral quando `medico.origemCadastro === 'AUTO_CADASTRO'`.
+Duas novas seções no `DetalhePanel` — "Dados Civis e Profissionais" e "Declarações LGPD" — só
+renderizam quando `medico.dadosCivis`/`medico.declaracoesLgpd` existem (nulos para médicos
+manuais). Nota de texto abaixo do botão "Ativar Médico" explicando a liberação automática do
+Keycloak (sem botão novo — só um parágrafo informativo), visível apenas quando
+`origemCadastro === 'AUTO_CADASTRO'` e o médico ainda não está `ATIVO`.
+
+### RLS de auto-cadastro sem vínculo — comportamento confirmado manualmente, banner só para `operacao`
+Testado ao vivo com os dois papéis: logado como `gestao`, a fila mostra os auto-cadastros sem
+vínculo normalmente (bypass de RLS por tenant vazio, ver EPIC-14 plano). Logado como `operacao`,
+os mesmos registros **não aparecem** — confirma o comportamento de RLS já esperado por design
+(ver seção "RLS sem vínculo" em EPIC-14.1). Um `Alert variant="info"` foi adicionado no topo da
+página, visível só para `operacao` (`isOperacao && !isGestao`), explicando a limitação. Não é bug
+nem requer mudança de política — é o comportamento correto documentado, apenas tornado visível
+para não confundir o operador.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
