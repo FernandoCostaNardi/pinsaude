@@ -349,7 +349,41 @@ class FrequenciaServiceTest {
     }
 
     @Test
-    void receberDocumentoAssinado_statusNaoPermitido_lanca422() {
+    void receberDocumentoAssinado_substituicaoEmAssinadaRecebida_mantemStatus() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setStatus("ASSINADA_RECEBIDA");
+        f.setDocumentoAssinadoKey("frequencias/" + freqId + "/antigo.pdf");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(storageService.upload(anyString(), any())).thenReturn("frequencias/" + freqId + "/novo.pdf");
+        when(frequenciaRepo.save(any())).thenReturn(f);
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(any())).thenReturn(List.of());
+
+        MockMultipartFile arquivo = new MockMultipartFile("arquivo", "novo.pdf", "application/pdf", new byte[10]);
+        FrequenciaMedicaResponse resp = service.receberDocumentoAssinado(freqId, arquivo);
+
+        // status não regride — permanece ASSINADA_RECEBIDA
+        assertThat(resp.status()).isEqualTo("ASSINADA_RECEBIDA");
+        verify(storageService).delete("frequencias/" + freqId + "/antigo.pdf");
+        verify(storageService).upload(anyString(), any());
+    }
+
+    @Test
+    void receberDocumentoAssinado_statusFaturada_lanca422() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setStatus("FATURADA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        MockMultipartFile arquivo = new MockMultipartFile("arquivo", "doc.pdf", "application/pdf", new byte[10]);
+        assertThatThrownBy(() -> service.receberDocumentoAssinado(freqId, arquivo))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void receberDocumentoAssinado_statusRascunho_lanca422() {
         UUID freqId = UUID.randomUUID();
         FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
         f.setStatus("RASCUNHO");

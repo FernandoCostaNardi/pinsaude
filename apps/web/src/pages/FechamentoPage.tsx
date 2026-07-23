@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Loader2, AlertCircle, CheckCircle2, FileText,
-  ArrowRight, Users, CalendarDays, PackageCheck, ChevronDown,
+  ArrowRight, CalendarDays, PackageCheck, ChevronDown,
   ReceiptText, History, TriangleAlert,
 } from 'lucide-react'
 import { Button, Alert } from '@pinsaude/ui'
@@ -11,9 +11,8 @@ import {
   fechamentosApi,
   FechamentoPreviewResp,
   FechamentoResp,
-  GrupoPreview,
+  ModalidadeDetalhe,
 } from '../api/fechamentosApi'
-import { medicosApi, Medico } from '../api/medicosApi'
 import { useAuth } from '../auth/AuthContext'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -51,67 +50,146 @@ function generateCompetencias(): string[] {
 
 const COMPETENCIAS = generateCompetencias()
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Helpers de formatação ────────────────────────────────────────────────────
 
-interface GrupoCardProps {
-  grupo: GrupoPreview
-  medicoNomeMap: Record<string, string>
+function fmtNum(centavos: number): string {
+  return (centavos / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function GrupoCard({ grupo, medicoNomeMap }: GrupoCardProps) {
-  const [expandido, setExpandido] = useState(false)
+function fmtHoras(h: number): string {
+  if (!h) return ''
+  return h % 1 === 0 ? String(Math.round(h)) : h.toFixed(1).replace('.', ',')
+}
+
+// ─── Tabela de Modalidades ────────────────────────────────────────────────────
+
+function TabelaModalidades({ modalidades }: { modalidades: ModalidadeDetalhe[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="bg-gray-800 text-white">
+            <th className="px-3 py-2 text-left font-semibold">TIPO DE SERVIÇO</th>
+            <th className="px-2 py-2 text-center font-semibold w-10">H</th>
+            <th className="px-2 py-2 text-right font-semibold w-24"></th>
+            <th className="px-2 py-2 text-right font-semibold w-24">Deslocamento</th>
+            <th className="px-2 py-2 text-right font-semibold w-24">VALOR</th>
+            <th className="px-2 py-2 text-right font-semibold w-20">QUANT</th>
+            <th className="px-3 py-2 text-right font-semibold w-28">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody>
+          {modalidades.map((m, i) => {
+            const isNoturno = m.turno === 'NOTURNO'
+            const rowCls = m.fds
+              ? 'bg-yellow-100 text-yellow-900'
+              : isNoturno
+              ? 'bg-gray-200 text-gray-800'
+              : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+            const hasDesl = m.deslocamentoCentavos > 0
+            return (
+              <tr key={m.modalidadeId} className={`border-b border-gray-200 ${rowCls}`}>
+                <td className="px-3 py-1.5 font-medium">{m.nome}</td>
+                <td className="px-2 py-1.5 text-center tabular-nums">{fmtHoras(m.horas)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">
+                  {hasDesl ? fmtNum(m.valorUnitarioCentavos) : ''}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">
+                  {hasDesl ? fmtNum(m.deslocamentoCentavos) : ''}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums font-medium">
+                  {fmtNum(m.valorItemCentavos)}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums">
+                  {m.quantidade > 0 ? `${m.quantidade},00` : '0,00'}
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums font-semibold">
+                  {m.totalCentavos > 0 ? fmtNum(m.totalCentavos) : '0,00'}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-gray-400">
+            <td colSpan={6} />
+            <td className="px-3 py-2 text-right font-bold tabular-nums text-sm">
+              {fmtNum(modalidades.reduce((s, m) => s + m.totalCentavos, 0))}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  )
+}
+
+// ─── Totalizador por Grupo → Setor ────────────────────────────────────────────
+
+function TotalizadorPorGrupo({ preview }: { preview: FechamentoPreviewResp }) {
+  const totalGeral = preview.totalCentavos
+  const nfIndex = useMemo(() => {
+    const map: Record<string, number> = {}
+    preview.grupos.forEach((g, i) => { map[g.grupoId] = i + 1 })
+    return map
+  }, [preview.grupos])
 
   return (
-    <div className="bg-white rounded-xl border border-ds-border overflow-hidden">
-      {/* Header do grupo */}
-      <div className="flex items-center justify-between p-4 gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2 rounded-lg bg-primary-50 shrink-0">
-            <ReceiptText size={16} className="text-primary" />
+    <div className="text-xs">
+      {preview.grupos.map(grupo => (
+        <div key={grupo.grupoId} className="mb-1">
+          {/* Nome do grupo como cabeçalho de seção */}
+          <div className="px-3 py-1 text-[11px] font-bold text-ds-mid italic">
+            {grupo.nome}
           </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-ds-text truncate">{grupo.nome}</p>
-            <p className="text-xs text-ds-light mt-0.5 line-clamp-2">{grupo.descricaoInterpolada}</p>
+          {/* Setores do grupo */}
+          <div>
+            {grupo.setores.map(setor => (
+              <div key={setor.setorId}
+                className="flex items-baseline justify-between px-6 py-0.5 border-b border-dotted border-gray-200">
+                <span className={`text-ds-mid ${setor.setorNome.toUpperCase().includes('UTI') ? 'text-blue-600 font-medium' : ''}`}>
+                  {setor.setorNome}
+                </span>
+                <span className="tabular-nums font-medium text-ds-text ml-4 shrink-0">
+                  {fmtNum(setor.totalCentavos)}
+                </span>
+              </div>
+            ))}
+          </div>
+          {/* Subtotal do grupo */}
+          <div className="flex items-baseline justify-between px-6 py-1 font-bold text-sm border-b border-gray-300">
+            <span />
+            <span className="tabular-nums">{fmtNum(grupo.totalCentavos)}</span>
           </div>
         </div>
-        <div className="shrink-0 text-right">
-          <p className="text-lg font-bold text-ds-text">{formatBRL(grupo.totalCentavos)}</p>
-          <p className="text-xs text-ds-light">{grupo.medicos.length} médico{grupo.medicos.length !== 1 ? 's' : ''}</p>
-        </div>
+      ))}
+
+      {/* Total Geral */}
+      <div className="flex items-baseline justify-between px-6 py-2 mt-2 border-t-2 border-gray-400">
+        <span className="font-bold italic text-sm">Total Geral</span>
+        <span className="tabular-nums font-bold text-base">{fmtNum(totalGeral)}</span>
       </div>
 
-      {/* Expandir médicos */}
-      {grupo.medicos.length > 0 && (
-        <>
-          <button
-            onClick={() => setExpandido(v => !v)}
-            className="w-full flex items-center gap-2 px-4 py-2 text-xs text-ds-light hover:bg-ds-surface border-t border-ds-border transition-colors"
-          >
-            <Users size={12} />
-            <span>{expandido ? 'Ocultar' : 'Ver'} participação por médico</span>
-            <ChevronDown size={12} className={`ml-auto transition-transform ${expandido ? 'rotate-180' : ''}`} />
-          </button>
-
-          {expandido && (
-            <div className="border-t border-ds-border divide-y divide-ds-border">
-              {grupo.medicos.map(m => (
-                <div key={m.medicoId} className="flex items-center justify-between px-4 py-2.5 bg-ds-surface/50">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-6 h-6 rounded-full bg-primary-100 flex items-center justify-center shrink-0">
-                      <span className="text-[9px] font-bold text-primary">
-                        {(medicoNomeMap[m.medicoId] ?? '?')[0].toUpperCase()}
-                      </span>
-                    </div>
-                    <span className="text-sm text-ds-mid truncate">
-                      {medicoNomeMap[m.medicoId] ?? m.medicoId.substring(0, 8) + '…'}
-                    </span>
-                  </div>
-                  <span className="text-sm font-medium text-ds-text shrink-0 ml-2">{formatBRL(m.totalCentavos)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
+      {/* Seção Fechamento (NF por grupo) */}
+      {preview.grupos.length > 0 && (
+        <div className="mt-4 border border-gray-300 rounded">
+          <div className="bg-gray-100 px-4 py-1.5 text-center font-bold text-[11px] uppercase tracking-wide border-b border-gray-300">
+            Fechamento
+          </div>
+          {preview.grupos.map(grupo => {
+            const idx = nfIndex[grupo.grupoId]
+            return (
+              <div key={grupo.grupoId}
+                className="flex items-baseline justify-between px-4 py-1 border-b border-dotted border-gray-200 last:border-b-0">
+                <span className="text-ds-mid">
+                  NF{idx} {grupo.nome}
+                </span>
+                <span className="tabular-nums font-semibold text-ds-text ml-4 shrink-0">
+                  {fmtNum(grupo.totalCentavos)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )
@@ -132,7 +210,6 @@ export function FechamentoPage() {
   const [resultado, setResultado] = useState<FechamentoResp | null>(null)
   const [historico, setHistorico] = useState<FechamentoResp[]>([])
   const [tomadorNomeMap, setTomadorNomeMap] = useState<Record<string, string>>({})
-  const [medicoNomeMap, setMedicoNomeMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [loadingExec, setLoadingExec] = useState(false)
   const [loadingHist, setLoadingHist] = useState(true)
@@ -152,20 +229,6 @@ export function FechamentoPage() {
       .catch(console.error)
       .finally(() => setLoadingHist(false))
   }, [])
-
-  // Carrega nomes de médicos quando o preview chega
-  useEffect(() => {
-    if (!preview) return
-    const medicoIds = preview.grupos.flatMap(g => g.medicos.map(m => m.medicoId))
-    if (!medicoIds.length) return
-    medicosApi.listar(0, 500)
-      .then(page => {
-        const map: Record<string, string> = {}
-        page.content.forEach((m: Medico) => { map[m.id] = m.nome })
-        setMedicoNomeMap(map)
-      })
-      .catch(console.error)
-  }, [preview])
 
   const recarregarHistorico = useCallback(() => {
     fechamentosApi.listar()
@@ -290,11 +353,12 @@ export function FechamentoPage() {
         {/* ── Preview ─────────────────────────────────────────────── */}
         {preview && (
           <div className="space-y-4">
+
             {/* Cabeçalho do preview */}
-            <div className="bg-white rounded-xl border border-ds-border p-5">
+            <div className="bg-white rounded-xl border border-ds-border p-4">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-0.5">
                     <CalendarDays size={15} className="text-primary" />
                     <span className="text-sm font-semibold text-ds-text">
                       Totalizador — {formatCompetenciaFull(competencia)}
@@ -305,7 +369,7 @@ export function FechamentoPage() {
                 <div className="flex items-center gap-6 flex-wrap">
                   <div className="text-center">
                     <p className="text-2xl font-bold text-primary">{totalGrupos}</p>
-                    <p className="text-xs text-ds-light">grupo{totalGrupos !== 1 ? 's' : ''}</p>
+                    <p className="text-xs text-ds-light">NFS-e a emitir</p>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold text-ds-text">{totalFrequencias}</p>
@@ -332,10 +396,22 @@ export function FechamentoPage() {
               </div>
             )}
 
-            {/* Cards dos grupos */}
-            {preview.grupos.map(grupo => (
-              <GrupoCard key={grupo.grupoId} grupo={grupo} medicoNomeMap={medicoNomeMap} />
-            ))}
+            {/* ── Totalizador detalhado (igual à imagem) ──────────── */}
+            {preview.grupos.length > 0 && (
+              <div className="bg-white rounded-xl border border-ds-border overflow-hidden">
+                {/* Tabela de modalidades (top) */}
+                {preview.modalidades.length > 0 && (
+                  <div className="border-b border-ds-border">
+                    <TabelaModalidades modalidades={preview.modalidades} />
+                  </div>
+                )}
+
+                {/* Totalizador por grupo → setor + Fechamento */}
+                <div className="p-5">
+                  <TotalizadorPorGrupo preview={preview} />
+                </div>
+              </div>
+            )}
 
             {/* Ação de fechar */}
             {preview.grupos.length > 0 && canExecute && (

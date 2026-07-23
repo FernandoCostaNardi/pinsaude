@@ -1,4 +1,4 @@
-import type { FrequenciaMedicaResp } from '../api/frequenciasApi'
+import type { FrequenciaMedicaResp, FrequenciaItemResp } from '../api/frequenciasApi'
 
 export interface FrequenciaPdfParams {
   freq: FrequenciaMedicaResp
@@ -17,13 +17,17 @@ const MESES_EXT = [
   'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO',
 ]
 
+const DIAS_SEMANA = [
+  'DOMINGO', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA',
+  'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO',
+]
+
 function competenciaPorExtenso(competencia: string): string {
   const [ano, mes] = competencia.split('-')
   return `${MESES_EXT[parseInt(mes, 10) - 1]} DE ${ano}`
 }
 
 function formatDataCurta(iso: string): string {
-  // iso = "2026-07-05" → "05/07/26"
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y.slice(2)}`
 }
@@ -41,6 +45,26 @@ function gerarDataHoraAtual(): string {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+function gerarOcorrencia(item: FrequenciaItemResp): string {
+  if (item.ocorrencia) return item.ocorrencia  // preserva valor informado manualmente
+
+  const [y, m, d] = item.dataExecucao.split('-').map(Number)
+  const diaSemana = DIAS_SEMANA[new Date(y, m - 1, d).getDay()]
+
+  const turno = item.modalidadeTurno
+    ? item.modalidadeTurno.charAt(0) + item.modalidadeTurno.slice(1).toLowerCase()
+    : ''
+
+  let horasStr = ''
+  if (item.modalidadeHoras != null) {
+    const h = item.modalidadeHoras
+    const hFmt = h % 1 === 0 ? String(h) : h.toFixed(1).replace('.', ',')
+    horasStr = `${hFmt} hora${h !== 1 ? 's' : ''}`
+  }
+
+  return [diaSemana, turno, horasStr].filter(Boolean).join(' - ')
 }
 
 // ─── Geração do HTML ──────────────────────────────────────────────────────────
@@ -64,16 +88,15 @@ function buildHtml(p: FrequenciaPdfParams): string {
         <td style="text-align:center">${item.modalidadeTurno ?? ''}</td>
         <td style="text-align:center">${item.modalidadeHorario ?? ''}</td>
         <td></td>
-        <td>${item.ocorrencia ?? ''}</td>
-        <td></td>
+        <td>${gerarOcorrencia(item)}</td>
       </tr>
     `).join('')
 
-  // Linhas em branco para preenchimento manual (mínimo 20 linhas visíveis no total)
-  const totalLinhas = Math.max(20, freq.itens.length + 5)
+  // Linhas em branco calculadas para preencher uma página A4 completa (~35 linhas totais)
+  const totalLinhas = Math.max(35, freq.itens.length + 5)
   const linhasVazias = Array.from({ length: totalLinhas - freq.itens.length }, () => `
     <tr>
-      <td></td><td></td><td></td><td></td><td></td><td></td>
+      <td></td><td></td><td></td><td></td><td></td>
     </tr>
   `).join('')
 
@@ -156,7 +179,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
       border-collapse: collapse;
       border: 1.5px solid #000;
       border-top: none;
-      margin-bottom: 6px;
+      margin-bottom: 20px;
     }
     .fields-table td {
       border: none;
@@ -198,6 +221,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
     table.plantoes {
       width: 100%;
       border-collapse: collapse;
+      table-layout: fixed;  /* garante que col-rubrica e col-ocorrencia dividam igualmente */
     }
     table.plantoes thead tr { background: #e0e0e0; }
     table.plantoes th {
@@ -217,46 +241,46 @@ function buildHtml(p: FrequenciaPdfParams): string {
       vertical-align: middle;
     }
     table.plantoes tbody tr:nth-child(even) { background: #fafafa; }
+    /* DATA+TURNO+HORÁRIO somam ≈33% da largura total — alinha com as 3 colunas de assinatura */
     .col-data    { width: 55px; }
     .col-turno   { width: 70px; }
     .col-horario { width: 105px; }
-    .col-rubrica { width: 120px; }
-    .col-lider   { width: 45px; }
+    /* RUBRICA e OCORRÊNCIA dividem igualmente o restante (~33% cada) — sem largura fixa */
 
-    /* === Totalizador === */
-    .totalizador {
-      margin-top: 6px;
-      font-size: 8.5pt;
-      text-align: right;
-      font-weight: bold;
+    /* === Assinaturas — mesmas colunas da tabela de plantões via colspan === */
+    .sig-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;  /* mesma regra da tabela acima — divisores coincidem */
+      border: 1px solid #aaa;
+      border-top: none;
+      margin-top: 0;
     }
-
-    /* === Assinaturas === */
-    .signatures {
-      display: flex;
-      gap: 20px;
-      margin-top: 28px;
-      padding-top: 4px;
-    }
-    .sig-box {
-      flex: 1;
+    .sig-table td {
+      border: none;
+      border-right: 1px solid #aaa;  /* mesma cor das células do tbody */
       text-align: center;
+      vertical-align: bottom;
+      padding: 0;
     }
-    .sig-space { height: 38px; }
-    .sig-line {
-      border-top: 1px solid #000;
-      margin: 0 10px 3px 10px;
+    .sig-table td:last-child { border-right: none; }
+    /* Espaço de assinatura — linha curta centralizada na base da célula */
+    .sig-space-row td {
+      height: 55px;
+      vertical-align: bottom;
+      padding-bottom: 3px;
     }
-    .sig-label {
-      font-size: 7.5pt;
-      font-weight: bold;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
+    .sig-line-inner {
+      border-top: 1px solid #333;
+      margin: 0 22px;
     }
-    .sig-sub {
-      font-size: 7pt;
-      color: #555;
-      margin-top: 2px;
+    .sig-label-row td {
+      padding: 2px 6px 4px;
+      font-size: 8pt;
+      font-weight: normal;
+      line-height: 1.3;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
     /* === Rodapé === */
@@ -321,7 +345,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
     </tr>
     <tr>
       <td class="field-label-cell">Competência:</td>
-      <td class="field-value-cell field-value-center" colspan="2">${mesExt}</td>
+      <td class="field-value-cell field-value-center" colspan="2">${mesExt} / ${anoComp}</td>
     </tr>
     <tr>
       <td class="field-label-cell">Especialidade Médica:</td>
@@ -332,14 +356,20 @@ function buildHtml(p: FrequenciaPdfParams): string {
 
   <!-- Tabela de plantões -->
   <table class="plantoes">
+    <colgroup>
+      <col class="col-data">
+      <col class="col-turno">
+      <col class="col-horario">
+      <col class="col-rubrica">
+      <col>
+    </colgroup>
     <thead>
       <tr>
-        <th class="col-data">Data</th>
-        <th class="col-turno">Turno</th>
-        <th class="col-horario">Horário</th>
-        <th class="col-rubrica">Rubrica e Carimbo</th>
+        <th>Data</th>
+        <th>Turno</th>
+        <th>Horário</th>
+        <th>Rubrica e Carimbo</th>
         <th>Ocorrência</th>
-        <th class="col-lider">Líder</th>
       </tr>
     </thead>
     <tbody>
@@ -348,31 +378,26 @@ function buildHtml(p: FrequenciaPdfParams): string {
     </tbody>
   </table>
 
-  <div class="totalizador">
-    Total de plantões registrados neste relatório: <span>${freq.itens.length}</span>
-  </div>
-
-  <!-- Assinaturas -->
-  <div class="signatures">
-    <div class="sig-box">
-      <div class="sig-space"></div>
-      <div class="sig-line"></div>
-      <div class="sig-label">Prestador(a)</div>
-      <div class="sig-sub">Assinatura e Carimbo</div>
-    </div>
-    <div class="sig-box">
-      <div class="sig-space"></div>
-      <div class="sig-line"></div>
-      <div class="sig-label">Direção Médica</div>
-      <div class="sig-sub">Assinatura e Carimbo</div>
-    </div>
-    <div class="sig-box">
-      <div class="sig-space"></div>
-      <div class="sig-line"></div>
-      <div class="sig-label">Diretor(a) Adm. Financeiro</div>
-      <div class="sig-sub">Assinatura e Carimbo</div>
-    </div>
-  </div>
+  <!-- Assinaturas — colgroup replica as colunas da tabela de plantões para alinhar divisores -->
+  <table class="sig-table">
+    <colgroup>
+      <col class="col-data">
+      <col class="col-turno">
+      <col class="col-horario">
+      <col class="col-rubrica">
+      <col>
+    </colgroup>
+    <tr class="sig-space-row">
+      <td colspan="3"><div class="sig-line-inner"></div></td>
+      <td><div class="sig-line-inner"></div></td>
+      <td><div class="sig-line-inner"></div></td>
+    </tr>
+    <tr class="sig-label-row">
+      <td colspan="3">Assinatura do Prestador(a)</td>
+      <td>Assinatura da Direção Médica</td>
+      <td>Assinatura do Diretor Administrativo Financeiro da unidade</td>
+    </tr>
+  </table>
 
   <!-- Rodapé -->
   <div class="footer">
