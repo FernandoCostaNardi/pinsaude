@@ -3,6 +3,7 @@ import { AuthProvider }      from './auth/AuthContext'
 import { ProtectedRoute }    from './components/ProtectedRoute'
 import { Shell }             from './layouts/Shell'
 import { LoginPage }         from './pages/LoginPage'
+import { CadastroMedicoWizardPage } from './pages/CadastroMedicoWizardPage'
 import { Dashboard }         from './pages/Dashboard'
 import { UsersPage }         from './pages/UsersPage'
 import { EmpresasPage }      from './pages/EmpresasPage'
@@ -35,6 +36,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/cadastro-medico" element={<CadastroMedicoWizardPage />} />
           <Route
             element={
               <ProtectedRoute>

@@ -3164,6 +3164,65 @@ variante nova do componente.
 
 ---
 
+## Jornada Pública de Auto-cadastro — Etapas 1-3 (EPIC-14.6)
+
+### Módulo de API sem token — primeiro do projeto sem `authHeaders()`
+`apps/web/src/api/candidaturaMedicoApi.ts` é o primeiro módulo de API do projeto que **não**
+usa `getAccessToken()`/`Authorization`. Os endpoints em `/api/onboarding/publico/candidaturas/**`
+são `permitAll` (onboarding e gateway, já configurado na 14.2/14.3) — incluir qualquer header
+de autenticação aqui seria inofensivo (o backend ignora), mas incorreto conceitualmente: esta é
+uma jornada de visitante sem sessão.
+
+### Reordenação de campos entre "steps do ticket" e "steps da tela" — CRM/e-mail movidos para a etapa 1
+O ticket original agrupava os campos como Etapa 1 = dados civis, Etapa 2 = contato (inclui e-mail),
+Etapa 3 = documentos profissionais (inclui CRM+UF). Isso é **incompatível** com o contrato já
+implementado do backend: `CandidaturaPublicaRequest` exige `@NotBlank` em `nome`, `cpf`, `crm`,
+`crmUf` e `email` simultaneamente — não existe um POST parcial só com dados da etapa 1 literal.
+Como os uploads de documento (etapa 2 em diante) exigem um `candidaturaId` já existente, e o
+`id` só nasce quando o POST tem sucesso, os campos `crm`/`crmUf`/`email` foram antecipados para a
+tela de etapa 1 (renomeada para cobrir identificação completa), mantendo os nomes de step do
+ticket (`Dados Pessoais` → `Contato e Endereço` → `Documentos Profissionais`) mas redistribuindo
+os campos internos. Sem essa mudança, não haveria como fazer upload de nenhum documento antes da
+etapa 3, travando a etapa 2 (comprovante de endereço, certidão de casamento).
+
+### "Retomar depois" via `id` em `sessionStorage` + hidratação por `GET`
+Ao concluir a etapa 1 (primeiro `POST`/`PUT` bem-sucedido), o `id` retornado é persistido em
+`sessionStorage` (`pinsaude_candidatura_id`). No `useEffect` de montagem da página, se esse `id`
+existir, chama `candidaturaMedicoApi.buscar(id)` para restaurar o formulário inteiro — em caso de
+404 (candidatura removida ou já avançou de status), limpa o `sessionStorage` e começa do zero
+silenciosamente. Como a API pública não expõe listagem de documentos já enviados, o retomar não
+sabe quais arquivos já foram enviados anteriormente — aceitável porque o backend permite reenvio
+sem limite de quantidade por tipo (mesma decisão do EPIC-14.3).
+
+### `StepWizard` com 6 passos declarados, só 3 navegáveis
+A tela declara os 6 passos da jornada completa (`Dados Pessoais` → ... → `LGPD`) no array `STEPS`
+passado ao `StepWizard` (EPIC-14.5), mas `maxVisited` nunca ultrapassa o índice 2 nesta task — os
+3 passos finais aparecem visualmente (dão contexto de progresso) mas são bloqueados para clique
+(`isClickable = i <= maxVisited`). A 14.7 estende essa mesma página, no mesmo arquivo, adicionando
+o conteúdo das etapas 4-6 e elevando `maxVisited` até 5 — não precisa recriar o `StepWizard` nem
+alterar seu array de `steps`.
+
+### Upload simplificado nesta task — extração completa fica para a 14.7
+`UploadField` (componente local em `CadastroMedicoWizardPage.tsx`) é uma versão enxuta do padrão
+de `DocumentosModal.tsx` (clique ou arraste, sem preview de imagem nem múltiplos arquivos visíveis
+por tipo) — suficiente para validar que os 4 tipos de documento desta etapa (`COMPROVANTE_ENDERECO`,
+`CERTIDAO_CASAMENTO`, `CRM`, `RQE`) sobem corretamente sem sessão. A extração de um componente de
+upload compartilhado (drag-and-drop completo, reutilizável entre `DocumentosModal` autenticado e
+a jornada pública) é escopo da 14.7, que também adiciona os uploads das etapas 4-6.
+
+### Ambiente local: onboarding/gateway rodando às vezes vêm de um branch desatualizado
+Os processos Java de `onboarding` (8085) e `gateway` (8090) já em execução no ambiente podem ter
+sido compilados a partir do diretório principal `G:\olisystem\pinsaude` — que é o worktree de
+trabalho do usuário e pode estar em um branch/commit **anterior** aos merges recentes (ex.: ainda
+sem as rotas `/api/onboarding/publico/**`). Isso se manifesta como `401 Unauthorized` em endpoints
+que deveriam ser `permitAll`, mesmo com o código-fonte correto no worktree de feature. Antes de
+depurar "por que o permitAll não funciona", checar a origem do `.jar`/`target/classes` do processo
+em execução (`Get-CimInstance Win32_Process | Select CommandLine`) — se apontar para outro
+worktree/branch, matar o processo e resubir com `mvn-build.js` + `java -jar` a partir do worktree
+correto (branch atualizado).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
