@@ -2909,6 +2909,71 @@ Frontend: adicionar o campo como `discriminacao?: string | null` nas interfaces 
 
 ---
 
+## Auto-cadastro Público de Médico — Schema (EPIC-14.1)
+
+### Tabelas satélite 1:1 para dados que não cabem em `medicos`
+`dados_civis_medico` e `declaracoes_lgpd_medico` seguem o mesmo padrão de `checklist_conduta`/
+`dados_bancarios_medico`: PK = `medico_id`, FK com `ON DELETE CASCADE`, RLS via join em
+`vinculos_medico_empresa` com `WITH CHECK (true)` **já na criação** (não precisa do fix em 2
+migrations do V7, pois a tabela nasce sem o problema de INSERT bloqueado por USING).
+
+### `origem_cadastro` em vez de novo valor em `StatusMedico`
+Para diferenciar médico auto-cadastrado (formulário público) de cadastro manual (operação/gestão),
+foi adicionado `medicos.origem_cadastro VARCHAR(20) DEFAULT 'MANUAL'` (valores: `MANUAL` |
+`AUTO_CADASTRO`) em vez de mexer no enum `StatusMedico`. Isso mantém `MedicoService.listarFilaAprovacao()`
+(que filtra por `status = RASCUNHO`) funcionando sem alteração — a fila de aprovação só ganha um
+badge extra para identificar a origem.
+
+### Array Postgres (`TEXT[]`) no Hibernate 6 — `@JdbcTypeCode(SqlTypes.ARRAY)`
+Para `situacao_formacao TEXT[]` (multi-seleção de formação/titulação), o mapeamento correto no
+Hibernate 6 é:
+```java
+@JdbcTypeCode(SqlTypes.ARRAY)
+@Column(name = "situacao_formacao", columnDefinition = "text[]")
+private String[] situacaoFormacao;
+```
+Não precisa de conversor customizado nem de `@Type` do Hibernate 5 — `String[]` funciona direto.
+
+### RLS sem vínculo — quem enxerga um auto-cadastro antes da triagem
+Um médico criado via auto-cadastro público nasce **sem** `vinculos_medico_empresa` (a empresa é
+atribuída depois, manualmente, por `gestao`). Como o RLS de `medicos`/`dados_civis_medico`/
+`declaracoes_lgpd_medico` resolve isolamento via join nesse vínculo, um registro sem vínculo só é
+visível para quem tem `app.current_tenant` vazio (role `gestao`, que faz bypass) — o papel
+`operacao` de uma empresa específica não vê a candidatura até alguém atribuir o vínculo. Isso é
+esperado por design, não é bug: `gestao` é quem faz a triagem inicial cross-empresa.
+
+### ⚠️ Testcontainers Postgres não tem `svc_onboarding`/`svc_portal` — migrations V14+ falham sem `withInitScript`
+As migrations `V14__add_taxa_pin_medico.sql` e `V15__create_documentos_empresa.sql` fazem
+`GRANT ... TO svc_onboarding` / `GRANT ... TO svc_portal`. Essas roles são criadas por
+`tools/db/init.sql` no Postgres real (Docker), mas **não existem** no container efêmero do
+Testcontainers — isso faz o Flyway falhar com `ERROR: role "svc_onboarding" does not exist`
+durante o boot do `ApplicationContext`, derrubando **qualquer** teste `@SpringBootTest` com
+`spring.flyway.enabled=true` + `PostgreSQLContainer` (não é um problema pontual: afeta todos os
+testes de integração do onboarding igualmente). Como o CI roda `mvn ... -DskipTests`
+(ver `.github/workflows/ci.yml`), esse problema nunca foi pego automaticamente.
+
+**Solução:** script `services/onboarding/src/test/resources/db/test-roles-init.sql` (cria as 2
+roles com `CREATE ROLE ... IF NOT EXISTS`) + `.withInitScript("db/test-roles-init.sql")` no
+container, **antes** do Flyway rodar:
+```java
+@Container
+@ServiceConnection
+static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")
+    .withInitScript("db/test-roles-init.sql");
+```
+Aplicado em todos os testes `@SpringBootTest` + `PostgreSQLContainer` do onboarding
+(`MultitenancyIsolationTest`, `EmpresaIntegrationTest`, `ConfiguracaoFiscalIntegrationTest`,
+`DadosCivisLgpdSchemaIntegrationTest`). Se uma migration futura adicionar `GRANT ... TO` uma nova
+role, atualizar também esse script de teste.
+
+### Problema conhecido (não corrigido nesta task) — datas fixas em testes fiscais
+`ConfiguracaoFiscalServiceTest`/`ConfiguracaoFiscalIntegrationTest` têm 5 testes que falham com
+`422 competência passada` conforme o relógio real avança (competência mínima é calculada a partir
+de `LocalDate.now()`, mas os testes usam uma competência fixa que já ficou no passado). Não é
+relacionado ao onboarding/EPIC-14 — sinalizado aqui para quem for mexer nesses testes no futuro.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
