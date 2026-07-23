@@ -139,4 +139,21 @@ class SecurityIntegrationTest {
                 .exchange()
                 .expectStatus().isOk();
     }
+
+    @Test
+    void cadastroPublico_semToken_naoEhBloqueadoPeloGateway() {
+        // Auto-cadastro público de médico (EPIC-14) precisa passar pelo gateway sem exigir
+        // Bearer token. A rota "onboarding" aponta para localhost:8085 — em dev local pode
+        // haver um onboarding real rodando nessa porta (com sua própria segurança), então
+        // não dá pra confiar no status HTTP final (poderia ser um 401 vindo do downstream,
+        // não do gateway). O sinal confiável é o header "Vary": o gateway só o adiciona
+        // quando o request passa da checagem de autorização e entra no roteamento reativo
+        // (WebFlux/CORS) — o 401 imediato do próprio SecurityConfig (sem rota permitida,
+        // ver semToken_retorna401) nunca tem esse header.
+        var headers = webTestClient.get()
+                .uri("/api/onboarding/publico/candidaturas/" + java.util.UUID.randomUUID())
+                .exchange()
+                .expectBody().returnResult().getResponseHeaders();
+        org.assertj.core.api.Assertions.assertThat(headers.containsKey("Vary")).isTrue();
+    }
 }

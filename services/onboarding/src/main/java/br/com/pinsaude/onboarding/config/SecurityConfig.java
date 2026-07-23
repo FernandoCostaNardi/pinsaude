@@ -23,6 +23,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                 .requestMatchers("/api/onboarding/webhooks/**").permitAll()
+                // Auto-cadastro público de médico (EPIC-14) — sem JWT, ver CadastroPublicoController.
+                .requestMatchers("/api/onboarding/publico/**").permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

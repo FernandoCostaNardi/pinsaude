@@ -14,3 +14,14 @@ BEGIN
     END IF;
 END
 $$;
+
+-- No Postgres real, tools/db/init.sql faz "ALTER USER svc_onboarding SET search_path TO
+-- onboarding, public" — isso faz com que pgcrypto (instalado no schema onboarding pelo
+-- Flyway, cujo search_path é onboarding via spring.flyway.schemas) seja resolvido também
+-- nas conexões normais da aplicação (ex: onboarding.encrypt_sensitive() chama
+-- pgp_sym_encrypt() sem qualificar o schema). O usuário "test" do Testcontainers não tem
+-- esse ALTER, então o search_path da sessão fica só "$user", public — sem "onboarding" —
+-- e qualquer chamada real a CryptoService.encrypt/decrypt falha com
+-- "function pgp_sym_encrypt(text, text) does not exist". Replicamos o mesmo ALTER aqui,
+-- no nível do banco (cobre qualquer usuário que conecte nesta database de teste).
+ALTER DATABASE test SET search_path TO onboarding, public;
