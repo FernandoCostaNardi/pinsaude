@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Building2, FileText, CheckCircle } from 'lucide-react'
-import { Modal, Input, Button, Alert } from '@pinsaude/ui'
+import { Modal, Input, Button, Alert, StepWizard } from '@pinsaude/ui'
 import { CnpjInput } from './CnpjInput'
 import { MunicipioSelect } from './MunicipioSelect'
 import { Empresa, EmpresaRequest, RegimeTributario, empresasApi } from '../api/empresasApi'
 import { isValidCnpj, formatCnpj } from '../utils/cnpj'
 
 const STEPS = [
-  { label: 'Identificação', Icon: Building2 },
-  { label: 'Dados Fiscais', Icon: FileText },
-  { label: 'Revisão', Icon: CheckCircle },
-] as const
+  { label: 'Identificação', icon: Building2 },
+  { label: 'Dados Fiscais', icon: FileText },
+  { label: 'Revisão', icon: CheckCircle },
+]
 
 const REGIME_OPTIONS: { value: RegimeTributario; label: string }[] = [
   { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional' },
@@ -145,7 +145,7 @@ export function EmpresaWizardModal({ empresa, onClose, onSaved }: Props) {
       size="lg"
     >
       <div className="flex flex-col gap-6">
-        <WizardSteps current={step} maxVisited={maxVisited} onGo={goTo} />
+        <StepWizard steps={STEPS} current={step} maxVisited={maxVisited} onStepClick={goTo} />
 
         <div className="min-h-[220px]">
           {step === 0 && (
@@ -191,72 +191,6 @@ export function EmpresaWizardModal({ empresa, onClose, onSaved }: Props) {
         </div>
       </div>
     </Modal>
-  )
-}
-
-// ─── Step Indicator ───────────────────────────────────────────────────────────
-
-function WizardSteps({
-  current,
-  maxVisited,
-  onGo,
-}: {
-  current: number
-  maxVisited: number
-  onGo: (s: number) => void
-}) {
-  return (
-    <nav className="flex items-start justify-center">
-      {STEPS.map(({ label, Icon }, i) => {
-        const isDone = i < current
-        const isActive = i === current
-        const isClickable = i <= maxVisited
-
-        return (
-          <div key={i} className="flex items-start">
-            <button
-              type="button"
-              onClick={() => isClickable && onGo(i)}
-              disabled={!isClickable}
-              className="flex flex-col items-center gap-1.5 w-24"
-            >
-              <div
-                className={[
-                  'w-11 h-11 rounded-full flex items-center justify-center border-2 transition-all duration-300',
-                  isDone
-                    ? 'bg-secondary-100 border-secondary-400 text-secondary-700'
-                    : isActive
-                    ? 'bg-primary border-primary text-white shadow-lg shadow-primary/20'
-                    : 'bg-white border-gray-200 text-gray-300',
-                ].join(' ')}
-              >
-                {isDone
-                  ? <CheckCircle className="w-5 h-5 text-secondary-600" />
-                  : <Icon className="w-5 h-5" />
-                }
-              </div>
-              <span
-                className={[
-                  'text-xs font-medium text-center leading-tight',
-                  isDone ? 'text-secondary-700' : isActive ? 'text-primary-700' : 'text-gray-400',
-                ].join(' ')}
-              >
-                {label}
-              </span>
-            </button>
-
-            {i < STEPS.length - 1 && (
-              <div className="w-16 sm:w-20 h-0.5 mt-5 mx-1 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all duration-500"
-                  style={{ width: i < current ? '100%' : '0%' }}
-                />
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </nav>
   )
 }
 

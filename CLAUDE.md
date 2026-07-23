@@ -3127,6 +3127,43 @@ verdade e falharia com 502 em qualquer ambiente sem Keycloak rodando (ex.: CI).
 
 ---
 
+## Wizard Reutilizável — StepWizard (EPIC-14.5)
+
+### Extração de padrão triplicado em `libs/frontend/src/components/StepWizard.tsx`
+`MedicoWizardModal.tsx`, `EmpresaWizardModal.tsx` e `ContaBancariaWizardModal.tsx` tinham cada um
+sua própria cópia quase idêntica do indicador de progresso (`STEPS` array + função interna
+`WizardSteps` com círculos numerados + linha de conexão). Extraído para um componente único e
+compartilhado no pacote `@pinsaude/ui`, exportado em `libs/frontend/src/index.ts`:
+```typescript
+export { StepWizard }           from './components/StepWizard'
+export type { StepWizardStep }  from './components/StepWizard'
+```
+Props: `steps: {label, icon}[]`, `current`, `maxVisited`, `onStepClick`, `className?`. **Sem
+acoplamento a `Modal`** — só renderiza o indicador; navegação (`goTo`/`handleNext`) e validação por
+etapa (`validateStep`) continuam responsabilidade de cada tela consumidora.
+
+### Escolha da variante mais responsiva como base do componente compartilhado
+Das 3 implementações originais, `ContaBancariaWizardModal` tinha o tratamento mobile mais completo
+(`hidden sm:block` para labels + `sm:hidden` para números compactos, `flex-1` nas linhas de conexão
+em vez de larguras fixas). Ao extrair, essa foi escolhida como base — as outras duas perderam
+pequenas diferenças de largura/responsividade que não eram desejadas, apenas inconsistência não
+intencional entre cópias.
+
+### Consumo sem `as const` no array STEPS
+Os arrays `STEPS` originais usavam `{ label, Icon } as const` (campo capitalizado). O componente
+compartilhado usa a prop `icon` (minúsculo, consistente com a interface `StepWizardStep`) e não
+precisa de `as const` — o tipo `ComponentType<{ className?: string }>` já é inferido corretamente
+sem satisfazer literal types. Renomear `Icon` → `icon` nos 3 arquivos consumidores e remover
+`as const` ao adotar o componente.
+
+### Funciona tanto em Modal quanto full-page sem alteração
+Por não ter nenhuma dependência de `Modal` (nem CSS nem contexto), o mesmo `StepWizard` é
+reutilizável diretamente em uma página pública full-page (ex.: futuro wizard de auto-cadastro do
+EPIC-14.6/14.7) só passando `className` para ajustar o container externo — não precisa de nenhuma
+variante nova do componente.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
