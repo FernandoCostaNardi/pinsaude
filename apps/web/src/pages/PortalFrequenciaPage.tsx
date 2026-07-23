@@ -133,7 +133,7 @@ interface NovaFreqForm {
   tomador: Tomador | null
   setor: { id: string; nome: string } | null
   competencia: string
-  especialidade: string
+  tipoMedico: 'PLANTONISTA' | 'DIARISTA'
 }
 
 function NovaFrequenciaModal({
@@ -144,7 +144,7 @@ function NovaFrequenciaModal({
   onClose: () => void
   onCriada: (f: FrequenciaMedicaResp) => void
 }) {
-  const [form, setForm]   = useState<NovaFreqForm>({ tomador: null, setor: null, competencia: COMPETENCIAS[0], especialidade: perfil.especialidade ?? '' })
+  const [form, setForm]   = useState<NovaFreqForm>({ tomador: null, setor: null, competencia: COMPETENCIAS[0], tipoMedico: 'PLANTONISTA' })
   const [grupos, setGrupos] = useState<TomadorGrupoFaturamento[]>([])
   const [saving, setSaving] = useState(false)
   const [err, setErr]       = useState<string | null>(null)
@@ -158,7 +158,7 @@ function NovaFrequenciaModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.tomador || !form.setor || !form.especialidade.trim()) return
+    if (!form.tomador || !form.setor) return
     setSaving(true); setErr(null)
     try {
       const req: FrequenciaMedicaRequest = {
@@ -166,7 +166,7 @@ function NovaFrequenciaModal({
         medicoId: perfil.id,
         servicoOperacionalId: form.setor.id,
         competencia: form.competencia,
-        especialidade: form.especialidade.trim().toUpperCase(),
+        tipoMedico: form.tipoMedico,
       }
       const criada = await frequenciasApi.criar(req)
       onCriada(criada)
@@ -175,7 +175,7 @@ function NovaFrequenciaModal({
     } finally { setSaving(false) }
   }
 
-  const canSave = !!form.tomador && !!form.setor && !!form.especialidade.trim()
+  const canSave = !!form.tomador && !!form.setor
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -220,13 +220,13 @@ function NovaFrequenciaModal({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-ds-mid mb-1">Especialidade *</label>
-            <input
-              type="text" value={form.especialidade}
-              onChange={e => setForm(f => ({ ...f, especialidade: e.target.value }))}
-              placeholder="Ex.: MÉDICO PLANTONISTA"
-              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
+            <label className="block text-xs font-bold text-ds-mid mb-1">Tipo de Escala *</label>
+            <select value={form.tipoMedico}
+              onChange={e => setForm(f => ({ ...f, tipoMedico: e.target.value as 'PLANTONISTA' | 'DIARISTA' }))}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+              <option value="PLANTONISTA">Plantonista</option>
+              <option value="DIARISTA">Diarista</option>
+            </select>
           </div>
 
           <div className="flex gap-3 pt-1">
@@ -572,7 +572,7 @@ function FrequenciaCard({
             {freq.servicoOperacionalNome && (
               <p className="text-xs text-ds-light">· {freq.servicoOperacionalNome}</p>
             )}
-            <p className="text-xs text-ds-light">· {freq.especialidade}</p>
+            <p className="text-xs text-ds-light">· {freq.tipoMedico ?? '—'}</p>
           </div>
         </div>
         <div className="text-right shrink-0">

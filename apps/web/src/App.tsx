@@ -27,6 +27,7 @@ import { PosicaoCaixaPage }          from './pages/PosicaoCaixaPage'
 import { LedgerExtratoPage }         from './pages/LedgerExtratoPage'
 import { FrequenciasPage }           from './pages/FrequenciasPage'
 import { PortalFrequenciaPage }      from './pages/PortalFrequenciaPage'
+import { FechamentoPage }            from './pages/FechamentoPage'
 
 export default function App() {
   return (
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="/portal/producao/nova"  element={<PortalProducaoNovaPage />} />
             <Route path="/portal/frequencias"    element={<PortalFrequenciaPage />} />
             <Route path="/frequencias"           element={<FrequenciasPage />} />
+            <Route path="/fechamentos"           element={<FechamentoPage />} />
             <Route path="/repasses"           element={<UnderConstruction title="Repasses" epic="EPIC-09" />} />
             <Route path="/conciliacao"           element={<ConciliacaoAssistidaPage />} />
             <Route path="/conciliacao/assistida" element={<ConciliacaoAssistidaPage />} />
