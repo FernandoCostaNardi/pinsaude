@@ -40,6 +40,7 @@ public class CadastroPublicoService {
     private final DadosBancariosMedicoRepository dadosBancariosRepo;
     private final DocumentoMedicoRepository documentoRepo;
     private final DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo;
+    private final ChecklistCondutaRepository checklistRepo;
     private final HistoricoMedicoRepository historicoRepo;
     private final CryptoService cryptoService;
     private final StorageService storageService;
@@ -52,6 +53,7 @@ public class CadastroPublicoService {
             DadosBancariosMedicoRepository dadosBancariosRepo,
             DocumentoMedicoRepository documentoRepo,
             DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo,
+            ChecklistCondutaRepository checklistRepo,
             HistoricoMedicoRepository historicoRepo,
             CryptoService cryptoService,
             StorageService storageService,
@@ -62,6 +64,7 @@ public class CadastroPublicoService {
         this.dadosBancariosRepo = dadosBancariosRepo;
         this.documentoRepo = documentoRepo;
         this.declaracoesLgpdRepo = declaracoesLgpdRepo;
+        this.checklistRepo = checklistRepo;
         this.historicoRepo = historicoRepo;
         this.cryptoService = cryptoService;
         this.storageService = storageService;
@@ -90,6 +93,11 @@ public class CadastroPublicoService {
         var dadosCivis = new DadosCivisMedico(medico.getId());
         aplicarDadosCivis(dadosCivis, req);
         dadosCivis = dadosCivisRepo.save(dadosCivis);
+
+        // Sem isso, o operador nunca teria como marcar o checklist de conduta como completo
+        // na tela de Aprovação (ChecklistEditor só renderiza quando medico.checklist != null)
+        // — mesmo padrão de MedicoService.criar() para o cadastro manual (EPIC-03.2).
+        checklistRepo.save(new ChecklistConduta(medico.getId()));
 
         registrarHistorico(medico.getId(), "Candidatura recebida via formulário público de auto-cadastro");
 

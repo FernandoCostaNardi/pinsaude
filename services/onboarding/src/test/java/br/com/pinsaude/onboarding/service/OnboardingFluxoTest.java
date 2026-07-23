@@ -325,6 +325,47 @@ class OnboardingFluxoTest {
         verify(medicoRepo, never()).findById(any());
     }
 
+    @Test
+    void webhook_sign_todosRequisitosJaCumpridos_ativaAutomaticamenteEliberaKeycloak() {
+        // Segundo gatilho de verificarAtivacaoAutomatica (além de atualizarJuntaComercial,
+        // já coberto acima) — o evento "sign" do Clicksign completa o último requisito
+        // pendente (contrato assinado) e deve disparar ativação automática + liberação
+        // do Keycloak, igual ao fluxo via Junta Comercial.
+        UUID medicoId = UUID.randomUUID();
+        String docKey = "doc-key-sign-ok";
+        var medico = medicoComEmail(medicoId);
+        medico.setKeycloakUserId("kc-user-555");
+        medico.setStatusJuntaComercial("APROVADO");
+
+        var contrato = new ContratoAssinatura();
+        contrato.setMedicoId(medicoId);
+        contrato.setDocumentoKey(docKey);
+        contrato.setStatus("ENVIADO");
+
+        var checklist = checklistCompleto(medicoId);
+        var docs = List.of(
+            docAprovado(medicoId, TipoDocumentoMedico.CRM),
+            docAprovado(medicoId, TipoDocumentoMedico.DIPLOMA),
+            docAprovado(medicoId, TipoDocumentoMedico.IDENTIDADE),
+            docAprovado(medicoId, TipoDocumentoMedico.RESIDENCIA)
+        );
+
+        when(contratoRepo.findByDocumentoKey(docKey)).thenReturn(Optional.of(contrato));
+        when(contratoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.of(contrato));
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medico));
+        when(medicoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(checklistRepo.findById(medicoId)).thenReturn(Optional.of(checklist));
+        when(documentoRepo.findByMedicoId(medicoId)).thenReturn(docs);
+
+        medicoService.processarWebhookClicksign(docKey, "sign");
+
+        assertThat(contrato.getStatus()).isEqualTo("ASSINADO");
+        assertThat(medico.getStatus()).isEqualTo(StatusMedico.ATIVO);
+        verify(keycloakAdminService).assignRole("kc-user-555", "medico");
+        verify(keycloakAdminService).updateUserEnabled("kc-user-555", true);
+    }
+
     // ─── ativar manual — checklist incompleto ────────────────────────────────
 
     @Test
