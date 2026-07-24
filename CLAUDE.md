@@ -3427,6 +3427,59 @@ fluxo.
 
 ---
 
+## Sincronização de cnpj_id no Keycloak ao Atribuir Vínculo (pós-EPIC-14.9)
+
+### Sintoma: médico auto-cadastrado ativo não aparece na tela de Usuários
+`GET /api/usuarios` (services/gestao) lista usuários do Keycloak filtrando por
+`q=cnpj_id:{valor}`, onde `{valor}` é o **próprio `cnpj_id` de quem está logado** (não é uma
+listagem cross-tenant, nem para `gestao`). Os 3 usuários seed (`medico@`, `operacao@`,
+`gestao@pinsaude.com.br`) compartilham `cnpj_id: "11.222.333/0001-81"` no `realm-export.json` —
+por isso só eles aparecem por padrão. Médicos de auto-cadastro (EPIC-14) nascem no Keycloak com
+`cnpj_id` vazio (`KeycloakAdminService.createUserDesabilitado(..., cnpjId=null)`, correto na
+criação — o médico ainda não tem vínculo com nenhuma empresa) e **nada sincronizava esse atributo
+depois**, nem quando um operador atribuía manualmente um vínculo médico↔empresa. Resultado: um
+médico auto-cadastrado, mesmo `ATIVO`, nunca aparecia em `/usuarios` para ninguém.
+
+### Correção — sincroniza no primeiro vínculo, não sobrescreve depois
+`MedicoService.adicionarVinculo()` agora chama `sincronizarCnpjIdKeycloak(medico, empresa)` **só
+quando é o primeiro vínculo do médico** (`vinculoRepo.findByIdMedicoId(medicoId).isEmpty()` antes
+do save) — vínculos adicionais com outras empresas não sobrescrevem, mesmo critério de "primeira
+empresa define" já usado em `MedicoResponse.empresaId` (compat). `KeycloakAdminService` ganhou
+`updateUserAttributeCnpjId(userId, cnpjId)` — mesmo estilo de `updateUserEnabled` (PUT parcial só
+com o campo `attributes`, Keycloak não limpa os demais campos do usuário). Só roda se
+`medico.getKeycloakUserId() != null` (médicos cadastrados manualmente, sem Keycloak vinculado pelo
+onboarding, não são afetados — o deles é gerenciado só pela tela de Usuários). Falha na chamada ao
+Keycloak é tolerada (log apenas), mesmo padrão de `liberarAcessoKeycloak` — não bloqueia a
+criação do vínculo em si.
+
+### Limitação conhecida: vínculos criados antes da correção não são retroativos
+Médicos que já tinham um vínculo atribuído **antes** deste fix não têm o `cnpj_id` sincronizado
+automaticamente — a sincronização só dispara no evento de criação de um novo vínculo. Para um
+médico legado nessa situação, remover e reatribuir o vínculo (`DELETE` + `POST
+/api/medicos/{id}/vinculos`) dispara a sincronização retroativamente.
+
+### Verificação direta via Keycloak Admin API (sem depender da tela)
+Para confirmar o atributo sem logar como o usuário certo (que pode não existir em dev):
+```bash
+TOKEN=$(curl -s -X POST "http://localhost:8080/realms/master/protocol/openid-connect/token" \
+  -d "grant_type=password&client_id=admin-cli&username=admin&password=admin" \
+  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+curl -s "http://localhost:8080/admin/realms/pinsaude/users/{keycloakUserId}" \
+  -H "Authorization: Bearer $TOKEN"
+# ou simular a query exata do gestao:
+curl -s -G "http://localhost:8080/admin/realms/pinsaude/users" \
+  --data-urlencode "q=cnpj_id:{cnpj-da-empresa}" -H "Authorization: Bearer $TOKEN"
+```
+
+### Senha do médico auto-cadastrado — não é definida na criação
+`createUserDesabilitado` cria o usuário com `requiredActions: [UPDATE_PASSWORD, VERIFY_EMAIL]` e
+sem senha. O caminho de primeiro acesso é o link "Esqueceu a senha?" em `LoginPage.tsx`
+(`KC_RESET_PASSWORD_URL`, fluxo nativo `reset-credentials` do Keycloak — `resetPasswordAllowed:
+true` no realm) — não é um passo manual que falta fazer, é o mecanismo pretendido. Em dev, o
+e-mail de redefinição cai no Mailhog (`http://localhost:8025`).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

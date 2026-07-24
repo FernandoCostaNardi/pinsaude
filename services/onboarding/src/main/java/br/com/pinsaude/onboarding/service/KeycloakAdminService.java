@@ -122,4 +122,20 @@ public class KeycloakAdminService {
             .retrieve()
             .toBodilessEntity();
     }
+
+    /**
+     * Seta o atributo cnpj_id do usuário — necessário para que o médico apareça na tela de
+     * Usuários (services/gestao), que filtra por esse atributo (ver KeycloakAdminService do
+     * gestao, listUsers). Médicos de auto-cadastro nascem sem cnpj_id (sem vínculo empresa
+     * ainda); sincronizado quando o primeiro vínculo é atribuído (MedicoService.adicionarVinculo).
+     */
+    public void updateUserAttributeCnpjId(String userId, String cnpjId) {
+        restClient.put()
+            .uri(adminUrl("/users/" + userId))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(Map.of("attributes", Map.of("cnpj_id", List.of(cnpjId))))
+            .retrieve()
+            .toBodilessEntity();
+    }
 }

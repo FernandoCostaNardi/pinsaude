@@ -710,7 +710,7 @@ public class MedicoService {
 
     @Transactional
     public VinculoEmpresaResponse adicionarVinculo(UUID medicoId, UUID empresaId) {
-        findOrThrow(medicoId);
+        Medico medico = findOrThrow(medicoId);
         Empresa empresa = empresaRepo.findById(empresaId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Empresa não encontrada: " + empresaId));
@@ -718,11 +718,34 @@ public class MedicoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Médico já está vinculado a esta empresa");
         }
+        boolean primeiroVinculo = vinculoRepo.findByIdMedicoId(medicoId).isEmpty();
         var vinculo = vinculoRepo.save(new VinculoMedicoEmpresa(
             new VinculoMedicoEmpresaId(medicoId, empresaId), StatusSocietario.ATIVO));
         registrarHistorico(medicoId, TipoAcaoMedico.ATUALIZACAO_DADOS,
             "Vínculo adicionado com empresa: " + empresa.getRazaoSocial());
+        if (primeiroVinculo) {
+            sincronizarCnpjIdKeycloak(medico, empresa);
+        }
         return VinculoEmpresaResponse.from(vinculo, empresa);
+    }
+
+    // Sincroniza o atributo cnpj_id do Keycloak com a primeira empresa vinculada — necessário
+    // para que médicos de auto-cadastro (sem cnpj_id ao nascer, ver KeycloakAdminService.
+    // createUserDesabilitado) passem a aparecer na tela de Usuários (services/gestao), que
+    // filtra por esse atributo. Só roda uma vez, no primeiro vínculo — vínculos adicionais
+    // com outras empresas não sobrescrevem (mesmo critério de "primeira empresa" já usado em
+    // MedicoResponse.empresaId). Médicos sem keycloakUserId (cadastro manual) não são afetados.
+    // Falha aqui é tolerada (log apenas) — mesmo padrão de liberarAcessoKeycloak.
+    private void sincronizarCnpjIdKeycloak(Medico medico, Empresa empresa) {
+        if (medico.getKeycloakUserId() == null) return;
+        try {
+            keycloakAdminService.updateUserAttributeCnpjId(medico.getKeycloakUserId(), empresa.getCnpj());
+            log.info("cnpj_id sincronizado no Keycloak para médico {} (empresa {})",
+                medico.getId(), empresa.getId());
+        } catch (Exception e) {
+            log.error("Falha ao sincronizar cnpj_id no Keycloak para médico {} (keycloakUserId={}): {}",
+                medico.getId(), medico.getKeycloakUserId(), e.getMessage());
+        }
     }
 
     @Transactional
