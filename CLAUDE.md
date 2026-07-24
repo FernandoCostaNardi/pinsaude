@@ -3512,6 +3512,71 @@ e-mail de redefinição cai no Mailhog (`http://localhost:8025`).
 
 ---
 
+## E-mails Nativos do Keycloak em Inglês — Faltava Internacionalização no Realm
+
+### Sintoma: "Reenviar Convite" (tela de Usuários) envia e-mail em inglês, genérico
+`UsuarioService.reenviarConvite()`/`convidar()` (services/gestao) chamam
+`KeycloakAdminService.sendInvitationEmail()`, que aciona o endpoint nativo do Keycloak
+`PUT /users/{id}/execute-actions-email` — o Keycloak quem renderiza e envia esse e-mail (não é
+um template Thymeleaf nosso), usando seu tema `email` embutido. Sem internacionalização habilitada
+no realm, o Keycloak sempre usa o locale padrão do tema (inglês): assunto "Update Your Account",
+corpo "Your administrator has just requested...". Mesmo problema afeta o e-mail nativo de "Esqueci
+minha senha" (`resetPasswordAllowed`, acionado pelo link `KC_RESET_PASSWORD_URL`/`primeiroAcessoUrl`)
+e o de verificação de e-mail — todos usam o mesmo tema `email` do Keycloak.
+
+### Correção — habilitar internacionalização com pt-BR (sem precisar de tema customizado)
+O Keycloak 24 já traz traduções pt-BR embutidas no tema base `email` (mensagens como
+`executeActionsSubject`/`executeActionsBody`, `passwordResetSubject`/`Body` etc. já têm bundle
+`messages_pt_BR.properties` no tema padrão) — não foi necessário criar um tema customizado nem
+montar volume novo no container. Bastou habilitar i18n no realm, em `tools/keycloak/realm-export.json`:
+```json
+"internationalizationEnabled": true,
+"supportedLocales": ["pt-BR"],
+"defaultLocale": "pt-BR",
+```
+Como o projeto é 100% em português, `supportedLocales` só tem `pt-BR` — não precisa de seletor de
+idioma nem lógica de detecção. Resultado confirmado no Mailhog: assunto muda de "Update Your
+Account" para "Atualização de conta", corpo inteiro traduzido.
+
+### Aplicar em um Keycloak já rodando (sem esperar reimport do realm)
+`--import-realm` no `docker-compose.yml` só importa o `realm-export.json` na **criação** do realm
+— não reaplica em um realm que já existe (o caso comum em dev, onde o container já rodou antes).
+Para aplicar imediatamente sem recriar o container/volume, usar a Admin API direto:
+```bash
+TOKEN=$(curl -s -X POST "http://localhost:8080/realms/master/protocol/openid-connect/token" \
+  -d "grant_type=password&client_id=admin-cli&username=admin&password=admin" \
+  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+curl -s -X PUT "http://localhost:8080/admin/realms/pinsaude" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"internationalizationEnabled": true, "supportedLocales": ["pt-BR"], "defaultLocale": "pt-BR"}'
+```
+
+### ⚠️ Achado adicional: `updateUserAttributeCnpjId` ainda zerava o `email` do usuário
+Investigando por que "Reenviar Convite" retornava `400 "User email missing"` para médicos que já
+tinham passado pela sincronização de `cnpj_id` (ver seção "Sincronização de cnpj_id no Keycloak"),
+descobri que a correção anterior daquele bug (reenviar `firstName`/`lastName` no mesmo PUT que
+`attributes`) era **incompleta** — o Keycloak 24 com User Profile trata QUALQUER PUT com
+`attributes` como submissão completa do formulário de perfil, e `email` também é um campo desse
+formulário. A correção anterior só reenviava `firstName`/`lastName`, então `email` continuava
+sendo zerado silenciosamente. Dois usuários reais (`Fernando Costa Nardi`, `Dr. Roberto Almeida
+Costa`) ficaram sem e-mail no Keycloak por causa disso — restaurados manualmente via Admin API.
+
+**Correção definitiva:** `KeycloakAdminService.updateUserAttributeCnpjId()` (onboarding) agora faz
+GET da representação **completa** do usuário e copia tudo para o corpo do PUT, sobrescrevendo só
+`attributes` — em vez de escolher campos a dedo (`firstName`, `lastName`), que é frágil a qualquer
+novo campo que o Keycloak passe a gerenciar no futuro:
+```java
+Map<String, Object> atual = restClient.get().uri(...).retrieve().body(...);
+Map<String, Object> body = new LinkedHashMap<>(atual);
+body.put("attributes", Map.of("cnpj_id", List.of(cnpjId)));
+restClient.put().uri(...).body(body)...
+```
+Essa é a lição geral: **qualquer PUT parcial para `/admin/realms/{realm}/users/{id}` que inclua
+`attributes` deve sempre partir de um GET completo e sobrescrever só o campo desejado** — nunca
+montar o corpo do zero escolhendo campos manualmente.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
