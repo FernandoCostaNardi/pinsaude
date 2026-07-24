@@ -44,9 +44,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -90,9 +92,18 @@ public class TomadorService {
         this.medicoTomadorRepo = medicoTomadorRepo;
     }
 
-    public List<TomadorResponse> buscar(String q) {
+    public List<TomadorResponse> buscar(String q, UUID medicoId) {
+        List<Tomador> tomadores = buscarPorQ(q);
+        if (medicoId != null) {
+            Set<UUID> alocados = new HashSet<>(medicoTomadorRepo.findTomadorIdsByMedicoId(medicoId));
+            tomadores = tomadores.stream().filter(t -> alocados.contains(t.getId())).toList();
+        }
+        return tomadores.stream().map(this::toResponse).toList();
+    }
+
+    private List<Tomador> buscarPorQ(String q) {
         if (q == null || q.isBlank()) {
-            return repo.findAll().stream().map(this::toResponse).toList();
+            return repo.findAll();
         }
 
         String qDigitos = q.replaceAll("\\D", "");
@@ -103,13 +114,10 @@ public class TomadorService {
                     String dec = crypto.decrypt(t.getCnpjCpfTomadorCriptografado());
                     return dec != null && dec.startsWith(qDigitos);
                 })
-                .map(this::toResponse)
                 .toList();
         }
 
-        return repo.findByRazaoSocialNomeContainingIgnoreCase(q).stream()
-            .map(this::toResponse)
-            .toList();
+        return repo.findByRazaoSocialNomeContainingIgnoreCase(q);
     }
 
     public TomadorResponse buscarPorId(UUID id) {

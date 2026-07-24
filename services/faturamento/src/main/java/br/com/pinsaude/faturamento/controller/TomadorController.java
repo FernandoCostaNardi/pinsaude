@@ -41,8 +41,9 @@ public class TomadorController {
     @GetMapping
     @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
     public ResponseEntity<List<TomadorResponse>> buscar(
-            @RequestParam(required = false) String q) {
-        return ResponseEntity.ok(service.buscar(q));
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) UUID medicoId) {
+        return ResponseEntity.ok(service.buscar(q, medicoId));
     }
 
     @GetMapping("/{id}")
