@@ -62,6 +62,7 @@ app:
 
 clicksign:
   enabled: ${CLICKSIGN_ENABLED:false}
+  mock.enabled: ${CLICKSIGN_MOCK_ENABLED:true}
   base-url: ${CLICKSIGN_BASE_URL:https://sandbox.clicksign.com}
   access-token: ${CLICKSIGN_ACCESS_TOKEN:}
   template-key: ${CLICKSIGN_TEMPLATE_KEY:}
