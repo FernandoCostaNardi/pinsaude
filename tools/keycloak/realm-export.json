@@ -12,6 +12,7 @@
   "internationalizationEnabled": true,
   "supportedLocales": ["pt-BR"],
   "defaultLocale": "pt-BR",
+  "emailTheme": "pinsaude",
   "sslRequired": "external",
   "accessTokenLifespan": 1800,
   "accessTokenLifespanForImplicitFlow": 900,

@@ -3577,6 +3577,70 @@ montar o corpo do zero escolhendo campos manualmente.
 
 ---
 
+## Tema Customizado de E-mail do Keycloak — Branding Pin Saúde (pós-EPIC-14.9)
+
+### De i18n pt-BR (texto correto) para tema visual (logo, cor, card) — dois problemas diferentes
+Habilitar `internationalizationEnabled`/pt-BR (seção anterior) resolveu o **idioma** dos e-mails
+nativos do Keycloak, mas o layout continuava sendo o HTML mínimo do tema `base` (`<html><body>
+<#nested></body></html>`, sem nenhum estilo) — bem diferente dos e-mails Thymeleaf do onboarding
+(`templates/email/*.html`, com header azul, card branco centralizado e rodapé). Corrigido criando
+um tema de e-mail customizado (`tools/keycloak/themes/pinsaude/email/`) com `parent=base` no
+`theme.properties` — herda todos os templates de conteúdo (`executeActions.ftl`,
+`password-reset.ftl`, `email-verification.ftl` etc.), só sobrescrevendo:
+
+1. **`html/template.ftl`** — o macro `emailLayout` que TODOS os templates de conteúdo chamam via
+   `<@layout.emailLayout>...</@layout.emailLayout>`. Sobrescrever só este arquivo já aplica o
+   header azul (`#02A9F7`) + "Pin Saúde" + subtítulo, o card branco centralizado (`width:600`,
+   `border-radius`, `box-shadow`) e o rodapé cinza claro a **todos** os e-mails nativos de uma vez
+   — sem precisar duplicar cada template de conteúdo individualmente.
+2. **`messages/messages_pt_BR.properties`** — sobrescreve só as chaves `*BodyHtml`
+   (`executeActionsBodyHtml`, `passwordResetBodyHtml`, `emailVerificationBodyHtml`) para trocar o
+   link `<a href="{0}">texto</a>` simples por um botão de CTA estilizado (`<table><tr><td
+   style="background:#02A9F7;border-radius:8px;"><a href="{0}" style="...">Texto →</a></td></tr>
+   </table>`), consistente com os botões dos e-mails Thymeleaf. As versões plaintext e os assuntos
+   continuam herdados do tema base (já corretos em pt-BR). **`kcSanitize` (o sanitizador do
+   Keycloak sobre o HTML de `msg()`) permite `style` inline em `table`/`td`/`a`** — testado e
+   confirmado, o botão azul renderiza corretamente no Mailhog, não foi preciso usar CSS externo.
+3. `"emailTheme": "pinsaude"` no realm (`realm-export.json` + aplicado via Admin API na sessão).
+
+### Descobrindo a estrutura de templates do tema `base` sem documentação local
+Os `.ftl`/`.properties` do tema padrão não existem como arquivos soltos — vêm empacotados dentro
+de `/opt/keycloak/lib/lib/main/org.keycloak.keycloak-themes-<versão>.jar` dentro do container. Sem
+`jar`/`unzip` disponíveis no container (imagem mínima), o caminho usado foi:
+```powershell
+docker cp pinsaude-keycloak:/opt/keycloak/lib/lib/main/org.keycloak.keycloak-themes-24.0.5.jar ./kc-themes.jar
+```
+e então extrair localmente (`unzip` no Git Bash funciona direto, já que um `.jar` é um `.zip`) para
+inspecionar `theme/base/email/html/*.ftl` (estrutura/macros) e `theme/base/email/messages/
+messages_pt_BR.properties` (textos e nomes/ordem exata dos parâmetros `{0}`, `{1}`... de cada
+`msg(...)`, que **variam por template** — `executeActionsBodyHtml` tem 5 parâmetros
+`(link, linkExpiration, realmName, requiredActionsText, linkExpirationFormatter(...))` enquanto
+`passwordResetBodyHtml`/`emailVerificationBodyHtml` têm só 4, sem `requiredActionsText`).
+
+### Aplicar tema customizado num Keycloak já rodando (sem recriar o container)
+Igual à seção de i18n: `--import-realm` não reaplica em realm já existente, e um volume novo no
+`docker-compose.yml` só é montado na **criação** do container. Para testar imediatamente:
+```powershell
+docker exec pinsaude-keycloak mkdir -p /opt/keycloak/themes/pinsaude/email/html /opt/keycloak/themes/pinsaude/email/messages
+docker cp tools/keycloak/themes/pinsaude/email/theme.properties pinsaude-keycloak:/opt/keycloak/themes/pinsaude/email/theme.properties
+docker cp tools/keycloak/themes/pinsaude/email/html/template.ftl pinsaude-keycloak:/opt/keycloak/themes/pinsaude/email/html/template.ftl
+docker cp tools/keycloak/themes/pinsaude/email/messages/messages_pt_BR.properties pinsaude-keycloak:/opt/keycloak/themes/pinsaude/email/messages/messages_pt_BR.properties
+```
+Depois setar `emailTheme` via Admin API (`PUT /admin/realms/pinsaude` com `{"emailTheme":
+"pinsaude"}`) — Keycloak em modo `start-dev` não cacheia temas/templates, então o efeito é
+imediato, sem reiniciar o container. Para um container **recriado do zero** (`docker compose up`
+depois desta mudança), o volume `./tools/keycloak/themes/pinsaude:/opt/keycloak/themes/pinsaude:ro`
+já monta os arquivos automaticamente e o `emailTheme` já vem do `realm-export.json`.
+
+### Onde estender no futuro (novos tipos de e-mail nativo do Keycloak)
+Qualquer novo fluxo que dispare e-mail nativo do Keycloak (ex.: `email-verification-with-code`,
+eventos de segurança como `event-update_password.ftl`) já herda automaticamente o layout
+`template.ftl` — só precisa de uma entrada nova em `messages_pt_BR.properties` se quiser o botão de
+CTA estilizado; sem override, o texto plaintext do tema `base` (já em pt-BR) continua funcionando,
+só sem o botão colorido.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
