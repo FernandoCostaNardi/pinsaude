@@ -3538,6 +3538,47 @@ e-mail de redefinição cai no Mailhog (`http://localhost:8025`).
 
 ---
 
+## E-mail de Ativação — Faltava no Caminho de Auto-ativação (pós-EPIC-14.9)
+
+### Bug: `verificarAtivacaoAutomatica()` nunca disparava o e-mail "MEDICO_ATIVADO"
+`MedicoService.ativar()` (botão manual "Ativar Médico") sempre chamou
+`notificacaoService.notificarMedicoAtivado(medico)`. `verificarAtivacaoAutomatica()` (disparada
+por `assinarContratoManual()` e `atualizarJuntaComercial()`/webhook Clicksign — o caminho que
+médicos de auto-cadastro efetivamente percorrem, já que eles nunca passam pelo botão manual)
+**nunca fazia essa chamada**. Resultado: todo médico auto-cadastrado ativado automaticamente virava
+`ATIVO` silenciosamente, sem nenhum e-mail de boas-vindas — só descoberto testando o fluxo completo
+(nenhum teste unitário cobria essa lacuna porque cada caminho de ativação era testado
+isoladamente). Corrigido adicionando a mesma chamada em `verificarAtivacaoAutomatica()`.
+
+### E-mail "MEDICO_ATIVADO" não tinha instrução de primeiro acesso — só o médico auto-cadastro precisa
+Mesmo com o e-mail disparado, o botão "Acessar meu Portal" simplesmente linkava para
+`http://localhost:3000` — inútil para um médico de auto-cadastro, que não tem senha nenhuma
+definida (`createUserDesabilitado` nunca passa por `sendInvitationEmail`/`execute-actions-email` do
+Keycloak, que só existe no `KeycloakAdminService` do **gestao**, usado no convite manual). A
+`NotificacaoService.notificarMedicoAtivado()` (onboarding) passou a montar e incluir
+`primeiroAcessoUrl` no `dados` do e-mail — o mesmo link nativo `reset-credentials` do Keycloak
+usado por `KC_RESET_PASSWORD_URL` no frontend, construído a partir de
+`KeycloakAdminProperties.serverUrl()/realm()` + client hardcoded `"pinsaude-web"` (duplicado do
+frontend, já que o e-mail é montado sem acesso ao build do frontend). Incluído **sempre**, mesmo
+para médicos cadastrados manualmente via convite do gestao (que já têm senha) — inofensivo, só uma
+alternativa de redefinição de senha a mais, evita ter que diferenciar por `origemCadastro`.
+Template `medico-ativado.html` ganhou uma seção destacada "🔑 Primeiro acesso?" com botão "Definir
+minha senha →" antes do CTA "Acessar meu Portal".
+
+### Testando localmente: médicos antigos podem não ter `checklist_conduta` (pré-fix EPIC-14.9)
+Médicos de auto-cadastro criados **antes** do fix de seeding do checklist (EPIC-14.9) não têm
+linha em `onboarding.checklist_conduta` e a tela de Aprovação não mostra nenhum editor para criá-la
+retroativamente (`ChecklistEditor` só renderiza quando `medico.checklist != null`). Para destravar
+um médico legado desses em teste manual, inserir direto via SQL:
+```sql
+INSERT INTO onboarding.checklist_conduta
+  (medico_id, numero_conselho_verificado, registros_disciplinares, processos_medicos, verificado_por, verificado_em)
+VALUES ('<medico-id>', true, true, true, 'teste-manual', now());
+```
+Médicos criados após o fix já nascem com essa linha automaticamente — não precisam desse workaround.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
