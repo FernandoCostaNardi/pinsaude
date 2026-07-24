@@ -3283,6 +3283,37 @@ manipula o elemento diretamente via referência, sem depender de coordenadas de 
 
 ---
 
+## Remoção de Documento no Auto-cadastro Público (pós-EPIC-14)
+
+### `MultiFileUploadField` nasceu sem opção de remover — bloqueava troca de arquivo errado
+O componente `MultiFileUploadField.tsx` (EPIC-14.7) desabilitava a dropzone assim que um arquivo
+era enviado em campos `multiplos={false}` (CRM, comprovante de endereço, certidão de casamento,
+RQE) — sem nenhum botão de remoção, quem selecionava o arquivo errado ficava travado, sem
+conseguir corrigir. Adicionado prop opcional `onRemove?: (tipo, arquivo) => Promise<unknown>`:
+em `multiplos={false}` aparece um ícone de lixeira ao lado de "Enviado: nome.ext" (reabre a
+dropzone ao remover); em `multiplos={true}` cada item da lista ganha seu próprio ícone de remoção
+individual. `onRemove` é opcional de propósito — se omitido, o campo se comporta como antes
+(nenhum breaking change nos consumidores existentes).
+
+### Backend público não tinha `DELETE`/`GET` de documentos — só existia no fluxo autenticado
+`CadastroPublicoController`/`CadastroPublicoService` (EPIC-14.2/14.3) só tinham `uploadDocumento`.
+O fluxo autenticado (`MedicoController`/`MedicoService`) já tinha `listarDocumentos`/
+`deletarDocumento` havia tempo — replicados 1:1 no serviço público, reusando o mesmo guard
+`findEditavelOrThrow` (bloqueia remoção depois que a candidatura sai de `RASCUNHO`, mesma regra
+que já protegia `uploadDocumento`). Endpoints novos: `GET/DELETE
+/api/onboarding/publico/candidaturas/{id}/documentos[/{docId}]`.
+
+### Retomada de candidatura (resume) passou a carregar os documentos já enviados
+Antes desta correção, resumir uma candidatura salva (`sessionStorage` + `GET /candidaturas/{id}`)
+não recuperava a lista de documentos já enviados — limitação já documentada no EPIC-14.6
+("a retomada não sabe quais arquivos já foram enviados"). Como o novo endpoint `listarDocumentos`
+já existia para viabilizar a remoção, o `useEffect` de restauração em `CadastroMedicoWizardPage.tsx`
+passou a chamar `candidaturaMedicoApi.listarDocumentos(id)` logo após `buscar(id)` ter sucesso e
+popular `docsEnviados` agrupando por tipo — sem isso, o botão de remover não apareceria após um
+refresh de página (o array `arquivos` estaria vazio mesmo com documentos já no servidor).
+
+---
+
 ## Ajustes na Tela de Aprovação de Onboarding (EPIC-14.8)
 
 ### `MedicoResponse` não expunha `origemCadastro`/dados civis/LGPD — precisou de novo DTO e novo `from()`

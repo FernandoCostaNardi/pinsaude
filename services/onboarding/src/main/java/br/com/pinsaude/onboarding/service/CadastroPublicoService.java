@@ -137,6 +137,13 @@ public class CadastroPublicoService {
         return CandidaturaPublicaResponse.from(medico, cpf, dadosCivis);
     }
 
+    public List<DocumentoMedicoResponse> listarDocumentos(UUID id) {
+        findAutoCadastroOrThrow(id);
+        return documentoRepo.findByMedicoId(id).stream()
+            .map(DocumentoMedicoResponse::from)
+            .toList();
+    }
+
     @Transactional
     public DocumentoMedicoResponse uploadDocumento(UUID id, TipoDocumentoMedico tipo, MultipartFile arquivo) {
         findEditavelOrThrow(id);
@@ -160,6 +167,19 @@ public class CadastroPublicoService {
             "Documento enviado pelo próprio médico: " + tipo.name());
 
         return DocumentoMedicoResponse.from(doc);
+    }
+
+    @Transactional
+    public void deletarDocumento(UUID id, UUID docId) {
+        findEditavelOrThrow(id);
+        DocumentoMedico doc = documentoRepo.findById(docId)
+            .filter(d -> id.equals(d.getMedicoId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Documento não encontrado: " + docId));
+        storageService.delete(doc.getCaminhoStorage());
+        documentoRepo.delete(doc);
+        registrarHistorico(id, TipoAcaoMedico.EXCLUSAO_DOCUMENTO,
+            "Documento removido pelo próprio médico: " + doc.getTipo().name());
     }
 
     @Transactional

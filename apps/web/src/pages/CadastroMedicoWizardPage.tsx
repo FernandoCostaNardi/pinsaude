@@ -227,6 +227,17 @@ export function CadastroMedicoWizardPage() {
         setForm(fromResponse(resp))
         setMaxVisited(2)
         setResumeNotice(true)
+        candidaturaMedicoApi.listarDocumentos(resp.id)
+          .then(docs => {
+            const grouped: Partial<Record<TipoDocumentoCandidatura, UploadedFileRef[]>> = {}
+            docs.forEach(d => {
+              const lista = grouped[d.tipo] ?? []
+              lista.push({ id: d.id, nomeArquivo: d.nomeArquivo })
+              grouped[d.tipo] = lista
+            })
+            setDocsEnviados(grouped)
+          })
+          .catch(() => { /* falha ao listar documentos não impede retomar a candidatura */ })
       })
       .catch(() => {
         sessionStorage.removeItem(STORAGE_KEY_ID)
@@ -400,6 +411,17 @@ export function CadastroMedicoWizardPage() {
       .catch(err => setApiError(err instanceof Error ? err.message : 'Erro ao enviar arquivo'))
   }
 
+  function handleDocRemove(tipo: TipoDocumentoCandidatura, arquivo: UploadedFileRef) {
+    if (!candidaturaId) return Promise.resolve()
+    setApiError(null)
+    return candidaturaMedicoApi.deletarDocumento(candidaturaId, arquivo.id)
+      .then(() => setDocsEnviados(d => ({
+        ...d,
+        [tipo]: (d[tipo] ?? []).filter(a => a.id !== arquivo.id),
+      })))
+      .catch(err => setApiError(err instanceof Error ? err.message : 'Erro ao remover arquivo'))
+  }
+
   if (restoring) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -464,6 +486,7 @@ export function CadastroMedicoWizardPage() {
                     onChange={setField}
                     docsEnviados={docsEnviados}
                     onUpload={handleDocUpload}
+                    onRemove={handleDocRemove}
                   />
                 )}
                 {step === 2 && (
@@ -473,6 +496,7 @@ export function CadastroMedicoWizardPage() {
                     onChange={setField}
                     docsEnviados={docsEnviados}
                     onUpload={handleDocUpload}
+                    onRemove={handleDocRemove}
                   />
                 )}
                 {step === 3 && (
@@ -493,6 +517,7 @@ export function CadastroMedicoWizardPage() {
                     onToggleSituacao={toggleSituacaoFormacao}
                     docsEnviados={docsEnviados}
                     onUpload={handleDocUpload}
+                    onRemove={handleDocRemove}
                   />
                 )}
                 {step === 5 && (
@@ -661,11 +686,13 @@ function StepContatoEndereco({
   onChange,
   docsEnviados,
   onUpload,
+  onRemove,
 }: {
   form: FormState
   onChange: <K extends keyof FormState>(k: K, v: FormState[K]) => void
   docsEnviados: Partial<Record<TipoDocumentoCandidatura, UploadedFileRef[]>>
   onUpload: (tipo: TipoDocumentoCandidatura, file: File) => Promise<unknown>
+  onRemove: (tipo: TipoDocumentoCandidatura, arquivo: UploadedFileRef) => Promise<unknown>
 }) {
   const mostrarCertidao = isCasadoOuUniao(form.estadoCivil)
 
@@ -754,6 +781,7 @@ function StepContatoEndereco({
           tipo="COMPROVANTE_ENDERECO"
           arquivos={docsEnviados.COMPROVANTE_ENDERECO ?? []}
           onUpload={onUpload}
+          onRemove={onRemove}
           multiplos={false}
         />
         {mostrarCertidao && (
@@ -762,6 +790,7 @@ function StepContatoEndereco({
             tipo="CERTIDAO_CASAMENTO"
             arquivos={docsEnviados.CERTIDAO_CASAMENTO ?? []}
             onUpload={onUpload}
+            onRemove={onRemove}
             multiplos={false}
           />
         )}
@@ -778,12 +807,14 @@ function StepDocumentosProfissionais({
   onChange,
   docsEnviados,
   onUpload,
+  onRemove,
 }: {
   form: FormState
   errors: Partial<Record<string, string>>
   onChange: <K extends keyof FormState>(k: K, v: FormState[K]) => void
   docsEnviados: Partial<Record<TipoDocumentoCandidatura, UploadedFileRef[]>>
   onUpload: (tipo: TipoDocumentoCandidatura, file: File) => Promise<unknown>
+  onRemove: (tipo: TipoDocumentoCandidatura, arquivo: UploadedFileRef) => Promise<unknown>
 }) {
   const crmEnviado = (docsEnviados.CRM ?? []).length > 0
 
@@ -806,6 +837,7 @@ function StepDocumentosProfissionais({
           tipo="CRM"
           arquivos={docsEnviados.CRM ?? []}
           onUpload={onUpload}
+          onRemove={onRemove}
           multiplos={false}
         />
         {form.rqe.trim() !== '' && (
@@ -814,6 +846,7 @@ function StepDocumentosProfissionais({
             tipo="RQE"
             arquivos={docsEnviados.RQE ?? []}
             onUpload={onUpload}
+            onRemove={onRemove}
             multiplos={false}
           />
         )}
@@ -963,12 +996,14 @@ function StepFormacao({
   onToggleSituacao,
   docsEnviados,
   onUpload,
+  onRemove,
 }: {
   form: FormState
   onChange: <K extends keyof FormState>(k: K, v: FormState[K]) => void
   onToggleSituacao: (opcao: string) => void
   docsEnviados: Partial<Record<TipoDocumentoCandidatura, UploadedFileRef[]>>
   onUpload: (tipo: TipoDocumentoCandidatura, file: File) => Promise<unknown>
+  onRemove: (tipo: TipoDocumentoCandidatura, arquivo: UploadedFileRef) => Promise<unknown>
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -1019,6 +1054,7 @@ function StepFormacao({
           tipo="RESIDENCIA"
           arquivos={docsEnviados.RESIDENCIA ?? []}
           onUpload={onUpload}
+          onRemove={onRemove}
           multiplos
         />
         <MultiFileUploadField
@@ -1026,6 +1062,7 @@ function StepFormacao({
           tipo="ESPECIALIDADES"
           arquivos={docsEnviados.ESPECIALIDADES ?? []}
           onUpload={onUpload}
+          onRemove={onRemove}
           multiplos
         />
       </div>

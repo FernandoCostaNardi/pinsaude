@@ -306,6 +306,60 @@ class CadastroPublicoControllerIntegrationTest {
             .andExpect(status().isUnprocessableEntity());
     }
 
+    @Test
+    void listarDocumentos_retornaDocumentosEnviados() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70010");
+        when(storageService.upload(any(), any(), any())).thenReturn("documentos/fake/path.pdf");
+        var arquivo = new MockMultipartFile("arquivo", "crm.pdf", "application/pdf", new byte[]{1});
+        mockMvc.perform(multipart("/api/onboarding/publico/candidaturas/{id}/documentos", id)
+                .file(arquivo)
+                .param("tipo", "CRM"))
+            .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/onboarding/publico/candidaturas/{id}/documentos", id))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].tipo").value("CRM"));
+    }
+
+    @Test
+    void deletarDocumento_documentoDaCandidatura_removeERenderiaDropzone() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70011");
+        when(storageService.upload(any(), any(), any())).thenReturn("documentos/fake/path.pdf");
+        var arquivo = new MockMultipartFile("arquivo", "crm-errado.pdf", "application/pdf", new byte[]{1});
+        String location = mockMvc.perform(multipart("/api/onboarding/publico/candidaturas/{id}/documentos", id)
+                .file(arquivo)
+                .param("tipo", "CRM"))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getHeader("Location");
+        String docId = location.substring(location.lastIndexOf('/') + 1);
+
+        mockMvc.perform(delete("/api/onboarding/publico/candidaturas/{id}/documentos/{docId}", id, docId))
+            .andExpect(status().isNoContent());
+
+        assertThat(documentoRepo.findByMedicoId(id)).isEmpty();
+    }
+
+    @Test
+    void deletarDocumento_candidaturaJaAtivada_retorna422() throws Exception {
+        UUID id = criarCandidatura(cpfValido("111444777"), "70012");
+        when(storageService.upload(any(), any(), any())).thenReturn("documentos/fake/path.pdf");
+        var arquivo = new MockMultipartFile("arquivo", "crm.pdf", "application/pdf", new byte[]{1});
+        String location = mockMvc.perform(multipart("/api/onboarding/publico/candidaturas/{id}/documentos", id)
+                .file(arquivo)
+                .param("tipo", "CRM"))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getHeader("Location");
+        String docId = location.substring(location.lastIndexOf('/') + 1);
+
+        Medico medico = medicoRepo.findById(id).orElseThrow();
+        medico.setStatus(StatusMedico.ATIVO);
+        medicoRepo.save(medico);
+
+        mockMvc.perform(delete("/api/onboarding/publico/candidaturas/{id}/documentos/{docId}", id, docId))
+            .andExpect(status().isUnprocessableEntity());
+    }
+
     // ── dados bancários ──────────────────────────────────────────────────────
 
     @Test

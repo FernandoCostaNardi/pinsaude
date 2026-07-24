@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { CheckCircle2, Loader2, Upload } from 'lucide-react'
+import { CheckCircle2, Loader2, Trash2, Upload } from 'lucide-react'
 
 export interface UploadedFileRef {
   id: string
@@ -11,6 +11,8 @@ interface MultiFileUploadFieldProps<T extends string> {
   tipo: T
   arquivos: UploadedFileRef[]
   onUpload: (tipo: T, file: File) => Promise<unknown>
+  /** Permite remover um arquivo já enviado (para trocar por outro, ex.: selecionou o documento errado). */
+  onRemove?: (tipo: T, arquivo: UploadedFileRef) => Promise<unknown>
   /** Permite mais de um arquivo por tipo (ex.: títulos de especialista). Default true. */
   multiplos?: boolean
   accept?: string
@@ -24,10 +26,11 @@ interface MultiFileUploadFieldProps<T extends string> {
  * de documentos do wizard de auto-cadastro (EPIC-14.6/14.7).
  */
 export function MultiFileUploadField<T extends string>({
-  label, tipo, arquivos, onUpload, multiplos = true, accept = '.pdf,.jpg,.jpeg,.png', hint,
+  label, tipo, arquivos, onUpload, onRemove, multiplos = true, accept = '.pdf,.jpg,.jpeg,.png', hint,
 }: MultiFileUploadFieldProps<T>) {
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [removingId, setRemovingId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const podeAdicionarMais = multiplos || arquivos.length === 0
@@ -36,6 +39,13 @@ export function MultiFileUploadField<T extends string>({
     if (!file || !podeAdicionarMais) return
     setUploading(true)
     Promise.resolve(onUpload(tipo, file)).finally(() => setUploading(false))
+  }
+
+  function handleRemove(e: React.MouseEvent, arquivo: UploadedFileRef) {
+    e.stopPropagation()
+    if (!onRemove || removingId) return
+    setRemovingId(arquivo.id)
+    Promise.resolve(onRemove(tipo, arquivo)).finally(() => setRemovingId(null))
   }
 
   return (
@@ -73,6 +83,19 @@ export function MultiFileUploadField<T extends string>({
                 : (hint ?? 'Clique ou arraste o arquivo aqui (PDF, JPG, PNG)')}
           </p>
         </div>
+        {!multiplos && arquivos.length > 0 && onRemove && (
+          <button
+            type="button"
+            title="Remover arquivo e enviar outro"
+            onClick={e => handleRemove(e, arquivos[0])}
+            disabled={removingId === arquivos[0].id}
+            className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+          >
+            {removingId === arquivos[0].id
+              ? <Loader2 className="animate-spin" size={14} />
+              : <Trash2 size={14} />}
+          </button>
+        )}
         <input
           ref={inputRef}
           type="file"
@@ -86,7 +109,20 @@ export function MultiFileUploadField<T extends string>({
           {arquivos.map(a => (
             <li key={a.id} className="flex items-center gap-1.5 text-xs text-gray-500">
               <CheckCircle2 size={12} className="text-secondary-600 shrink-0" />
-              <span className="truncate">{a.nomeArquivo}</span>
+              <span className="truncate flex-1">{a.nomeArquivo}</span>
+              {onRemove && (
+                <button
+                  type="button"
+                  title="Remover arquivo"
+                  onClick={e => handleRemove(e, a)}
+                  disabled={removingId === a.id}
+                  className="shrink-0 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                >
+                  {removingId === a.id
+                    ? <Loader2 className="animate-spin" size={11} />
+                    : <Trash2 size={11} />}
+                </button>
+              )}
             </li>
           ))}
         </ul>
