@@ -3538,6 +3538,48 @@ e-mail de redefinição cai no Mailhog (`http://localhost:8025`).
 
 ---
 
+## Alocação de Médico a Tomadores — RLS em tabela-filha nova (EPIC-15.1)
+
+### ⚠️ FORCE ROW LEVEL SECURITY é obrigatório em toda tabela nova do faturamento — o padrão do V17 (sem FORCE) está incorreto
+Testado empiricamente ao criar `faturamento.medico_tomadores`: o app do `faturamento` conecta
+como `svc_faturamento` (`application.yml`), que é o **mesmo usuário dono da tabela** (Flyway roda
+com o datasource da própria aplicação). Sem `FORCE ROW LEVEL SECURITY`, o owner **bypassa a
+política de RLS automaticamente** — confirmado na prática: com `ALTER TABLE ... ENABLE ROW LEVEL
+SECURITY` (sem FORCE), uma query como `svc_faturamento` com `app.current_tenant` de outro tenant
+ainda retornou a linha, ou seja, a política virou letra morta para o próprio serviço.
+
+Isso significa que `tomador_grupos_faturamento`, `tomador_modalidades` e
+`tomador_servicos_operacionais` (criadas na V17, EPIC-13.1) **não têm FORCE** e sofrem do mesmo
+bypass — inconsistente com o padrão mais usado no schema (`producoes`, `participacoes_producao`,
+`conciliacoes`, `frequencias_medicas`, `tomadores` — todas com `FORCE ROW LEVEL SECURITY`,
+confirmado via `pg_class.relforcerowsecurity`). O padrão correto e testado (usado por
+`participacoes_producao`/`conciliacoes`, tabelas-filhas via subquery para uma tabela pai) é:
+```sql
+ALTER TABLE faturamento.minha_tabela ENABLE ROW LEVEL SECURITY;
+ALTER TABLE faturamento.minha_tabela FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation ON faturamento.minha_tabela
+    USING (
+        COALESCE(current_setting('app.current_tenant', TRUE), '') = ''
+        OR pai_id IN (SELECT id FROM faturamento.tabela_pai WHERE cnpj_id_tenant = current_setting('app.current_tenant', TRUE))
+    )
+    WITH CHECK (true);
+```
+`WITH CHECK (true)` evita bloquear o INSERT (a linha pai já existe e já pertence ao tenant no
+momento da inserção — sem o problema de "USING sem WITH CHECK" de tabelas com `cnpj_id_tenant`
+própria, documentado na seção de RLS do onboarding). **Nunca copiar o padrão da V17 sem adicionar
+FORCE + WITH CHECK** — não corrigimos V17 retroativamente nesta task (fora de escopo), mas
+qualquer nova tabela-filha do faturamento deve seguir o padrão com FORCE, não o da V17.
+
+### Teste funcional de RLS deve simular o usuário real da aplicação, não o superuser
+`docker exec ... psql -U postgres` (superuser) sempre bypassa RLS **mesmo com FORCE** — não serve
+para validar isolamento. O teste correto conecta como o usuário de verdade do serviço
+(`svc_faturamento`, senha em `tools/db/init.sql`) e faz `SET app.current_tenant = '...'` antes da
+query, comparando tenant correto (retorna linha) vs. tenant errado (deve retornar vazio) vs. tenant
+vazio (bypass esperado para gestão/portal).
+
+---
+
 ## E-mails Nativos do Keycloak em Inglês — Faltava Internacionalização no Realm
 
 ### Sintoma: "Reenviar Convite" (tela de Usuários) envia e-mail em inglês, genérico
