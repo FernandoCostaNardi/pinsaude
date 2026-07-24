@@ -27,8 +27,7 @@ public class UsuarioController {
 
     @GetMapping
     public ResponseEntity<List<UsuarioDto>> listar() {
-        String cnpjId = currentCnpjId();
-        return ResponseEntity.ok(service.listar(cnpjId));
+        return ResponseEntity.ok(service.listar());
     }
 
     @PostMapping

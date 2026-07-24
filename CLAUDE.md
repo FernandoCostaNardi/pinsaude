@@ -3436,6 +3436,31 @@ fluxo.
 
 ---
 
+## Tela de Usuários — gestão deve ver todos, não só quem compartilha seu cnpj_id (pós-EPIC-14.9)
+
+### Bug: `GET /api/usuarios` filtrava pelo cnpj_id de quem está logado
+`UsuarioController` é `@PreAuthorize("hasRole('gestao')")` na classe inteira — só gestão chama
+esse endpoint. Mesmo assim, `KeycloakAdminService.listUsers(cnpjId)` (gestao) filtrava no
+Keycloak com `q=cnpj_id:{valor}`, usando o `cnpj_id` do PRÓPRIO usuário logado. Isso só faz
+sentido se cada empresa tivesse seu próprio "gestão" — não é o modelo do projeto (gestão é o
+único papel cross-tenant, com bypass de RLS em todos os outros serviços). Resultado: um médico
+(ou qualquer usuário) com `cnpj_id` diferente do `cnpj_id` do usuário `gestao@pinsaude.com.br`
+nunca aparecia na lista, mesmo estando ativo e corretamente provisionado no Keycloak.
+
+**Correção:** `KeycloakAdminService.listAllUsers()` (sem filtro `q`) substitui `listUsers(cnpjId)`;
+`UsuarioService.listar()` (sem parâmetro) e `UsuarioController.listar()` não resolvem mais
+`currentCnpjId()` para este endpoint (só `convidar()` continua precisando, pois define o `cnpj_id`
+do usuário sendo criado). Um filtro novo em `UsuarioService.listar()` exclui contas sem nenhuma
+role de negócio (`medico/operacao/financeiro/contabil/gestao`) — necessário porque listar TODOS os
+usuários do realm agora inclui o service-account do client `pinsaude-gateway`
+(`serviceAccountsEnabled: true` no `realm-export.json`), que não é um usuário gerido por essa tela.
+
+A armadilha do PUT parcial de `attributes` zerando `firstName`/`lastName` no Keycloak 24 (achado
+enquanto testava esta mesma tela) está documentada na seção seguinte, "Sincronização de cnpj_id no
+Keycloak ao Atribuir Vínculo" — é onde o código do fix realmente vive (onboarding).
+
+---
+
 ## Sincronização de cnpj_id no Keycloak ao Atribuir Vínculo (pós-EPIC-14.9)
 
 ### Sintoma: médico auto-cadastrado ativo não aparece na tela de Usuários
@@ -3482,7 +3507,8 @@ restClient.put().uri(...).body(body)...
 ```
 Qualquer código futuro que precise atualizar `attributes` de um usuário Keycloak neste realm deve
 seguir o mesmo padrão — nunca enviar `attributes` isolado. Se encontrar um usuário com
-`firstName`/`lastName` nulos no Admin Console sem explicação, essa é a causa mais provável.
+`firstName`/`lastName` nulos no Admin Console sem explicação (consultar o nome de origem no banco:
+`onboarding.medicos.nome` para médicos), essa é a causa mais provável.
 
 ### Limitação conhecida: vínculos criados antes da correção não são retroativos
 Médicos que já tinham um vínculo atribuído **antes** deste fix não têm o `cnpj_id` sincronizado
