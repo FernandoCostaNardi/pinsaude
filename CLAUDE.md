@@ -3410,13 +3410,22 @@ curl -X PUT .../admin/realms/pinsaude/users/{id} \
   -d '{"requiredActions":[],"emailVerified":true}'
 ```
 
-### Contrato Clicksign e checklist de conduta — como testar localmente sem essas integrações
-Neste ambiente dev, `CLICKSIGN_ENABLED=false` por padrão — não há como o médico ter um contrato
-`ASSINADO` de verdade via UI. Para testar o fluxo de ativação ponta a ponta sem depender do
-Clicksign real, inserir diretamente um registro em `onboarding.contratos_assinatura` com
-`status='ASSINADO'` (simula o que o webhook do Clicksign faria em produção). Para o checklist de
-conduta (após o fix desta task, já semeado na criação), usar
-`PUT /api/medicos/{id}/checklist` diretamente — mesmo endpoint que a tela usa.
+### Contrato Clicksign — `MockClicksignAdapter` substitui o workaround via SQL direto (pós-EPIC-14.9)
+A abordagem original (inserir manualmente um registro em `onboarding.contratos_assinatura` com
+`status='ASSINADO'` via SQL) foi substituída por um adapter mock, no mesmo padrão de
+`MockEmissaoNfseAdapter` do fiscal (`@Primary` + `@ConditionalOnProperty`):
+`services/onboarding/.../adapter/MockClicksignAdapter.java`, ativado por
+`clicksign.mock.enabled` (`CLICKSIGN_MOCK_ENABLED`, **default `true`** — funciona sem nenhuma
+configuração extra em dev). Quando ativo, sobrepõe o `ClicksignAdapter` real e faz
+`enviarContrato()` criar um registro `ENVIADO` com `documentoKey`/`signatarioKey` fake (sem chamar
+a API do Clicksign) — isso desbloqueia o botão "Marcar como Assinado" (`assinarContratoManual`,
+já existente na tela) que antes nunca aparecia porque `enviarContrato()` retornava 503 sem
+Clicksign configurado. Fluxo completo na tela de Aprovação: clicar "Enviar Clicksign" (mock) →
+"Marcar como Assinado" → se checklist/documentos/junta já estiverem OK, `verificarAtivacaoAutomatica`
+ativa o médico automaticamente. Para desligar o mock e forçar o comportamento real (503 sem
+Clicksign configurado): `CLICKSIGN_MOCK_ENABLED=false`. Para o checklist de conduta (já semeado na
+criação desde o fix do EPIC-14.9), usar `PUT /api/medicos/{id}/checklist` diretamente se precisar
+ajustar manualmente — mesmo endpoint que a tela usa.
 
 ### Roteiro de teste manual documentado em `docs/roteiros-teste/`
 Novo padrão de repositório: roteiros de teste E2E ficam em `docs/roteiros-teste/<epic>.md`
