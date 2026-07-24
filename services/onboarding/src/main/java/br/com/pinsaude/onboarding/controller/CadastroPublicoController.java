@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -48,6 +49,11 @@ public class CadastroPublicoController {
         return ResponseEntity.ok(service.buscar(id));
     }
 
+    @GetMapping("/{id}/documentos")
+    public ResponseEntity<List<DocumentoMedicoResponse>> listarDocumentos(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarDocumentos(id));
+    }
+
     @PostMapping(value = "/{id}/documentos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<DocumentoMedicoResponse> uploadDocumento(
             @PathVariable UUID id,
@@ -57,6 +63,12 @@ public class CadastroPublicoController {
         var location = ServletUriComponentsBuilder.fromCurrentRequest()
             .path("/{docId}").buildAndExpand(response.id()).toUri();
         return ResponseEntity.created(location).body(response);
+    }
+
+    @DeleteMapping("/{id}/documentos/{docId}")
+    public ResponseEntity<Void> deletarDocumento(@PathVariable UUID id, @PathVariable UUID docId) {
+        service.deletarDocumento(id, docId);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{id}/dados-bancarios")

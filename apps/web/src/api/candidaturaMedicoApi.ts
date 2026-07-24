@@ -161,6 +161,11 @@ async function buscar(id: string): Promise<CandidaturaPublicaResponse> {
   return handleResponse<CandidaturaPublicaResponse>(res)
 }
 
+async function listarDocumentos(id: string): Promise<DocumentoCandidatura[]> {
+  const res = await fetch(`${BASE_URL}/${id}/documentos`)
+  return handleResponse<DocumentoCandidatura[]>(res)
+}
+
 async function uploadDocumento(
   id: string,
   tipo: TipoDocumentoCandidatura,
@@ -174,6 +179,11 @@ async function uploadDocumento(
     body: formData,
   })
   return handleResponse<DocumentoCandidatura>(res)
+}
+
+async function deletarDocumento(id: string, docId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/${id}/documentos/${docId}`, { method: 'DELETE' })
+  return handleResponse<void>(res)
 }
 
 async function atualizarDadosBancarios(
@@ -206,6 +216,6 @@ async function finalizar(id: string): Promise<FinalizarCandidaturaResponse> {
 }
 
 export const candidaturaMedicoApi = {
-  criar, atualizar, buscar, uploadDocumento,
+  criar, atualizar, buscar, listarDocumentos, uploadDocumento, deletarDocumento,
   atualizarDadosBancarios, registrarDeclaracaoLgpd, finalizar,
 }

@@ -324,6 +324,74 @@ class CadastroPublicoServiceTest {
                 .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
     }
 
+    // ── listarDocumentos ────────────────────────────────────────────────────
+
+    @Test
+    void listarDocumentos_retornaDocumentosDaCandidatura() {
+        Medico medico = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.RASCUNHO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
+        DocumentoMedico crm = new DocumentoMedico();
+        crm.setTipo(TipoDocumentoMedico.CRM);
+        crm.setNomeArquivo("crm.pdf");
+        when(documentoRepo.findByMedicoId(MEDICO_ID)).thenReturn(List.of(crm));
+
+        List<DocumentoMedicoResponse> resp = service.listarDocumentos(MEDICO_ID);
+
+        assertThat(resp).hasSize(1);
+        assertThat(resp.get(0).tipo()).isEqualTo(TipoDocumentoMedico.CRM);
+    }
+
+    // ── deletarDocumento ─────────────────────────────────────────────────────
+
+    @Test
+    void deletarDocumento_documentoDaCandidatura_deletaArquivoERegistro() {
+        Medico medico = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.RASCUNHO);
+        UUID docId = UUID.randomUUID();
+        DocumentoMedico doc = new DocumentoMedico();
+        doc.setId(docId);
+        doc.setMedicoId(MEDICO_ID);
+        doc.setTipo(TipoDocumentoMedico.CRM);
+        doc.setCaminhoStorage("documentos/x/CRM/123-crm.pdf");
+
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
+        when(documentoRepo.findById(docId)).thenReturn(Optional.of(doc));
+
+        service.deletarDocumento(MEDICO_ID, docId);
+
+        verify(storageService).delete(doc.getCaminhoStorage());
+        verify(documentoRepo).delete(doc);
+        verify(historicoRepo).save(any(HistoricoMedico.class));
+    }
+
+    @Test
+    void deletarDocumento_documentoDeOutraCandidatura_lancaNotFound() {
+        Medico medico = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.RASCUNHO);
+        UUID docId = UUID.randomUUID();
+        DocumentoMedico doc = new DocumentoMedico();
+        doc.setId(docId);
+        doc.setMedicoId(UUID.randomUUID());
+        doc.setTipo(TipoDocumentoMedico.CRM);
+
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
+        when(documentoRepo.findById(docId)).thenReturn(Optional.of(doc));
+
+        assertThatThrownBy(() -> service.deletarDocumento(MEDICO_ID, docId))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void deletarDocumento_candidaturaNaoEditavel_lancaUnprocessableEntity() {
+        Medico ativo = medicoAutoCadastro(MEDICO_ID, "hash-x", StatusMedico.ATIVO);
+        when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(ativo));
+
+        assertThatThrownBy(() -> service.deletarDocumento(MEDICO_ID, UUID.randomUUID()))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
     // ── atualizarDadosBancarios ────────────────────────────────────────────
 
     @Test
