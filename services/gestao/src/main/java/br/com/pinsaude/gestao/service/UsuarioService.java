@@ -23,10 +23,15 @@ public class UsuarioService {
         this.keycloak = keycloak;
     }
 
-    public List<UsuarioDto> listar(String cnpjId) {
-        List<Map<String, Object>> users = keycloak.listUsers(cnpjId);
+    public List<UsuarioDto> listar() {
+        List<Map<String, Object>> users = keycloak.listAllUsers();
         if (users == null) return List.of();
-        return users.stream().map(this::toDto).toList();
+        return users.stream()
+            .map(this::toDto)
+            // Exclui contas sem nenhuma role de negócio (ex.: service-account do client
+            // pinsaude-gateway) — não são usuários geridos por esta tela.
+            .filter(u -> !u.perfil().isBlank())
+            .toList();
     }
 
     public UsuarioDto convidar(ConviteRequest request, String cnpjId) {

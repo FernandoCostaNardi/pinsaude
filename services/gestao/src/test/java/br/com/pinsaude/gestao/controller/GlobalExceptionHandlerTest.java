@@ -14,7 +14,6 @@ import org.springframework.web.client.ResourceAccessException;
 
 import java.net.ConnectException;
 
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -41,7 +40,7 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void keycloak409_retornaMensagemEmailJaCadastrado() throws Exception {
-        when(usuarioService.listar(anyString()))
+        when(usuarioService.listar())
             .thenThrow(HttpClientErrorException.create(HttpStatus.CONFLICT, "Conflict", null, null, null));
 
         mockMvc.perform(get("/api/usuarios").with(gestaoJwt))
@@ -51,7 +50,7 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void keycloakIndisponivel_retornaMensagemAmigavel() throws Exception {
-        when(usuarioService.listar(anyString()))
+        when(usuarioService.listar())
             .thenThrow(new ResourceAccessException("Connection refused", new ConnectException()));
 
         mockMvc.perform(get("/api/usuarios").with(gestaoJwt))
@@ -62,7 +61,7 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void keycloak401_retornaMensagemAutenticacao() throws Exception {
-        when(usuarioService.listar(anyString()))
+        when(usuarioService.listar())
             .thenThrow(HttpClientErrorException.create(HttpStatus.UNAUTHORIZED, "Unauthorized", null, null, null));
 
         mockMvc.perform(get("/api/usuarios").with(gestaoJwt))

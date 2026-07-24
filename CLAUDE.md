@@ -3427,6 +3427,55 @@ fluxo.
 
 ---
 
+## Tela de Usuários — gestão deve ver todos, não só quem compartilha seu cnpj_id (pós-EPIC-14.9)
+
+### Bug: `GET /api/usuarios` filtrava pelo cnpj_id de quem está logado
+`UsuarioController` é `@PreAuthorize("hasRole('gestao')")` na classe inteira — só gestão chama
+esse endpoint. Mesmo assim, `KeycloakAdminService.listUsers(cnpjId)` (gestao) filtrava no
+Keycloak com `q=cnpj_id:{valor}`, usando o `cnpj_id` do PRÓPRIO usuário logado. Isso só faz
+sentido se cada empresa tivesse seu próprio "gestão" — não é o modelo do projeto (gestão é o
+único papel cross-tenant, com bypass de RLS em todos os outros serviços). Resultado: um médico
+(ou qualquer usuário) com `cnpj_id` diferente do `cnpj_id` do usuário `gestao@pinsaude.com.br`
+nunca aparecia na lista, mesmo estando ativo e corretamente provisionado no Keycloak.
+
+**Correção:** `KeycloakAdminService.listAllUsers()` (sem filtro `q`) substitui `listUsers(cnpjId)`;
+`UsuarioService.listar()` (sem parâmetro) e `UsuarioController.listar()` não resolvem mais
+`currentCnpjId()` para este endpoint (só `convidar()` continua precisando, pois define o `cnpj_id`
+do usuário sendo criado). Um filtro novo em `UsuarioService.listar()` exclui contas sem nenhuma
+role de negócio (`medico/operacao/financeiro/contabil/gestao`) — necessário porque listar TODOS os
+usuários do realm agora inclui o service-account do client `pinsaude-gateway`
+(`serviceAccountsEnabled: true` no `realm-export.json`), que não é um usuário gerido por essa tela.
+
+### ⚠️ Armadilha crítica: PUT parcial com `attributes` apaga firstName/lastName (Keycloak 24 User Profile)
+Ao implementar `KeycloakAdminService.updateUserAttributeCnpjId()` (onboarding, EPIC-14.9), um PUT
+parcial contendo **apenas** `{"attributes": {"cnpj_id": [...]}}` **zerou o firstName/lastName** de
+dois usuários reais (confirmado empiricamente com `curl` direto na Admin API, reproduzido e
+consertado na sessão). Causa: o realm tem User Profile habilitado (Keycloak 24, ver seção "User
+Profile do Keycloak 24 bloqueia atributos customizados") e `cnpj_id` está declarado em
+`userProfileConfig.attributes` — ao enviar QUALQUER atualização de `attributes`, o Keycloak trata
+o payload como um **submit completo do formulário de perfil** e zera os campos do perfil
+(`firstName`/`lastName` inclusive) que não vieram no corpo da requisição. Testado e confirmado que
+isso é **específico de enviar `attributes`** — um PUT parcial só com `{"enabled": true}` (usado por
+`updateUserEnabled`, já em produção) **não** tem esse efeito colateral; o bug é isolado ao campo
+`attributes`.
+
+**Correção obrigatória para qualquer futura chamada que precise atualizar `attributes` de um
+usuário:** sempre incluir `firstName`/`lastName` (buscados via `GET /users/{id}` antes) no mesmo
+corpo do PUT — nunca enviar `attributes` isolado:
+```java
+Map<String, Object> atual = restClient.get()...body(new ParameterizedTypeReference<Map<String,Object>>(){});
+Map<String, Object> body = new LinkedHashMap<>();
+body.put("firstName", atual.get("firstName"));
+body.put("lastName", atual.get("lastName"));
+body.put("attributes", Map.of("cnpj_id", List.of(cnpjId)));
+restClient.put().uri(...).body(body)...
+```
+Se encontrar um usuário com `firstName`/`lastName` nulos no Admin Console sem explicação, suspeitar
+de uma chamada `attributes`-only feita por engano — corrigir com um PUT direto incluindo os nomes
+corretos (consultar o nome de origem no banco: `onboarding.medicos.nome` para médicos).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

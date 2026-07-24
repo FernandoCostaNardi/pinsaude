@@ -53,14 +53,19 @@ public class KeycloakAdminService {
         return props.serverUrl() + "/admin/realms/" + props.realm() + path;
     }
 
-    public List<Map<String, Object>> listUsers(String cnpjId) {
+    /**
+     * Lista TODOS os usuários do realm — /api/usuarios é hasRole('gestao') na íntegra
+     * (UsuarioController), e gestão é o papel cross-tenant do sistema (bypass de RLS em
+     * todos os outros serviços). Filtrar aqui pelo cnpj_id de quem está logado (versão
+     * anterior) fazia sentido só se cada empresa tivesse seu próprio usuário "gestao" —
+     * não é o modelo do projeto: um único papel gestão enxerga todo mundo.
+     */
+    public List<Map<String, Object>> listAllUsers() {
         URI uri = UriComponentsBuilder
             .fromHttpUrl(adminUrl("/users"))
-            .queryParam("q", "cnpj_id:{v}")
             .queryParam("max", 200)
             .queryParam("briefRepresentation", false)
-            .buildAndExpand(cnpjId)
-            .encode()
+            .build()
             .toUri();
         return restClient.get()
             .uri(uri)
