@@ -185,6 +185,8 @@ class OnboardingFluxoTest {
         assertThat(captor.getAllValues()).anyMatch(m -> m.getStatus() == StatusMedico.ATIVO);
         // Médico sem keycloakUserId (cadastro manual) — não deve nem tentar chamar o Keycloak.
         verifyNoInteractions(keycloakAdminService);
+        // Ativação automática também dispara o e-mail de boas-vindas, igual à ativação manual.
+        verify(notificacaoService).notificarMedicoAtivado(medico);
     }
 
     @Test
@@ -218,6 +220,7 @@ class OnboardingFluxoTest {
 
         verify(keycloakAdminService).assignRole("kc-user-999", "medico");
         verify(keycloakAdminService).updateUserEnabled("kc-user-999", true);
+        verify(notificacaoService).notificarMedicoAtivado(medico);
     }
 
     @Test

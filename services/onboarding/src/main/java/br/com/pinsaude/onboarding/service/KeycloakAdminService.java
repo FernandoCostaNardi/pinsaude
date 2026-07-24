@@ -129,11 +129,16 @@ public class KeycloakAdminService {
      * empresa ainda); sincronizado quando o primeiro vínculo é atribuído
      * (MedicoService.adicionarVinculo).
      *
-     * ⚠️ Faz um GET antes do PUT e reenvia firstName/lastName no mesmo corpo — o realm tem
-     * User Profile habilitado (Keycloak 24) e cnpj_id está em userProfileConfig.attributes.
-     * Um PUT contendo SÓ "attributes" é tratado como submissão completa do formulário de
-     * perfil e ZERA firstName/lastName (confirmado empiricamente). updateUserEnabled (só
-     * "enabled") não tem esse problema — o bug é específico de enviar "attributes".
+     * ⚠️ Faz GET da representação COMPLETA do usuário e reenvia tudo no PUT, só sobrescrevendo
+     * "attributes" — o realm tem User Profile habilitado (Keycloak 24) e cnpj_id está em
+     * userProfileConfig.attributes. Um PUT contendo SÓ "attributes" é tratado como submissão
+     * completa do formulário de perfil e ZERA qualquer campo do perfil ausente do corpo —
+     * confirmado empiricamente que isso inclui firstName/lastName **e também email** (uma
+     * primeira versão deste método só reenviava firstName/lastName e ainda assim zerou o
+     * email de dois usuários reais). updateUserEnabled (só "enabled") não tem esse problema —
+     * o bug é específico de enviar "attributes". Copiar a representação inteira (em vez de
+     * escolher campos a dedo) evita essa classe de bug se o Keycloak um dia gerenciar mais
+     * campos do perfil.
      */
     public void updateUserAttributeCnpjId(String userId, String cnpjId) {
         Map<String, Object> atual = restClient.get()
@@ -142,9 +147,7 @@ public class KeycloakAdminService {
             .retrieve()
             .body(new ParameterizedTypeReference<>() {});
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("firstName", atual != null ? atual.get("firstName") : null);
-        body.put("lastName", atual != null ? atual.get("lastName") : null);
+        Map<String, Object> body = new LinkedHashMap<>(atual != null ? atual : Map.of());
         body.put("attributes", Map.of("cnpj_id", List.of(cnpjId)));
 
         restClient.put()

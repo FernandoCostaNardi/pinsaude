@@ -49,6 +49,7 @@ services:
       - "${KEYCLOAK_PORT:-8080}:8080"
     volumes:
       - ./tools/keycloak/realm-export.json:/opt/keycloak/data/import/realm-pinsaude.json:ro
+      - ./tools/keycloak/themes/pinsaude:/opt/keycloak/themes/pinsaude:ro
     depends_on:
       postgres:
         condition: service_healthy
