@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { Eye, EyeOff, ShieldCheck, Activity, Building2 } from 'lucide-react'
 import { Button } from '@pinsaude/ui'
 import { Input }  from '@pinsaude/ui'
@@ -156,6 +156,13 @@ export function LoginPage() {
               {loading ? 'Entrando…' : 'Entrar'}
             </Button>
           </form>
+
+          <p className="text-center text-sm text-gray-500 mt-6">
+            É médico e ainda não tem cadastro?{' '}
+            <Link to="/cadastro-medico" className="text-primary hover:text-primary-700 transition-colors font-medium">
+              Credencie-se aqui
+            </Link>
+          </p>
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
