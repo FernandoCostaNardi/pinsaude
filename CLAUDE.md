@@ -3445,12 +3445,35 @@ médico auto-cadastrado, mesmo `ATIVO`, nunca aparecia em `/usuarios` para ningu
 quando é o primeiro vínculo do médico** (`vinculoRepo.findByIdMedicoId(medicoId).isEmpty()` antes
 do save) — vínculos adicionais com outras empresas não sobrescrevem, mesmo critério de "primeira
 empresa define" já usado em `MedicoResponse.empresaId` (compat). `KeycloakAdminService` ganhou
-`updateUserAttributeCnpjId(userId, cnpjId)` — mesmo estilo de `updateUserEnabled` (PUT parcial só
-com o campo `attributes`, Keycloak não limpa os demais campos do usuário). Só roda se
-`medico.getKeycloakUserId() != null` (médicos cadastrados manualmente, sem Keycloak vinculado pelo
-onboarding, não são afetados — o deles é gerenciado só pela tela de Usuários). Falha na chamada ao
-Keycloak é tolerada (log apenas), mesmo padrão de `liberarAcessoKeycloak` — não bloqueia a
-criação do vínculo em si.
+`updateUserAttributeCnpjId(userId, cnpjId)`. Só roda se `medico.getKeycloakUserId() != null`
+(médicos cadastrados manualmente, sem Keycloak vinculado pelo onboarding, não são afetados — o
+deles é gerenciado só pela tela de Usuários). Falha na chamada ao Keycloak é tolerada (log apenas),
+mesmo padrão de `liberarAcessoKeycloak` — não bloqueia a criação do vínculo em si.
+
+### ⚠️ Armadilha crítica: PUT parcial só com `attributes` ZERA firstName/lastName (Keycloak 24 User Profile)
+Diferente do que se poderia assumir pelo padrão já usado em `updateUserEnabled` (PUT parcial só com
+`{"enabled": ...}`, que é seguro), um PUT parcial contendo **apenas** `{"attributes": {...}}`
+**apaga `firstName`/`lastName`** do usuário. Confirmado empiricamente com `curl` direto na Admin
+API nesta sessão — dois usuários reais tiveram o nome zerado até serem restaurados manualmente.
+Causa: o realm tem User Profile habilitado (Keycloak 24) e `cnpj_id` está declarado em
+`userProfileConfig.attributes` (ver seção "User Profile do Keycloak 24 bloqueia atributos
+customizados") — qualquer atualização de `attributes` é tratada como submissão completa do
+formulário de perfil, zerando os campos do perfil ausentes do corpo da requisição. O bug é
+**específico de enviar `attributes`**, não de PUT parcial em geral.
+
+**`updateUserAttributeCnpjId` corrigido para fazer GET antes do PUT** e reenviar
+`firstName`/`lastName` no mesmo corpo:
+```java
+Map<String, Object> atual = restClient.get().uri(...).retrieve().body(...);
+Map<String, Object> body = new LinkedHashMap<>();
+body.put("firstName", atual.get("firstName"));
+body.put("lastName", atual.get("lastName"));
+body.put("attributes", Map.of("cnpj_id", List.of(cnpjId)));
+restClient.put().uri(...).body(body)...
+```
+Qualquer código futuro que precise atualizar `attributes` de um usuário Keycloak neste realm deve
+seguir o mesmo padrão — nunca enviar `attributes` isolado. Se encontrar um usuário com
+`firstName`/`lastName` nulos no Admin Console sem explicação, essa é a causa mais provável.
 
 ### Limitação conhecida: vínculos criados antes da correção não são retroativos
 Médicos que já tinham um vínculo atribuído **antes** deste fix não têm o `cnpj_id` sincronizado
