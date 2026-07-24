@@ -44,7 +44,7 @@ class UsuarioControllerTest {
 
     @Test
     void gestao_podeListarUsuarios() throws Exception {
-        when(usuarioService.listar(anyString())).thenReturn(List.of(USUARIO_FIXTURE));
+        when(usuarioService.listar()).thenReturn(List.of(USUARIO_FIXTURE));
 
         mockMvc.perform(get("/api/usuarios")
                 .with(jwt()
@@ -99,10 +99,15 @@ class UsuarioControllerTest {
     }
 
     @Test
-    void gestao_semCnpjId_retorna403() throws Exception {
+    void gestao_semCnpjId_aindaAssimListaTodosOsUsuarios() throws Exception {
+        // gestão é o papel cross-tenant do sistema — listar usuários nunca deve depender do
+        // cnpj_id de quem está logado (ver KeycloakAdminService.listAllUsers).
+        when(usuarioService.listar()).thenReturn(List.of(USUARIO_FIXTURE));
+
         mockMvc.perform(get("/api/usuarios")
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].email").value("novo@pinsaude.com.br"));
     }
 
     @Test

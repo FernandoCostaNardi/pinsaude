@@ -523,6 +523,7 @@ public class MedicoService {
             registrarHistorico(medico.getId(), TipoAcaoMedico.ATIVACAO_AUTOMATICA,
                 "Médico ativado automaticamente — todos os requisitos de onboarding cumpridos");
             log.info("Médico {} ativado automaticamente", medico.getId());
+            notificacaoService.notificarMedicoAtivado(medico);
             liberarAcessoKeycloak(medico);
         } catch (ResponseStatusException e) {
             log.debug("Auto-ativação não disparada para médico {}: {}", medico.getId(), e.getReason());
