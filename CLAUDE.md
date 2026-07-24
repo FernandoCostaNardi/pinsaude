@@ -3410,13 +3410,22 @@ curl -X PUT .../admin/realms/pinsaude/users/{id} \
   -d '{"requiredActions":[],"emailVerified":true}'
 ```
 
-### Contrato Clicksign e checklist de conduta — como testar localmente sem essas integrações
-Neste ambiente dev, `CLICKSIGN_ENABLED=false` por padrão — não há como o médico ter um contrato
-`ASSINADO` de verdade via UI. Para testar o fluxo de ativação ponta a ponta sem depender do
-Clicksign real, inserir diretamente um registro em `onboarding.contratos_assinatura` com
-`status='ASSINADO'` (simula o que o webhook do Clicksign faria em produção). Para o checklist de
-conduta (após o fix desta task, já semeado na criação), usar
-`PUT /api/medicos/{id}/checklist` diretamente — mesmo endpoint que a tela usa.
+### Contrato Clicksign — `MockClicksignAdapter` substitui o workaround via SQL direto (pós-EPIC-14.9)
+A abordagem original (inserir manualmente um registro em `onboarding.contratos_assinatura` com
+`status='ASSINADO'` via SQL) foi substituída por um adapter mock, no mesmo padrão de
+`MockEmissaoNfseAdapter` do fiscal (`@Primary` + `@ConditionalOnProperty`):
+`services/onboarding/.../adapter/MockClicksignAdapter.java`, ativado por
+`clicksign.mock.enabled` (`CLICKSIGN_MOCK_ENABLED`, **default `true`** — funciona sem nenhuma
+configuração extra em dev). Quando ativo, sobrepõe o `ClicksignAdapter` real e faz
+`enviarContrato()` criar um registro `ENVIADO` com `documentoKey`/`signatarioKey` fake (sem chamar
+a API do Clicksign) — isso desbloqueia o botão "Marcar como Assinado" (`assinarContratoManual`,
+já existente na tela) que antes nunca aparecia porque `enviarContrato()` retornava 503 sem
+Clicksign configurado. Fluxo completo na tela de Aprovação: clicar "Enviar Clicksign" (mock) →
+"Marcar como Assinado" → se checklist/documentos/junta já estiverem OK, `verificarAtivacaoAutomatica`
+ativa o médico automaticamente. Para desligar o mock e forçar o comportamento real (503 sem
+Clicksign configurado): `CLICKSIGN_MOCK_ENABLED=false`. Para o checklist de conduta (já semeado na
+criação desde o fix do EPIC-14.9), usar `PUT /api/medicos/{id}/checklist` diretamente se precisar
+ajustar manualmente — mesmo endpoint que a tela usa.
 
 ### Roteiro de teste manual documentado em `docs/roteiros-teste/`
 Novo padrão de repositório: roteiros de teste E2E ficam em `docs/roteiros-teste/<epic>.md`
@@ -3446,33 +3455,86 @@ role de negócio (`medico/operacao/financeiro/contabil/gestao`) — necessário 
 usuários do realm agora inclui o service-account do client `pinsaude-gateway`
 (`serviceAccountsEnabled: true` no `realm-export.json`), que não é um usuário gerido por essa tela.
 
-### ⚠️ Armadilha crítica: PUT parcial com `attributes` apaga firstName/lastName (Keycloak 24 User Profile)
-Ao implementar `KeycloakAdminService.updateUserAttributeCnpjId()` (onboarding, EPIC-14.9), um PUT
-parcial contendo **apenas** `{"attributes": {"cnpj_id": [...]}}` **zerou o firstName/lastName** de
-dois usuários reais (confirmado empiricamente com `curl` direto na Admin API, reproduzido e
-consertado na sessão). Causa: o realm tem User Profile habilitado (Keycloak 24, ver seção "User
-Profile do Keycloak 24 bloqueia atributos customizados") e `cnpj_id` está declarado em
-`userProfileConfig.attributes` — ao enviar QUALQUER atualização de `attributes`, o Keycloak trata
-o payload como um **submit completo do formulário de perfil** e zera os campos do perfil
-(`firstName`/`lastName` inclusive) que não vieram no corpo da requisição. Testado e confirmado que
-isso é **específico de enviar `attributes`** — um PUT parcial só com `{"enabled": true}` (usado por
-`updateUserEnabled`, já em produção) **não** tem esse efeito colateral; o bug é isolado ao campo
-`attributes`.
+A armadilha do PUT parcial de `attributes` zerando `firstName`/`lastName` no Keycloak 24 (achado
+enquanto testava esta mesma tela) está documentada na seção seguinte, "Sincronização de cnpj_id no
+Keycloak ao Atribuir Vínculo" — é onde o código do fix realmente vive (onboarding).
 
-**Correção obrigatória para qualquer futura chamada que precise atualizar `attributes` de um
-usuário:** sempre incluir `firstName`/`lastName` (buscados via `GET /users/{id}` antes) no mesmo
-corpo do PUT — nunca enviar `attributes` isolado:
+---
+
+## Sincronização de cnpj_id no Keycloak ao Atribuir Vínculo (pós-EPIC-14.9)
+
+### Sintoma: médico auto-cadastrado ativo não aparece na tela de Usuários
+`GET /api/usuarios` (services/gestao) lista usuários do Keycloak filtrando por
+`q=cnpj_id:{valor}`, onde `{valor}` é o **próprio `cnpj_id` de quem está logado** (não é uma
+listagem cross-tenant, nem para `gestao`). Os 3 usuários seed (`medico@`, `operacao@`,
+`gestao@pinsaude.com.br`) compartilham `cnpj_id: "11.222.333/0001-81"` no `realm-export.json` —
+por isso só eles aparecem por padrão. Médicos de auto-cadastro (EPIC-14) nascem no Keycloak com
+`cnpj_id` vazio (`KeycloakAdminService.createUserDesabilitado(..., cnpjId=null)`, correto na
+criação — o médico ainda não tem vínculo com nenhuma empresa) e **nada sincronizava esse atributo
+depois**, nem quando um operador atribuía manualmente um vínculo médico↔empresa. Resultado: um
+médico auto-cadastrado, mesmo `ATIVO`, nunca aparecia em `/usuarios` para ninguém.
+
+### Correção — sincroniza no primeiro vínculo, não sobrescreve depois
+`MedicoService.adicionarVinculo()` agora chama `sincronizarCnpjIdKeycloak(medico, empresa)` **só
+quando é o primeiro vínculo do médico** (`vinculoRepo.findByIdMedicoId(medicoId).isEmpty()` antes
+do save) — vínculos adicionais com outras empresas não sobrescrevem, mesmo critério de "primeira
+empresa define" já usado em `MedicoResponse.empresaId` (compat). `KeycloakAdminService` ganhou
+`updateUserAttributeCnpjId(userId, cnpjId)`. Só roda se `medico.getKeycloakUserId() != null`
+(médicos cadastrados manualmente, sem Keycloak vinculado pelo onboarding, não são afetados — o
+deles é gerenciado só pela tela de Usuários). Falha na chamada ao Keycloak é tolerada (log apenas),
+mesmo padrão de `liberarAcessoKeycloak` — não bloqueia a criação do vínculo em si.
+
+### ⚠️ Armadilha crítica: PUT parcial só com `attributes` ZERA firstName/lastName (Keycloak 24 User Profile)
+Diferente do que se poderia assumir pelo padrão já usado em `updateUserEnabled` (PUT parcial só com
+`{"enabled": ...}`, que é seguro), um PUT parcial contendo **apenas** `{"attributes": {...}}`
+**apaga `firstName`/`lastName`** do usuário. Confirmado empiricamente com `curl` direto na Admin
+API nesta sessão — dois usuários reais tiveram o nome zerado até serem restaurados manualmente.
+Causa: o realm tem User Profile habilitado (Keycloak 24) e `cnpj_id` está declarado em
+`userProfileConfig.attributes` (ver seção "User Profile do Keycloak 24 bloqueia atributos
+customizados") — qualquer atualização de `attributes` é tratada como submissão completa do
+formulário de perfil, zerando os campos do perfil ausentes do corpo da requisição. O bug é
+**específico de enviar `attributes`**, não de PUT parcial em geral.
+
+**`updateUserAttributeCnpjId` corrigido para fazer GET antes do PUT** e reenviar
+`firstName`/`lastName` no mesmo corpo:
 ```java
-Map<String, Object> atual = restClient.get()...body(new ParameterizedTypeReference<Map<String,Object>>(){});
+Map<String, Object> atual = restClient.get().uri(...).retrieve().body(...);
 Map<String, Object> body = new LinkedHashMap<>();
 body.put("firstName", atual.get("firstName"));
 body.put("lastName", atual.get("lastName"));
 body.put("attributes", Map.of("cnpj_id", List.of(cnpjId)));
 restClient.put().uri(...).body(body)...
 ```
-Se encontrar um usuário com `firstName`/`lastName` nulos no Admin Console sem explicação, suspeitar
-de uma chamada `attributes`-only feita por engano — corrigir com um PUT direto incluindo os nomes
-corretos (consultar o nome de origem no banco: `onboarding.medicos.nome` para médicos).
+Qualquer código futuro que precise atualizar `attributes` de um usuário Keycloak neste realm deve
+seguir o mesmo padrão — nunca enviar `attributes` isolado. Se encontrar um usuário com
+`firstName`/`lastName` nulos no Admin Console sem explicação (consultar o nome de origem no banco:
+`onboarding.medicos.nome` para médicos), essa é a causa mais provável.
+
+### Limitação conhecida: vínculos criados antes da correção não são retroativos
+Médicos que já tinham um vínculo atribuído **antes** deste fix não têm o `cnpj_id` sincronizado
+automaticamente — a sincronização só dispara no evento de criação de um novo vínculo. Para um
+médico legado nessa situação, remover e reatribuir o vínculo (`DELETE` + `POST
+/api/medicos/{id}/vinculos`) dispara a sincronização retroativamente.
+
+### Verificação direta via Keycloak Admin API (sem depender da tela)
+Para confirmar o atributo sem logar como o usuário certo (que pode não existir em dev):
+```bash
+TOKEN=$(curl -s -X POST "http://localhost:8080/realms/master/protocol/openid-connect/token" \
+  -d "grant_type=password&client_id=admin-cli&username=admin&password=admin" \
+  | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+curl -s "http://localhost:8080/admin/realms/pinsaude/users/{keycloakUserId}" \
+  -H "Authorization: Bearer $TOKEN"
+# ou simular a query exata do gestao:
+curl -s -G "http://localhost:8080/admin/realms/pinsaude/users" \
+  --data-urlencode "q=cnpj_id:{cnpj-da-empresa}" -H "Authorization: Bearer $TOKEN"
+```
+
+### Senha do médico auto-cadastrado — não é definida na criação
+`createUserDesabilitado` cria o usuário com `requiredActions: [UPDATE_PASSWORD, VERIFY_EMAIL]` e
+sem senha. O caminho de primeiro acesso é o link "Esqueceu a senha?" em `LoginPage.tsx`
+(`KC_RESET_PASSWORD_URL`, fluxo nativo `reset-credentials` do Keycloak — `resetPasswordAllowed:
+true` no realm) — não é um passo manual que falta fazer, é o mecanismo pretendido. Em dev, o
+e-mail de redefinição cai no Mailhog (`http://localhost:8025`).
 
 ---
 

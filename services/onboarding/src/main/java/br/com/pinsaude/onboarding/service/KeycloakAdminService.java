@@ -122,4 +122,37 @@ public class KeycloakAdminService {
             .retrieve()
             .toBodilessEntity();
     }
+
+    /**
+     * Seta o atributo cnpj_id do usuário — necessário para que o médico apareça na tela de
+     * Usuários (services/gestao). Médicos de auto-cadastro nascem sem cnpj_id (sem vínculo
+     * empresa ainda); sincronizado quando o primeiro vínculo é atribuído
+     * (MedicoService.adicionarVinculo).
+     *
+     * ⚠️ Faz um GET antes do PUT e reenvia firstName/lastName no mesmo corpo — o realm tem
+     * User Profile habilitado (Keycloak 24) e cnpj_id está em userProfileConfig.attributes.
+     * Um PUT contendo SÓ "attributes" é tratado como submissão completa do formulário de
+     * perfil e ZERA firstName/lastName (confirmado empiricamente). updateUserEnabled (só
+     * "enabled") não tem esse problema — o bug é específico de enviar "attributes".
+     */
+    public void updateUserAttributeCnpjId(String userId, String cnpjId) {
+        Map<String, Object> atual = restClient.get()
+            .uri(adminUrl("/users/" + userId))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+            .retrieve()
+            .body(new ParameterizedTypeReference<>() {});
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("firstName", atual != null ? atual.get("firstName") : null);
+        body.put("lastName", atual != null ? atual.get("lastName") : null);
+        body.put("attributes", Map.of("cnpj_id", List.of(cnpjId)));
+
+        restClient.put()
+            .uri(adminUrl("/users/" + userId))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .toBodilessEntity();
+    }
 }
