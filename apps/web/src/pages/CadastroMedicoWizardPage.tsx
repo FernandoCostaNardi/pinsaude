@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   User, Home, FileText, ShieldCheck, HeartHandshake, Stethoscope,
   CheckCircle2, Loader2,
@@ -537,7 +538,14 @@ export function CadastroMedicoWizardPage() {
             </div>
           )}
 
-          <p className="text-center text-xs text-gray-400 mt-8">
+          <p className="text-center text-sm text-gray-500 mt-8">
+            Já é cadastrado?{' '}
+            <Link to="/login" className="text-primary hover:text-primary-700 transition-colors font-medium">
+              Fazer login
+            </Link>
+          </p>
+
+          <p className="text-center text-xs text-gray-400 mt-2">
             © {new Date().getFullYear()} Pin Saúde · Todos os direitos reservados
           </p>
         </div>
