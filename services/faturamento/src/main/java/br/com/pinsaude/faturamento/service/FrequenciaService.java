@@ -11,6 +11,7 @@ import br.com.pinsaude.faturamento.dto.FrequenciaMedicaRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
 import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
+import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
 import org.springframework.http.HttpStatus;
@@ -34,17 +35,20 @@ public class FrequenciaService {
     private final TomadorServicoOperacionalRepository setorRepo;
     private final TomadorModalidadeRepository modalidadeRepo;
     private final StorageService storageService;
+    private final MedicoTomadorRepository medicoTomadorRepo;
 
     public FrequenciaService(FrequenciaMedicaRepository frequenciaRepo,
                              FrequenciaItemRepository itemRepo,
                              TomadorServicoOperacionalRepository setorRepo,
                              TomadorModalidadeRepository modalidadeRepo,
-                             StorageService storageService) {
+                             StorageService storageService,
+                             MedicoTomadorRepository medicoTomadorRepo) {
         this.frequenciaRepo = frequenciaRepo;
         this.itemRepo       = itemRepo;
         this.setorRepo      = setorRepo;
         this.modalidadeRepo = modalidadeRepo;
         this.storageService = storageService;
+        this.medicoTomadorRepo = medicoTomadorRepo;
     }
 
     // ── Frequência CRUD ───────────────────────────────────────────────────────
@@ -60,6 +64,16 @@ public class FrequenciaService {
         TomadorServicoOperacional setor = setorRepo.findById(req.servicoOperacionalId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Setor operacional não encontrado: " + req.servicoOperacionalId()));
+
+        if (!setor.getTomadorId().equals(req.tomadorId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Setor operacional não pertence ao tomador informado");
+        }
+
+        if (!medicoTomadorRepo.existsByTomadorIdAndMedicoId(req.tomadorId(), req.medicoId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Médico não está alocado a este tomador");
+        }
 
         String tenant = SecurityUtils.currentCnpjTenant();
 

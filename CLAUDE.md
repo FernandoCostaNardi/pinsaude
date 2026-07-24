@@ -3659,6 +3659,14 @@ tomador onde já tem histórico → 201 normalmente. Esse é exatamente o cenár
 para proteger — se esse teste falhasse, seria sinal de que o backfill não rodou ou está incompleto
 no ambiente.
 
+### `FrequenciaService.criar()` — ordem das validações importa ao testar manualmente (EPIC-15.8)
+A ordem é: (1) duplicidade `medico+setor+competência` (409) → (2) setor existe (404) → (3) setor
+pertence ao tomador informado (422) → (4) médico alocado ao tomador (422). Ao testar manualmente o
+cenário 3 (setor de outro tomador) reusando o mesmo médico+setor+competência de um teste anterior,
+a checagem de duplicidade (1) dispara primeiro e mascara a validação que se quer testar — retorna
+409 em vez do 422 esperado, parecendo (por engano) que a nova validação não está funcionando.
+Sempre usar uma competência nova a cada cenário de teste manual deste endpoint.
+
 ---
 
 ## E-mails Nativos do Keycloak em Inglês — Faltava Internacionalização no Realm

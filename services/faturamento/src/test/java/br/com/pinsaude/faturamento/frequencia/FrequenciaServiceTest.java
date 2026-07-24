@@ -10,6 +10,7 @@ import br.com.pinsaude.faturamento.dto.FrequenciaMedicaRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
 import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
+import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
 import br.com.pinsaude.faturamento.service.FrequenciaService;
@@ -48,6 +49,7 @@ class FrequenciaServiceTest {
     @Mock TomadorServicoOperacionalRepository setorRepo;
     @Mock TomadorModalidadeRepository modalidadeRepo;
     @Mock StorageService storageService;
+    @Mock MedicoTomadorRepository medicoTomadorRepo;
 
     @InjectMocks FrequenciaService service;
 
@@ -87,6 +89,7 @@ class FrequenciaServiceTest {
         when(itemRepo.findAll()).thenReturn(Collections.emptyList());
         when(setorRepo.findAllById(any())).thenReturn(List.of(setor));
         when(modalidadeRepo.findAllById(any())).thenReturn(List.of(modalidade));
+        when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(true);
     }
 
     // ─── Criar frequência ─────────────────────────────────────────────────────
@@ -142,6 +145,39 @@ class FrequenciaServiceTest {
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void criar_setorDeOutroTomador_lanca422() {
+        UUID outroTomadorId = UUID.randomUUID();
+        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
+            .thenReturn(false);
+
+        // setor pertence a tomadorId, mas a requisição informa outroTomadorId
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            outroTomadorId, medicoId, setorId, "2026-07", "PLANTONISTA");
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Setor operacional não pertence ao tomador informado")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void criar_medicoNaoAlocadoAoTomador_lanca422() {
+        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
+            .thenReturn(false);
+        when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(false);
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA");
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não está alocado a este tomador")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
     }
 
     // ─── Listar ───────────────────────────────────────────────────────────────
