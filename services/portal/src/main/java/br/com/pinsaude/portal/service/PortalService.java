@@ -6,6 +6,7 @@ import br.com.pinsaude.portal.dto.ExtratoResponse;
 import br.com.pinsaude.portal.dto.NotaPortalResponse;
 import br.com.pinsaude.portal.dto.PerfilMedicoResponse;
 import br.com.pinsaude.portal.dto.ProducaoPortalResponse;
+import br.com.pinsaude.portal.dto.TomadorPortalResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -171,6 +172,21 @@ public class PortalService {
                         rs.getString("cnpj"),
                         rs.getString("municipio"),
                         rs.getString("inscricao_municipal")),
+                medicoId);
+    }
+
+    public List<TomadorPortalResponse> getTomadoresDoMedico(UUID medicoId) {
+        return jdbc.query("""
+                SELECT t.id, t.razao_social_nome, t.municipio
+                FROM faturamento.medico_tomadores mt
+                JOIN faturamento.tomadores t ON t.id = mt.tomador_id
+                WHERE mt.medico_id = ?
+                ORDER BY t.razao_social_nome
+                """,
+                (rs, row) -> new TomadorPortalResponse(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("razao_social_nome"),
+                        rs.getString("municipio")),
                 medicoId);
     }
 
