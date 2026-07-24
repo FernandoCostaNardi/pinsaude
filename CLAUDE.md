@@ -3634,6 +3634,31 @@ parsear o JSON de verdade (`node -e "JSON.parse(...).length"` ou um script `.js`
 para contar só os elementos do array de nível superior — nunca grep ingênuo em JSON com
 estrutura aninhada desconhecida.
 
+### ⚠️ `ProducaoService` nunca teve testes unitários antes do EPIC-15.7
+Ao adicionar a validação de bloqueio em `ProducaoService.criar()`, descobri que **não existia
+nenhum arquivo de teste** para esse serviço (`ProducaoController`/`ProducaoService` são código do
+EPIC-04.4, bem antigo) — nenhum `ProducaoServiceTest.java` em lugar nenhum do módulo. Criado
+`producao/ProducaoServiceTest.java` cobrindo a nova validação (médico não alocado → 422, médico
+alocado → sucesso, múltiplos participantes com um não alocado → 422) mais alguns testes de
+sanidade do caminho já existente (tomador inexistente → 404, valor total zero → 400). **Não é
+cobertura completa do serviço** (cálculo de preview, listagem com filtros, etc. continuam sem
+teste) — só o suficiente para validar com segurança a mudança desta task. Sinalizado aqui para
+quem for ampliar a cobertura no futuro.
+
+### Validação de bloqueio vale para TODAS as roles que podem criar produção, incluindo `medico`
+`POST /api/producoes` aceita `hasAnyRole('operacao','gestao','medico')` — o médico pode lançar a
+própria produção diretamente (não só via portal). Testado manualmente com token real de médico:
+tentar criar produção com um `medicoId` (dele mesmo ou de terceiro) não alocado ao tomador
+retorna 422 igual para qualquer role, sem bypass — confirma o requisito do plano ("sem bypass por
+papel") na prática, não só na intenção do código.
+
+### Teste manual do cenário crítico do backfill — médico com histórico real não pode ficar bloqueado
+Antes de validar o bloqueio, testei o caso mais importante: um médico **real** (`medico@pinsaude.com.br`,
+já com 11 alocações vindas do backfill do EPIC-15.2) consegue criar uma **nova** produção no mesmo
+tomador onde já tem histórico → 201 normalmente. Esse é exatamente o cenário que o backfill existe
+para proteger — se esse teste falhasse, seria sinal de que o backfill não rodou ou está incompleto
+no ambiente.
+
 ---
 
 ## E-mails Nativos do Keycloak em Inglês — Faltava Internacionalização no Realm
