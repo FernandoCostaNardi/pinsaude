@@ -3578,6 +3578,21 @@ para validar isolamento. O teste correto conecta como o usuário de verdade do s
 query, comparando tenant correto (retorna linha) vs. tenant errado (deve retornar vazio) vs. tenant
 vazio (bypass esperado para gestão/portal).
 
+### Migration de backfill funciona normalmente mesmo com FORCE ROW LEVEL SECURITY (EPIC-15.2)
+Migrations Flyway rodam como `svc_faturamento` (o mesmo usuário/owner das tabelas) e **sem**
+`app.current_tenant` definido na sessão. Pela policy padrão (`COALESCE(current_setting(...), '')
+= ''`), sessão sem a variável definida se comporta como tenant vazio → **bypass total do RLS**,
+mesmo em tabelas com `FORCE`. Ou seja: um `INSERT ... SELECT` de backfill cross-tenant dentro de
+uma migration enxerga e grava linhas de **todos** os tenants normalmente — não precisa (e não deve)
+setar `app.current_tenant` manualmente na migration. Confirmado ao criar `V22__backfill_medico_tomadores.sql`.
+
+### Padrão de backfill idempotente a partir de múltiplas fontes sobrepostas
+Quando o backfill precisa juntar dados de N tabelas-fonte que podem gerar a mesma combinação de
+chave (ex.: o mesmo médico+tomador aparece tanto em produções quanto em frequências), usar um
+`INSERT ... SELECT DISTINCT ... ON CONFLICT (colunas_unique) DO NOTHING` por fonte, na tabela de
+destino já com `UNIQUE` — dispensa `UNION`/deduplicação manual entre as fontes, e a migration fica
+idempotente por natureza (reexecutar os mesmos `INSERT`s não duplica nem falha).
+
 ---
 
 ## E-mails Nativos do Keycloak em Inglês — Faltava Internacionalização no Realm
