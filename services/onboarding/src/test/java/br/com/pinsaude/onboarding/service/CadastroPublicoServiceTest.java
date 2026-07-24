@@ -30,6 +30,7 @@ class CadastroPublicoServiceTest {
     @Mock DadosBancariosMedicoRepository dadosBancariosRepo;
     @Mock DocumentoMedicoRepository documentoRepo;
     @Mock DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo;
+    @Mock ChecklistCondutaRepository checklistRepo;
     @Mock HistoricoMedicoRepository historicoRepo;
     @Mock CryptoService cryptoService;
     @Mock StorageService storageService;
@@ -95,6 +96,14 @@ class CadastroPublicoServiceTest {
         verify(medicoRepo).save(medicoCaptor.capture());
         assertThat(medicoCaptor.getValue().getOrigemCadastro()).isEqualTo("AUTO_CADASTRO");
         assertThat(medicoCaptor.getValue().getStatus()).isEqualTo(StatusMedico.RASCUNHO);
+
+        // Sem isso, a tela de Aprovação (gestao/operacao) nunca teria como marcar o
+        // checklist de conduta como completo — bloqueando a ativação do médico para sempre
+        // (achado durante o roteiro de teste manual ponta-a-ponta, EPIC-14.9).
+        ArgumentCaptor<ChecklistConduta> checklistCaptor = ArgumentCaptor.forClass(ChecklistConduta.class);
+        verify(checklistRepo).save(checklistCaptor.capture());
+        assertThat(checklistCaptor.getValue().getMedicoId()).isEqualTo(MEDICO_ID);
+        assertThat(checklistCaptor.getValue().isCompleto()).isFalse();
 
         verify(historicoRepo).save(any(HistoricoMedico.class));
     }

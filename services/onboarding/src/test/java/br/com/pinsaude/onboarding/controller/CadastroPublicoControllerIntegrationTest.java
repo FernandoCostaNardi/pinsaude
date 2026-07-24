@@ -6,6 +6,7 @@ import br.com.pinsaude.onboarding.domain.TipoDocumentoMedico;
 import br.com.pinsaude.onboarding.dto.CandidaturaDadosBancariosRequest;
 import br.com.pinsaude.onboarding.dto.CandidaturaPublicaRequest;
 import br.com.pinsaude.onboarding.dto.DeclaracaoLgpdRequest;
+import br.com.pinsaude.onboarding.repository.ChecklistCondutaRepository;
 import br.com.pinsaude.onboarding.repository.DadosCivisMedicoRepository;
 import br.com.pinsaude.onboarding.repository.DadosBancariosMedicoRepository;
 import br.com.pinsaude.onboarding.repository.DeclaracoesLgpdMedicoRepository;
@@ -71,6 +72,7 @@ class CadastroPublicoControllerIntegrationTest {
     @Autowired DocumentoMedicoRepository documentoRepo;
     @Autowired DadosBancariosMedicoRepository dadosBancariosRepo;
     @Autowired DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo;
+    @Autowired ChecklistCondutaRepository checklistRepo;
     @Autowired CryptoService cryptoService;
 
     // MinIO não faz parte da infra deste teste (só Postgres via Testcontainers) — mockar
@@ -121,6 +123,10 @@ class CadastroPublicoControllerIntegrationTest {
         Medico salvo = medicoRepo.findById(id).orElseThrow();
         assertThatOrigemEhAutoCadastro(salvo);
         assertThat(dadosCivisRepo.findById(id)).isPresent();
+        // Achado no roteiro de teste manual E2E (EPIC-14.9): sem o checklist seedado aqui,
+        // a tela de Aprovação nunca exibiria o ChecklistEditor (só renderiza quando
+        // medico.checklist != null) — bloqueando a ativação de QUALQUER auto-cadastro.
+        assertThat(checklistRepo.findById(id)).isPresent();
     }
 
     @Test

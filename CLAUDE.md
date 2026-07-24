@@ -3329,6 +3329,73 @@ para não confundir o operador.
 
 ---
 
+## Testes e Roteiro de Teste Manual Ponta-a-Ponta (EPIC-14.9)
+
+### Cobertura de testes automatizados já estava completa desde 14.2/14.3/14.4 — só faltava um teste
+Ao auditar os critérios de aceite ("testes unitários da criação de candidatura, duplicidade
+409, upload sem limite, LGPD, finalizar() com Keycloak mockado" + "testes de
+`ativar()`/`verificarAtivacaoAutomatica()` chamando `assignRole`+`updateUserEnabled`"), todos já
+existiam em `CadastroPublicoServiceTest`/`CadastroPublicoControllerIntegrationTest`/
+`OnboardingFluxoTest` (implementados nas tasks 14.2-14.4, seguindo o padrão do time de TDD já
+documentado). Só faltava um teste para o **segundo gatilho** de ativação automática —
+`processarWebhookClicksign(docKey, "sign")` — que só tinha teste para o caminho de pré-requisitos
+incompletos, não para o caminho de sucesso com liberação de Keycloak (o outro gatilho,
+`atualizarJuntaComercial`, já tinha ambos). Adicionado
+`webhook_sign_todosRequisitosJaCumpridos_ativaAutomaticamenteEliberaKeycloak` em
+`OnboardingFluxoTest.java`.
+
+### 🐛 Achado crítico do roteiro manual: `CadastroPublicoService.criar()` nunca semeava o checklist de conduta
+Executando o roteiro E2E completo (candidatura → aprovação → ativação), a ativação do médico
+**nunca saía do estado bloqueado** por "Checklist de conduta incompleto" — e pior, não havia
+NENHUMA tela onde criar esse checklist pela primeira vez, porque `ChecklistEditor` (tanto em
+`MedicoPerfilPage.tsx` quanto na leitura do médico em `AprovacaoOnboardingPage.tsx`) só renderiza
+quando `medico.checklist != null`. Causa raiz: `MedicoService.criar()` (cadastro manual,
+operação/gestão) sempre chama `checklistRepo.save(new ChecklistConduta(medico.getId()))` na
+criação (ver EPIC-03.2) — mas `CadastroPublicoService.criar()` (EPIC-14.2, auto-cadastro
+público) nunca fazia isso, por ser um serviço espelhado mas escrito do zero. **Consequência: TODO
+médico vindo do auto-cadastro público estava permanentemente impossibilitado de ser ativado.**
+Esse é exatamente o tipo de gap que só aparece testando a jornada de ponta a ponta — nenhum teste
+unitário isolado pegaria isso, porque cada serviço em separado se comporta corretamente (o
+checklist nunca existir é um estado "válido" do ponto de vista de cada chamada individual).
+
+**Correção:** `CadastroPublicoService` passou a receber `ChecklistCondutaRepository` no
+construtor e semear `new ChecklistConduta(medico.getId())` em `criar()`, no mesmo padrão do
+cadastro manual. Cobertura adicionada em `CadastroPublicoServiceTest` (verifica a chamada ao
+mock) e `CadastroPublicoControllerIntegrationTest` (verifica a persistência real via
+Testcontainers). Nenhuma mudança de frontend foi necessária — o `ChecklistEditor` já existente
+passou a renderizar corretamente assim que o backend parou de retornar `checklist: null`.
+
+### Mensagem de erro "requer configuração de MFA" no login é genérica para qualquer required action pendente
+`AuthContext.tsx` (`login()`) mapeia QUALQUER `error_description` do Keycloak contendo
+`"not fully set up"` ou `"actions"` para a mensagem fixa "Sua conta requer configuração de MFA" —
+não é exclusiva de `CONFIGURE_TOTP`. Um usuário recém-criado por `createUserDesabilitado()` tem
+`requiredActions: ["UPDATE_PASSWORD", "VERIFY_EMAIL"]`; mesmo depois de definir senha via
+Admin API (`reset-password` com `temporary:false`, que limpa `UPDATE_PASSWORD`), o
+`VERIFY_EMAIL` pendente sozinho já dispara essa mesma mensagem de "MFA" — o texto do frontend
+é enganoso para depuração. Ao testar login de um médico recém-ativado sem ter passado pelo
+fluxo real de e-mail, limpar manualmente via Admin API:
+```bash
+curl -X PUT .../admin/realms/pinsaude/users/{id} \
+  -d '{"requiredActions":[],"emailVerified":true}'
+```
+
+### Contrato Clicksign e checklist de conduta — como testar localmente sem essas integrações
+Neste ambiente dev, `CLICKSIGN_ENABLED=false` por padrão — não há como o médico ter um contrato
+`ASSINADO` de verdade via UI. Para testar o fluxo de ativação ponta a ponta sem depender do
+Clicksign real, inserir diretamente um registro em `onboarding.contratos_assinatura` com
+`status='ASSINADO'` (simula o que o webhook do Clicksign faria em produção). Para o checklist de
+conduta (após o fix desta task, já semeado na criação), usar
+`PUT /api/medicos/{id}/checklist` diretamente — mesmo endpoint que a tela usa.
+
+### Roteiro de teste manual documentado em `docs/roteiros-teste/`
+Novo padrão de repositório: roteiros de teste E2E ficam em `docs/roteiros-teste/<epic>.md`
+(não existia essa pasta antes). Cada roteiro documenta os passos executados de verdade nesta
+sessão (não um roteiro genérico) — com resultado real de cada passo e achados encontrados
+durante a execução, para servir de referência de regressão em EPICs futuros que toquem o mesmo
+fluxo.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
