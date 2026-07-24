@@ -3593,6 +3593,35 @@ chave (ex.: o mesmo médico+tomador aparece tanto em produções quanto em frequ
 destino já com `UNIQUE` — dispensa `UNION`/deduplicação manual entre as fontes, e a migration fica
 idempotente por natureza (reexecutar os mesmos `INSERT`s não duplica nem falha).
 
+### ⚠️ `mvn test` no faturamento NUNCA valida o mapeamento JPA contra o schema real (EPIC-15.3)
+`services/faturamento/src/test/resources/application.properties` força
+`spring.flyway.enabled=false` + `spring.jpa.hibernate.ddl-auto=none` com H2 em memória
+(`jdbc:h2:mem:testdb`) — ou seja, a suíte de testes padrão nunca cria nem valida schema nenhum. Os
+testes `@SpringBootTest` existentes (`RbacIntegrationTest`, `SecurityIntegrationTest`) só validam
+autorização (401/403 antes de qualquer query tocar o banco); todo o resto da suíte usa `@Mock`
+nos repositories. **Rodar `mvn test` com sucesso não prova que uma entidade JPA nova bate com o
+schema real** — descoberto ao criar `MedicoTomador.java`, cuja mapeamento só foi de fato validado
+apontando o teste para o Postgres local de verdade (override via `@SpringBootTest(properties =
+{...})`, nunca commitado — não existe precedente de teste de repository isolado em nenhum serviço
+do monorepo):
+```java
+@SpringBootTest(properties = {
+    "spring.datasource.url=jdbc:postgresql://localhost:5433/pinsaude",
+    "spring.datasource.driver-class-name=org.postgresql.Driver",
+    "spring.datasource.username=svc_faturamento",
+    "spring.datasource.password=faturamento_dev",
+    "spring.jpa.properties.hibernate.default_schema=faturamento",
+    "spring.flyway.enabled=false",   // schema já migrado de verdade, não precisa recriar
+    "spring.jpa.hibernate.ddl-auto=validate"
+})
+@Transactional  // rollback automático — não suja o banco de dev
+```
+Ao escrever esse teste ad-hoc contra dados reais (tomadores já existentes por causa do `FK`),
+**cuidado com dados pré-existentes** (ex.: backfill do EPIC-15.2): `findByTomadorId(tomadorReal)`
+pode retornar mais linhas do que as inseridas no próprio teste — usar `medicoId` aleatório (nunca
+colide com dado real) e `assertThat(lista).extracting(...).contains(...)` em vez de `hasSize(N)`
+fixo quando a chave de busca é uma entidade que já tem histórico real no banco.
+
 ---
 
 ## E-mails Nativos do Keycloak em Inglês — Faltava Internacionalização no Realm
