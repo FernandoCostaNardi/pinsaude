@@ -10,6 +10,9 @@ import br.com.pinsaude.faturamento.domain.TomadorGrupoFaturamento;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorServico;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
+import br.com.pinsaude.faturamento.domain.MedicoTomador;
+import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
+import br.com.pinsaude.faturamento.dto.MedicoTomadorResponse;
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaResponse;
@@ -26,6 +29,7 @@ import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorServicoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorServicoResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
+import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
@@ -60,6 +64,7 @@ public class TomadorService {
     private final TomadorGrupoFaturamentoRepository grupoRepo;
     private final TomadorModalidadeRepository modalidadeRepo;
     private final TomadorServicoOperacionalRepository servicoOperacionalRepo;
+    private final MedicoTomadorRepository medicoTomadorRepo;
 
     public TomadorService(TomadorRepository repo,
                           CryptoService crypto,
@@ -70,7 +75,8 @@ public class TomadorService {
                           ServicoRepository servicoRepo,
                           TomadorGrupoFaturamentoRepository grupoRepo,
                           TomadorModalidadeRepository modalidadeRepo,
-                          TomadorServicoOperacionalRepository servicoOperacionalRepo) {
+                          TomadorServicoOperacionalRepository servicoOperacionalRepo,
+                          MedicoTomadorRepository medicoTomadorRepo) {
         this.repo = repo;
         this.crypto = crypto;
         this.consultaCnpjPort = consultaCnpjPort;
@@ -81,6 +87,7 @@ public class TomadorService {
         this.grupoRepo = grupoRepo;
         this.modalidadeRepo = modalidadeRepo;
         this.servicoOperacionalRepo = servicoOperacionalRepo;
+        this.medicoTomadorRepo = medicoTomadorRepo;
     }
 
     public List<TomadorResponse> buscar(String q) {
@@ -444,6 +451,38 @@ public class TomadorService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Serviço operacional não encontrado"));
         servicoOperacionalRepo.delete(s);
+    }
+
+    // ─── Médicos alocados ao tomador (EPIC-15) ────────────────────────────────
+
+    public List<MedicoTomadorResponse> listarMedicos(UUID tomadorId) {
+        findOrThrow(tomadorId);
+        return medicoTomadorRepo.findByTomadorId(tomadorId).stream()
+            .map(MedicoTomadorResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public MedicoTomadorResponse adicionarMedico(UUID tomadorId, MedicoTomadorRequest req) {
+        findOrThrow(tomadorId);
+        if (medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, req.medicoId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Médico já está alocado a este tomador");
+        }
+        MedicoTomador mt = new MedicoTomador();
+        mt.setTomadorId(tomadorId);
+        mt.setMedicoId(req.medicoId());
+        return MedicoTomadorResponse.from(medicoTomadorRepo.save(mt));
+    }
+
+    @Transactional
+    public void removerMedico(UUID tomadorId, UUID medicoId) {
+        findOrThrow(tomadorId);
+        if (!medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Médico não está alocado a este tomador");
+        }
+        medicoTomadorRepo.deleteByTomadorIdAndMedicoId(tomadorId, medicoId);
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────
