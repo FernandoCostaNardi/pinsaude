@@ -4155,6 +4155,43 @@ web/faturamento/onboarding/gateway/keycloak de pé — precisou subir `services/
 
 ---
 
+## Filtro no Portal — PortalFrequenciaPage.tsx (EPIC-15.16)
+
+### Duas coleções de tomadores necessárias — histórico precisa do array completo, formulário não
+Diferente da EPIC-15.15, esta tela usa `tomadores` para **dois** propósitos distintos:
+1. `FrequenciaCard` resolve o nome do tomador de cada frequência já lançada via
+   `tomadores.find(t => t.id === freq.tomadorId)` — precisa do array **completo**, sem filtro,
+   porque uma frequência antiga pode referenciar um tomador do qual o médico **já foi desalocado**
+   (o vínculo pode ter sido removido depois que a frequência foi criada). Filtrar esse array
+   quebraria a exibição do nome em frequências históricas, mostrando "—" em vez do nome real.
+2. `NovaFrequenciaModal` precisa do array **filtrado**, restrito aos tomadores atualmente
+   alocados — esse é o gap de UX real que a task pede para fechar.
+
+**Solução:** duas states separadas — `tomadores` (completo, alimenta `FrequenciaCard` via
+`tomadoresSorted`) e `tomadoresAlocados` (filtrado por `portalApi.getTomadoresAlocados()`,
+alimenta só `NovaFrequenciaModal` via `tomadoresAlocadosSorted`). Mesma técnica híbrida da
+EPIC-15.15 (buscar `tomadoresApi.listar()` completo + `portalApi.getTomadoresAlocados()` como
+safelist de IDs, filtrar client-side), mas aqui com o cuidado extra de **não** substituir a
+única fonte de dados por uma versão filtrada — precisava de duas.
+
+### Este arquivo é código duplicado de `FrequenciasPage.tsx` (EPIC-15.14) — mesmo padrão de fix
+A própria descrição da task já apontava isso ("`Dropdown<T>` local, código hoje duplicado de
+`FrequenciasPage.tsx`"). O fix de UI (estado vazio laranja quando `tomadores.length === 0`) segue
+exatamente o mesmo texto/estilo já usado na EPIC-15.14/15.15 — mantém consistência visual entre
+as 3 telas de lançamento (admin Produção, admin Frequência, Portal Produção, Portal Frequência)
+que já compartilham esse mesmo padrão de aviso.
+
+### Teste manual — ordenação alfabética expôs a ausência do HAPVIDA de forma mais visível
+Com `tomadoresAlocadosSorted` (ordenado por `razaoSocialNome`), a ausência do tomador não-alocado
+fica visualmente óbvia: a lista pula de "CLINICA VIDA SAUDAVEL" direto para "HOSPITAL NOSSA SRA
+APARECIDA" — "HAPVIDA" (que alfabeticamente ficaria entre os dois) simplesmente não aparece.
+Confirmado ao vivo com `Medico Teste` (11 tomadores alocados, sem HAPVIDA) — mesmo padrão de teste
+das EPICs 15.11/15.14/15.15. Setor Operacional habilitou normalmente após selecionar o tomador
+(dependência de `listarGrupos(tomador.id)` intacta — só precisa do `.id`, não do shape completo).
+Zero erros de console.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
