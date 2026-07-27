@@ -4192,6 +4192,55 @@ Zero erros de console.
 
 ---
 
+## Testes e Roteiro Manual E2E do EPIC-15 (EPIC-15.17)
+
+### Épico com TDD incremental — a task final de "testes" não precisou de nenhum teste novo
+Diferente do EPIC-14 (onde a 14.9 descobriu um gap real — checklist nunca semeado), o EPIC-15
+já tinha 100% da cobertura automatizada exigida pelos critérios de aceite implementada nas
+próprias tasks de backend (15.3 `TomadorServiceTest`, 15.7 `ProducaoServiceTest`, 15.8
+`FrequenciaServiceTest`, 15.6 `PortalMedicoControllerTest`). A 15.17 rodou tudo de novo
+(`node tools/scripts/mvn-test.js services/faturamento` → 140/140; `services/portal` → 9/10,
+a falha é a `extrato_semImplementacao_retornaListaVazia` já conhecida desde EPIC-06.4/14/15.6)
+e escreveu o roteiro manual, sem precisar adicionar nenhum teste novo. **Lição:** quando cada
+task de backend do épico já inclui sua própria cobertura de teste (prática já estabelecida no
+projeto), a task final de "testes" vira validação de integração ponta-a-ponta, não a primeira
+oportunidade de testar — não assumir que sempre haverá gaps grandes tipo EPIC-14.9.
+
+### Testar bloqueio 422 em 3 roles via curl+JWT direto é mais rápido e confiável que via browser
+Para confirmar "sem bypass por papel" (operação/gestão/médico recebem 422 igual ao tentar
+criar Produção/Frequência com médico não alocado), obter token real via ROPC do Keycloak e
+chamar o endpoint direto pelo gateway é muito mais rápido e determinístico que repetir 3 logins
+completos no browser:
+```bash
+TOKEN=$(curl -s -X POST "http://localhost:8080/realms/pinsaude/protocol/openid-connect/token" \
+  -d "grant_type=password&client_id=pinsaude-web&username=$USER&password=test123" | \
+  node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).access_token))")
+curl -s -w "HTTP %{http_code}\n" -X POST "http://localhost:8090/api/producoes" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$BODY"
+```
+Um `medicoId` sintético (UUID aleatório nunca inserido em `medico_tomadores`) serve tão bem
+quanto um médico real não-alocado para testar o bloqueio — não precisa existir em
+`onboarding.medicos`, já que `faturamento` não tem FK cruzada (mesmo padrão já usado nos testes
+unitários de `ProducaoServiceTest`/`FrequenciaServiceTest`).
+
+### Verificação cruzada de contagem do backfill — `medico_tomadores` deve ser ≥ combinações históricas
+Para validar que o backfill (EPIC-15.2) e as alocações adicionadas depois cobrem o histórico
+real, comparar a contagem total de `medico_tomadores` com o número de combinações **distintas**
+médico+tomador em `participacoes_producao`/`producoes` e em `frequencias_medicas` — a primeira
+deve ser sempre `>=` a soma das segundas (nunca poderia ser menor, ou médicos com histórico
+ficariam bloqueados). `GROUP BY medico_id` na mesma tabela também serve para auditoria rápida
+de quantos tomadores cada médico tem alocado, sem precisar abrir a UI.
+
+### Aba do Chrome trava de forma recorrente após uso prolongado — abrir aba nova é o workaround
+Ao longo de toda a EPIC-15, a mesma aba usada por múltiplas tasks eventualmente para de
+responder a `find`/`screenshot` (`"Page still loading (executeScript waited 45000ms for
+document_idle)"`), mesmo com a página aparentemente carregada e o console respondendo
+normalmente — sintoma consistente com o processo de renderização da aba ficando preso após
+muitas navegações/logins consecutivos na mesma sessão de automação. `tabs_create_mcp` para
+uma aba nova e login do zero sempre resolve — não vale a pena tentar recuperar a aba travada.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
