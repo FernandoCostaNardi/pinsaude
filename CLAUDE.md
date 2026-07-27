@@ -4036,6 +4036,52 @@ nenhuma opção de mutação.
 
 ---
 
+## Filtro por médico em ProducaoNovaPage.tsx (EPIC-15.13)
+
+### Fluxo real da tela é invertido em relação à leitura literal da task — filtro reage ao(s) participante(s), não o contrário
+A tela pede o Tomador **antes** da lista de Participantes (médicos). A task descrevia "ao trocar o
+médico selecionado, refazer `tomadoresApi.listar(medicoId)`" — implementado exatamente assim, mas
+o efeito reage à lista completa de médicos já escolhidos em **todos** os participantes (chave
+derivada `medicoIdsSelecionados`), não a um único médico isolado. Sem médico nenhum selecionado,
+`tomadoresDisponiveis` cai no array completo já carregado no mount (comportamento anterior
+preservado); assim que o primeiro participante ganha um médico, o combo de Tomador já filtra.
+
+### Produção multi-médico — interseção via N chamadas paralelas, não client-side filtering do array já carregado
+Para `N` médicos distintos selecionados nos participantes, o efeito dispara `N` chamadas
+`tomadoresApi.listar(undefined, medicoId)` em paralelo (`Promise.all`) e computa a interseção por
+`id` (`primeira.filter(t => resto.every(lista => lista.some(x => x.id === t.id)))`) — não reaproveita
+o array `tomadores` (carregado uma vez, sem filtro, no mount) porque esse array não carrega a
+informação de qual tomador pertence a qual médico; só o endpoint filtrado por `medicoId` tem essa
+informação. Testado ao vivo com 2 médicos reais (`Medico Teste`: 11 tomadores; `Fulano de tal`: 1
+tomador) — a interseção reduziu corretamente para exatamente o 1 tomador em comum, confirmando que
+o algoritmo de interseção funciona mesmo em cenários altamente assimétricos.
+
+### Tomador já selecionado que "sai" da interseção não é limpo automaticamente — só um aviso
+Se o usuário seleciona um Tomador e depois adiciona um segundo participante cujo médico não está
+alocado a esse tomador, a seleção **não é apagada** (evita surpreender o usuário limpando um campo
+que ele já preencheu) — em vez disso, aparece um aviso amarelo "Atenção: o tomador selecionado não
+está alocado a todos os médicos participantes." A validação definitiva (422) já existe no backend
+desde a EPIC-15.7; este aviso é só uma dica de UX antes do submit, não uma trava client-side.
+Testado ao vivo: o aviso apareceu corretamente no cenário de interseção quase vazia.
+
+### `tomadorObj`/`servicosDisponiveis`/preview fiscal continuam usando o array `tomadores` completo, nunca o filtrado
+O array filtrado (`tomadoresDisponiveis`) só alimenta as opções do `Autocomplete` de Tomador. Todo
+o resto do formulário que precisa dos dados completos de um tomador já selecionado (CNAEs, serviços
+vinculados, cálculo fiscal) continua consultando `tomadores` (a lista completa carregada uma vez no
+mount) — nunca o array filtrado, que pode nem conter o tomador já selecionado no cenário de
+interseção vazia descrito acima.
+
+### Ambiente de teste sem o serviço `fiscal` (porta 8081) rodando — preview fiscal e combo de empresa vazios
+Nesta sessão de teste manual só `faturamento`(8082)/`onboarding`(8085)/`gateway`(8090)/`web`(3000)
+estavam de pé — sem o serviço `fiscal` nem dados de `empresas` no ambiente, o card de "Cálculo
+Fiscal da Nota" nunca resolve e o select de "Empresa Emissora" fica vazio. Isso é uma limitação do
+ambiente de teste (fora do escopo desta task, que só mexe no filtro de tomador por médico) — não
+uma regressão introduzida por esta mudança; confirmado que o restante do formulário (tomador,
+CNAE, serviço, participantes, valores, total) funciona normalmente até o ponto em que dependeria
+desses dois pré-requisitos ausentes.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
