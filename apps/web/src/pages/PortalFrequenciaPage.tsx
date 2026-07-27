@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronRight,
+  AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronRight,
   Download, FileText, Loader2, Plus, Printer, Trash2, Upload, X,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -230,14 +230,27 @@ function NovaFrequenciaModal({
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
             {err && <Alert variant="error" onClose={() => setErr(null)}>{err}</Alert>}
 
-            <Dropdown
-              label="Tomador (Hospital / Clínica) *"
-              placeholder="Selecione o tomador..."
-              items={tomadores}
-              value={form.tomador}
-              onChange={t => setForm(f => ({ ...f, tomador: t, setor: null }))}
-              getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
-            />
+            {tomadores.length === 0 ? (
+              <div>
+                <label className="block text-xs font-bold text-ds-mid mb-1">Tomador (Hospital / Clínica) *</label>
+                <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2 flex items-start gap-1.5">
+                  <AlertCircle size={13} className="text-orange-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-orange-700">
+                    Você ainda não está alocado a nenhum tomador. Entre em contato com o time
+                    operacional para liberar o lançamento de frequência.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <Dropdown
+                label="Tomador (Hospital / Clínica) *"
+                placeholder="Selecione o tomador..."
+                items={tomadores}
+                value={form.tomador}
+                onChange={t => setForm(f => ({ ...f, tomador: t, setor: null }))}
+                getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
+              />
+            )}
 
             <Dropdown
               label="Setor Operacional *"
@@ -730,6 +743,7 @@ export function PortalFrequenciaPage() {
   const navigate       = useNavigate()
   const [perfil,       setPerfil]       = useState<PerfilMedico | null>(null)
   const [tomadores,    setTomadores]    = useState<Tomador[]>([])
+  const [tomadoresAlocados, setTomadoresAlocados] = useState<Tomador[]>([])
   const [frequencias,  setFrequencias]  = useState<FrequenciaMedicaResp[]>([])
   const [loading,      setLoading]      = useState(true)
   const [initErr,      setInitErr]      = useState<string | null>(null)
@@ -746,9 +760,19 @@ export function PortalFrequenciaPage() {
   useEffect(() => {
     async function init() {
       try {
-        const [p, t] = await Promise.all([portalApi.getPerfil(), tomadoresApi.listar()])
+        const [p, t, alocados] = await Promise.all([
+          portalApi.getPerfil(),
+          tomadoresApi.listar(),
+          portalApi.getTomadoresAlocados(),
+        ])
         setPerfil(p)
+        // tomadores (completo) alimenta o lookup de nome no histórico — inclui tomadores dos
+        // quais o médico já foi desalocado, mas que ainda aparecem em frequências antigas.
+        // tomadoresAlocados (EPIC-15.16) alimenta só o formulário de Nova Frequência, restrito
+        // aos tomadores onde o médico atua atualmente.
         setTomadores(t)
+        const idsAlocados = new Set(alocados.map(a => a.id))
+        setTomadoresAlocados(t.filter(tom => idsAlocados.has(tom.id)))
         await carregar(p.id)
       } catch (e) {
         setInitErr(e instanceof Error ? e.message : 'Erro ao carregar')
@@ -775,6 +799,7 @@ export function PortalFrequenciaPage() {
   })
 
   const tomadoresSorted = [...tomadores].sort((a, b) => a.razaoSocialNome.localeCompare(b.razaoSocialNome))
+  const tomadoresAlocadosSorted = [...tomadoresAlocados].sort((a, b) => a.razaoSocialNome.localeCompare(b.razaoSocialNome))
   const temFiltro = filtroComp || filtroStatus
 
   if (loading) return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
@@ -866,7 +891,7 @@ export function PortalFrequenciaPage() {
       {/* Modal nova frequência */}
       {showNova && perfil && (
         <NovaFrequenciaModal
-          tomadores={tomadoresSorted}
+          tomadores={tomadoresAlocadosSorted}
           perfil={perfil}
           onClose={() => setShowNova(false)}
           onCriada={handleCriada}
