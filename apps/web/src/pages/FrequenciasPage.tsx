@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  CalendarDays, CheckCircle2, ChevronDown, ClipboardList, Clock, Download,
+  AlertCircle, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, Clock, Download,
   FileText, Loader2, Pencil, Plus, Printer, Search, Trash2, Upload, X,
 } from 'lucide-react'
 import { Button, Spinner, Alert, Table, THead, TBody, TRow, TH, TD } from '@pinsaude/ui'
@@ -186,6 +186,21 @@ function NovaFrequenciaModal({
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
 
+  // Filtro de tomadores pelo médico selecionado (EPIC-15.14): sem médico, mostra todos os
+  // tomadores do tenant; com médico selecionado, mostra só os tomadores alocados a ele.
+  const [tomadoresFiltrados, setTomadoresFiltrados] = useState<Tomador[] | null>(null)
+
+  useEffect(() => {
+    if (!medico) { setTomadoresFiltrados(null); return }
+    let cancelled = false
+    tomadoresApi.listar(undefined, medico.id)
+      .then(ts => { if (!cancelled) setTomadoresFiltrados(ts) })
+      .catch(() => { if (!cancelled) setTomadoresFiltrados([]) })
+    return () => { cancelled = true }
+  }, [medico?.id])
+
+  const tomadoresDisponiveis = tomadoresFiltrados ?? tomadores
+
   const setores = grupos.flatMap(g => g.servicosOperacionais.filter(s => s.ativo))
 
   useEffect(() => {
@@ -253,11 +268,22 @@ function NovaFrequenciaModal({
             <Dropdown
               label="Tomador *"
               placeholder="Selecione o tomador..."
-              items={tomadores}
+              items={tomadoresDisponiveis}
               value={tomador}
               onChange={t => { setTomador(t); setSetor(null) }}
               getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
             />
+            {tomadoresFiltrados && (
+              <p className="mt-1 text-[11px] text-ds-light">
+                Exibindo apenas tomadores alocados ao médico selecionado.
+              </p>
+            )}
+            {tomador && tomadoresFiltrados && !tomadoresFiltrados.some(t => t.id === tomador.id) && (
+              <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
+                <AlertCircle size={11} />
+                Atenção: o tomador selecionado não está alocado ao médico escolhido.
+              </p>
+            )}
           </div>
 
           {/* Linha 3: Setor (full width) */}

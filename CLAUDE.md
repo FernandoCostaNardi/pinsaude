@@ -4082,6 +4082,33 @@ desses dois pré-requisitos ausentes.
 
 ---
 
+## Filtro por médico em FrequenciasPage.tsx (EPIC-15.14)
+
+### Fluxo mais simples que EPIC-15.13 — 1 médico só, sem interseção
+Diferente de `ProducaoNovaPage.tsx` (múltiplos participantes/médicos por produção), o modal
+"Nova Frequência Médica" tem um único campo Médico (a frequência é sempre de 1 médico + 1 setor +
+1 competência). O filtro do combo de Tomador é então uma única chamada
+`tomadoresApi.listar(undefined, medico.id)` reagindo a `medico?.id`, sem necessidade do algoritmo
+de interseção de N chamadas paralelas criado na EPIC-15.13. Mesmo padrão de hint/aviso (mensagem
+informativa quando o filtro está ativo + aviso amarelo se o tomador já selecionado não estiver
+mais na lista filtrada, sem limpar o campo automaticamente).
+
+### `Dropdown` genérico deste arquivo não suporta prop `loading` — sem indicador de carregamento
+Diferente do `Autocomplete` de `ProducaoNovaPage.tsx` (que já tinha suporte a `loading` com ícone
+`Loader2`), o `Dropdown<T>` genérico usado em `FrequenciasPage.tsx` não tem essa prop. Como a
+chamada de filtro é uma única requisição (não N em paralelo), o delay é imprescindível mas
+pequeno o suficiente para não precisar de spinner — mantido minimalista, sem adicionar a prop ao
+componente compartilhado só para este caso (evita expandir a superfície de um componente usado
+em várias outras chamadas de `Dropdown` nesta mesma tela — médico, tomador, setor, modalidade).
+
+### Teste manual confirmou exclusão correta de um vínculo já removido em sessão anterior (EPIC-15.11)
+Testado com o médico `Medico Teste` (11 tomadores alocados) — o combo de Tomador do modal de nova
+frequência mostrou exatamente os 11 tomadores esperados, **sem** o "HAPVIDA ASSISTENCIA MEDICA
+S.A." que havia sido adicionado e depois removido durante os testes manuais da EPIC-15.11. Confirma
+que o filtro lê o estado real e atual da tabela `medico_tomadores`, não uma versão em cache.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
