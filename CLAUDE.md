@@ -3634,6 +3634,32 @@ parsear o JSON de verdade (`node -e "JSON.parse(...).length"` ou um script `.js`
 para contar só os elementos do array de nível superior — nunca grep ingênuo em JSON com
 estrutura aninhada desconhecida.
 
+### Portal nunca descriptografa o CNPJ do tomador — só usa razao_social_nome/municipio (EPIC-15.6)
+`GET /api/portal/tomadores` (novo endpoint, EPIC-15.6) segue o precedente já estabelecido em
+`PortalService.getProducoes()` (EPIC-06.5): ao fazer `JOIN faturamento.tomadores`, só seleciona
+`razao_social_nome`/`municipio` — **nunca** `cnpj_cpf_tomador_criptografado`. Descriptografar
+exigiria chamar `faturamento.decrypt_sensitive(bytea, crypto_key)` via SQL nativo (a função é
+`SECURITY DEFINER` e tem EXECUTE liberado para PUBLIC por padrão, então funcionaria), mas o
+`services/portal` não tem `crypto.key` configurado em nenhum lugar hoje — nenhum endpoint do
+portal jamais precisou do CNPJ do tomador, só do nome para exibição em listas/dropdowns. Antes de
+adicionar `crypto.key` ao portal só para isso, confirmar que a tela realmente precisa mostrar o
+CNPJ (não precisou até agora).
+
+### Teste manual do portal — resolver o medico_id real primeiro, evita massa de dados fake
+Para testar `GET /api/portal/tomadores` (ou qualquer endpoint que dependa de alocações reais),
+buscar o `medico_id` de `onboarding.medicos` pelo e-mail do usuário de teste
+(`medico@pinsaude.com.br`) e checar `faturamento.medico_tomadores` para esse ID — o backfill do
+EPIC-15.2 normalmente já populou vínculos reais o suficiente para testar sem precisar criar dado
+fake. `SELECT id FROM onboarding.medicos WHERE email = '...'` seguido de `SELECT * FROM
+faturamento.medico_tomadores WHERE medico_id = '<id>'`.
+
+### ⚠️ Teste pré-existente quebrado no portal — não relacionado a esta task
+`PortalMedicoControllerTest.extrato_semImplementacao_retornaListaVazia` falha desde o EPIC-06.4
+(quando `GET /api/portal/extrato` passou a retornar um `ExtratoResponse` de verdade, não mais uma
+lista vazia) — o teste nunca foi atualizado e ainda espera `$` como array vazio. `git log` confirma
+que o arquivo de teste só foi tocado no commit inicial do EPIC-06.1, nunca depois. Não corrigido
+nesta task (fora de escopo) — sinalizado aqui para quem for mexer nesse arquivo de teste no futuro.
+
 ### ⚠️ `ProducaoService` nunca teve testes unitários antes do EPIC-15.7
 Ao adicionar a validação de bloqueio em `ProducaoService.criar()`, descobri que **não existia
 nenhum arquivo de teste** para esse serviço (`ProducaoController`/`ProducaoService` são código do

@@ -111,4 +111,33 @@ class PortalMedicoControllerTest {
         mockMvc.perform(get("/api/portal/notas"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void tomadores_comRoleMedico_retornaLista() throws Exception {
+        UUID medicoId = UUID.randomUUID();
+        when(service.resolveMedicoId("medico@test.com")).thenReturn(medicoId);
+        when(service.getTomadoresDoMedico(medicoId)).thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/api/portal/tomadores")
+                .with(jwt()
+                        .authorities(new SimpleGrantedAuthority("ROLE_medico"))
+                        .jwt(j -> j.claim("email", "medico@test.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void tomadores_semRoleMedico_retorna403() throws Exception {
+        mockMvc.perform(get("/api/portal/tomadores")
+                .with(jwt()
+                        .authorities(new SimpleGrantedAuthority("ROLE_gestao"))
+                        .jwt(j -> j.claim("email", "gestao@test.com"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void tomadores_semAutenticacao_retorna401() throws Exception {
+        mockMvc.perform(get("/api/portal/tomadores"))
+                .andExpect(status().isUnauthorized());
+    }
 }
