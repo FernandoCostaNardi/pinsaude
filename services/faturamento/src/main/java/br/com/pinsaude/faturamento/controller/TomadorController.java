@@ -1,5 +1,7 @@
 package br.com.pinsaude.faturamento.controller;
 
+import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
+import br.com.pinsaude.faturamento.dto.MedicoTomadorResponse;
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaResponse;
@@ -254,6 +256,31 @@ public class TomadorController {
             @PathVariable UUID id,
             @PathVariable UUID servicoOperacionalId) {
         service.removerServicoOperacional(id, servicoOperacionalId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Médicos alocados ao tomador (EPIC-15) ────────────────────────────────
+
+    @GetMapping("/{id}/medicos")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<MedicoTomadorResponse>> listarMedicos(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarMedicos(id));
+    }
+
+    @PostMapping("/{id}/medicos")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<MedicoTomadorResponse> adicionarMedico(
+            @PathVariable UUID id,
+            @Valid @RequestBody MedicoTomadorRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.adicionarMedico(id, req));
+    }
+
+    @DeleteMapping("/{id}/medicos/{medicoId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerMedico(
+            @PathVariable UUID id,
+            @PathVariable UUID medicoId) {
+        service.removerMedico(id, medicoId);
         return ResponseEntity.noContent().build();
     }
 }
