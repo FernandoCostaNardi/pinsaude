@@ -4004,6 +4004,38 @@ verdade no PowerShell do Windows, nunca em uma revisão de código feita fora de
 
 ---
 
+## `TomadorMedicosModal.tsx` — visão inversa de "Tomadores Associados" (EPIC-15.12, opcional)
+
+### `MedicoTomador` não tem nome do médico — join client-side com `medicosApi.listar()`
+`tomadoresApi.listarMedicos(tomadorId)` retorna só `{ medicoId, tomadorId, createdAt }` (sem nome/
+CRM). Para exibir "Dr. Fulano — CRM 12345/SP" no modal, é preciso um segundo fetch com
+`medicosApi.listar(0, 1000)` e montar um `Map<string, Medico>` por `id` no client — mesmo padrão
+já usado no `MedicoPerfilPage.tsx` (EPIC-15.11) para resolver nome de tomador a partir do
+`MedicoTomador`, só que na direção oposta.
+
+### `GET /api/medicos` não inclui a role `medico` — fallback silencioso obrigatório
+Diferente de `GET /api/tomadores` (`hasAnyRole('operacao','gestao','financeiro','contabil',
+'medico')`), o endpoint `GET /api/medicos` do onboarding **não** libera a role `medico`
+(`hasAnyRole('gestao','operacao','financeiro','contabil')`). Como a rota SPA `/tomadores` é
+alcançável por navegação direta de URL por qualquer role autenticada (mesmo achado do EPIC-15.11
+— rotas do React Router não são bloqueadas por papel, só os elementos condicionais dentro da
+página), um usuário `medico` que abrir o modal `TomadorMedicosModal` dispara um 403 nessa segunda
+chamada. A troca é sempre feita com `.catch(() => [] as Medico[])` (nunca deixar propagar) —
+com `todosMedicos` vazio, o componente já tem um fallback nativo (`medico?.nome ?? a.medicoId`)
+que exibe o UUID cru em vez de travar o modal ou lançar erro no console. Testado ao vivo: logado
+como `medico`, o modal abre normalmente mostrando o UUID; logado como `operacao`, mostra o nome
+completo + CRM/UF normalmente. Zero erros de console em ambos os cenários.
+
+### Botão do modal fica visível para todos os papéis — só os controles internos são gated
+Igual ao ícone `Layers` (grupos de faturamento) já existente em `TomadoresPage.tsx`, o novo botão
+"Médicos alocados" (ícone `Stethoscope`) aparece na linha de qualquer tomador independente de
+`canWrite` — é o modal que decide, internamente, se mostra os controles de adicionar/remover
+(`canWrite = isOperacao || isGestao`, já calculado na página e repassado como prop). Não há
+necessidade de esconder o botão em si: um usuário só-leitura abrindo o modal vê a lista, sem
+nenhuma opção de mutação.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
