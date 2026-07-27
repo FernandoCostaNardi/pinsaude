@@ -89,7 +89,7 @@ class TomadorServiceTest {
         when(repo.findAll()).thenReturn(List.of(t));
         when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
 
-        List<TomadorResponse> result = service.buscar(null);
+        List<TomadorResponse> result = service.buscar(null, null);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).razaoSocialNome()).isEqualTo("Hospital Teste");
@@ -101,7 +101,7 @@ class TomadorServiceTest {
         when(repo.findByRazaoSocialNomeContainingIgnoreCase("hosp")).thenReturn(List.of(t));
         when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
 
-        List<TomadorResponse> result = service.buscar("hosp");
+        List<TomadorResponse> result = service.buscar("hosp", null);
 
         assertThat(result).hasSize(1);
     }
@@ -112,9 +112,37 @@ class TomadorServiceTest {
         when(repo.findAll()).thenReturn(List.of(t));
         when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
 
-        List<TomadorResponse> result = service.buscar("11222333");
+        List<TomadorResponse> result = service.buscar("11222333", null);
 
         assertThat(result).hasSize(1);
+    }
+
+    @Test
+    void buscar_comMedicoId_filtraSoTomadoresAlocados() {
+        Tomador alocado = tomadorFixture(TENANT);
+        Tomador naoAlocado = tomadorFixture(TENANT);
+        UUID medicoId = UUID.randomUUID();
+        when(repo.findAll()).thenReturn(List.of(alocado, naoAlocado));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+        when(medicoTomadorRepo.findTomadorIdsByMedicoId(medicoId)).thenReturn(List.of(alocado.getId()));
+
+        List<TomadorResponse> result = service.buscar(null, medicoId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(alocado.getId());
+    }
+
+    @Test
+    void buscar_comMedicoIdSemAlocacao_retornaVazio() {
+        Tomador t = tomadorFixture(TENANT);
+        UUID medicoId = UUID.randomUUID();
+        when(repo.findAll()).thenReturn(List.of(t));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+        when(medicoTomadorRepo.findTomadorIdsByMedicoId(medicoId)).thenReturn(List.of());
+
+        List<TomadorResponse> result = service.buscar(null, medicoId);
+
+        assertThat(result).isEmpty();
     }
 
     // ─── criar ───────────────────────────────────────────────────────────────

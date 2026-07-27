@@ -3622,6 +3622,18 @@ pode retornar mais linhas do que as inseridas no próprio teste — usar `medico
 colide com dado real) e `assertThat(lista).extracting(...).contains(...)` em vez de `hasSize(N)`
 fixo quando a chave de busca é uma entidade que já tem histórico real no banco.
 
+### ⚠️ `grep -o '"id":"[^"]*"'` conta demais em DTOs com listas aninhadas (EPIC-15.5)
+Ao testar manualmente via `curl` + `grep` quantos registros um endpoint de listagem retorna,
+**nunca** usar `grep -o '"id":"[^"]*"' | wc -l` em respostas cujo DTO tenha coleções aninhadas com
+seu próprio campo `id` — é exatamente o caso de `TomadorResponse` (`aliquotas`, `cnaes`,
+`servicos` cada um tem `id` próprio). O grep casa TODOS os `"id":"..."` da resposta inteira,
+não só os do objeto de topo, inflando a contagem (chegou a mostrar 32 "tomadores" onde só
+existiam 12 de verdade — quase 1h perdida investigando uma "duplicação de dados" que não
+existia, incluindo reiniciar o serviço e comparar contagens via `psql` direto). **Solução:**
+parsear o JSON de verdade (`node -e "JSON.parse(...).length"` ou um script `.js` no scratchpad)
+para contar só os elementos do array de nível superior — nunca grep ingênuo em JSON com
+estrutura aninhada desconhecida.
+
 ---
 
 ## E-mails Nativos do Keycloak em Inglês — Faltava Internacionalização no Realm
