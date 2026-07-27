@@ -340,14 +340,19 @@ export function PortalProducaoNovaPage() {
   useEffect(() => {
     async function init() {
       try {
-        const [p, t, s, e] = await Promise.all([
+        const [p, t, s, e, alocados] = await Promise.all([
           portalApi.getPerfil(),
           tomadoresApi.listar(),
           servicosApi.listar(),
           portalApi.getVinculosEmpresa(),
+          portalApi.getTomadoresAlocados(),
         ])
         setPerfil(p)
-        setTomadores(t)
+        // Restringe aos tomadores alocados ao médico (EPIC-15.15), mantendo o shape completo
+        // de Tomador (cnaes/servicos) já usado pelo formulário — getTomadoresAlocados() só
+        // retorna { id, razaoSocial, municipio }, insuficiente para essa lógica.
+        const idsAlocados = new Set(alocados.map(a => a.id))
+        setTomadores(t.filter(tom => idsAlocados.has(tom.id)))
         setServicos(s)
         setEmpresas(e)
         // Auto-seleciona empresa se única
@@ -470,14 +475,28 @@ export function PortalProducaoNovaPage() {
           </p>
 
           {/* Tomador */}
-          <SearchDropdown
-            label="Tomador (Hospital / Clínica / Operadora) *"
-            placeholder="Selecione o tomador..."
-            items={tomadores}
-            selected={tomador}
-            onSelect={t => { setTomador(t); setCnaeCodigo(''); setServico(null) }}
-            getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
-          />
+          {tomadores.length === 0 ? (
+            <div>
+              <label className="block text-xs font-bold text-ds-mid mb-1">
+                Tomador (Hospital / Clínica / Operadora) *
+              </label>
+              <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
+                <p className="text-xs text-orange-700">
+                  Você ainda não está alocado a nenhum tomador. Entre em contato com o time
+                  operacional para liberar o lançamento de produção.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <SearchDropdown
+              label="Tomador (Hospital / Clínica / Operadora) *"
+              placeholder="Selecione o tomador..."
+              items={tomadores}
+              selected={tomador}
+              onSelect={t => { setTomador(t); setCnaeCodigo(''); setServico(null) }}
+              getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
+            />
+          )}
 
           {/* CNAE do tomador — aparece quando o tomador tem CNAEs cadastrados */}
           {tomador && tomador.cnaes && tomador.cnaes.length > 0 && (
