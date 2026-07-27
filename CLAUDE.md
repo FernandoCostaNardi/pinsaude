@@ -4109,6 +4109,52 @@ que o filtro lê o estado real e atual da tabela `medico_tomadores`, não uma ve
 
 ---
 
+## Filtro no Portal — PortalProducaoNovaPage.tsx (EPIC-15.15)
+
+### `TomadorPortal` (EPIC-15.10) não tem `cnaes`/`servicos` — usado só como safelist de IDs, não como fonte dos dados
+A task pedia para usar `portalApi.getTomadoresAlocados()` no lugar de `tomadoresApi.listar()`, mas
+o tipo `TomadorPortal { id, razaoSocial, municipio }` é deliberadamente enxuto (decisão de
+privacidade da EPIC-15.6/15.10 — portal nunca expõe CNPJ do tomador) e **não carrega** `cnaes`
+nem `servicos`, que o formulário já usava para auto-selecionar CNAE/serviço quando o tomador tem
+cadastro específico. Trocar o tipo por completo quebraria essa funcionalidade existente (CNAE
+sumiria sempre, serviço nunca mais auto-selecionaria).
+
+**Solução híbrida:** buscar as duas fontes em paralelo — `tomadoresApi.listar()` (shape completo,
+já usado antes) e `portalApi.getTomadoresAlocados()` (a safelist de IDs alocados ao médico) — e
+filtrar o array completo pelos IDs alocados:
+```typescript
+const idsAlocados = new Set(alocados.map(a => a.id))
+setTomadores(t.filter(tom => idsAlocados.has(tom.id)))
+```
+Isso fecha o gap de UX (médico só vê tomadores onde atua) **sem** perder a lógica de CNAE/serviço
+por tomador já existente — o componente `SearchDropdown`/lógica de `servicosDisponiveis` continuam
+inalterados, só o array de entrada agora vem filtrado.
+
+### Estado vazio explícito quando o médico não tem nenhum tomador alocado
+Antes desta mudança, um médico sem nenhuma alocação via **todos** os tomadores do tenant no combo
+— o gap mais crítico apontado pelo usuário. Agora, `tomadores.length === 0` renderiza um aviso
+laranja substituindo o campo ("Você ainda não está alocado a nenhum tomador. Entre em contato com
+o time operacional...") em vez de um dropdown vazio e confuso — mesmo padrão visual já usado para
+"Nenhuma empresa vinculada" (`empresas.length === 0`) alguns campos abaixo.
+
+### Teste manual confirmou a correção do gap crítico com dados reais
+Logado como `medico@pinsaude.com.br` (Medico Teste, 11 tomadores alocados) em
+`/portal/producao/nova`: o combo de Tomador mostrou exatamente os 11 tomadores alocados —
+**sem** o "HAPVIDA ASSISTENCIA MEDICA S.A." (não alocado) — confirmando que antes desta mudança
+esse médico veria também o HAPVIDA e qualquer outro tomador do tenant. Selecionar
+"SECRETARIA DA SAUDE DO ESTADO DO CEARA" continuou auto-selecionando CNAE (3 opções) e Serviço
+(único, "4.01 — Medicina e biomedicina") normalmente — confirma que a lógica híbrida preserva
+100% da funcionalidade de CNAE/serviço por tomador. Preview de valor (85%/15%) calculou
+corretamente. Zero erros de console.
+
+### Ambiente de teste precisou do `services/portal` (porta 8087) — não estava rodando por padrão
+Diferente das tasks anteriores desta EPIC (que só precisavam de faturamento/onboarding/gateway),
+esta é a primeira tela cujo teste manual depende do `services/portal`. Sessão anterior só tinha
+web/faturamento/onboarding/gateway/keycloak de pé — precisou subir `services/portal` via
+`mvn -f services/portal/pom.xml spring-boot:run` antes de testar.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
