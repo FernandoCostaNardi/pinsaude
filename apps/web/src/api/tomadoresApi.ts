@@ -102,9 +102,12 @@ export interface ReceitaFederalData {
 }
 
 export const tomadoresApi = {
-  async listar(q?: string): Promise<Tomador[]> {
-    const params = q ? `?q=${encodeURIComponent(q)}` : ''
-    const res = await fetch(`/api/tomadores${params}`, {
+  async listar(q?: string, medicoId?: string): Promise<Tomador[]> {
+    const params = new URLSearchParams()
+    if (q) params.set('q', q)
+    if (medicoId) params.set('medicoId', medicoId)
+    const qs = params.toString()
+    const res = await fetch(`/api/tomadores${qs ? `?${qs}` : ''}`, {
       headers: authHeaders(),
     })
     return handleResponse<Tomador[]>(res)
@@ -302,6 +305,30 @@ export const tomadoresApi = {
     })
     return handleResponse<void>(res)
   },
+
+  // ─── Médicos alocados ao tomador (EPIC-15) ────────────────────────────────
+
+  async listarMedicos(tomadorId: string): Promise<MedicoTomador[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/medicos`, { headers: authHeaders() })
+    return handleResponse<MedicoTomador[]>(res)
+  },
+
+  async adicionarMedico(tomadorId: string, medicoId: string): Promise<MedicoTomador> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/medicos`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ medicoId }),
+    })
+    return handleResponse<MedicoTomador>(res)
+  },
+
+  async removerMedico(tomadorId: string, medicoId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/medicos/${medicoId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
 }
 
 // ─── Tipos para grupos / modalidades / setores ────────────────────────────────
@@ -361,4 +388,10 @@ export interface TomadorServicoOperacionalRequest {
   grupoId: string
   nome: string
   ativo: boolean
+}
+
+export interface MedicoTomador {
+  medicoId: string
+  tomadorId: string
+  createdAt: string
 }

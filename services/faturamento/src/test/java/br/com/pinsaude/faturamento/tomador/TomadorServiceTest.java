@@ -1,11 +1,14 @@
 package br.com.pinsaude.faturamento.tomador;
 
 import br.com.pinsaude.faturamento.config.SecurityUtils;
+import br.com.pinsaude.faturamento.domain.MedicoTomador;
 import br.com.pinsaude.faturamento.domain.TipoTomador;
 import br.com.pinsaude.faturamento.domain.Tomador;
+import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
+import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
@@ -55,6 +58,7 @@ class TomadorServiceTest {
     @Mock TomadorGrupoFaturamentoRepository grupoRepo;
     @Mock TomadorModalidadeRepository modalidadeRepo;
     @Mock TomadorServicoOperacionalRepository servicoOperacionalRepo;
+    @Mock MedicoTomadorRepository medicoTomadorRepo;
 
     @InjectMocks TomadorService service;
 
@@ -85,7 +89,7 @@ class TomadorServiceTest {
         when(repo.findAll()).thenReturn(List.of(t));
         when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
 
-        List<TomadorResponse> result = service.buscar(null);
+        List<TomadorResponse> result = service.buscar(null, null);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).razaoSocialNome()).isEqualTo("Hospital Teste");
@@ -97,7 +101,7 @@ class TomadorServiceTest {
         when(repo.findByRazaoSocialNomeContainingIgnoreCase("hosp")).thenReturn(List.of(t));
         when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
 
-        List<TomadorResponse> result = service.buscar("hosp");
+        List<TomadorResponse> result = service.buscar("hosp", null);
 
         assertThat(result).hasSize(1);
     }
@@ -108,9 +112,37 @@ class TomadorServiceTest {
         when(repo.findAll()).thenReturn(List.of(t));
         when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
 
-        List<TomadorResponse> result = service.buscar("11222333");
+        List<TomadorResponse> result = service.buscar("11222333", null);
 
         assertThat(result).hasSize(1);
+    }
+
+    @Test
+    void buscar_comMedicoId_filtraSoTomadoresAlocados() {
+        Tomador alocado = tomadorFixture(TENANT);
+        Tomador naoAlocado = tomadorFixture(TENANT);
+        UUID medicoId = UUID.randomUUID();
+        when(repo.findAll()).thenReturn(List.of(alocado, naoAlocado));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+        when(medicoTomadorRepo.findTomadorIdsByMedicoId(medicoId)).thenReturn(List.of(alocado.getId()));
+
+        List<TomadorResponse> result = service.buscar(null, medicoId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(alocado.getId());
+    }
+
+    @Test
+    void buscar_comMedicoIdSemAlocacao_retornaVazio() {
+        Tomador t = tomadorFixture(TENANT);
+        UUID medicoId = UUID.randomUUID();
+        when(repo.findAll()).thenReturn(List.of(t));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+        when(medicoTomadorRepo.findTomadorIdsByMedicoId(medicoId)).thenReturn(List.of());
+
+        List<TomadorResponse> result = service.buscar(null, medicoId);
+
+        assertThat(result).isEmpty();
     }
 
     // ─── criar ───────────────────────────────────────────────────────────────
@@ -336,6 +368,83 @@ class TomadorServiceTest {
         assertThatThrownBy(() -> service.removerServico(tomadorId, vinculoId))
             .isInstanceOf(ResponseStatusException.class)
             .hasMessageContaining("Serviço não encontrado");
+    }
+
+    // ─── médicos alocados ao tomador ─────────────────────────────────────────
+
+    @Test
+    void listarMedicos_tomadorInexistente_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.listarMedicos(tomadorId))
+            .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    void listarMedicos_retornaVinculosDoTomador() {
+        UUID tomadorId = UUID.randomUUID();
+        MedicoTomador mt = new MedicoTomador();
+        mt.setTomadorId(tomadorId);
+        mt.setMedicoId(UUID.randomUUID());
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.findByTomadorId(tomadorId)).thenReturn(List.of(mt));
+
+        var result = service.listarMedicos(tomadorId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).medicoId()).isEqualTo(mt.getMedicoId());
+    }
+
+    @Test
+    void adicionarMedico_duplicado_lanca409() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.adicionarMedico(tomadorId, new MedicoTomadorRequest(medicoId)))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("já está alocado");
+    }
+
+    @Test
+    void adicionarMedico_valido_salvaRetornaResponse() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(false);
+        when(medicoTomadorRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = service.adicionarMedico(tomadorId, new MedicoTomadorRequest(medicoId));
+
+        assertThat(result.tomadorId()).isEqualTo(tomadorId);
+        assertThat(result.medicoId()).isEqualTo(medicoId);
+        verify(medicoTomadorRepo).save(any());
+    }
+
+    @Test
+    void removerMedico_naoAlocado_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.removerMedico(tomadorId, medicoId))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não está alocado");
+    }
+
+    @Test
+    void removerMedico_alocado_removeComSucesso() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(true);
+
+        service.removerMedico(tomadorId, medicoId);
+
+        verify(medicoTomadorRepo).deleteByTomadorIdAndMedicoId(tomadorId, medicoId);
     }
 
     // ─── fixtures ────────────────────────────────────────────────────────────

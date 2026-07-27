@@ -10,6 +10,7 @@ import br.com.pinsaude.faturamento.dto.PreviewCalculoRequest;
 import br.com.pinsaude.faturamento.dto.PreviewCalculoResponse;
 import br.com.pinsaude.faturamento.dto.ProducaoRequest;
 import br.com.pinsaude.faturamento.dto.ProducaoResponse;
+import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.ParticipacaoRepository;
 import br.com.pinsaude.faturamento.repository.ProducaoRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
@@ -34,19 +35,22 @@ public class ProducaoService {
 
     private static final BigDecimal TAXA_PIN_DEFAULT = new BigDecimal("0.1500");
 
-    private final ProducaoRepository     producaoRepo;
-    private final ParticipacaoRepository participacaoRepo;
-    private final TomadorRepository      tomadorRepo;
-    private final ServicoRepository      servicoRepo;
+    private final ProducaoRepository      producaoRepo;
+    private final ParticipacaoRepository  participacaoRepo;
+    private final TomadorRepository       tomadorRepo;
+    private final ServicoRepository       servicoRepo;
+    private final MedicoTomadorRepository medicoTomadorRepo;
 
     public ProducaoService(ProducaoRepository producaoRepo,
                            ParticipacaoRepository participacaoRepo,
                            TomadorRepository tomadorRepo,
-                           ServicoRepository servicoRepo) {
+                           ServicoRepository servicoRepo,
+                           MedicoTomadorRepository medicoTomadorRepo) {
         this.producaoRepo     = producaoRepo;
         this.participacaoRepo = participacaoRepo;
         this.tomadorRepo      = tomadorRepo;
         this.servicoRepo      = servicoRepo;
+        this.medicoTomadorRepo = medicoTomadorRepo;
     }
 
     @Transactional(readOnly = true)
@@ -97,6 +101,13 @@ public class ProducaoService {
             .orElseThrow(() -> new EntityNotFoundException("Tomador não encontrado: " + req.tomadorId()));
         Servico servico = servicoRepo.findById(req.servicoId())
             .orElseThrow(() -> new EntityNotFoundException("Serviço não encontrado: " + req.servicoId()));
+
+        for (var participante : req.participantes()) {
+            if (!medicoTomadorRepo.existsByTomadorIdAndMedicoId(req.tomadorId(), participante.medicoId())) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Médico não está alocado a este tomador: " + participante.medicoId());
+            }
+        }
 
         String tenant = SecurityUtils.currentCnpjTenant();
 

@@ -3593,6 +3593,47 @@ chave (ex.: o mesmo médico+tomador aparece tanto em produções quanto em frequ
 destino já com `UNIQUE` — dispensa `UNION`/deduplicação manual entre as fontes, e a migration fica
 idempotente por natureza (reexecutar os mesmos `INSERT`s não duplica nem falha).
 
+### ⚠️ `mvn test` no faturamento NUNCA valida o mapeamento JPA contra o schema real (EPIC-15.3)
+`services/faturamento/src/test/resources/application.properties` força
+`spring.flyway.enabled=false` + `spring.jpa.hibernate.ddl-auto=none` com H2 em memória
+(`jdbc:h2:mem:testdb`) — ou seja, a suíte de testes padrão nunca cria nem valida schema nenhum. Os
+testes `@SpringBootTest` existentes (`RbacIntegrationTest`, `SecurityIntegrationTest`) só validam
+autorização (401/403 antes de qualquer query tocar o banco); todo o resto da suíte usa `@Mock`
+nos repositories. **Rodar `mvn test` com sucesso não prova que uma entidade JPA nova bate com o
+schema real** — descoberto ao criar `MedicoTomador.java`, cuja mapeamento só foi de fato validado
+apontando o teste para o Postgres local de verdade (override via `@SpringBootTest(properties =
+{...})`, nunca commitado — não existe precedente de teste de repository isolado em nenhum serviço
+do monorepo):
+```java
+@SpringBootTest(properties = {
+    "spring.datasource.url=jdbc:postgresql://localhost:5433/pinsaude",
+    "spring.datasource.driver-class-name=org.postgresql.Driver",
+    "spring.datasource.username=svc_faturamento",
+    "spring.datasource.password=faturamento_dev",
+    "spring.jpa.properties.hibernate.default_schema=faturamento",
+    "spring.flyway.enabled=false",   // schema já migrado de verdade, não precisa recriar
+    "spring.jpa.hibernate.ddl-auto=validate"
+})
+@Transactional  // rollback automático — não suja o banco de dev
+```
+Ao escrever esse teste ad-hoc contra dados reais (tomadores já existentes por causa do `FK`),
+**cuidado com dados pré-existentes** (ex.: backfill do EPIC-15.2): `findByTomadorId(tomadorReal)`
+pode retornar mais linhas do que as inseridas no próprio teste — usar `medicoId` aleatório (nunca
+colide com dado real) e `assertThat(lista).extracting(...).contains(...)` em vez de `hasSize(N)`
+fixo quando a chave de busca é uma entidade que já tem histórico real no banco.
+
+### ⚠️ `grep -o '"id":"[^"]*"'` conta demais em DTOs com listas aninhadas (EPIC-15.5)
+Ao testar manualmente via `curl` + `grep` quantos registros um endpoint de listagem retorna,
+**nunca** usar `grep -o '"id":"[^"]*"' | wc -l` em respostas cujo DTO tenha coleções aninhadas com
+seu próprio campo `id` — é exatamente o caso de `TomadorResponse` (`aliquotas`, `cnaes`,
+`servicos` cada um tem `id` próprio). O grep casa TODOS os `"id":"..."` da resposta inteira,
+não só os do objeto de topo, inflando a contagem (chegou a mostrar 32 "tomadores" onde só
+existiam 12 de verdade — quase 1h perdida investigando uma "duplicação de dados" que não
+existia, incluindo reiniciar o serviço e comparar contagens via `psql` direto). **Solução:**
+parsear o JSON de verdade (`node -e "JSON.parse(...).length"` ou um script `.js` no scratchpad)
+para contar só os elementos do array de nível superior — nunca grep ingênuo em JSON com
+estrutura aninhada desconhecida.
+
 ### Portal nunca descriptografa o CNPJ do tomador — só usa razao_social_nome/municipio (EPIC-15.6)
 `GET /api/portal/tomadores` (novo endpoint, EPIC-15.6) segue o precedente já estabelecido em
 `PortalService.getProducoes()` (EPIC-06.5): ao fazer `JOIN faturamento.tomadores`, só seleciona
@@ -3618,6 +3659,39 @@ faturamento.medico_tomadores WHERE medico_id = '<id>'`.
 lista vazia) — o teste nunca foi atualizado e ainda espera `$` como array vazio. `git log` confirma
 que o arquivo de teste só foi tocado no commit inicial do EPIC-06.1, nunca depois. Não corrigido
 nesta task (fora de escopo) — sinalizado aqui para quem for mexer nesse arquivo de teste no futuro.
+
+### ⚠️ `ProducaoService` nunca teve testes unitários antes do EPIC-15.7
+Ao adicionar a validação de bloqueio em `ProducaoService.criar()`, descobri que **não existia
+nenhum arquivo de teste** para esse serviço (`ProducaoController`/`ProducaoService` são código do
+EPIC-04.4, bem antigo) — nenhum `ProducaoServiceTest.java` em lugar nenhum do módulo. Criado
+`producao/ProducaoServiceTest.java` cobrindo a nova validação (médico não alocado → 422, médico
+alocado → sucesso, múltiplos participantes com um não alocado → 422) mais alguns testes de
+sanidade do caminho já existente (tomador inexistente → 404, valor total zero → 400). **Não é
+cobertura completa do serviço** (cálculo de preview, listagem com filtros, etc. continuam sem
+teste) — só o suficiente para validar com segurança a mudança desta task. Sinalizado aqui para
+quem for ampliar a cobertura no futuro.
+
+### Validação de bloqueio vale para TODAS as roles que podem criar produção, incluindo `medico`
+`POST /api/producoes` aceita `hasAnyRole('operacao','gestao','medico')` — o médico pode lançar a
+própria produção diretamente (não só via portal). Testado manualmente com token real de médico:
+tentar criar produção com um `medicoId` (dele mesmo ou de terceiro) não alocado ao tomador
+retorna 422 igual para qualquer role, sem bypass — confirma o requisito do plano ("sem bypass por
+papel") na prática, não só na intenção do código.
+
+### Teste manual do cenário crítico do backfill — médico com histórico real não pode ficar bloqueado
+Antes de validar o bloqueio, testei o caso mais importante: um médico **real** (`medico@pinsaude.com.br`,
+já com 11 alocações vindas do backfill do EPIC-15.2) consegue criar uma **nova** produção no mesmo
+tomador onde já tem histórico → 201 normalmente. Esse é exatamente o cenário que o backfill existe
+para proteger — se esse teste falhasse, seria sinal de que o backfill não rodou ou está incompleto
+no ambiente.
+
+### `FrequenciaService.criar()` — ordem das validações importa ao testar manualmente (EPIC-15.8)
+A ordem é: (1) duplicidade `medico+setor+competência` (409) → (2) setor existe (404) → (3) setor
+pertence ao tomador informado (422) → (4) médico alocado ao tomador (422). Ao testar manualmente o
+cenário 3 (setor de outro tomador) reusando o mesmo médico+setor+competência de um teste anterior,
+a checagem de duplicidade (1) dispara primeiro e mascara a validação que se quer testar — retorna
+409 em vez do 422 esperado, parecendo (por engano) que a nova validação não está funcionando.
+Sempre usar uma competência nova a cada cenário de teste manual deste endpoint.
 
 ---
 
@@ -3791,7 +3865,39 @@ Médicos criados após o fix já nascem com essa linha automaticamente — não 
 
 ---
 
-## Convenções de Commit e Branch
+## Alocação de Médico a Tomadores — Frontend `tomadoresApi.ts` (EPIC-15.9)
+
+### Branches de backend paralelas mescladas em `main` entre a criação e a execução da task
+A task 15.9 (frontend) depende de 15.4/15.5 (backend), mas as 3 tasks foram criadas como branches
+irmãs (`feature/pinsaude-15.3/15.4/15.5`), cada uma a partir de `main`, e não sequencialmente uma
+sobre a outra. No momento em que a 15.9 começou a ser codada, `feature/pinsaude-15.9` (criada
+alguns dias antes, também a partir de `main`) estava **desatualizada**: as PRs #106/#107/#108
+(15.3/15.4/15.5) só foram mescladas em `main` minutos antes desta sessão. Sem atualizar a branch
+local, o arquivo `tomadoresApi.ts` estaria sendo escrito às cegas, sem o contrato real do backend
+disponível no working tree (nenhuma classe `MedicoTomador*` existia localmente até o merge).
+**Lição:** antes de implementar uma task de frontend que "depende de" tasks de backend, sempre
+conferir com `gh pr list --state all` se as dependências já foram de fato mescladas em `main` —
+não confiar apenas no status do ClickUp ("ready to deploy" pode significar só "aprovado, PR aberta
+mas não mesclada", como era o caso de 15.6/15.7/15.8 nesta mesma EPIC) — e rodar
+`git merge origin/main` (ou rebase) na branch de trabalho antes de escrever qualquer código que
+consuma esse contrato.
+
+### Contrato `MedicoTomadorResponse` — sem envelope, snake→camel automático
+`GET/POST /api/tomadores/{id}/medicos` retornam `{ medicoId, tomadorId, createdAt }` (sem
+`id` do vínculo em si — só as duas FKs + timestamp). O tipo `MedicoTomador` no frontend espelha
+exatamente esse shape. `POST` aceita `{ medicoId }` no body (schema `MedicoTomadorRequest`,
+`@NotNull UUID medicoId`) e retorna `201 Created` com o mesmo shape do GET.
+`DELETE /api/tomadores/{id}/medicos/{medicoId}` retorna `204 No Content` — sem corpo, mapeado por
+`handleResponse` que já trata `res.status === 204` retornando `undefined as T`.
+
+### `listar(q?, medicoId?)` — extensão por query param opcional, 100% compatível com chamadas existentes
+A assinatura de `tomadoresApi.listar()` ganhou um segundo parâmetro opcional `medicoId?: string`,
+que popula `?medicoId=<uuid>` via `URLSearchParams` só quando presente. Como todos os 7 call sites
+existentes (`TomadoresPage`, `ProducaoNovaPage`, `FrequenciasPage`, `FechamentoPage`,
+`ProducoesPage`, `PortalProducaoNovaPage`, `PortalFrequenciaPage`) chamam `listar()` sem argumentos,
+a mudança não quebra nenhum consumidor — confirmado com `tsc --noEmit` + build de produção limpos.
+O consumo real desse filtro (telas passando `medicoId` de fato) é escopo de 15.13/15.14/15.15/15.16,
+fora desta task.
 
 - **Branch:** `feature/pinsaude-<numero>`
 - **Commit:** `#PINSAUDE-<NUMERO> - <descrição em português>`
