@@ -3899,5 +3899,34 @@ a mudança não quebra nenhum consumidor — confirmado com `tsc --noEmit` + bui
 O consumo real desse filtro (telas passando `medicoId` de fato) é escopo de 15.13/15.14/15.15/15.16,
 fora desta task.
 
+---
+
+## Alocação de Médico a Tomadores — Frontend `portalApi.ts` (EPIC-15.10)
+
+### Descrição da task no ClickUp ficou desatualizada em relação ao contrato real do backend
+A task 15.10 (criada em 2026-07-24, antes de 15.6 ser codada) especificava o tipo
+`TomadorPortal { id, razaoSocial, cnpj, municipio }` — mas o `TomadorPortalResponse` (EPIC-15.6,
+mesclado em `main` dias depois) **nunca inclui `cnpj`**: `PortalService.getTomadoresDoMedico()`
+retorna só `{ id, razaoSocial (razao_social_nome), municipio }`, exatamente pela decisão já
+documentada em "Portal nunca descriptografa o CNPJ do tomador" (seção EPIC-15.6 acima) — o portal
+não tem `crypto.key` configurado e nunca precisou expor o CNPJ do tomador em nenhuma tela. Segui o
+contrato real do backend (conferido lendo `TomadorPortalResponse.java`/`PortalService.java`
+diretamente), não a descrição da task, e omiti o campo `cnpj` do tipo `TomadorPortal` no frontend.
+**Lição geral (reforça a de EPIC-15.9):** descrições de task no ClickUp são escritas no momento do
+planejamento e podem ficar desatualizadas assim que a implementação de uma dependência (mesmo já
+concluída) toma uma decisão diferente da prevista — sempre validar contra o código-fonte real da
+dependência, nunca só contra o texto da task.
+
+### `getTomadoresAlocados()` — GET simples, sem paginação nem filtro
+`GET /api/portal/tomadores` (`hasRole('medico')`, resolve o médico via e-mail do JWT, mesmo padrão
+de todos os outros endpoints do portal) retorna a lista completa de tomadores alocados ao médico
+logado, ordenada por `razao_social_nome` no próprio SQL — sem paginação, sem query params. O método
+no frontend segue o padrão mais simples já usado por `getPerfil()`/`getVinculosEmpresa()` (fetch
+direto, sem `URLSearchParams`).
+
+---
+
+## Convenções de Commit e Branch
+
 - **Branch:** `feature/pinsaude-<numero>`
 - **Commit:** `#PINSAUDE-<NUMERO> - <descrição em português>`

@@ -95,6 +95,12 @@ export interface DashboardPortal {
   ultimosRepasses: unknown[]
 }
 
+export interface TomadorPortal {
+  id: string
+  razaoSocial: string
+  municipio: string | null
+}
+
 export interface ProducaoPortal {
   id: string
   competencia: string
@@ -171,7 +177,12 @@ async function getVinculosEmpresa(): Promise<EmpresaPortal[]> {
   return handleResponse<EmpresaPortal[]>(res)
 }
 
+async function getTomadoresAlocados(): Promise<TomadorPortal[]> {
+  const res = await fetch('/api/portal/tomadores', { headers: authHeaders() })
+  return handleResponse<TomadorPortal[]>(res)
+}
+
 export const portalApi = {
   getDashboard, getNotas, getProducao, downloadXml, downloadPdf,
-  getExtrato, getPerfil, getVinculosEmpresa,
+  getExtrato, getPerfil, getVinculosEmpresa, getTomadoresAlocados,
 }
