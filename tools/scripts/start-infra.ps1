@@ -1,4 +1,4 @@
-# Sobe toda a infraestrutura local do Pin Saúde e aguarda os healthchecks
+﻿# Sobe toda a infraestrutura local do Pin Saúde e aguarda os healthchecks
 param(
     [int]$TimeoutSeconds = 120,
     [switch]$Down

@@ -3926,6 +3926,84 @@ direto, sem `URLSearchParams`).
 
 ---
 
+## Seção "Tomadores Associados" em MedicoPerfilPage.tsx (EPIC-15.11)
+
+### Reuso de `listar(medicoId)` da EPIC-15.9 em vez de `listarMedicos` — evita N+1
+A descrição da task citava `tomadoresApi.listarMedicos/adicionarMedico/removerMedico` como a API
+consumida, mas `listarMedicos(tomadorId)` lista médicos de **um** tomador — não serve para "listar
+tomadores de **um** médico" sem fazer um loop `listarMedicos` por tomador do tenant (N+1). A forma
+correta e já existente para essa direção é `tomadoresApi.listar(q?, medicoId?)` (extensão da
+EPIC-15.5/15.9): uma chamada com `medicoId` retorna só os tomadores já alocados, outra sem filtro
+retorna todos (para montar o combo de "Adicionar"). `adicionarMedico(tomadorId, medicoId)` e
+`removerMedico(tomadorId, medicoId)` continuam sendo os únicos usados para mutação, exatamente como
+a task previa.
+
+### Espelhamento exato do padrão "Empresas Associadas" — inclusive a ausência de padrão de estado por página
+Estado (`todosTomadores`/`tomadoresAlocados`/`addTomadorId`/`addingTomador`/`removingTomadorId`/
+`tomadorError`), efeito de carga (dentro do mesmo `useEffect` que já buscava o médico) e handlers
+(`handleAdicionarTomador`/`handleRemoverTomador`) replicam 1:1 a estrutura já usada para
+`empresas`/`vinculo*` — incluindo o update otimista da lista local após sucesso da API (sem
+refetch), que é o padrão já estabelecido nesta página. `canEdit` (`isGestao || isOperacao`)
+substitui `isGestao` sozinho, e não há a regra de "não remover o último vínculo" (perguntado
+explicitamente na task — diferente do `vinculo` médico↔empresa do onboarding).
+
+### `formatDocumentoTomador` — helper duplicado localmente, não exportado do TomadoresPage.tsx
+`TomadoresPage.tsx` já tem uma função idêntica (`formatDocumento`) mas não exportada — replicada
+localmente em `MedicoPerfilPage.tsx` como `formatDocumentoTomador` em vez de exportar/importar,
+seguindo o mesmo precedente já estabelecido no projeto (funções helper pequenas e específicas de
+tela não são extraídas para um módulo compartilhado só por aparecerem em duas páginas).
+
+### Teste manual ponta-a-ponta confirmou o gating de permissão sem alteração de código
+Testado ao vivo: como `operacao`, adicionar um tomador (`HAPVIDA ASSISTENCIA MEDICA S.A.`) e
+remover, cada ação confirmada com reload de página (não é só estado otimista — persiste no
+backend). Como `medico`, a mesma URL (`/medicos/{id}`) é acessível (rota SPA não bloqueia por
+role) mas renderiza **somente leitura**: sem select "Adicionar tomador...", sem botão "Adicionar",
+sem ícone de remover em nenhuma linha — `canEdit=false` já cobre tudo automaticamente, sem
+nenhuma lógica extra necessária. Zero erros no console em ambos os cenários.
+
+### Dado de seed com tomador duplicado (mesmo CNPJ, 2 linhas) — não é bug desta task
+Ao testar com o médico `medico@pinsaude.com.br` (mesmo dos testes de EPIC-15.7/15.8), a lista de
+"Tomadores Associados" mostra "SECRETARIA DA SAUDE DO ESTADO DO CEARA" duas vezes (mesmo CNPJ
+`07.954.571/0001-04`). São dois registros de `tomadores` distintos (IDs diferentes) do backfill de
+dados de teste, não uma duplicação introduzida pelo frontend nem pelo backend do EPIC-15.5/15.9 —
+o filtro de duplicidade do backend é por `(tomador_id, medico_id)`, não por CNPJ. Não corrigido
+(dado de ambiente de dev, fora do escopo desta task) — sinalizado para quem for mexer em seed de
+tomadores no futuro.
+
+---
+
+## `tools/scripts/start-infra.ps1` sem BOM UTF-8 quebra o parser do Windows PowerShell 5.1
+
+### Sintoma
+`.\tools\scripts\start-infra.ps1` falha com `A cadeia de caracteres não tem o terminador: "` e
+`'}' de fechamento ausente` em linhas que, abertas em qualquer editor, parecem perfeitamente
+válidas (ex.: `Write-Host "  Mailhog     : http://localhost:8025"`).
+
+### Causa
+O arquivo estava salvo em UTF-8 **sem BOM** (confirmado com
+`[System.IO.File]::ReadAllBytes($path)` — primeiros 3 bytes não eram `EF BB BF`). O Windows
+PowerShell 5.1 (`powershell.exe`, diferente do PowerShell 7/`pwsh`) só interpreta um arquivo
+`.ps1` como UTF-8 se ele tiver o BOM explícito; sem BOM, o parser usa o codepage ANSI ativo do
+sistema para decodificar o arquivo. Os caracteres multi-byte do script (`✅`, `⚠️`, acentos como
+`á`/`ã`/`ç`, o em-dash `—`) viram sequências de bytes inválidas nesse codepage, e a corrupção
+resultante confunde o tokenizer do PowerShell — não necessariamente na mesma linha do caractere
+especial, o que torna a mensagem de erro enganosa (aponta para uma linha "normal" mais adiante).
+
+### Solução
+Regravar o arquivo com BOM UTF-8 explícito, preservando o conteúdo:
+```powershell
+$path = "tools\scripts\start-infra.ps1"
+$content = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+$utf8Bom = New-Object System.Text.UTF8Encoding($true)
+[System.IO.File]::WriteAllText($path, $content, $utf8Bom)
+```
+Isso força o PowerShell 5.1 a reconhecer o arquivo como UTF-8 independente do codepage do sistema.
+**Qualquer novo `.ps1` com acentos/emojis neste repositório deve ser salvo com BOM UTF-8** — bash
+(`cat`/`file`) lê o arquivo normalmente sem BOM, então esse tipo de bug só aparece ao executar de
+verdade no PowerShell do Windows, nunca em uma revisão de código feita fora dele.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

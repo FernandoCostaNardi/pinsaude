@@ -4,7 +4,7 @@ import {
   ArrowLeft, Pencil, UserCheck, UserX, FileText,
   User, Building2, CreditCard, Clock, CheckCircle2,
   XCircle, AlertCircle, Mail, Send, Landmark,
-  Award, GraduationCap, Home, BookOpen,
+  Award, GraduationCap, Home, BookOpen, Hospital,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import {
@@ -13,10 +13,12 @@ import {
   HistoricoTaxaPin, VinculoEmpresa, medicosApi,
 } from '../api/medicosApi'
 import { empresasApi, Empresa } from '../api/empresasApi'
+import { Tomador, tomadoresApi } from '../api/tomadoresApi'
 import { MedicoWizardModal, maskPixKey } from '../components/MedicoWizardModal'
 import { MedicoInativarModal } from '../components/MedicoInativarModal'
 import { DocumentosModal } from '../components/DocumentosModal'
 import { formatCpf } from '../utils/cpf'
+import { formatCnpj } from '../utils/cnpj'
 import { useAuth } from '../auth/useAuth'
 import { bancos } from '../components/BancoSelect'
 
@@ -99,6 +101,12 @@ function formatDateTime(iso: string) {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+function formatDocumentoTomador(tipo: Tomador['tipo'], cnpjCpf: string): string {
+  const digits = cnpjCpf.replace(/\D/g, '')
+  if (tipo === 'PACIENTE_PF') return formatCpf(digits)
+  return formatCnpj(digits)
 }
 
 function WhatsAppIcon({ className }: { className?: string }) {
@@ -255,6 +263,14 @@ export function MedicoPerfilPage() {
   const [removingVinculoId,   setRemovingVinculoId]   = useState<string | null>(null)
   const [vinculoError,        setVinculoError]        = useState<string | null>(null)
 
+  // Tomadores associados (EPIC-15.11)
+  const [todosTomadores,      setTodosTomadores]      = useState<Tomador[]>([])
+  const [tomadoresAlocados,   setTomadoresAlocados]   = useState<Tomador[]>([])
+  const [addTomadorId,        setAddTomadorId]        = useState('')
+  const [addingTomador,       setAddingTomador]       = useState(false)
+  const [removingTomadorId,   setRemovingTomadorId]   = useState<string | null>(null)
+  const [tomadorError,        setTomadorError]        = useState<string | null>(null)
+
   const [showEdit,         setShowEdit]         = useState(false)
   const [inativando,       setInativando]       = useState(false)
   const [showDocs,         setShowDocs]         = useState(false)
@@ -284,6 +300,8 @@ export function MedicoPerfilPage() {
         } else if (isGestao) {
           empresasApi.listar(0, 200).then(p => setTodasEmpresas(p.content)).catch(() => {})
         }
+        tomadoresApi.listar(undefined, m.id).then(setTomadoresAlocados).catch(() => {})
+        if (canEdit) tomadoresApi.listar().then(setTodosTomadores).catch(() => {})
       })
       .catch(() => setError('Erro ao carregar dados do médico'))
       .finally(() => setLoading(false))
@@ -384,6 +402,36 @@ export function MedicoPerfilPage() {
       setVinculoError(e instanceof Error ? e.message : 'Erro ao remover vínculo')
     } finally {
       setRemovingVinculoId(null)
+    }
+  }
+
+  async function handleAdicionarTomador() {
+    if (!medico || !addTomadorId) return
+    setAddingTomador(true)
+    setTomadorError(null)
+    try {
+      await tomadoresApi.adicionarMedico(addTomadorId, medico.id)
+      const tomador = todosTomadores.find(t => t.id === addTomadorId)
+      if (tomador) setTomadoresAlocados(list => [...list, tomador])
+      setAddTomadorId('')
+    } catch (e) {
+      setTomadorError(e instanceof Error ? e.message : 'Erro ao adicionar tomador')
+    } finally {
+      setAddingTomador(false)
+    }
+  }
+
+  async function handleRemoverTomador(tomadorId: string) {
+    if (!medico) return
+    setRemovingTomadorId(tomadorId)
+    setTomadorError(null)
+    try {
+      await tomadoresApi.removerMedico(tomadorId, medico.id)
+      setTomadoresAlocados(list => list.filter(t => t.id !== tomadorId))
+    } catch (e) {
+      setTomadorError(e instanceof Error ? e.message : 'Erro ao remover tomador')
+    } finally {
+      setRemovingTomadorId(null)
     }
   }
 
@@ -612,6 +660,69 @@ export function MedicoPerfilPage() {
                 </div>
               )}
               {vinculoError && <p className="mt-2 text-xs text-red-600">{vinculoError}</p>}
+            </div>
+
+            {/* Tomadores Associados */}
+            <div className="mt-6 pt-6 border-t border-ds-border">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-ds-mid uppercase tracking-wide">Tomadores Associados</p>
+                <span className="text-xs text-ds-light">{tomadoresAlocados.length} tomador(es)</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {tomadoresAlocados.map(t => (
+                  <div key={t.id}
+                    className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-ds-input border border-ds-border">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Hospital size={15} className="text-primary shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-ds-text truncate">{t.razaoSocialNome}</p>
+                        <p className="text-xs text-ds-light">{formatDocumentoTomador(t.tipo, t.cnpjCpf)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {canEdit && (
+                        <button
+                          onClick={() => handleRemoverTomador(t.id)}
+                          disabled={removingTomadorId === t.id}
+                          className="p-1 rounded text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                          title="Remover tomador"
+                        >
+                          <XCircle size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {tomadoresAlocados.length === 0 && (
+                  <p className="text-sm text-ds-light">Nenhum tomador associado.</p>
+                )}
+              </div>
+
+              {canEdit && (
+                <div className="mt-3 flex gap-2">
+                  <select
+                    value={addTomadorId}
+                    onChange={e => setAddTomadorId(e.target.value)}
+                    className="flex-1 text-sm border border-ds-border rounded-lg px-3 py-1.5 bg-white text-ds-text focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
+                  >
+                    <option value="">Adicionar tomador...</option>
+                    {todosTomadores
+                      .filter(t => !tomadoresAlocados.some(a => a.id === t.id))
+                      .map(t => (
+                        <option key={t.id} value={t.id}>{t.razaoSocialNome}</option>
+                      ))
+                    }
+                  </select>
+                  <Button
+                    size="sm"
+                    onClick={handleAdicionarTomador}
+                    disabled={!addTomadorId || addingTomador}
+                  >
+                    {addingTomador ? 'Adicionando...' : 'Adicionar'}
+                  </Button>
+                </div>
+              )}
+              {tomadorError && <p className="mt-2 text-xs text-red-600">{tomadorError}</p>}
             </div>
 
             {/* Checklist */}
