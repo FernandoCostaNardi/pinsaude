@@ -377,6 +377,36 @@ export function ProducaoNovaPage() {
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const competencias    = generateCompetencias()
 
+  // Filtro de tomadores por médico(s) participante(s) (EPIC-15.13): sem médico selecionado,
+  // mostra todos os tomadores do tenant; com 1+ médicos, mostra a interseção dos tomadores
+  // alocados a cada um deles (nunca um tomador onde só parte dos médicos está autorizada).
+  const [tomadoresFiltrados,        setTomadoresFiltrados]        = useState<Tomador[] | null>(null)
+  const [tomadoresFiltroLoading,    setTomadoresFiltroLoading]    = useState(false)
+  const medicoIdsSelecionados = Array.from(
+    new Set(participantes.map(p => p.medico?.id).filter(Boolean) as string[])
+  )
+  const medicoIdsKey = medicoIdsSelecionados.slice().sort().join(',')
+
+  useEffect(() => {
+    if (medicoIdsSelecionados.length === 0) {
+      setTomadoresFiltrados(null)
+      return
+    }
+    let cancelled = false
+    setTomadoresFiltroLoading(true)
+    Promise.all(
+      medicoIdsSelecionados.map(id => tomadoresApi.listar(undefined, id).catch(() => [] as Tomador[]))
+    ).then(listas => {
+      if (cancelled) return
+      const [primeira, ...resto] = listas
+      const intersecao = primeira.filter(t => resto.every(lista => lista.some(x => x.id === t.id)))
+      setTomadoresFiltrados(intersecao)
+    }).finally(() => { if (!cancelled) setTomadoresFiltroLoading(false) })
+    return () => { cancelled = true }
+  }, [medicoIdsKey])
+
+  const tomadoresDisponiveis = tomadoresFiltrados ?? tomadores
+
   useEffect(() => {
     Promise.all([
       medicosApi.listar(0, 1000, 'ATIVO').catch(() => ({ content: [] as Medico[] })),
@@ -547,7 +577,7 @@ export function ProducaoNovaPage() {
     sublabel: `CRM ${m.crm}-${m.crmUf}${m.especialidade ? ` · ${m.especialidade}` : ''}`,
   }))
 
-  const tomadorItems: AutocompleteItem[] = tomadores.map(t => ({
+  const tomadorItems: AutocompleteItem[] = tomadoresDisponiveis.map(t => ({
     id: t.id,
     label: t.razaoSocialNome,
     highlight: t.nomeFantasia ?? undefined,
@@ -594,7 +624,21 @@ export function ProducaoNovaPage() {
                 onChange={item => { setTomador(item); setCnaeCodigo(''); setServico(null); setErrors(e => ({ ...e, tomador: '' })) }}
                 onClear={() => { setTomador(null); setCnaeCodigo(''); setServico(null); setPreview(null) }}
                 placeholder="Buscar por nome ou CNPJ..."
+                loading={tomadoresFiltroLoading}
               />
+              {tomadoresFiltrados && (
+                <p className="mt-1 text-[11px] text-ds-light">
+                  {medicoIdsSelecionados.length === 1
+                    ? 'Exibindo apenas tomadores alocados ao médico selecionado.'
+                    : 'Exibindo apenas tomadores alocados a todos os médicos participantes selecionados.'}
+                </p>
+              )}
+              {tomador && tomadoresFiltrados && !tomadoresFiltrados.some(t => t.id === tomador.id) && (
+                <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
+                  <AlertCircle size={11} />
+                  Atenção: o tomador selecionado não está alocado a todos os médicos participantes.
+                </p>
+              )}
             </Field>
 
             {/* CNAE do tomador — aparece quando o tomador tem CNAEs cadastrados */}
