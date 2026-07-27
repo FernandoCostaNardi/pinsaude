@@ -203,7 +203,8 @@
       "Bash(Format-Table)",
       "Bash(git rebase *)",
       "Bash(grep -c *)",
-      "Bash(echo \"markers: $?\")"
+      "Bash(echo \"markers: $?\")",
+      "Bash(git stash *)"
     ]
   }
 }

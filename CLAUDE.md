@@ -3839,7 +3839,39 @@ Médicos criados após o fix já nascem com essa linha automaticamente — não 
 
 ---
 
-## Convenções de Commit e Branch
+## Alocação de Médico a Tomadores — Frontend `tomadoresApi.ts` (EPIC-15.9)
+
+### Branches de backend paralelas mescladas em `main` entre a criação e a execução da task
+A task 15.9 (frontend) depende de 15.4/15.5 (backend), mas as 3 tasks foram criadas como branches
+irmãs (`feature/pinsaude-15.3/15.4/15.5`), cada uma a partir de `main`, e não sequencialmente uma
+sobre a outra. No momento em que a 15.9 começou a ser codada, `feature/pinsaude-15.9` (criada
+alguns dias antes, também a partir de `main`) estava **desatualizada**: as PRs #106/#107/#108
+(15.3/15.4/15.5) só foram mescladas em `main` minutos antes desta sessão. Sem atualizar a branch
+local, o arquivo `tomadoresApi.ts` estaria sendo escrito às cegas, sem o contrato real do backend
+disponível no working tree (nenhuma classe `MedicoTomador*` existia localmente até o merge).
+**Lição:** antes de implementar uma task de frontend que "depende de" tasks de backend, sempre
+conferir com `gh pr list --state all` se as dependências já foram de fato mescladas em `main` —
+não confiar apenas no status do ClickUp ("ready to deploy" pode significar só "aprovado, PR aberta
+mas não mesclada", como era o caso de 15.6/15.7/15.8 nesta mesma EPIC) — e rodar
+`git merge origin/main` (ou rebase) na branch de trabalho antes de escrever qualquer código que
+consuma esse contrato.
+
+### Contrato `MedicoTomadorResponse` — sem envelope, snake→camel automático
+`GET/POST /api/tomadores/{id}/medicos` retornam `{ medicoId, tomadorId, createdAt }` (sem
+`id` do vínculo em si — só as duas FKs + timestamp). O tipo `MedicoTomador` no frontend espelha
+exatamente esse shape. `POST` aceita `{ medicoId }` no body (schema `MedicoTomadorRequest`,
+`@NotNull UUID medicoId`) e retorna `201 Created` com o mesmo shape do GET.
+`DELETE /api/tomadores/{id}/medicos/{medicoId}` retorna `204 No Content` — sem corpo, mapeado por
+`handleResponse` que já trata `res.status === 204` retornando `undefined as T`.
+
+### `listar(q?, medicoId?)` — extensão por query param opcional, 100% compatível com chamadas existentes
+A assinatura de `tomadoresApi.listar()` ganhou um segundo parâmetro opcional `medicoId?: string`,
+que popula `?medicoId=<uuid>` via `URLSearchParams` só quando presente. Como todos os 7 call sites
+existentes (`TomadoresPage`, `ProducaoNovaPage`, `FrequenciasPage`, `FechamentoPage`,
+`ProducoesPage`, `PortalProducaoNovaPage`, `PortalFrequenciaPage`) chamam `listar()` sem argumentos,
+a mudança não quebra nenhum consumidor — confirmado com `tsc --noEmit` + build de produção limpos.
+O consumo real desse filtro (telas passando `medicoId` de fato) é escopo de 15.13/15.14/15.15/15.16,
+fora desta task.
 
 - **Branch:** `feature/pinsaude-<numero>`
 - **Commit:** `#PINSAUDE-<NUMERO> - <descrição em português>`
