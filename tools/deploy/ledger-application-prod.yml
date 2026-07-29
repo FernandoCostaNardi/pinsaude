@@ -1,0 +1,43 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pinsaude
+    username: svc_ledger
+    password: ${DB_PASSWORD_LEDGER}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: ledger
+  flyway:
+    schemas: ledger
+    default-schema: ledger
+    locations: classpath:db/migration
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://212.85.12.228:8443/realms/pinsaude
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2.0
+
+server:
+  port: 8183
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

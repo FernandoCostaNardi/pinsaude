@@ -1,0 +1,32 @@
+# ATENÇÃO: services/repasse ainda é um scaffold (EPIC-09 — Repasse aos Médicos — não
+# implementado). Não há entidades JPA nem migrations reais; o serviço sobe e responde
+# health check, mas os endpoints em /api/repasse/** retornam apenas JSON estático de
+# placeholder. Configuração incluída aqui só para manter paridade de porta/usuário com o
+# ambiente de dev — revisar quando o EPIC-09 for implementado.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pinsaude
+    username: svc_repasse
+    password: ${DB_PASSWORD_REPASSE}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: repasse
+  flyway:
+    enabled: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://212.85.12.228:8443/realms/pinsaude
+
+server:
+  port: 8184
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

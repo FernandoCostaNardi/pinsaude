@@ -42,6 +42,14 @@ spring:
           uri: http://localhost:8187
           predicates:
             - Path=/api/portal,/api/portal/**
+        - id: ledger
+          uri: http://localhost:8183
+          predicates:
+            - Path=/api/ledger,/api/ledger/**
+        - id: repasse
+          uri: http://localhost:8184
+          predicates:
+            - Path=/api/repasse,/api/repasse/**
         - id: nfse
           uri: http://localhost:8181
           predicates:

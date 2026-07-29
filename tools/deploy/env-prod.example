@@ -29,6 +29,12 @@ DB_PASSWORD_FATURAMENTO=TROCAR_POR_SENHA_FORTE
 # Fiscal service
 DB_PASSWORD_FISCAL=TROCAR_POR_SENHA_FORTE
 
+# Ledger service (livro-razão financeiro)
+DB_PASSWORD_LEDGER=TROCAR_POR_SENHA_FORTE
+
+# Repasse service (ainda um scaffold — EPIC-09 não implementado)
+DB_PASSWORD_REPASSE=TROCAR_POR_SENHA_FORTE
+
 # Criptografia de dados sensíveis (CPF, chave PIX, dados bancários) — pgcrypto
 # Mesma chave usada por onboarding e faturamento — não alterar após primeiro deploy
 CRYPTO_KEY=TROCAR_POR_CHAVE_FORTE_32_CHARS

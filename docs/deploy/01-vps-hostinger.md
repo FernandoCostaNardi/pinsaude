@@ -1,7 +1,10 @@
 # Deploy Pin Saúde — VPS Hostinger (IP: 212.85.12.228)
 
 Guia passo a passo para colocar o sistema em produção acessível via IP.
-Cobre todos os serviços do MVP: EPIC-01 ao EPIC-05.
+Cobre todos os serviços implementados do MVP: Onboarding, Gestão, Faturamento, Fiscal,
+Portal do Médico (EPIC-06.1) e Ledger (EPIC-08), além do Gateway. Inclui também o
+Repasse (EPIC-09), que hoje é apenas um scaffold sem lógica de negócio real — ver nota
+na seção do serviço.
 
 ---
 
@@ -22,9 +25,12 @@ Gateway :8100
     ├──→  Onboarding   :8185   (/api/onboarding/**, /api/medicos/**, /api/empresas/**)
     ├──→  Gestão       :8186   (/api/gestao/**, /api/usuarios/**)
     ├──→  Faturamento  :8182   (/api/faturamento/**, /api/tomadores/**, /api/producoes/**, /api/servicos/**)
-    └──→  Fiscal       :8181   (/api/fiscal/**, /api/nfse/**, /api/motor-fiscal/**, /api/parametros-fiscais/**)
+    ├──→  Fiscal       :8181   (/api/fiscal/**, /api/nfse/**, /api/motor-fiscal/**, /api/parametros-fiscais/**)
+    ├──→  Portal       :8187   (/api/portal/**) — agrega Onboarding/Fiscal/Faturamento via leitura direta no Postgres (JdbcTemplate, sem chamar as APIs desses serviços)
+    ├──→  Ledger       :8183   (/api/ledger/**) — livro-razão financeiro (EPIC-08), consome RabbitMQ
+    └──→  Repasse      :8184   (/api/repasse/**) — ⚠️ scaffold (EPIC-09 não implementado), endpoints retornam JSON estático
 
-RabbitMQ (Docker) :5672/:15672  ──→  Fiscal service (filas NFS-e assíncronas)
+RabbitMQ (Docker) :5672/:15672  ──→  Fiscal (filas NFS-e) + Ledger (lançamentos automáticos)
 MinIO     (Docker) :9000/:9001  ──→  Onboarding (upload de documentos de médicos)
 Mailhog   (Docker) :1025/:8125  ──→  Keycloak (SMTP de teste)
 ```
@@ -40,7 +46,10 @@ Mailhog   (Docker) :1025/:8125  ──→  Keycloak (SMTP de teste)
 | Gestão            | 8186    | Interno (Gateway proxy) |
 | Faturamento       | 8182    | Interno (Gateway proxy) |
 | Fiscal            | 8181    | Interno (Gateway proxy) |
-| RabbitMQ AMQP     | 5672    | Interno (Fiscal service) |
+| Portal do Médico  | 8187    | Interno (Gateway proxy) |
+| Ledger            | 8183    | Interno (Gateway proxy) |
+| Repasse (scaffold)| 8184    | Interno (Gateway proxy) |
+| RabbitMQ AMQP     | 5672    | Interno (Fiscal + Ledger) |
 | RabbitMQ UI       | 15672   | http://212.85.12.228:15672 (admin) |
 | MinIO API         | 9000    | http://212.85.12.228:9000 |
 | MinIO Console     | 9001    | http://212.85.12.228:9001 |
@@ -73,7 +82,7 @@ ss -tlnp | grep -E ':80|:8100|:818[0-9]|:818[0-9]'
 useradd -m -s /bin/bash pinsaude
 passwd pinsaude
 
-mkdir -p /home/pinsaude/{infra,apps/onboarding,apps/gestao,apps/gateway,apps/faturamento,apps/fiscal,frontend,logs,scripts}
+mkdir -p /home/pinsaude/{infra,apps/onboarding,apps/gestao,apps/gateway,apps/faturamento,apps/fiscal,apps/portal,apps/ledger,apps/repasse,frontend,logs,scripts}
 chown -R pinsaude:pinsaude /home/pinsaude
 ```
 
@@ -157,6 +166,9 @@ CREATE USER svc_onboarding  WITH PASSWORD 'TROCAR_POR_SENHA_FORTE';
 CREATE USER svc_gestao      WITH PASSWORD 'TROCAR_POR_SENHA_FORTE';
 CREATE USER svc_faturamento WITH PASSWORD 'TROCAR_POR_SENHA_FORTE';
 CREATE USER svc_fiscal      WITH PASSWORD 'TROCAR_POR_SENHA_FORTE';
+CREATE USER svc_ledger      WITH PASSWORD 'TROCAR_POR_SENHA_FORTE';
+CREATE USER svc_repasse     WITH PASSWORD 'TROCAR_POR_SENHA_FORTE';
+CREATE USER svc_portal      WITH PASSWORD 'TROCAR_POR_SENHA_FORTE';
 CREATE USER keycloak        WITH PASSWORD 'TROCAR_POR_SENHA_FORTE';
 
 \c pinsaude
@@ -192,6 +204,35 @@ ALTER USER svc_fiscal SET search_path TO fiscal, public;
 ALTER DEFAULT PRIVILEGES IN SCHEMA fiscal GRANT ALL ON TABLES    TO svc_fiscal;
 ALTER DEFAULT PRIVILEGES IN SCHEMA fiscal GRANT ALL ON SEQUENCES TO svc_fiscal;
 
+-- ─── Ledger (livro-razão financeiro, EPIC-08) ─────────────────────────────────
+CREATE SCHEMA IF NOT EXISTS ledger;
+GRANT CONNECT, CREATE ON DATABASE pinsaude TO svc_ledger;
+GRANT CREATE, USAGE ON SCHEMA ledger TO svc_ledger;
+ALTER USER svc_ledger SET search_path TO ledger, public;
+ALTER DEFAULT PRIVILEGES IN SCHEMA ledger GRANT ALL ON TABLES    TO svc_ledger;
+ALTER DEFAULT PRIVILEGES IN SCHEMA ledger GRANT ALL ON SEQUENCES TO svc_ledger;
+
+-- ─── Repasse (⚠️ scaffold — EPIC-09 não implementado, sem migrations reais) ───
+CREATE SCHEMA IF NOT EXISTS repasse;
+GRANT CONNECT, CREATE ON DATABASE pinsaude TO svc_repasse;
+GRANT CREATE, USAGE ON SCHEMA repasse TO svc_repasse;
+ALTER USER svc_repasse SET search_path TO repasse, public;
+ALTER DEFAULT PRIVILEGES IN SCHEMA repasse GRANT ALL ON TABLES    TO svc_repasse;
+ALTER DEFAULT PRIVILEGES IN SCHEMA repasse GRANT ALL ON SEQUENCES TO svc_repasse;
+
+-- ─── Portal do Médico — leitura cross-schema, sem schema próprio ─────────────
+GRANT CONNECT ON DATABASE pinsaude TO svc_portal;
+GRANT USAGE ON SCHEMA onboarding, fiscal, faturamento TO svc_portal;
+GRANT SELECT ON ALL TABLES IN SCHEMA onboarding  TO svc_portal;
+GRANT SELECT ON ALL TABLES IN SCHEMA fiscal       TO svc_portal;
+GRANT SELECT ON ALL TABLES IN SCHEMA faturamento  TO svc_portal;
+-- Tabelas criadas DEPOIS deste GRANT (por migrations futuras) também precisam ficar
+-- visíveis ao portal — sem isso, `flyway migrate` de onboarding/fiscal/faturamento
+-- rodado após esta etapa deixaria as tabelas novas invisíveis ao svc_portal:
+ALTER DEFAULT PRIVILEGES FOR ROLE svc_onboarding  IN SCHEMA onboarding  GRANT SELECT ON TABLES TO svc_portal;
+ALTER DEFAULT PRIVILEGES FOR ROLE svc_fiscal      IN SCHEMA fiscal       GRANT SELECT ON TABLES TO svc_portal;
+ALTER DEFAULT PRIVILEGES FOR ROLE svc_faturamento IN SCHEMA faturamento  GRANT SELECT ON TABLES TO svc_portal;
+
 -- ─── Keycloak ─────────────────────────────────────────────────────────────────
 \c keycloak
 GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
@@ -206,6 +247,9 @@ ALTER USER keycloak CREATEDB;
 psql -U svc_onboarding  -d pinsaude -h localhost -c "SELECT current_user;"
 psql -U svc_faturamento -d pinsaude -h localhost -c "SELECT current_user;"
 psql -U svc_fiscal      -d pinsaude -h localhost -c "SELECT current_user;"
+psql -U svc_ledger      -d pinsaude -h localhost -c "SELECT current_user;"
+psql -U svc_repasse     -d pinsaude -h localhost -c "SELECT current_user;"
+psql -U svc_portal      -d pinsaude -h localhost -c "SELECT current_user;"
 ```
 
 ---
@@ -323,6 +367,9 @@ mvn clean package -DskipTests --no-transfer-progress
 # services/gestao/target/pinsaude-gestao-*.jar
 # services/faturamento/target/pinsaude-faturamento-*.jar
 # services/fiscal/target/pinsaude-fiscal-*.jar
+# services/portal/target/pinsaude-portal-*.jar
+# services/ledger/target/pinsaude-ledger-*.jar
+# services/repasse/target/pinsaude-repasse-*.jar
 # gateway/target/pinsaude-gateway-*.jar
 ```
 
@@ -353,6 +400,9 @@ cp services/onboarding/target/pinsaude-onboarding-*.jar   /home/pinsaude/apps/on
 cp services/gestao/target/pinsaude-gestao-*.jar           /home/pinsaude/apps/gestao/app.jar
 cp services/faturamento/target/pinsaude-faturamento-*.jar /home/pinsaude/apps/faturamento/app.jar
 cp services/fiscal/target/pinsaude-fiscal-*.jar           /home/pinsaude/apps/fiscal/app.jar
+cp services/portal/target/pinsaude-portal-*.jar           /home/pinsaude/apps/portal/app.jar
+cp services/ledger/target/pinsaude-ledger-*.jar           /home/pinsaude/apps/ledger/app.jar
+cp services/repasse/target/pinsaude-repasse-*.jar         /home/pinsaude/apps/repasse/app.jar
 cp gateway/target/pinsaude-gateway-*.jar                  /home/pinsaude/apps/gateway/app.jar
 
 # Frontend
@@ -375,6 +425,9 @@ scp tools/deploy/gateway-application-prod.yml     root@212.85.12.228:/home/pinsa
 # Serviços novos
 scp tools/deploy/faturamento-application-prod.yml root@212.85.12.228:/home/pinsaude/apps/faturamento/application-prod.yml
 scp tools/deploy/fiscal-application-prod.yml      root@212.85.12.228:/home/pinsaude/apps/fiscal/application-prod.yml
+scp tools/deploy/portal-application-prod.yml      root@212.85.12.228:/home/pinsaude/apps/portal/application-prod.yml
+scp tools/deploy/ledger-application-prod.yml      root@212.85.12.228:/home/pinsaude/apps/ledger/application-prod.yml
+scp tools/deploy/repasse-application-prod.yml     root@212.85.12.228:/home/pinsaude/apps/repasse/application-prod.yml
 ```
 
 ### 5.2 Proteger arquivos de configuração no servidor
@@ -399,6 +452,9 @@ scp tools/deploy/pinsaude-gateway.service     root@212.85.12.228:/etc/systemd/sy
 # Serviços novos
 scp tools/deploy/pinsaude-faturamento.service root@212.85.12.228:/etc/systemd/system/
 scp tools/deploy/pinsaude-fiscal.service      root@212.85.12.228:/etc/systemd/system/
+scp tools/deploy/pinsaude-portal.service      root@212.85.12.228:/etc/systemd/system/
+scp tools/deploy/pinsaude-ledger.service      root@212.85.12.228:/etc/systemd/system/
+scp tools/deploy/pinsaude-repasse.service     root@212.85.12.228:/etc/systemd/system/
 ```
 
 ### 6.2 Habilitar e iniciar os serviços
@@ -427,13 +483,36 @@ sleep 20
 tail -30 /home/pinsaude/logs/fiscal.log
 # Esperado: "Started FiscalApplication" + "Successfully applied X migrations"
 
-# 4. Gestão
+# 4. Ledger — também depende de RabbitMQ estar UP (consome 4 filas + DLQ)
+systemctl enable pinsaude-ledger
+systemctl start pinsaude-ledger
+sleep 20
+tail -30 /home/pinsaude/logs/ledger.log
+# Esperado: "Started LedgerApplication" + "Successfully applied X migrations"
+
+# 5. Gestão
 systemctl enable pinsaude-gestao
 systemctl start pinsaude-gestao
 sleep 15
 tail -20 /home/pinsaude/logs/gestao.log
 
-# 5. Gateway — último, roteia para todos os serviços acima
+# 6. Repasse — ⚠️ scaffold (EPIC-09 não implementado); sobe e responde health check,
+#    mas os endpoints em /api/repasse/** retornam apenas JSON estático de placeholder
+systemctl enable pinsaude-repasse
+systemctl start pinsaude-repasse
+sleep 15
+tail -20 /home/pinsaude/logs/repasse.log
+# Esperado: "Started RepasseApplication" (sem linha de migrations — flyway desabilitado)
+
+# 7. Portal do Médico — só lê os schemas onboarding/fiscal/faturamento via JdbcTemplate;
+#    subir depois desses 3 já estarem com as migrations aplicadas
+systemctl enable pinsaude-portal
+systemctl start pinsaude-portal
+sleep 15
+tail -20 /home/pinsaude/logs/portal.log
+# Esperado: "Started PortalApplication"
+
+# 8. Gateway — último, roteia para todos os serviços acima
 systemctl enable pinsaude-gateway
 systemctl start pinsaude-gateway
 sleep 10
@@ -443,13 +522,17 @@ tail -20 /home/pinsaude/logs/gateway.log
 ### 6.3 Verificar status e health
 
 ```bash
-systemctl status pinsaude-onboarding pinsaude-gestao pinsaude-faturamento pinsaude-fiscal pinsaude-gateway
+systemctl status pinsaude-onboarding pinsaude-gestao pinsaude-faturamento pinsaude-fiscal \
+    pinsaude-ledger pinsaude-repasse pinsaude-portal pinsaude-gateway
 
 # Health checks individuais
 curl -s http://localhost:8185/actuator/health   # onboarding
 curl -s http://localhost:8186/actuator/health   # gestão
 curl -s http://localhost:8182/actuator/health   # faturamento
 curl -s http://localhost:8181/actuator/health   # fiscal
+curl -s http://localhost:8183/actuator/health   # ledger
+curl -s http://localhost:8184/actuator/health   # repasse (scaffold)
+curl -s http://localhost:8187/actuator/health   # portal
 curl -s http://localhost:8100/actuator/health   # gateway
 # Todos devem retornar {"status":"UP"}
 ```
@@ -505,7 +588,7 @@ ufw allow 8180/tcp  comment "Keycloak"
 ufw allow 8125/tcp  comment "Mailhog UI (remover em produção real)"
 ufw allow 15672/tcp comment "RabbitMQ Management UI (restringir em produção real)"
 
-# NÃO expor externamente: 8100, 8181, 8182, 8185, 8186, 5672, 5432, 9000, 9001
+# NÃO expor externamente: 8100, 8181, 8182, 8183, 8184, 8185, 8186, 8187, 5672, 5432, 9000, 9001
 # Acessíveis apenas via localhost (serviços internos)
 ```
 
@@ -526,6 +609,13 @@ psql -U svc_faturamento -d pinsaude -h localhost \
 psql -U svc_fiscal -d pinsaude -h localhost \
     -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'fiscal';"
 
+psql -U svc_ledger -d pinsaude -h localhost \
+    -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'ledger';"
+
+# Repasse (scaffold): schema existe mas fica vazio — sem migrations até o EPIC-09
+psql -U svc_repasse -d pinsaude -h localhost \
+    -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'repasse';"   # 0 é esperado
+
 # Keycloak
 curl -s http://localhost:8180/realms/pinsaude/.well-known/openid-configuration \
     | python3 -c "import sys,json; print('Keycloak OK:', json.load(sys.stdin)['issuer'])"
@@ -535,6 +625,9 @@ curl -s http://localhost:8185/actuator/health   # onboarding
 curl -s http://localhost:8186/actuator/health   # gestão
 curl -s http://localhost:8182/actuator/health   # faturamento
 curl -s http://localhost:8181/actuator/health   # fiscal
+curl -s http://localhost:8183/actuator/health   # ledger
+curl -s http://localhost:8184/actuator/health   # repasse (scaffold)
+curl -s http://localhost:8187/actuator/health   # portal
 curl -s http://localhost:8100/actuator/health   # gateway
 
 # Nginx
@@ -548,6 +641,11 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost/   # 200
 4. Cadastrar um tomador → confirmar na listagem
 5. Registrar uma produção → confirmar cálculo fiscal
 6. Emitir NFS-e → verificar status na tela de Notas
+7. Login com `medico@pinsaude.com.br` / `test123` → Portal do Médico carrega dashboard
+   (`/api/portal/**` respondendo via `svc_portal`, leitura cross-schema)
+8. `curl -s http://localhost:8100/api/repasse` (com token de `financeiro`/`gestao`) → retorna
+   `{"status":"ok","service":"repasse"}` — confirma só que o scaffold está no ar, não que o
+   EPIC-09 está implementado
 
 ---
 
@@ -571,11 +669,15 @@ cp services/onboarding/target/pinsaude-onboarding-*.jar   /home/pinsaude/apps/on
 cp services/gestao/target/pinsaude-gestao-*.jar           /home/pinsaude/apps/gestao/app.jar
 cp services/faturamento/target/pinsaude-faturamento-*.jar /home/pinsaude/apps/faturamento/app.jar
 cp services/fiscal/target/pinsaude-fiscal-*.jar           /home/pinsaude/apps/fiscal/app.jar
+cp services/portal/target/pinsaude-portal-*.jar           /home/pinsaude/apps/portal/app.jar
+cp services/ledger/target/pinsaude-ledger-*.jar           /home/pinsaude/apps/ledger/app.jar
+cp services/repasse/target/pinsaude-repasse-*.jar         /home/pinsaude/apps/repasse/app.jar
 cp gateway/target/pinsaude-gateway-*.jar                  /home/pinsaude/apps/gateway/app.jar
 
 # Reiniciar serviços (como root)
 exit
-systemctl restart pinsaude-onboarding pinsaude-gestao pinsaude-faturamento pinsaude-fiscal pinsaude-gateway
+systemctl restart pinsaude-onboarding pinsaude-gestao pinsaude-faturamento pinsaude-fiscal \
+    pinsaude-ledger pinsaude-repasse pinsaude-portal pinsaude-gateway
 
 # Atualizar frontend (se houver mudanças)
 su - pinsaude
@@ -589,7 +691,7 @@ systemctl reload nginx
 ### Reiniciar apenas um serviço específico
 
 ```bash
-systemctl restart pinsaude-fiscal    # ou onboarding, gestao, faturamento, gateway
+systemctl restart pinsaude-fiscal    # ou onboarding, gestao, faturamento, ledger, repasse, portal, gateway
 journalctl -u pinsaude-fiscal -f     # seguir os logs em tempo real
 ```
 
@@ -605,11 +707,17 @@ journalctl -u pinsaude-fiscal -f     # seguir os logs em tempo real
 | `gestao-application-prod.yml` | Config Spring Boot — Gestão (porta 8186) |
 | `faturamento-application-prod.yml` | Config Spring Boot — Faturamento (porta 8182) |
 | `fiscal-application-prod.yml` | Config Spring Boot — Fiscal (porta 8181) |
+| `portal-application-prod.yml` | Config Spring Boot — Portal do Médico (porta 8187) |
+| `ledger-application-prod.yml` | Config Spring Boot — Ledger (porta 8183) |
+| `repasse-application-prod.yml` | Config Spring Boot — Repasse ⚠️ scaffold (porta 8184) |
 | `gateway-application-prod.yml` | Config Spring Cloud Gateway (porta 8100) |
 | `pinsaude-onboarding.service` | Systemd unit — Onboarding |
 | `pinsaude-gestao.service` | Systemd unit — Gestão |
 | `pinsaude-faturamento.service` | Systemd unit — Faturamento |
 | `pinsaude-fiscal.service` | Systemd unit — Fiscal |
+| `pinsaude-portal.service` | Systemd unit — Portal do Médico |
+| `pinsaude-ledger.service` | Systemd unit — Ledger |
+| `pinsaude-repasse.service` | Systemd unit — Repasse ⚠️ scaffold |
 | `pinsaude-gateway.service` | Systemd unit — Gateway |
 | `nginx-pinsaude.conf` | Config Nginx (porta 80, SPA + proxy `/api/`) |
 
@@ -659,7 +767,7 @@ Se retornar `localhost`, adicionar no `docker-compose.prod.yml` e reiniciar:
 KC_HOSTNAME_URL: "http://212.85.12.228:8180"
 ```
 
-### RabbitMQ — fiscal não conecta
+### RabbitMQ — fiscal ou ledger não conecta
 
 ```bash
 # Verificar se RabbitMQ está UP
@@ -672,6 +780,33 @@ nc -zv localhost 5672
 # Verificar credenciais no .env
 grep RABBITMQ /home/pinsaude/infra/.env
 ```
+
+Ambos `fiscal` (filas de emissão NFS-e) e `ledger` (4 filas + DLQ de lançamentos automáticos)
+dependem do RabbitMQ estar UP antes de subir — mesma causa raiz, mesma verificação.
+
+### Portal retorna 500 ao consultar `/api/portal/**`
+
+Causa mais comum: `svc_portal` sem `GRANT SELECT` em alguma tabela do `onboarding`/`fiscal`/
+`faturamento`, ou sem o `ALTER DEFAULT PRIVILEGES` correspondente (tabelas criadas por migrations
+rodadas *depois* do grant inicial ficam invisíveis a `svc_portal` sem essa segunda parte do SQL
+do passo 2.1). Verificar:
+```sql
+-- Como superuser, confirmar se svc_portal enxerga as tabelas dos 3 schemas
+SET ROLE svc_portal;
+SELECT count(*) FROM onboarding.medicos;
+SELECT count(*) FROM fiscal.notas_fiscais;
+SELECT count(*) FROM faturamento.tomadores;
+RESET ROLE;
+```
+Se algum `SELECT` falhar com `permission denied`, reexecutar o bloco de `GRANT SELECT`/
+`ALTER DEFAULT PRIVILEGES` do passo 2.1 para o schema em questão.
+
+### Repasse retorna só `{"status":"ok",...}` — isso é o comportamento esperado
+
+`services/repasse` é um scaffold do EPIC-00, sem lógica de negócio real (EPIC-09 — Repasse aos
+Médicos — nunca foi implementado). Os 3 endpoints (`/api/repasse`, `/api/repasse/worklist`,
+`/api/repasse/historico`) sempre retornam JSON estático hardcoded — não é bug de deploy, é o
+estado real do código-fonte. Não investigar como se fosse uma falha de integração.
 
 ### MinIO — upload de documentos falha
 
