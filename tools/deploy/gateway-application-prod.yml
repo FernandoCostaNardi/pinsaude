@@ -38,6 +38,18 @@ spring:
           uri: http://localhost:8182
           predicates:
             - Path=/api/servicos,/api/servicos/**
+        - id: frequencias
+          uri: http://localhost:8182
+          predicates:
+            - Path=/api/frequencias,/api/frequencias/**
+        - id: fechamentos
+          uri: http://localhost:8182
+          predicates:
+            - Path=/api/fechamentos,/api/fechamentos/**
+        - id: conciliacao
+          uri: http://localhost:8182
+          predicates:
+            - Path=/api/conciliacao,/api/conciliacao/**
         - id: portal
           uri: http://localhost:8187
           predicates:
