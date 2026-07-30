@@ -405,7 +405,10 @@ export function ProducaoNovaPage() {
     return () => { cancelled = true }
   }, [medicoIdsKey])
 
-  const tomadoresDisponiveis = tomadoresFiltrados ?? tomadores
+  // Tomadores com faturamento por grupo configurado não geram produção manual — a produção deles
+  // é gerada pelo Fechamento por Grupo (Frequência Médica → Fechamento, EPIC-13.8/PINSAUDE-13.11).
+  const tomadoresDisponiveis = (tomadoresFiltrados ?? tomadores).filter(t => !t.temGrupoFaturamento)
+  const existeTomadorComGrupo = tomadores.some(t => t.temGrupoFaturamento)
 
   useEffect(() => {
     Promise.all([
@@ -631,6 +634,11 @@ export function ProducaoNovaPage() {
                   {medicoIdsSelecionados.length === 1
                     ? 'Exibindo apenas tomadores alocados ao médico selecionado.'
                     : 'Exibindo apenas tomadores alocados a todos os médicos participantes selecionados.'}
+                </p>
+              )}
+              {existeTomadorComGrupo && (
+                <p className="mt-1 text-[11px] text-ds-light">
+                  Tomadores com faturamento por grupo configurado não aparecem aqui — a produção deles é gerada pelo Fechamento por Grupo.
                 </p>
               )}
               {tomador && tomadoresFiltrados && !tomadoresFiltrados.some(t => t.id === tomador.id) && (

@@ -352,7 +352,9 @@ export function PortalProducaoNovaPage() {
         // de Tomador (cnaes/servicos) já usado pelo formulário — getTomadoresAlocados() só
         // retorna { id, razaoSocial, municipio }, insuficiente para essa lógica.
         const idsAlocados = new Set(alocados.map(a => a.id))
-        setTomadores(t.filter(tom => idsAlocados.has(tom.id)))
+        // Tomadores com faturamento por grupo configurado não geram produção manual — a produção
+        // deles é gerada pelo Fechamento por Grupo (PINSAUDE-13.11).
+        setTomadores(t.filter(tom => idsAlocados.has(tom.id) && !tom.temGrupoFaturamento))
         setServicos(s)
         setEmpresas(e)
         // Auto-seleciona empresa se única

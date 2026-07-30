@@ -556,6 +556,7 @@ public class TomadorService {
         List<TomadorServicoResponse> servicos = vinculosServico.stream()
             .map(v -> TomadorServicoResponse.from(v, servicosPorId.get(v.getServicoId())))
             .toList();
+        boolean temGrupoFaturamento = grupoRepo.existsByTomadorIdAndAtivoTrue(t.getId());
         return new TomadorResponse(
             t.getId(),
             t.getTipo().name(),
@@ -575,7 +576,8 @@ public class TomadorService {
             t.getPais(),
             aliquotas,
             cnaes,
-            servicos
+            servicos,
+            temGrupoFaturamento
         );
     }
 }

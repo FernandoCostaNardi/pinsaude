@@ -22,5 +22,6 @@ public record TomadorResponse(
     String pais,
     List<TomadorAliquotaResponse> aliquotas,
     List<TomadorCnaeResponse> cnaes,
-    List<TomadorServicoResponse> servicos
+    List<TomadorServicoResponse> servicos,
+    boolean temGrupoFaturamento
 ) {}
