@@ -14,6 +14,7 @@ import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.ParticipacaoRepository;
 import br.com.pinsaude.faturamento.repository.ProducaoRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
+import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.http.HttpStatus;
@@ -40,17 +41,20 @@ public class ProducaoService {
     private final TomadorRepository       tomadorRepo;
     private final ServicoRepository       servicoRepo;
     private final MedicoTomadorRepository medicoTomadorRepo;
+    private final TomadorGrupoFaturamentoRepository grupoRepo;
 
     public ProducaoService(ProducaoRepository producaoRepo,
                            ParticipacaoRepository participacaoRepo,
                            TomadorRepository tomadorRepo,
                            ServicoRepository servicoRepo,
-                           MedicoTomadorRepository medicoTomadorRepo) {
+                           MedicoTomadorRepository medicoTomadorRepo,
+                           TomadorGrupoFaturamentoRepository grupoRepo) {
         this.producaoRepo     = producaoRepo;
         this.participacaoRepo = participacaoRepo;
         this.tomadorRepo      = tomadorRepo;
         this.servicoRepo      = servicoRepo;
         this.medicoTomadorRepo = medicoTomadorRepo;
+        this.grupoRepo        = grupoRepo;
     }
 
     @Transactional(readOnly = true)
@@ -101,6 +105,11 @@ public class ProducaoService {
             .orElseThrow(() -> new EntityNotFoundException("Tomador não encontrado: " + req.tomadorId()));
         Servico servico = servicoRepo.findById(req.servicoId())
             .orElseThrow(() -> new EntityNotFoundException("Serviço não encontrado: " + req.servicoId()));
+
+        if (grupoRepo.existsByTomadorIdAndAtivoTrue(req.tomadorId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Tomador possui faturamento por grupo configurado. Lance a produção pelo Fechamento por Grupo.");
+        }
 
         for (var participante : req.participantes()) {
             if (!medicoTomadorRepo.existsByTomadorIdAndMedicoId(req.tomadorId(), participante.medicoId())) {

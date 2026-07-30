@@ -67,6 +67,7 @@ export interface Tomador {
   aliquotas: TomadorAliquota[]
   cnaes: TomadorCnae[]
   servicos: TomadorServico[]
+  temGrupoFaturamento: boolean
 }
 
 export interface TomadorRequest {

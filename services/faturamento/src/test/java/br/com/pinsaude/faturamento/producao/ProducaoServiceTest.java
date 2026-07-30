@@ -10,6 +10,7 @@ import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.ParticipacaoRepository;
 import br.com.pinsaude.faturamento.repository.ProducaoRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
+import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
 import br.com.pinsaude.faturamento.service.ProducaoService;
 import jakarta.persistence.EntityNotFoundException;
@@ -41,6 +42,7 @@ class ProducaoServiceTest {
     @Mock TomadorRepository tomadorRepo;
     @Mock ServicoRepository servicoRepo;
     @Mock MedicoTomadorRepository medicoTomadorRepo;
+    @Mock TomadorGrupoFaturamentoRepository grupoRepo;
 
     @InjectMocks ProducaoService service;
 
@@ -136,6 +138,37 @@ class ProducaoServiceTest {
                 new ParticipacaoRequest(medicoA, 60000L, null),
                 new ParticipacaoRequest(medicoB, 40000L, null)
             ));
+
+        ProducaoResponse result = service.criar(req);
+
+        assertThat(result.valorBruto()).isEqualTo(100000L);
+    }
+
+    // ─── criar — validação de tomador com faturamento por grupo (PINSAUDE-13.11) ─
+
+    @Test
+    void criar_tomadorComGrupoFaturamento_lanca422() {
+        when(tomadorRepo.findById(tomadorId)).thenReturn(Optional.of(tomador));
+        when(servicoRepo.findById(servicoId)).thenReturn(Optional.of(servico));
+        when(grupoRepo.existsByTomadorIdAndAtivoTrue(tomadorId)).thenReturn(true);
+
+        ProducaoRequest req = new ProducaoRequest(tomadorId, servicoId, "2026-07", null, null, null,
+            List.of(new ParticipacaoRequest(medicoId, 100000L, null)));
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("faturamento por grupo configurado");
+    }
+
+    @Test
+    void criar_tomadorSemGrupoFaturamento_salvaComSucesso() {
+        when(tomadorRepo.findById(tomadorId)).thenReturn(Optional.of(tomador));
+        when(servicoRepo.findById(servicoId)).thenReturn(Optional.of(servico));
+        when(grupoRepo.existsByTomadorIdAndAtivoTrue(tomadorId)).thenReturn(false);
+        when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(true);
+
+        ProducaoRequest req = new ProducaoRequest(tomadorId, servicoId, "2026-07", null, null, null,
+            List.of(new ParticipacaoRequest(medicoId, 100000L, null)));
 
         ProducaoResponse result = service.criar(req);
 

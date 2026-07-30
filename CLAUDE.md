@@ -4274,6 +4274,61 @@ Ativação", sem precisar de um refetch.
 
 ---
 
+## Ocultar Tomadores com Faturamento por Grupo em Nova Produção (PINSAUDE-13.11)
+
+### Regra de negócio: tomador com grupo ativo não gera produção manual
+Um tomador com `tomador_grupos_faturamento` ativo (EPIC-13.1/13.8) tem sua produção gerada
+exclusivamente pelo fluxo Frequência Médica → Fechamento por Grupo, que agrega os itens de
+frequência por grupo/médico. Lançar produção manualmente (`POST /api/producoes`) para esse
+tomador cria uma segunda produção não relacionada ao fechamento, duplicando/conflitando com o
+valor que o Fechamento por Grupo geraria depois. A regra vale para **todas** as roles que podem
+criar produção (`operacao`, `gestao`, `medico`), sem bypass — mesmo padrão "sem bypass por papel"
+já usado na alocação médico↔tomador (EPIC-15.7).
+
+### `TomadorResponse.temGrupoFaturamento` — campo computado, sem endpoint novo
+Em vez de criar um endpoint dedicado ou um query param `semGrupoFaturamento`, `TomadorResponse`
+(bare record, sem `from()` — construído manualmente em `TomadorService.toResponse()`) ganhou um
+campo boolean `temGrupoFaturamento`, calculado com
+`grupoRepo.existsByTomadorIdAndAtivoTrue(t.getId())` — reaproveitando o repositório já injetado
+no service para `listarGrupos`/`criarGrupo`. Segue o mesmo padrão de N+1 já aceito nesse método
+para `aliquotas`/`cnaes`/`servicos` (uma query extra por tomador em `toResponse`, sem batch— ver
+nota já existente sobre isso no service) — não vale a pena introduzir batch-loading só para um
+boolean quando o método já paga esse custo para 3 outras coleções.
+
+### `ProducaoService.criar()` — novo check antes do loop de médico alocado
+```java
+if (grupoRepo.existsByTomadorIdAndAtivoTrue(req.tomadorId())) {
+    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+        "Tomador possui faturamento por grupo configurado. Lance a produção pelo Fechamento por Grupo.");
+}
+```
+Posicionado logo após carregar `tomador`/`servico` (que lançam 404) e antes do loop de
+`medicoTomadorRepo.existsByTomadorIdAndMedicoId` (422 de médico não alocado, EPIC-15.7) — um
+tomador-level gate deve vir antes de qualquer checagem por participante. `TomadorGrupoFaturamentoRepository`
+foi injetado como 6º parâmetro do construtor de `ProducaoService`; testes com `@InjectMocks`
+só precisam adicionar `@Mock TomadorGrupoFaturamentoRepository grupoRepo` — como o Mockito
+retorna `false` por padrão para métodos boolean não stubados, nenhum teste existente quebrou.
+
+### Frontend — filtro aplicado no ponto de montagem da lista, não em um novo estado
+`ProducaoNovaPage.tsx`: `tomadoresDisponiveis` (já existente, EPIC-15.13 — interseção por médico
+alocado) ganhou `.filter(t => !t.temGrupoFaturamento)` na mesma linha, e um hint estático
+(`existeTomadorComGrupo = tomadores.some(t => t.temGrupoFaturamento)`) explica a ausência só
+quando há pelo menos um tomador excluído no tenant. `PortalProducaoNovaPage.tsx`: mesmo filtro
+adicionado ao `.filter(...)` que já restringia por tomador alocado ao médico (EPIC-15.15) — uma
+única linha, sem estado novo.
+
+### ⚠️ Achado ao testar manualmente — tomador duplicado (mesmo CNPJ) já documentado em EPIC-15.11 serviu de teste natural
+Ao tentar validar o filtro no navegador, "SECRETARIA DA SAUDE DO ESTADO DO CEARA" aparecia no
+combo de Tomador mesmo após eu confirmar (via modal "Grupos de Faturamento") que ela tinha um
+grupo ativo. Investigando via `fetch('/api/tomadores?q=SECRETARIA')` no console, havia **dois**
+registros com o mesmo nome/CNPJ (o duplicado de dado de seed já documentado na seção EPIC-15.11
+do CLAUDE.md) — um com `temGrupoFaturamento: true` (corretamente ausente do combo) e outro com
+`false` (corretamente presente). Não é um bug desta task; serviu como confirmação de que o filtro
+diferencia corretamente registros por `id`, não por nome — sinalizado aqui para quem for investigar
+comportamento parecido no futuro sem lembrar do duplicado.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

@@ -118,6 +118,30 @@ class TomadorServiceTest {
     }
 
     @Test
+    void buscar_tomadorComGrupoFaturamentoAtivo_retornaTemGrupoFaturamentoTrue() {
+        Tomador t = tomadorFixture(TENANT);
+        when(repo.findAll()).thenReturn(List.of(t));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+        when(grupoRepo.existsByTomadorIdAndAtivoTrue(t.getId())).thenReturn(true);
+
+        List<TomadorResponse> result = service.buscar(null, null);
+
+        assertThat(result.get(0).temGrupoFaturamento()).isTrue();
+    }
+
+    @Test
+    void buscar_tomadorSemGrupoFaturamento_retornaTemGrupoFaturamentoFalse() {
+        Tomador t = tomadorFixture(TENANT);
+        when(repo.findAll()).thenReturn(List.of(t));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+        when(grupoRepo.existsByTomadorIdAndAtivoTrue(t.getId())).thenReturn(false);
+
+        List<TomadorResponse> result = service.buscar(null, null);
+
+        assertThat(result.get(0).temGrupoFaturamento()).isFalse();
+    }
+
+    @Test
     void buscar_comMedicoId_filtraSoTomadoresAlocados() {
         Tomador alocado = tomadorFixture(TENANT);
         Tomador naoAlocado = tomadorFixture(TENANT);

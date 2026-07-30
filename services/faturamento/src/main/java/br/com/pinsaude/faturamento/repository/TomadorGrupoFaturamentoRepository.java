@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface TomadorGrupoFaturamentoRepository extends JpaRepository<TomadorGrupoFaturamento, UUID> {
     List<TomadorGrupoFaturamento> findByTomadorIdOrderByOrdemAscNomeAsc(UUID tomadorId);
     List<TomadorGrupoFaturamento> findByTomadorIdAndAtivoTrueOrderByOrdemAscNomeAsc(UUID tomadorId);
+    boolean existsByTomadorIdAndAtivoTrue(UUID tomadorId);
 }
