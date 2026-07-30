@@ -12,6 +12,7 @@ import {
   medicosApi,
 } from '../api/medicosApi'
 import { useAuth } from '../auth/useAuth'
+import { ChecklistEditor } from '../components/ChecklistEditor'
 
 // ─── Auto-cadastro (EPIC-14.8) ────────────────────────────────────────────────
 
@@ -255,6 +256,7 @@ function DetalhePanel({
   medico: Medico
   onRefresh: (updated: Medico) => void
 }) {
+  const { user } = useAuth()
   const [activating,       setActivating]       = useState(false)
   const [signingContract,  setSigningContract]   = useState(false)
   const [enviandoConvite,  setEnviandoConvite]   = useState(false)
@@ -410,24 +412,13 @@ function DetalhePanel({
       {/* Checklist */}
       {medico.checklist && (
         <div className="border border-ds-border rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <BookOpen size={14} className="text-indigo-500" />
-            <p className="text-xs font-semibold text-ds-mid uppercase tracking-wide">Checklist de Conduta</p>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {[
-              { label: 'Número do conselho', ok: medico.checklist.numeroConselhoVerificado },
-              { label: 'Registros disciplinares', ok: medico.checklist.registrosDisciplinares },
-              { label: 'Processos médicos', ok: medico.checklist.processosMedicos },
-            ].map(({ label, ok }) => (
-              <div key={label} className="flex items-center gap-2">
-                {ok
-                  ? <CheckCircle2 size={12} className="text-green-500 shrink-0" />
-                  : <XCircle size={12} className="text-gray-300 shrink-0" />}
-                <span className={`text-xs ${ok ? 'text-ds-text' : 'text-ds-light'}`}>{label}</span>
-              </div>
-            ))}
-          </div>
+          <ChecklistEditor
+            checklist={medico.checklist}
+            medicoId={medico.id}
+            canEdit
+            verificadoPor={user?.name ?? user?.email ?? ''}
+            onSaved={updated => onRefresh({ ...medico, checklist: updated })}
+          />
         </div>
       )}
 
