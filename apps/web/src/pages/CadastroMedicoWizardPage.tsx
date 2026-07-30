@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   User, Home, FileText, ShieldCheck, HeartHandshake, Stethoscope,
   CheckCircle2, Loader2,
@@ -200,6 +200,7 @@ const emptyLgpd = (): LgpdForm => ({
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 export function CadastroMedicoWizardPage() {
+  const navigate = useNavigate()
   const [step, setStep]             = useState(0)
   const [maxVisited, setMaxVisited] = useState(0)
   const [form, setForm]             = useState<FormState>(emptyForm)
@@ -529,8 +530,7 @@ export function CadastroMedicoWizardPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={step === 0 ? undefined : () => goTo(step - 1)}
-                  disabled={step === 0}
+                  onClick={() => step === 0 ? navigate('/login') : goTo(step - 1)}
                 >
                   ← Voltar
                 </Button>
