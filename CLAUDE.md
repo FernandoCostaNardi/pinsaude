@@ -4241,6 +4241,39 @@ uma aba nova e login do zero sempre resolve — não vale a pena tentar recupera
 
 ---
 
+## Checklist de Conduta editável também na Aprovação (pós-EPIC-15)
+
+### `ChecklistEditor` extraído de `MedicoPerfilPage.tsx` para componente compartilhado
+A tela de Aprovação (`AprovacaoOnboardingPage.tsx`) mostrava o Checklist de Conduta em modo
+somente-leitura — só era possível marcar os 3 itens no perfil do médico (`MedicoPerfilPage.tsx`),
+obrigando o operador a navegar entre as duas telas para concluir a aprovação. `ChecklistEditor`
+(antes uma função local em `MedicoPerfilPage.tsx`) foi extraído para
+`apps/web/src/components/ChecklistEditor.tsx` e importado nas duas páginas — sem duplicar a
+lógica de dirty-check/save/cancel. O wrapper visual (`mt-6 pt-6 border-t`) usado no perfil do
+médico ficou no local de uso (`MedicoPerfilPage.tsx`), não no componente, porque a Aprovação já
+envolve o checklist num card próprio (`border rounded-xl p-4`) — o componente compartilhado não
+assume nenhum wrapper externo.
+
+### `canEdit` sempre `true` na Aprovação — não existe view somente-leitura nessa tela
+Diferente do perfil do médico (onde `canEdit = isGestao || isOperacao`, pensado para o caso do
+próprio médico visualizar seu perfil sem poder editar), `DetalhePanel` em
+`AprovacaoOnboardingPage.tsx` só é renderizado para quem já passou pelo gate
+`canAccess = isOperacao || isGestao` da página — não há cenário de acesso somente-leitura. Por
+isso `<ChecklistEditor canEdit ... />` é passado sem condicional nenhuma.
+
+### `onSaved` do componente devolve só o checklist — a página componente é quem funde no estado do médico
+A assinatura de `ChecklistEditor` retorna `onSaved(updated: Checklist)`, não o `Medico` inteiro
+(o endpoint `atualizarChecklist` só retorna o sub-recurso). Cada página consumidora funde esse
+retorno no seu próprio estado: `MedicoPerfilPage.tsx` faz
+`setMedico(m => m ? { ...m, checklist: updated } : m)`; `AprovacaoOnboardingPage.tsx` (que não
+guarda o médico selecionado num `useState` próprio dentro de `DetalhePanel`, e sim recebe via
+prop `medico` + callback `onRefresh(updated: Medico)`) faz
+`onRefresh({ ...medico, checklist: updated })` — reaproveitando o mesmo `onRefresh` que já
+atualiza a lista lateral e o `checklistOk`/`prontoPraAtivar` usados no card "Requisitos para
+Ativação", sem precisar de um refetch.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
