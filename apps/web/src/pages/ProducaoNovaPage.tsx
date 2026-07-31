@@ -490,8 +490,15 @@ export function ProducaoNovaPage() {
     ? servicos.filter(s => tomadorObj.servicos.some(v => v.servicoId === s.id))
     : servicos
 
-  // Auto-seleciona quando há exatamente 1 opção disponível (serviço ou CNAE do tomador);
-  // limpa a seleção que deixou de ser válida para o tomador atual.
+  // Empresas emissoras disponíveis para o tomador selecionado (PINSAUDE-13.12): se o tomador
+  // tem empresa(s) Pin vinculada(s), só elas aparecem; caso contrário, cai no catálogo completo
+  // (fallback para tomadores sem vínculo — maioria dos casos hoje).
+  const empresasDisponiveis: Empresa[] = tomadorObj && tomadorObj.empresas && tomadorObj.empresas.length > 0
+    ? empresas.filter(e => tomadorObj.empresas.some(v => v.empresaId === e.id))
+    : empresas
+
+  // Auto-seleciona quando há exatamente 1 opção disponível (serviço, CNAE ou empresa do
+  // tomador); limpa a seleção que deixou de ser válida para o tomador atual.
   useEffect(() => {
     // Serviço
     if (servicosDisponiveis.length === 1) {
@@ -508,7 +515,15 @@ export function ProducaoNovaPage() {
     } else if (cnaeCodigo && !cnaesTomador.some(c => c.codigoCnae === cnaeCodigo)) {
       setCnaeCodigo('')
     }
-  }, [tomador?.id, servicos, tomadores])
+
+    // Empresa emissora vinculada ao tomador
+    const empresasTomador = tomadorObj?.empresas ?? []
+    if (empresasTomador.length === 1) {
+      setEmpresaId(prev => prev === empresasTomador[0].empresaId ? prev : empresasTomador[0].empresaId)
+    } else if (empresaId && empresasTomador.length > 0 && !empresasTomador.some(v => v.empresaId === empresaId)) {
+      setEmpresaId('')
+    }
+  }, [tomador?.id, servicos, tomadores, empresas])
 
   const usedMedicoIds = new Set(participantes.map(p => p.medico?.id).filter(Boolean) as string[])
 
@@ -724,12 +739,19 @@ export function ProducaoNovaPage() {
                 className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid"
               >
                 <option value="">Selecione a empresa...</option>
-                {empresas.map(e => (
+                {empresasDisponiveis.map(e => (
                   <option key={e.id} value={e.id}>
                     {e.razaoSocial} — {e.cnpj}
                   </option>
                 ))}
               </select>
+              {tomadorObj && tomadorObj.empresas.length > 0 && (
+                <p className="mt-1 text-[11px] text-ds-light">
+                  {empresasDisponiveis.length === 1
+                    ? 'Empresa única vinculada ao tomador — selecionada automaticamente.'
+                    : 'Exibindo apenas as empresas Pin vinculadas a este tomador.'}
+                </p>
+              )}
             </Field>
 
             <Field label="Descrição Complementar">

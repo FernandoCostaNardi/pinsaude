@@ -68,6 +68,7 @@ export interface Tomador {
   cnaes: TomadorCnae[]
   servicos: TomadorServico[]
   temGrupoFaturamento: boolean
+  empresas: TomadorEmpresa[]
 }
 
 export interface TomadorRequest {
@@ -103,10 +104,11 @@ export interface ReceitaFederalData {
 }
 
 export const tomadoresApi = {
-  async listar(q?: string, medicoId?: string): Promise<Tomador[]> {
+  async listar(q?: string, medicoId?: string, empresaId?: string): Promise<Tomador[]> {
     const params = new URLSearchParams()
     if (q) params.set('q', q)
     if (medicoId) params.set('medicoId', medicoId)
+    if (empresaId) params.set('empresaId', empresaId)
     const qs = params.toString()
     const res = await fetch(`/api/tomadores${qs ? `?${qs}` : ''}`, {
       headers: authHeaders(),
@@ -330,6 +332,30 @@ export const tomadoresApi = {
     })
     return handleResponse<void>(res)
   },
+
+  // ─── Empresas Pin vinculadas ao tomador (PINSAUDE-13.12) ──────────────────
+
+  async listarEmpresas(tomadorId: string): Promise<TomadorEmpresa[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/empresas`, { headers: authHeaders() })
+    return handleResponse<TomadorEmpresa[]>(res)
+  },
+
+  async adicionarEmpresa(tomadorId: string, empresaId: string): Promise<TomadorEmpresa> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/empresas`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ empresaId }),
+    })
+    return handleResponse<TomadorEmpresa>(res)
+  },
+
+  async removerEmpresa(tomadorId: string, empresaId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/empresas/${empresaId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
 }
 
 // ─── Tipos para grupos / modalidades / setores ────────────────────────────────
@@ -394,5 +420,11 @@ export interface TomadorServicoOperacionalRequest {
 export interface MedicoTomador {
   medicoId: string
   tomadorId: string
+  createdAt: string
+}
+
+export interface TomadorEmpresa {
+  tomadorId: string
+  empresaId: string
   createdAt: string
 }

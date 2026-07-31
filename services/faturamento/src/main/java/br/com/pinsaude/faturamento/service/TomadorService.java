@@ -11,9 +11,12 @@ import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorServico;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 import br.com.pinsaude.faturamento.domain.MedicoTomador;
+import br.com.pinsaude.faturamento.domain.TomadorEmpresa;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorResponse;
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
+import br.com.pinsaude.faturamento.dto.TomadorEmpresaRequest;
+import br.com.pinsaude.faturamento.dto.TomadorEmpresaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorCnaeRequest;
@@ -33,6 +36,7 @@ import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
+import br.com.pinsaude.faturamento.repository.TomadorEmpresaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
@@ -67,6 +71,7 @@ public class TomadorService {
     private final TomadorModalidadeRepository modalidadeRepo;
     private final TomadorServicoOperacionalRepository servicoOperacionalRepo;
     private final MedicoTomadorRepository medicoTomadorRepo;
+    private final TomadorEmpresaRepository empresaTomadorRepo;
 
     public TomadorService(TomadorRepository repo,
                           CryptoService crypto,
@@ -78,7 +83,8 @@ public class TomadorService {
                           TomadorGrupoFaturamentoRepository grupoRepo,
                           TomadorModalidadeRepository modalidadeRepo,
                           TomadorServicoOperacionalRepository servicoOperacionalRepo,
-                          MedicoTomadorRepository medicoTomadorRepo) {
+                          MedicoTomadorRepository medicoTomadorRepo,
+                          TomadorEmpresaRepository empresaTomadorRepo) {
         this.repo = repo;
         this.crypto = crypto;
         this.consultaCnpjPort = consultaCnpjPort;
@@ -90,13 +96,22 @@ public class TomadorService {
         this.modalidadeRepo = modalidadeRepo;
         this.servicoOperacionalRepo = servicoOperacionalRepo;
         this.medicoTomadorRepo = medicoTomadorRepo;
+        this.empresaTomadorRepo = empresaTomadorRepo;
     }
 
     public List<TomadorResponse> buscar(String q, UUID medicoId) {
+        return buscar(q, medicoId, null);
+    }
+
+    public List<TomadorResponse> buscar(String q, UUID medicoId, UUID empresaId) {
         List<Tomador> tomadores = buscarPorQ(q);
         if (medicoId != null) {
             Set<UUID> alocados = new HashSet<>(medicoTomadorRepo.findTomadorIdsByMedicoId(medicoId));
             tomadores = tomadores.stream().filter(t -> alocados.contains(t.getId())).toList();
+        }
+        if (empresaId != null) {
+            Set<UUID> vinculados = new HashSet<>(empresaTomadorRepo.findTomadorIdsByEmpresaId(empresaId));
+            tomadores = tomadores.stream().filter(t -> vinculados.contains(t.getId())).toList();
         }
         return tomadores.stream().map(this::toResponse).toList();
     }
@@ -557,6 +572,8 @@ public class TomadorService {
             .map(v -> TomadorServicoResponse.from(v, servicosPorId.get(v.getServicoId())))
             .toList();
         boolean temGrupoFaturamento = grupoRepo.existsByTomadorIdAndAtivoTrue(t.getId());
+        List<TomadorEmpresaResponse> empresas = empresaTomadorRepo.findByTomadorId(t.getId()).stream()
+            .map(TomadorEmpresaResponse::from).toList();
         return new TomadorResponse(
             t.getId(),
             t.getTipo().name(),
@@ -577,7 +594,40 @@ public class TomadorService {
             aliquotas,
             cnaes,
             servicos,
-            temGrupoFaturamento
+            temGrupoFaturamento,
+            empresas
         );
+    }
+
+    // ─── Empresas Pin vinculadas ao tomador (PINSAUDE-13.12) ───────────────────
+
+    public List<TomadorEmpresaResponse> listarEmpresas(UUID tomadorId) {
+        findOrThrow(tomadorId);
+        return empresaTomadorRepo.findByTomadorId(tomadorId).stream()
+            .map(TomadorEmpresaResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public TomadorEmpresaResponse adicionarEmpresa(UUID tomadorId, TomadorEmpresaRequest req) {
+        findOrThrow(tomadorId);
+        if (empresaTomadorRepo.existsByTomadorIdAndEmpresaId(tomadorId, req.empresaId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Empresa já está vinculada a este tomador");
+        }
+        TomadorEmpresa te = new TomadorEmpresa();
+        te.setTomadorId(tomadorId);
+        te.setEmpresaId(req.empresaId());
+        return TomadorEmpresaResponse.from(empresaTomadorRepo.save(te));
+    }
+
+    @Transactional
+    public void removerEmpresa(UUID tomadorId, UUID empresaId) {
+        findOrThrow(tomadorId);
+        if (!empresaTomadorRepo.existsByTomadorIdAndEmpresaId(tomadorId, empresaId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Empresa não está vinculada a este tomador");
+        }
+        empresaTomadorRepo.deleteByTomadorIdAndEmpresaId(tomadorId, empresaId);
     }
 }
