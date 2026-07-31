@@ -30,6 +30,15 @@ const EMPTY_ALIQ: Record<Tributo, string> = { ISS: '', IR: '', CSLL: '', PIS: ''
 interface PendingCnae { codigo: string; descricao: string; key: number }
 interface PendingServico { servicoId: string; key: number }
 
+type Aba = 'identificacao' | 'contato' | 'fiscal' | 'servicos'
+
+const ABAS: { key: Aba; label: string }[] = [
+  { key: 'identificacao', label: 'Identificação' },
+  { key: 'contato',       label: 'Contato e Endereço' },
+  { key: 'fiscal',        label: 'Fiscal' },
+  { key: 'servicos',      label: 'CNAEs e Serviços' },
+]
+
 interface Props {
   tomador: Tomador | null
   onClose: () => void
@@ -59,6 +68,7 @@ let servicoKey = 1
 
 export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
   const isEditing = tomador !== null
+  const [aba, setAba]       = useState<Aba>('identificacao')
   const [form, setForm]     = useState<TomadorRequest>(emptyForm)
   const [errors, setErrors] = useState<Partial<Record<keyof TomadorRequest, string>>>({})
   const [apiError, setApiError] = useState<string | null>(null)
@@ -125,6 +135,7 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
       setServicos([])
       setPendingServicos([])
     }
+    setAba('identificacao')
     setErrors({})
     setApiError(null)
     setReceitaOk(false)
@@ -184,6 +195,7 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
     if (!form.cnpjCpf) errs.cnpjCpf = 'Campo obrigatório'
     if (!form.razaoSocialNome.trim()) errs.razaoSocialNome = 'Campo obrigatório'
     setErrors(errs)
+    if (Object.keys(errs).length > 0) setAba('identificacao')
     return Object.keys(errs).length === 0
   }
 
@@ -322,13 +334,41 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
     ? servicos.map(s => ({ key: s.id, label: servicoLabel(s.servicoId, s.codigoLc116, s.descricaoPadrao), isPending: false, ref: s }))
     : pendingServicos.map(s => ({ key: String(s.key), label: servicoLabel(s.servicoId), isPending: true, pendingKey: s.key }))
 
+  // No mobile todas as abas ficam empilhadas e visíveis (comportamento atual preservado);
+  // no desktop (sm+) só a aba ativa aparece, permitindo um modal mais largo sem ficar "puxado".
+  function abaClass(key: Aba): string {
+    return aba === key ? 'flex flex-col gap-5' : 'flex flex-col gap-5 sm:hidden'
+  }
+
   return (
-    <Modal open title={isEditing ? 'Editar Tomador' : 'Novo Tomador'} onClose={onClose} size="lg">
+    <Modal open title={isEditing ? 'Editar Tomador' : 'Novo Tomador'} onClose={onClose} size="2xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
         {apiError && (
           <Alert variant="error" onClose={() => setApiError(null)}>{apiError}</Alert>
         )}
+
+        {/* Tab bar — só no desktop; no mobile todas as abas ficam empilhadas (ver abaClass) */}
+        <div className="hidden sm:flex gap-1 p-1 bg-ds-input rounded-xl border border-ds-border">
+          {ABAS.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setAba(key)}
+              className={[
+                'flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                aba === key
+                  ? 'bg-white text-primary shadow-sm border border-ds-border'
+                  : 'text-ds-mid hover:text-ds-text',
+              ].join(' ')}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Identificação ── */}
+        <div className={abaClass('identificacao')}>
 
         {/* ── Tipo ── */}
         <div>
@@ -424,7 +464,11 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
           </div>
         </div>
 
+        </div>
+        {/* ── /Identificação ── */}
+
         {/* ── Contato e Endereço ── */}
+        <div className={abaClass('contato')}>
         <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
           <p className="text-xs font-semibold text-ds-mid mb-3 uppercase tracking-wide">Contato e Endereço</p>
           <div className="grid grid-cols-2 gap-3">
@@ -475,6 +519,11 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
             />
           </div>
         </div>
+        </div>
+        {/* ── /Contato e Endereço ── */}
+
+        {/* ── Fiscal (Retenções + Alíquotas) ── */}
+        <div className={abaClass('fiscal')}>
 
         {/* ── Retenções na Fonte ── */}
         <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
@@ -546,6 +595,12 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
             </div>
           </div>
         )}
+
+        </div>
+        {/* ── /Fiscal ── */}
+
+        {/* ── CNAEs e Serviços ── */}
+        <div className={abaClass('servicos')}>
 
         {/* ── CNAEs (PJ apenas) ── */}
         {!isPf && (
@@ -678,6 +733,9 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
             </button>
           </div>
         </div>
+
+        </div>
+        {/* ── /CNAEs e Serviços ── */}
 
         {/* ── Ações ── */}
         <div className="flex justify-end gap-3 pt-1 border-t border-ds-border">
