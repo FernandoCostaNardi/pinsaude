@@ -23,5 +23,6 @@ public record TomadorResponse(
     List<TomadorAliquotaResponse> aliquotas,
     List<TomadorCnaeResponse> cnaes,
     List<TomadorServicoResponse> servicos,
-    boolean temGrupoFaturamento
+    boolean temGrupoFaturamento,
+    List<TomadorEmpresaResponse> empresas
 ) {}

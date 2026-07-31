@@ -3,6 +3,8 @@ package br.com.pinsaude.faturamento.controller;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorResponse;
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
+import br.com.pinsaude.faturamento.dto.TomadorEmpresaRequest;
+import br.com.pinsaude.faturamento.dto.TomadorEmpresaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorCnaeRequest;
@@ -42,8 +44,9 @@ public class TomadorController {
     @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
     public ResponseEntity<List<TomadorResponse>> buscar(
             @RequestParam(required = false) String q,
-            @RequestParam(required = false) UUID medicoId) {
-        return ResponseEntity.ok(service.buscar(q, medicoId));
+            @RequestParam(required = false) UUID medicoId,
+            @RequestParam(required = false) UUID empresaId) {
+        return ResponseEntity.ok(service.buscar(q, medicoId, empresaId));
     }
 
     @GetMapping("/{id}")
@@ -282,6 +285,29 @@ public class TomadorController {
             @PathVariable UUID id,
             @PathVariable UUID medicoId) {
         service.removerMedico(id, medicoId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/empresas")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<TomadorEmpresaResponse>> listarEmpresas(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarEmpresas(id));
+    }
+
+    @PostMapping("/{id}/empresas")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorEmpresaResponse> adicionarEmpresa(
+            @PathVariable UUID id,
+            @Valid @RequestBody TomadorEmpresaRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.adicionarEmpresa(id, req));
+    }
+
+    @DeleteMapping("/{id}/empresas/{empresaId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerEmpresa(
+            @PathVariable UUID id,
+            @PathVariable UUID empresaId) {
+        service.removerEmpresa(id, empresaId);
         return ResponseEntity.noContent().build();
     }
 }

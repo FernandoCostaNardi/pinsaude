@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Search, Pencil, Trash2, Hospital,
-  CheckCircle2, Minus, AlertTriangle, Layers, Stethoscope,
+  CheckCircle2, Minus, AlertTriangle, Layers, Stethoscope, Building2,
 } from 'lucide-react'
 import {
   Button, Spinner, Alert,
@@ -13,6 +13,7 @@ import { formatCpf } from '../utils/cpf'
 import { TomadorFormModal } from '../components/TomadorFormModal'
 import { TomadorGruposModal } from '../components/TomadorGruposModal'
 import { TomadorMedicosModal } from '../components/TomadorMedicosModal'
+import { TomadorEmpresasModal } from '../components/TomadorEmpresasModal'
 import { useAuth } from '../auth/useAuth'
 
 // ─── Tipo badges ──────────────────────────────────────────────────────────────
@@ -149,6 +150,7 @@ export function TomadoresPage() {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [gruposTomador, setGruposTomador] = useState<Tomador | null>(null)
   const [medicosTomador, setMedicosTomador] = useState<Tomador | null>(null)
+  const [empresasTomador, setEmpresasTomador] = useState<Tomador | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -379,6 +381,13 @@ export function TomadoresPage() {
                     >
                       <Stethoscope size={14} />
                     </button>
+                    <button
+                      onClick={() => setEmpresasTomador(t)}
+                      className="p-1.5 rounded text-ds-light hover:bg-primary-50 hover:text-primary transition-colors"
+                      title="Empresas Pin vinculadas"
+                    >
+                      <Building2 size={14} />
+                    </button>
                     {canWrite && (
                       <>
                         <button
@@ -455,6 +464,13 @@ export function TomadoresPage() {
                             title="Médicos alocados"
                           >
                             <Stethoscope size={15} />
+                          </button>
+                          <button
+                            onClick={() => setEmpresasTomador(t)}
+                            className="p-1.5 rounded hover:bg-primary-50 text-ds-light hover:text-primary transition-colors"
+                            title="Empresas Pin vinculadas"
+                          >
+                            <Building2 size={15} />
                           </button>
                           {canWrite && (
                             <>
@@ -552,6 +568,13 @@ export function TomadoresPage() {
           tomador={medicosTomador}
           canWrite={canWrite}
           onClose={() => setMedicosTomador(null)}
+        />
+      )}
+      {empresasTomador && (
+        <TomadorEmpresasModal
+          tomador={empresasTomador}
+          canWrite={canWrite}
+          onClose={() => setEmpresasTomador(null)}
         />
       )}
     </div>

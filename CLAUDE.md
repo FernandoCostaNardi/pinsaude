@@ -4329,6 +4329,64 @@ comportamento parecido no futuro sem lembrar do duplicado.
 
 ---
 
+## Associação Tomador ↔ Empresa Pin (PINSAUDE-13.12)
+
+### Nova tabela `faturamento.tomador_empresas` — mesmo padrão de `medico_tomadores` (EPIC-15.1)
+Tomador nunca era vinculado a uma empresa Pin específica — ao criar Produção/Nota, o operador
+escolhia a empresa emissora manualmente toda vez, e não havia como saber "quais tomadores cada
+empresa Pin atende" para relatórios futuros. Migration `V23__create_tomador_empresas.sql`
+replica exatamente o padrão de `V21__create_medico_tomadores.sql`: `FORCE ROW LEVEL SECURITY`
+obrigatório (app conecta como `svc_faturamento`, dono da tabela), `WITH CHECK (true)` para não
+bloquear o INSERT, `empresa_id` sem FK (Empresa é entidade do onboarding, outro schema/serviço —
+mesmo motivo de `producoes.empresa_id`/`medico_tomadores.medico_id`), `UNIQUE(tomador_id,
+empresa_id)` permite N empresas por tomador (requisito explícito: "deve ser possível adicionar
+mais de uma empresa Pin ao tomador").
+
+### Duplo propósito do vínculo — DTO embutido no `TomadorResponse` **e** endpoints dedicados
+Diferente de `medicos`/`grupos`/`modalidades`/`setores` (só endpoints dedicados, nunca embutidos
+em `TomadorResponse`), `empresas` aparece nos dois lugares:
+1. **Embutido** — `TomadorResponse.empresas: List<TomadorEmpresaResponse>`, calculado em
+   `toResponse()` via `empresaTomadorRepo.findByTomadorId(t.getId())` (mesmo padrão de N+1 já
+   aceito nesse método para `aliquotas`/`cnaes`/`servicos`/`temGrupoFaturamento` — uma query
+   extra por tomador, sem batch). Necessário porque o frontend precisa saber, para CADA tomador
+   já carregado na tela de Nova Produção, quais empresas estão vinculadas — sem isso seria um
+   fetch extra por tomador (N+1 client-side) só para popular o auto-select.
+2. **Endpoints dedicados** (`GET/POST/DELETE /api/tomadores/{id}/empresas`) — para o modal de
+   gestão (`TomadorEmpresasModal.tsx`) e para o filtro `GET /api/tomadores?empresaId=` (relatórios
+   futuros "quais tomadores pertencem à empresa X"), mesmo padrão de `?medicoId=` (EPIC-15.5).
+
+`TomadorService.buscar(String q, UUID medicoId)` virou um overload que delega para
+`buscar(q, medicoId, null)` — evita quebrar as 8 chamadas de teste existentes com 2 argumentos.
+
+### Auto-seleção da Empresa Emissora em Nova Produção — mesmo padrão de CNAE/Serviço (EPIC-04.4)
+`ProducaoNovaPage.tsx`: `empresasDisponiveis` restringe o combo às empresas vinculadas ao tomador
+selecionado (fallback pro catálogo completo quando o tomador não tem vínculo — maioria dos casos
+hoje). Auto-seleciona quando há exatamente 1 vínculo; limpa a seleção manual anterior só quando o
+tomador TEM vínculos e a seleção atual não está entre eles (nunca limpa quando o tomador não tem
+nenhum vínculo, para não quebrar o fluxo de seleção manual pré-existente — diferente do CNAE, que
+é campo opcional e pode ser limpo sem problema, `empresaId` é obrigatório).
+
+**Não confundir com o auto-select pré-existente por `cnpj_id` do JWT:** antes desta task já
+existia um auto-select de empresa **ao carregar a página** (linhas ~424-431), tentando casar
+`user.cnpj_id` do JWT logado com o CNPJ de alguma empresa — histórico de EPIC-04.4, roda **antes**
+de qualquer tomador ser selecionado. Os dois mecanismos coexistem sem conflito porque o novo só
+age depois que `tomador?.id` muda (dependência do `useEffect`); mas ao testar manualmente, um
+tomador cuja empresa vinculada coincide com a do JWT (mesmo CNPJ) torna os dois mecanismos
+indistinguíveis no resultado final — testar a restrição de **opções do `<select>`** (contagem de
+`<option>`), não só o valor selecionado, para confirmar que o novo filtro está de fato ativo.
+
+### ⚠️ Achado (não corrigido nesta task): `operacao` recebe 403 em `GET /api/empresas`
+`EmpresaController` (onboarding) tem `@PreAuthorize("hasRole('gestao')")` **a nível de classe**
+— nenhum método libera `operacao`, nem o `GET` de listagem. Isso significa que `ProducaoNovaPage.tsx`
+(acessível a `operacao`) sempre teve o combo "Empresa Emissora" **vazio** para esse papel: a
+chamada já tinha um fallback silencioso (`.catch(() => ({ content: [] ... }))`) que mascara o 403
+como "nenhuma empresa cadastrada". Descoberto ao testar esta task como `operacao` — o combo
+aparecia vazio mesmo tendo 3 empresas cadastradas no tenant. Não corrigido aqui por estar fora do
+escopo (bug pré-existente, não introduzido por esta mudança) — sinalizado para abrir como bug de
+produção separado. Contornado nesta sessão testando como `gestao`, que tem acesso normal.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
