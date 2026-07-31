@@ -4,7 +4,9 @@ import br.com.pinsaude.faturamento.config.SecurityUtils;
 import br.com.pinsaude.faturamento.domain.MedicoTomador;
 import br.com.pinsaude.faturamento.domain.TipoTomador;
 import br.com.pinsaude.faturamento.domain.Tomador;
+import br.com.pinsaude.faturamento.domain.TomadorEmpresa;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
+import br.com.pinsaude.faturamento.dto.TomadorEmpresaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
@@ -12,6 +14,7 @@ import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
+import br.com.pinsaude.faturamento.repository.TomadorEmpresaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
@@ -59,6 +62,7 @@ class TomadorServiceTest {
     @Mock TomadorModalidadeRepository modalidadeRepo;
     @Mock TomadorServicoOperacionalRepository servicoOperacionalRepo;
     @Mock MedicoTomadorRepository medicoTomadorRepo;
+    @Mock TomadorEmpresaRepository empresaTomadorRepo;
 
     @InjectMocks TomadorService service;
 
@@ -79,6 +83,7 @@ class TomadorServiceTest {
         when(aliquotaRepo.findByTomadorId(any())).thenReturn(Collections.emptyList());
         when(cnaeRepo.findByTomadorId(any())).thenReturn(Collections.emptyList());
         when(servicoVinculoRepo.findByTomadorId(any())).thenReturn(Collections.emptyList());
+        when(empresaTomadorRepo.findByTomadorId(any())).thenReturn(Collections.emptyList());
     }
 
     // ─── buscar ──────────────────────────────────────────────────────────────
@@ -469,6 +474,114 @@ class TomadorServiceTest {
         service.removerMedico(tomadorId, medicoId);
 
         verify(medicoTomadorRepo).deleteByTomadorIdAndMedicoId(tomadorId, medicoId);
+    }
+
+    // ─── empresas Pin vinculadas ao tomador (PINSAUDE-13.12) ──────────────────
+
+    @Test
+    void listarEmpresas_tomadorInexistente_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.listarEmpresas(tomadorId))
+            .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    void listarEmpresas_retornaVinculosDoTomador() {
+        UUID tomadorId = UUID.randomUUID();
+        TomadorEmpresa te = new TomadorEmpresa();
+        te.setTomadorId(tomadorId);
+        te.setEmpresaId(UUID.randomUUID());
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(empresaTomadorRepo.findByTomadorId(tomadorId)).thenReturn(List.of(te));
+
+        var result = service.listarEmpresas(tomadorId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).empresaId()).isEqualTo(te.getEmpresaId());
+    }
+
+    @Test
+    void adicionarEmpresa_duplicado_lanca409() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID empresaId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(empresaTomadorRepo.existsByTomadorIdAndEmpresaId(tomadorId, empresaId)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.adicionarEmpresa(tomadorId, new TomadorEmpresaRequest(empresaId)))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("já está vinculada");
+    }
+
+    @Test
+    void adicionarEmpresa_valido_salvaRetornaResponse() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID empresaId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(empresaTomadorRepo.existsByTomadorIdAndEmpresaId(tomadorId, empresaId)).thenReturn(false);
+        when(empresaTomadorRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = service.adicionarEmpresa(tomadorId, new TomadorEmpresaRequest(empresaId));
+
+        assertThat(result.tomadorId()).isEqualTo(tomadorId);
+        assertThat(result.empresaId()).isEqualTo(empresaId);
+        verify(empresaTomadorRepo).save(any());
+    }
+
+    @Test
+    void removerEmpresa_naoVinculada_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID empresaId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(empresaTomadorRepo.existsByTomadorIdAndEmpresaId(tomadorId, empresaId)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.removerEmpresa(tomadorId, empresaId))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não está vinculada");
+    }
+
+    @Test
+    void removerEmpresa_vinculada_removeComSucesso() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID empresaId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(empresaTomadorRepo.existsByTomadorIdAndEmpresaId(tomadorId, empresaId)).thenReturn(true);
+
+        service.removerEmpresa(tomadorId, empresaId);
+
+        verify(empresaTomadorRepo).deleteByTomadorIdAndEmpresaId(tomadorId, empresaId);
+    }
+
+    @Test
+    void buscar_comEmpresaId_filtraSoTomadoresVinculados() {
+        Tomador vinculado = tomadorFixture(TENANT);
+        Tomador naoVinculado = tomadorFixture(TENANT);
+        UUID empresaId = UUID.randomUUID();
+        when(repo.findAll()).thenReturn(List.of(vinculado, naoVinculado));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+        when(empresaTomadorRepo.findTomadorIdsByEmpresaId(empresaId)).thenReturn(List.of(vinculado.getId()));
+
+        List<TomadorResponse> result = service.buscar(null, null, empresaId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(vinculado.getId());
+    }
+
+    @Test
+    void buscar_semFiltro_incluiEmpresasVinculadas() {
+        Tomador t = tomadorFixture(TENANT);
+        TomadorEmpresa te = new TomadorEmpresa();
+        te.setTomadorId(t.getId());
+        te.setEmpresaId(UUID.randomUUID());
+        when(repo.findAll()).thenReturn(List.of(t));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+        when(empresaTomadorRepo.findByTomadorId(t.getId())).thenReturn(List.of(te));
+
+        List<TomadorResponse> result = service.buscar(null, null);
+
+        assertThat(result.get(0).empresas()).hasSize(1);
+        assertThat(result.get(0).empresas().get(0).empresaId()).isEqualTo(te.getEmpresaId());
     }
 
     // ─── fixtures ────────────────────────────────────────────────────────────
