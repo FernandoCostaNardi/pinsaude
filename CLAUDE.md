@@ -4387,6 +4387,66 @@ produção separado. Contornado nesta sessão testando como `gestao`, que tem ac
 
 ---
 
+## Modal "Editar Tomador" com Abas no Desktop (PINSAUDE-13.13)
+
+### Problema: modal `size="lg"` (max-w-lg, 512px) com formulário longo empilhado verticalmente
+`TomadorFormModal.tsx` tinha ~9 seções (Tipo, Documento, Dados básicos, Contato e Endereço,
+Retenções na Fonte, Alíquotas Diferenciadas, CNAEs, Serviços) todas empilhadas num único scroll
+vertical dentro de um modal estreito — no mobile isso é o layout correto (bottom sheet, tela
+cheia), mas no desktop sobrava muito espaço horizontal não aproveitado e o formulário ficava
+"espremido" e muito longo para rolar.
+
+### Solução: abas só no desktop, mobile continua com tudo empilhado — via CSS puro, sem duplicar JSX
+Em vez de renderizar duas árvores de DOM diferentes (mobile vs desktop), cada grupo de seções
+("Identificação", "Contato e Endereço", "Fiscal", "CNAEs e Serviços") é envolvido numa única
+`<div>` cuja classe alterna entre `'flex flex-col gap-5'` (aba ativa — sempre visível) e
+`'flex flex-col gap-5 sm:hidden'` (aba inativa — visível só abaixo do breakpoint `sm` porque
+`sm:hidden` é `min-width`, então nunca ativa no mobile). A barra de abas em si usa `hidden
+sm:flex` (o inverso — só aparece no desktop). Resultado: no mobile, todos os grupos ficam com
+`display:flex` o tempo todo (independente do estado `aba`, que é irrelevante lá porque a barra
+de abas nem aparece) — comportamento anterior 100% preservado; no desktop, só o grupo da aba
+ativa aparece. Mesmo padrão `hidden sm:X` / `X sm:hidden` já usado em todo o resto do projeto
+(inclusive no próprio `Modal.tsx`, que já faz bottom-sheet mobile vs dialog centralizado desktop
+dessa forma) — não foi inventado um mecanismo novo.
+
+```tsx
+function abaClass(key: Aba): string {
+  return aba === key ? 'flex flex-col gap-5' : 'flex flex-col gap-5 sm:hidden'
+}
+// ...
+<div className="hidden sm:flex gap-1 p-1 bg-ds-input rounded-xl border border-ds-border">
+  {ABAS.map(({ key, label }) => <button onClick={() => setAba(key)} ...>{label}</button>)}
+</div>
+<div className={abaClass('identificacao')}>{/* Tipo, Documento, Dados básicos */}</div>
+<div className={abaClass('contato')}>{/* Contato e Endereço */}</div>
+<div className={abaClass('fiscal')}>{/* Retenções + Alíquotas Diferenciadas */}</div>
+<div className={abaClass('servicos')}>{/* CNAEs + Serviços LC116 */}</div>
+```
+
+### Modal `size` sobe de `lg` (512px) para `2xl` (768px) — sem efeito visual no mobile
+`libs/frontend/src/components/Modal.tsx` já é responsivo por natureza: no mobile, `w-full` sempre
+vence porque a viewport é mais estreita que qualquer `max-w-*`; o `size` só importa a partir do
+breakpoint onde `sm:p-4` entra em ação (desktop). Trocar `size="lg"` por `size="2xl"` (mesmo valor
+já usado em `TomadorGruposModal.tsx`) alarga o modal só no desktop, sem tocar no mobile.
+
+### Botões "Ações" (Cancelar/Salvar) ficam fora de qualquer aba — sempre visíveis
+Intencional: o rodapé com os botões de submit não está dentro de nenhum `abaClass(...)`, então
+aparece em qualquer aba/tamanho de tela — o usuário nunca precisa navegar até uma aba específica
+só para salvar ou cancelar.
+
+### Auto-troca de aba na validação — evita erro "invisível" numa aba não ativa
+`validate()` só valida `cnpjCpf`/`razaoSocialNome`, ambos na aba "Identificação". Se a validação
+falhar enquanto o usuário está em outra aba (ex.: preencheu CNAEs primeiro), `setAba('identificacao')`
+é chamado dentro do próprio `validate()` para garantir que o erro fique visível assim que o submit
+falha — sem esse auto-switch, o `<Alert>`/mensagens de erro ficariam escondidas atrás de `sm:hidden`.
+
+### Reset da aba ativa ao trocar de tomador (ou abrir "Novo Tomador")
+`setAba('identificacao')` foi adicionado ao mesmo `useEffect` que já reseta form/alíquotas/CNAEs/
+serviços quando a prop `tomador` muda — evita abrir o modal de um tomador novo já numa aba que não
+é a primeira (resíduo de uma edição anterior na mesma sessão do componente).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
