@@ -393,9 +393,10 @@ export interface TomadorModalidade {
   id: string
   tomadorId: string
   nome: string
-  turno: 'DIURNO' | 'NOTURNO'
-  horario: string
-  horas: number
+  tipo: 'PLANTAO' | 'MENSAL'
+  turno: 'DIURNO' | 'NOTURNO' | null
+  horario: string | null
+  horas: number | null
   valorCentavos: number
   deslocamentoCentavos: number
   ativo: boolean
@@ -403,9 +404,10 @@ export interface TomadorModalidade {
 
 export interface TomadorModalidadeRequest {
   nome: string
-  turno: 'DIURNO' | 'NOTURNO'
-  horario: string
-  horas: number
+  tipo: 'PLANTAO' | 'MENSAL'
+  turno: 'DIURNO' | 'NOTURNO' | null
+  horario: string | null
+  horas: number | null
   valorCentavos: number
   deslocamentoCentavos: number
   ativo: boolean

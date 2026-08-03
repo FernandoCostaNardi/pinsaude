@@ -34,8 +34,8 @@ export interface MedicoParticipacaoPreview {
 export interface ModalidadeDetalhe {
   modalidadeId: string
   nome: string
-  turno: string
-  horas: number
+  turno: string | null
+  horas: number | null
   valorUnitarioCentavos: number
   deslocamentoCentavos: number
   valorItemCentavos: number

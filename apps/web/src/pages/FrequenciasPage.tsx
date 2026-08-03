@@ -35,6 +35,14 @@ function formatDate(iso: string): string {
   return `${d}/${m}/${y}`
 }
 
+// Turno/horário são ambos opcionais numa modalidade Por Plantão — monta o texto de detalhe
+// com o que estiver preenchido, caindo para "Nh" quando nenhum dos dois foi informado.
+function detalheModalidade(m: TomadorModalidade): string {
+  if (m.tipo === 'MENSAL') return 'Mensal'
+  const partes = [m.turno, m.horario].filter(Boolean)
+  return partes.length > 0 ? partes.join(' · ') : `${m.horas}h`
+}
+
 function generateCompetencias(): string[] {
   const comps: string[] = []
   const now = new Date()
@@ -403,7 +411,7 @@ function PlantaoFormPanel({
           items={modalidades}
           value={modalidade}
           onChange={setModalidade}
-          getLabel={m => `${m.nome} — ${m.turno} · ${m.horario}`}
+          getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
           disabled={modalidades.length === 0}
         />
       </div>
@@ -411,7 +419,7 @@ function PlantaoFormPanel({
       {/* Preview de valores */}
       {modalidade && (
         <div className="bg-white rounded-lg px-4 py-2.5 mb-3 flex items-center gap-5 text-xs border border-ds-border/60">
-          <span className="text-ds-light">{modalidade.horario}</span>
+          <span className="text-ds-light">{detalheModalidade(modalidade)}</span>
           <span className="text-ds-mid">Valor: <span className="font-bold text-ds-text">{formatBRL(modalidade.valorCentavos)}</span></span>
           {modalidade.deslocamentoCentavos > 0 && (
             <span className="text-ds-mid">Deslocamento: <span className="font-bold text-ds-text">{formatBRL(modalidade.deslocamentoCentavos)}</span></span>
@@ -619,7 +627,7 @@ function PlantaoGridPanel({
                     }`}>
                     <option value="">{modalidades.length === 0 ? 'Sem modalidades' : 'Selecione...'}</option>
                     {modalidades.map(m => (
-                      <option key={m.id} value={m.id}>{m.nome} — {m.turno} · {m.horario}</option>
+                      <option key={m.id} value={m.id}>{m.nome} — {detalheModalidade(m)}</option>
                     ))}
                   </select>
                 </td>

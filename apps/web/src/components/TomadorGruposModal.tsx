@@ -46,21 +46,6 @@ const HORARIOS_FIXOS = [
   { turno: 'NOTURNO' as const, horas: 12, horario: '19:00 as 07:00', label: '🌙 Noturno 12h — 19:00 as 07:00' },
 ]
 
-function syncByTurnoHoras(
-  turno: 'DIURNO' | 'NOTURNO',
-  horasStr: string,
-): Partial<ModalidadeForm> {
-  const combo = HORARIOS_FIXOS.find(c => c.turno === turno && c.horas === Number(horasStr))
-  return combo ? { turno, horasStr, horario: combo.horario } : { turno, horasStr }
-}
-
-function syncByHorario(horario: string): Partial<ModalidadeForm> {
-  const combo = HORARIOS_FIXOS.find(c => c.horario === horario)
-  return combo
-    ? { horario, turno: combo.turno, horasStr: String(combo.horas) }
-    : { horario }
-}
-
 // ─── Form state types ─────────────────────────────────────────────────────────
 
 interface GrupoForm {
@@ -71,7 +56,8 @@ interface GrupoForm {
 
 interface ModalidadeForm {
   nome: string
-  turno: 'DIURNO' | 'NOTURNO'
+  tipo: 'PLANTAO' | 'MENSAL'
+  turno: 'DIURNO' | 'NOTURNO' | ''
   horario: string
   horasStr: string
   valorStr: string
@@ -85,8 +71,8 @@ function emptyGrupoForm(): GrupoForm {
 
 function emptyModalidadeForm(): ModalidadeForm {
   return {
-    nome: '', turno: 'DIURNO', horario: '07:00 as 19:00',
-    horasStr: '12', valorStr: '', deslocamentoStr: '', ativo: true,
+    nome: '', tipo: 'PLANTAO', turno: '', horario: '',
+    horasStr: '', valorStr: '', deslocamentoStr: '', ativo: true,
   }
 }
 
@@ -166,6 +152,7 @@ function ModalidadeFormInline({
   isNew: boolean
 }) {
   const SELECT_CLS = 'w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white'
+  const isMensal = form.tipo === 'MENSAL'
 
   return (
     <div className="space-y-3">
@@ -175,57 +162,98 @@ function ModalidadeFormInline({
             label="Nome da modalidade *"
             value={form.nome}
             onChange={e => onChange({ nome: e.target.value })}
-            placeholder="ex: Plantão 12h Noturno"
+            placeholder="ex: Plantão 12h Noturno, Diária 10h, Coordenação de UTI"
           />
         </div>
 
-        {/* Horário — seleção primária que auto-preenche turno e horas */}
+        {/* Tipo de modalidade — decide se turno/horário/horas aparecem */}
         <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Horário *</label>
-          <select
-            value={form.horario}
-            onChange={e => onChange(syncByHorario(e.target.value))}
-            className={SELECT_CLS}
-          >
-            <option value="">Selecione o horário...</option>
-            {HORARIOS_FIXOS.map(c => (
-              <option key={c.horario} value={c.horario}>{c.label}</option>
-            ))}
-          </select>
-          {form.horario && (
-            <p className="text-[11px] text-ds-light mt-1">
-              Turno e duração preenchidos automaticamente pelo horário selecionado
-            </p>
-          )}
+          <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de modalidade *</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onChange({ tipo: 'PLANTAO' })}
+              className={[
+                'px-3 py-2 rounded-lg border text-xs font-semibold text-left transition-colors',
+                !isMensal ? 'border-primary bg-primary-50 text-primary' : 'border-gray-300 text-gray-600 hover:border-primary/40',
+              ].join(' ')}
+            >
+              Por Plantão
+              <span className="block font-normal text-[10px] text-ds-light mt-0.5">quantidade de horas (turno e horário opcionais)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ tipo: 'MENSAL' })}
+              className={[
+                'px-3 py-2 rounded-lg border text-xs font-semibold text-left transition-colors',
+                isMensal ? 'border-primary bg-primary-50 text-primary' : 'border-gray-300 text-gray-600 hover:border-primary/40',
+              ].join(' ')}
+            >
+              Valor Fixo Mensal
+              <span className="block font-normal text-[10px] text-ds-light mt-0.5">sem turno/horário, ex: Coordenação de UTI</span>
+            </button>
+          </div>
         </div>
 
-        {/* Turno — altera o horário se houver combo correspondente com horas atual */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Turno</label>
-          <select
-            value={form.turno}
-            onChange={e => onChange(syncByTurnoHoras(e.target.value as 'DIURNO' | 'NOTURNO', form.horasStr))}
-            className={SELECT_CLS}
-          >
-            <option value="DIURNO">☀️ DIURNO</option>
-            <option value="NOTURNO">🌙 NOTURNO</option>
-          </select>
-        </div>
+        {!isMensal && (
+          <>
+            {/* Presets rápidos — preenchem turno + horas + horário de uma vez, mas os 3 campos abaixo continuam livres para edição */}
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Preencher rápido (opcional)</label>
+              <div className="flex flex-wrap gap-1.5">
+                {HORARIOS_FIXOS.map(c => (
+                  <button
+                    key={c.horario}
+                    type="button"
+                    onClick={() => onChange({ turno: c.turno, horasStr: String(c.horas), horario: c.horario })}
+                    className="px-2.5 py-1 rounded-lg border border-gray-300 text-[11px] text-gray-700 hover:border-primary hover:text-primary transition-colors"
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        {/* Horas — altera o horário se houver combo correspondente com turno atual */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Horas</label>
-          <select
-            value={form.horasStr}
-            onChange={e => onChange(syncByTurnoHoras(form.turno, e.target.value))}
-            className={SELECT_CLS}
-          >
-            <option value="6">6 horas</option>
-            <option value="12">12 horas</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Valor *</label>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Turno</label>
+              <select
+                value={form.turno}
+                onChange={e => onChange({ turno: e.target.value as 'DIURNO' | 'NOTURNO' | '' })}
+                className={SELECT_CLS}
+              >
+                <option value="">Não especificar</option>
+                <option value="DIURNO">☀️ DIURNO</option>
+                <option value="NOTURNO">🌙 NOTURNO</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Horas *</label>
+              <input
+                type="number"
+                step="0.5"
+                min="0.5"
+                value={form.horasStr}
+                onChange={e => onChange({ horasStr: e.target.value })}
+                placeholder="ex: 10"
+                className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
+              />
+            </div>
+
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Horário</label>
+              <input
+                value={form.horario}
+                onChange={e => onChange({ horario: e.target.value })}
+                placeholder="ex: 07:00 as 17:00 (opcional)"
+                className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
+              />
+            </div>
+          </>
+        )}
+
+        <div className={isMensal ? 'col-span-2' : ''}>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{isMensal ? 'Valor Mensal *' : 'Valor *'}</label>
           <div className="relative">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-ds-mid pointer-events-none">R$</span>
             <input
@@ -236,18 +264,20 @@ function ModalidadeFormInline({
             />
           </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Deslocamento</label>
-          <div className="relative">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-ds-mid pointer-events-none">R$</span>
-            <input
-              value={form.deslocamentoStr}
-              onChange={e => onChange({ deslocamentoStr: maskValor(e) })}
-              placeholder="0,00"
-              className="block w-full pl-7 pr-3 py-2 rounded-lg border border-gray-300 text-sm text-right text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
-            />
+        {!isMensal && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Deslocamento</label>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-ds-mid pointer-events-none">R$</span>
+              <input
+                value={form.deslocamentoStr}
+                onChange={e => onChange({ deslocamentoStr: maskValor(e) })}
+                placeholder="0,00"
+                className="block w-full pl-7 pr-3 py-2 rounded-lg border border-gray-300 text-sm text-right text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
+              />
+            </div>
           </div>
-        </div>
+        )}
         <div className="col-span-2">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -453,9 +483,10 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   function abrirEditarModalidade(m: TomadorModalidade) {
     setModForm({
       nome: m.nome,
-      turno: m.turno,
-      horario: m.horario,
-      horasStr: String(m.horas),
+      tipo: m.tipo,
+      turno: m.turno ?? '',
+      horario: m.horario ?? '',
+      horasStr: m.horas != null ? String(m.horas) : '',
       valorStr: centavosParaBrl(m.valorCentavos),
       deslocamentoStr: m.deslocamentoCentavos > 0 ? centavosParaBrl(m.deslocamentoCentavos) : '',
       ativo: m.ativo,
@@ -472,21 +503,37 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
 
   async function salvarModalidade() {
     if (!modForm) return
-    const horas = parseFloat(modForm.horasStr.replace(',', '.'))
+    const isMensal = modForm.tipo === 'MENSAL'
     const valorCentavos = parseCentavos(modForm.valorStr)
-    const deslocamentoCentavos = parseCentavos(modForm.deslocamentoStr)
+    const deslocamentoCentavos = isMensal ? 0 : parseCentavos(modForm.deslocamentoStr)
 
-    if (!modForm.nome.trim() || !modForm.horario.trim() || isNaN(horas) || horas <= 0 || valorCentavos <= 0) {
-      setModErr('Preencha nome, horário, horas (> 0) e valor corretamente')
+    if (!modForm.nome.trim() || valorCentavos <= 0) {
+      setModErr('Preencha nome e valor corretamente')
       return
     }
+
+    let turno: 'DIURNO' | 'NOTURNO' | null = null
+    let horario: string | null = null
+    let horas: number | null = null
+
+    if (!isMensal) {
+      horas = parseFloat(modForm.horasStr.replace(',', '.'))
+      if (isNaN(horas) || horas <= 0) {
+        setModErr('Preencha a quantidade de horas corretamente')
+        return
+      }
+      turno = modForm.turno || null
+      horario = modForm.horario.trim() || null
+    }
+
     setModSaving(true)
     setModErr(null)
     try {
       const req: TomadorModalidadeRequest = {
         nome: modForm.nome.trim(),
-        turno: modForm.turno,
-        horario: modForm.horario.trim(),
+        tipo: modForm.tipo,
+        turno,
+        horario,
         horas,
         valorCentavos,
         deslocamentoCentavos,
@@ -789,6 +836,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                 <thead>
                   <tr className="bg-ds-surface border-b border-ds-border">
                     <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Nome</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Tipo</th>
                     <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Turno</th>
                     <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Horário</th>
                     <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Horas</th>
@@ -804,17 +852,27 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                       <td className="px-3 py-2 font-medium text-ds-text">{m.nome}</td>
                       <td className="px-3 py-2">
                         <span className={[
-                          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold',
-                          m.turno === 'DIURNO'
-                            ? 'bg-yellow-50 text-yellow-700'
-                            : 'bg-indigo-50 text-indigo-700',
+                          'px-1.5 py-0.5 rounded text-[10px] font-bold',
+                          m.tipo === 'MENSAL' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700',
                         ].join(' ')}>
-                          {m.turno === 'DIURNO' ? <Sun size={10} /> : <Moon size={10} />}
-                          {m.turno}
+                          {m.tipo === 'MENSAL' ? 'MENSAL' : 'PLANTÃO'}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-ds-mid">{m.horario}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{m.horas}h</td>
+                      <td className="px-3 py-2">
+                        {m.turno ? (
+                          <span className={[
+                            'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold',
+                            m.turno === 'DIURNO'
+                              ? 'bg-yellow-50 text-yellow-700'
+                              : 'bg-indigo-50 text-indigo-700',
+                          ].join(' ')}>
+                            {m.turno === 'DIURNO' ? <Sun size={10} /> : <Moon size={10} />}
+                            {m.turno}
+                          </span>
+                        ) : <span className="text-ds-light">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-ds-mid">{m.horario ?? '—'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{m.horas != null ? `${m.horas}h` : '—'}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-ds-text">
                         {formatBRL(m.valorCentavos)}
                       </td>
