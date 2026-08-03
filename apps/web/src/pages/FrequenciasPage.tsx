@@ -449,6 +449,168 @@ function PlantaoFormPanel({
   )
 }
 
+// ─── Grid estilo planilha para adicionar vários plantões de uma vez (desktop) ──
+
+interface PlantaoRow {
+  key: number
+  dataExecucao: string
+  modalidadeId: string
+  ocorrencia: string
+}
+
+let plantaoRowKey = 1
+
+function criarLinhasVazias(qtd: number): PlantaoRow[] {
+  return Array.from({ length: qtd }, () => ({
+    key: plantaoRowKey++, dataExecucao: '', modalidadeId: '', ocorrencia: '',
+  }))
+}
+
+function PlantaoGridPanel({
+  freqId, tomadorId, onSaved, onCancel,
+}: {
+  freqId: string
+  tomadorId: string
+  onSaved: () => void | Promise<void>
+  onCancel: () => void
+}) {
+  const [modalidades, setModalidades] = useState<TomadorModalidade[]>([])
+  const [rows,        setRows]        = useState<PlantaoRow[]>(() => criarLinhasVazias(6))
+  const [saving,      setSaving]      = useState(false)
+  const [err,         setErr]         = useState<string | null>(null)
+
+  useEffect(() => {
+    tomadoresApi.listarModalidades(tomadorId)
+      .then(ms => setModalidades(ms.filter(m => m.ativo)))
+      .catch(() => {})
+  }, [tomadorId])
+
+  function updateRow(key: number, patch: Partial<PlantaoRow>) {
+    setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r))
+    setErr(null)
+  }
+
+  function addRow() {
+    setRows(prev => [...prev, ...criarLinhasVazias(1)])
+  }
+
+  function removeRow(key: number) {
+    setRows(prev => prev.filter(r => r.key !== key))
+  }
+
+  async function handleSalvarTodos() {
+    const validas = rows.filter(r => r.dataExecucao && r.modalidadeId)
+    if (validas.length === 0) { setErr('Preencha ao menos uma linha com dia e modalidade'); return }
+    setSaving(true); setErr(null)
+    const restantes = [...rows]
+    try {
+      for (const r of validas) {
+        await frequenciasApi.adicionarItem(freqId, {
+          modalidadeId: r.modalidadeId,
+          dataExecucao: r.dataExecucao,
+          ocorrencia: r.ocorrencia || undefined,
+        })
+        const idx = restantes.findIndex(x => x.key === r.key)
+        if (idx >= 0) restantes.splice(idx, 1)
+      }
+      await onSaved()
+    } catch (e) {
+      // mantém no grid só as linhas ainda não salvas (inclusive a que falhou), pra não duplicar no retry
+      setRows(restantes)
+      setErr(e instanceof Error ? e.message : 'Erro ao salvar um dos plantões')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const qtdPreenchidas = rows.filter(r => r.dataExecucao && r.modalidadeId).length
+
+  return (
+    <div className="mx-5 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-bold text-primary flex items-center gap-1.5">
+          <Plus size={12} /> Novo(s) Plantão(ões)
+        </p>
+        <button type="button" onClick={onCancel}
+          className="p-1 rounded-lg text-ds-light hover:bg-white/70 transition-colors">
+          <X size={14} />
+        </button>
+      </div>
+
+      <div className="bg-white rounded-lg border border-ds-border overflow-hidden mb-3">
+        <table className="w-full">
+          <thead className="bg-ds-surface/60 border-b border-ds-border">
+            <tr>
+              <th className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Dia</th>
+              <th className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Modalidade</th>
+              <th className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Ocorrência</th>
+              <th className="w-9"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-ds-border">
+            {rows.map(r => (
+              <tr key={r.key}>
+                <td className="px-2 py-1.5">
+                  <input type="date" value={r.dataExecucao}
+                    onChange={e => updateRow(r.key, { dataExecucao: e.target.value })}
+                    className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                </td>
+                <td className="px-2 py-1.5">
+                  <select value={r.modalidadeId}
+                    onChange={e => updateRow(r.key, { modalidadeId: e.target.value })}
+                    disabled={modalidades.length === 0}
+                    className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50">
+                    <option value="">{modalidades.length === 0 ? 'Sem modalidades' : 'Selecione...'}</option>
+                    {modalidades.map(m => (
+                      <option key={m.id} value={m.id}>{m.nome} — {m.turno} · {m.horario}</option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-2 py-1.5">
+                  <input type="text" value={r.ocorrencia}
+                    onChange={e => updateRow(r.key, { ocorrencia: e.target.value })}
+                    placeholder="Opcional"
+                    className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                </td>
+                <td className="px-1">
+                  <button type="button" onClick={() => removeRow(r.key)}
+                    title="Remover linha"
+                    className="p-1.5 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors">
+                    <Trash2 size={13} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <button type="button" onClick={addRow}
+        className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary-700 transition-colors">
+        <Plus size={13} /> Adicionar linha
+      </button>
+
+      {err && <p className="text-xs text-red-600 mb-2">{err}</p>}
+
+      <div className="flex gap-2">
+        <button type="button" onClick={onCancel}
+          className="px-4 py-2 rounded-lg border border-ds-border text-xs font-semibold text-ds-mid hover:bg-white transition-colors">
+          Cancelar
+        </button>
+        <button type="button" onClick={handleSalvarTodos} disabled={saving || qtdPreenchidas === 0}
+          className="flex-1 px-4 py-2 rounded-lg text-white text-xs font-bold disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 bg-primary hover:bg-primary-700">
+          {saving
+            ? <><Loader2 size={12} className="animate-spin" />Adicionando...</>
+            : qtdPreenchidas === 0
+              ? 'Adicionar Plantões'
+              : `Adicionar ${qtdPreenchidas} Plantão${qtdPreenchidas === 1 ? '' : 'ões'}`
+          }
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Modal de detalhe/edição ───────────────────────────────────────────────────
 
 function PainelFrequencia({
@@ -475,6 +637,14 @@ function PainelFrequencia({
 
   async function handleAdd(req: FrequenciaItemRequest) {
     await frequenciasApi.adicionarItem(freq.id, req)
+    const atualizada = await frequenciasApi.buscarPorId(freq.id)
+    onAtualizar(atualizada)
+    setAdicionando(false)
+  }
+
+  // O grid (desktop) já persiste cada linha via frequenciasApi.adicionarItem internamente —
+  // aqui só recarrega a frequência e fecha o painel.
+  async function handleAddGrid() {
     const atualizada = await frequenciasApi.buscarPorId(freq.id)
     onAtualizar(atualizada)
     setAdicionando(false)
@@ -642,13 +812,24 @@ function PainelFrequencia({
         </div>
 
         {/* ── Panel de adição ────────────────────────────────────────────── */}
+        {/* Desktop: grid estilo planilha (várias linhas de uma vez). Mobile: form de 1 plantão por vez (inalterado). */}
         {adicionando && (
           <div className="shrink-0 border-b border-ds-border bg-primary-50/20 pt-3">
-            <PlantaoFormPanel
-              tomadorId={freq.tomadorId}
-              onSave={handleAdd}
-              onCancel={() => setAdicionando(false)}
-            />
+            <div className="hidden sm:block">
+              <PlantaoGridPanel
+                freqId={freq.id}
+                tomadorId={freq.tomadorId}
+                onSaved={handleAddGrid}
+                onCancel={() => setAdicionando(false)}
+              />
+            </div>
+            <div className="sm:hidden">
+              <PlantaoFormPanel
+                tomadorId={freq.tomadorId}
+                onSave={handleAdd}
+                onCancel={() => setAdicionando(false)}
+              />
+            </div>
           </div>
         )}
 
