@@ -57,7 +57,7 @@ interface GrupoForm {
 interface ModalidadeForm {
   nome: string
   tipo: 'PLANTAO' | 'MENSAL'
-  turno: 'DIURNO' | 'NOTURNO'
+  turno: 'DIURNO' | 'NOTURNO' | ''
   horario: string
   horasStr: string
   valorStr: string
@@ -71,8 +71,8 @@ function emptyGrupoForm(): GrupoForm {
 
 function emptyModalidadeForm(): ModalidadeForm {
   return {
-    nome: '', tipo: 'PLANTAO', turno: 'DIURNO', horario: '07:00 as 19:00',
-    horasStr: '12', valorStr: '', deslocamentoStr: '', ativo: true,
+    nome: '', tipo: 'PLANTAO', turno: '', horario: '',
+    horasStr: '', valorStr: '', deslocamentoStr: '', ativo: true,
   }
 }
 
@@ -179,7 +179,7 @@ function ModalidadeFormInline({
               ].join(' ')}
             >
               Por Plantão
-              <span className="block font-normal text-[10px] text-ds-light mt-0.5">turno, horário e horas</span>
+              <span className="block font-normal text-[10px] text-ds-light mt-0.5">horário e horas (turno opcional)</span>
             </button>
             <button
               type="button"
@@ -215,12 +215,13 @@ function ModalidadeFormInline({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Turno *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Turno</label>
               <select
                 value={form.turno}
-                onChange={e => onChange({ turno: e.target.value as 'DIURNO' | 'NOTURNO' })}
+                onChange={e => onChange({ turno: e.target.value as 'DIURNO' | 'NOTURNO' | '' })}
                 className={SELECT_CLS}
               >
+                <option value="">Não especificar</option>
                 <option value="DIURNO">☀️ DIURNO</option>
                 <option value="NOTURNO">🌙 NOTURNO</option>
               </select>
@@ -483,7 +484,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     setModForm({
       nome: m.nome,
       tipo: m.tipo,
-      turno: m.turno ?? 'DIURNO',
+      turno: m.turno ?? '',
       horario: m.horario ?? '',
       horasStr: m.horas != null ? String(m.horas) : '',
       valorStr: centavosParaBrl(m.valorCentavos),
@@ -518,10 +519,10 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     if (!isMensal) {
       horas = parseFloat(modForm.horasStr.replace(',', '.'))
       if (!modForm.horario.trim() || isNaN(horas) || horas <= 0) {
-        setModErr('Preencha turno, horário e horas (> 0) corretamente')
+        setModErr('Preencha horário e horas (> 0) corretamente')
         return
       }
-      turno = modForm.turno
+      turno = modForm.turno || null
       horario = modForm.horario.trim()
     }
 

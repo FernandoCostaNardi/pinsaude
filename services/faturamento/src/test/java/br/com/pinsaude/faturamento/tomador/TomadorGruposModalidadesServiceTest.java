@@ -241,6 +241,29 @@ class TomadorGruposModalidadesServiceTest {
     }
 
     @Test
+    void criarModalidade_plantaoSemTurno_aceitaTurnoNulo() {
+        when(modalidadeRepo.save(any())).thenAnswer(inv -> {
+            TomadorModalidade mm = inv.getArgument(0);
+            try {
+                var f = TomadorModalidade.class.getDeclaredField("id");
+                f.setAccessible(true); f.set(mm, UUID.randomUUID());
+            } catch (Exception ignored) {}
+            return mm;
+        });
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Diária 15h", "PLANTAO", null, "07:00 as 22:00",
+            BigDecimal.valueOf(15), 900_000L, 0L, true);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.tipo()).isEqualTo("PLANTAO");
+        assertThat(resp.turno()).isNull();
+        assertThat(resp.horario()).isEqualTo("07:00 as 22:00");
+        assertThat(resp.horas()).isEqualByComparingTo(BigDecimal.valueOf(15));
+    }
+
+    @Test
     void criarModalidade_mensal_ignoraTurnoHorarioHoras() {
         when(modalidadeRepo.save(any())).thenAnswer(inv -> {
             TomadorModalidade mm = inv.getArgument(0);

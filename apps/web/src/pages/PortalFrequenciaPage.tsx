@@ -359,7 +359,9 @@ function PlantaoFormPanel({
           items={modalidades}
           value={modalidade}
           onChange={setModalidade}
-          getLabel={m => m.tipo === 'MENSAL' ? `${m.nome} — Mensal` : `${m.nome} — ${m.turno} · ${m.horario}`}
+          getLabel={m => m.tipo === 'MENSAL'
+            ? `${m.nome} — Mensal`
+            : m.turno ? `${m.nome} — ${m.turno} · ${m.horario}` : `${m.nome} — ${m.horario}`}
           disabled={modalidades.length === 0}
         />
       </div>

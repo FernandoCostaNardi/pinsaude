@@ -4554,6 +4554,22 @@ iniciado antes da edição** (`Get-CimInstance Win32_Process -Filter "Name='java
 CommandLine -like "*faturamento*"`) e reiniciá-lo (`mvn compile` + `mvn spring-boot:run`) antes de
 assumir que o código está errado.
 
+### Refinamento pós-13.17 — Turno também vira opcional em modalidades PLANTAO
+Cliente pediu, logo após o merge inicial: modalidades "Por Plantão" com horas específicas (ex:
+"Diária 15h") às vezes **não têm turno definido** — só horário e horas importam. Migration
+`V25__make_turno_opcional_plantao.sql` recria `tomador_modalidades_tipo_campos_check` exigindo
+apenas `horario IS NOT NULL AND horas IS NOT NULL` para `tipo = 'PLANTAO'` (turno já era nullable
+desde a V24, só o CHECK de consistência ainda o exigia). `TomadorService.aplicarCamposPorTipo()`:
+`incompleto` não checa mais `req.turno()`; `m.setTurno(req.turno() != null && !req.turno().isBlank()
+? req.turno() : null)` normaliza string vazia pra `null`. Frontend: `<select>` de Turno ganhou a
+opção `"Não especificar"` (value `''`), `ModalidadeForm.turno` virou `'DIURNO' | 'NOTURNO' | ''`,
+`emptyModalidadeForm()` passou a iniciar todos os campos de Plantão vazios (sem default 12h/DIURNO)
+já que os chips de preenchimento rápido cobrem o caso comum. `getLabel` do `<select>` de modalidade
+em `FrequenciasPage.tsx`/`PortalFrequenciaPage.tsx` ganhou um terceiro ramo: modalidade PLANTAO sem
+turno mostra `"${nome} — ${horario}"` (sem o `turno ·` no meio) — sem isso apareceria "undefined"
+no label. Tabela de listagem já mostrava "—" para turno nulo (reaproveitado do caso MENSAL, nenhuma
+mudança necessária ali).
+
 ---
 
 ## Convenções de Commit e Branch

@@ -409,8 +409,9 @@ public class TomadorService {
         return TomadorModalidadeResponse.from(modalidadeRepo.save(m));
     }
 
-    // Modalidade PLANTAO exige turno+horario+horas; MENSAL (valor fixo, ex: "Coordenação de UTI")
-    // ignora esses 3 campos independente do que vier no request, mantendo a tabela consistente.
+    // Modalidade PLANTAO exige horario+horas (turno é opcional — ex: "Diária 15h" pode não ter
+    // turno definido); MENSAL (valor fixo, ex: "Coordenação de UTI") ignora os 3 campos
+    // independente do que vier no request, mantendo a tabela consistente.
     private void aplicarCamposPorTipo(TomadorModalidade m, TomadorModalidadeRequest req) {
         if ("MENSAL".equals(req.tipo())) {
             m.setTipo("MENSAL");
@@ -419,15 +420,13 @@ public class TomadorService {
             m.setHoras(null);
             return;
         }
-        boolean incompleto = req.turno() == null || req.turno().isBlank()
-            || req.horario() == null || req.horario().isBlank()
-            || req.horas() == null;
+        boolean incompleto = req.horario() == null || req.horario().isBlank() || req.horas() == null;
         if (incompleto) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Turno, horário e horas são obrigatórios para modalidade do tipo Plantão");
+                "Horário e horas são obrigatórios para modalidade do tipo Plantão");
         }
         m.setTipo("PLANTAO");
-        m.setTurno(req.turno());
+        m.setTurno(req.turno() != null && !req.turno().isBlank() ? req.turno() : null);
         m.setHorario(req.horario());
         m.setHoras(req.horas());
     }
