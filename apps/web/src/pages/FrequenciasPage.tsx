@@ -478,6 +478,8 @@ function PlantaoGridPanel({
   const [rows,        setRows]        = useState<PlantaoRow[]>(() => criarLinhasVazias(6))
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
+  const gridRef        = useRef<HTMLDivElement>(null)
+  const focarProximaLinha = useRef<number | null>(null)
 
   useEffect(() => {
     tomadoresApi.listarModalidades(tomadorId)
@@ -485,17 +487,39 @@ function PlantaoGridPanel({
       .catch(() => {})
   }, [tomadorId])
 
+  // Foca o campo "Dia" da linha recém-adicionada (via botão ou Tab na última linha)
+  useEffect(() => {
+    if (focarProximaLinha.current == null) return
+    const el = gridRef.current?.querySelector<HTMLInputElement>(
+      `input[data-row-key="${focarProximaLinha.current}"][data-field="dia"]`
+    )
+    el?.focus()
+    focarProximaLinha.current = null
+  }, [rows])
+
   function updateRow(key: number, patch: Partial<PlantaoRow>) {
     setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r))
     setErr(null)
   }
 
-  function addRow() {
-    setRows(prev => [...prev, ...criarLinhasVazias(1)])
+  function addRow(foco = false) {
+    const [nova] = criarLinhasVazias(1)
+    if (foco) focarProximaLinha.current = nova.key
+    setRows(prev => [...prev, nova])
   }
 
   function removeRow(key: number) {
     setRows(prev => prev.filter(r => r.key !== key))
+  }
+
+  // Tab na Ocorrência da última linha adiciona e foca automaticamente a próxima —
+  // continua o preenchimento tipo planilha sem precisar clicar em "Adicionar linha".
+  function handleOcorrenciaKeyDown(e: React.KeyboardEvent<HTMLInputElement>, rowKey: number) {
+    const isUltimaLinha = rows[rows.length - 1]?.key === rowKey
+    if (e.key === 'Tab' && !e.shiftKey && isUltimaLinha) {
+      e.preventDefault()
+      addRow(true)
+    }
   }
 
   async function handleSalvarTodos() {
@@ -537,7 +561,7 @@ function PlantaoGridPanel({
         </button>
       </div>
 
-      <div className="bg-white rounded-lg border border-ds-border overflow-hidden mb-3">
+      <div ref={gridRef} className="bg-white rounded-lg border border-ds-border overflow-hidden mb-3">
         <table className="w-full">
           <thead className="bg-ds-surface/60 border-b border-ds-border">
             <tr>
@@ -552,6 +576,7 @@ function PlantaoGridPanel({
               <tr key={r.key}>
                 <td className="px-2 py-1.5">
                   <input type="date" value={r.dataExecucao}
+                    data-row-key={r.key} data-field="dia"
                     onChange={e => updateRow(r.key, { dataExecucao: e.target.value })}
                     className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30" />
                 </td>
@@ -569,11 +594,13 @@ function PlantaoGridPanel({
                 <td className="px-2 py-1.5">
                   <input type="text" value={r.ocorrencia}
                     onChange={e => updateRow(r.key, { ocorrencia: e.target.value })}
+                    onKeyDown={e => handleOcorrenciaKeyDown(e, r.key)}
                     placeholder="Opcional"
                     className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30" />
                 </td>
                 <td className="px-1">
                   <button type="button" onClick={() => removeRow(r.key)}
+                    tabIndex={-1}
                     title="Remover linha"
                     className="p-1.5 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors">
                     <Trash2 size={13} />
@@ -585,7 +612,7 @@ function PlantaoGridPanel({
         </table>
       </div>
 
-      <button type="button" onClick={addRow}
+      <button type="button" onClick={() => addRow(true)}
         className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary-700 transition-colors">
         <Plus size={13} /> Adicionar linha
       </button>

@@ -4527,6 +4527,29 @@ repetição). `PortalFrequenciaPage.tsx` tem uma cópia própria de `PlantaoForm
 duplicado, já documentado antes) — mantida como estava, porque o médico lançando o próprio plantão
 individual não tem o mesmo padrão de uso em massa que motivou o pedido do grid na tela de operação.
 
+### Tab na última linha também adiciona linha nova (refinamento pós-13.15)
+Cliente pediu que, além do botão "+ Adicionar linha", dar Tab a partir do campo Ocorrência da
+**última** linha já adicione e foque a próxima — fluxo 100% por teclado, sem precisar soltar o Tab
+para clicar no botão. Implementado com um `useRef<number | null>` (`focarProximaLinha`) que guarda
+a `key` da linha recém-criada; um `useEffect` com dependência `[rows]` faz o `querySelector`
+por `input[data-row-key="${key}"][data-field="dia"]` e chama `.focus()` assim que a linha nova
+já estiver no DOM, depois zera o ref. Funciona porque a `key` da nova linha é gerada de forma
+síncrona (contador `plantaoRowKey++` no module scope) **antes** do `setRows`, então não há
+stale-closure entre o clique/Tab e o `useEffect`:
+```tsx
+function handleOcorrenciaKeyDown(e: React.KeyboardEvent<HTMLInputElement>, rowKey: number) {
+  const isUltimaLinha = rows[rows.length - 1]?.key === rowKey
+  if (e.key === 'Tab' && !e.shiftKey && isUltimaLinha) {
+    e.preventDefault()
+    addRow(true) // true = foca a nova linha via o ref acima
+  }
+}
+```
+Tab em qualquer linha que **não** seja a última continua com o comportamento nativo do browser
+(vai para a próxima linha), sem `preventDefault` — só a última linha aciona o auto-add. O botão
+"Remover linha" (ícone de lixeira) já tinha `tabIndex={-1}` desde a 13.15, então continua fora da
+ordem de Tab e não interfere nesse fluxo.
+
 ---
 
 ## Convenções de Commit e Branch
