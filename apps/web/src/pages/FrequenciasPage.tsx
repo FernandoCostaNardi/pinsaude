@@ -65,6 +65,8 @@ const STATUS_CLS: Record<string, string> = {
   FATURADA:              'bg-green-50 text-green-700',
 }
 
+const ITENS_POR_PAGINA = 5
+
 // ─── StatCard ─────────────────────────────────────────────────────────────────
 
 function StatCard({ icon: Icon, label, value, sub, iconBg, iconColor }: {
@@ -467,11 +469,19 @@ function PainelFrequencia({
   const [gerandoPdf,    setGerandoPdf]    = useState(false)
   const [uploadingDoc,  setUploadingDoc]  = useState(false)
   const [uploadErr,     setUploadErr]     = useState<string | null>(null)
+  const [itemPage,      setItemPage]      = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isFaturada = freq.status === 'FATURADA'
 
   const tomador = tomadores.find(t => t.id === freq.tomadorId)
   const medico  = medicos.find(m => m.id === freq.medicoId)
+
+  // Reseta a página ao abrir uma frequência diferente
+  useEffect(() => { setItemPage(0) }, [freq.id])
+
+  const totalItemPages  = Math.max(1, Math.ceil(freq.itens.length / ITENS_POR_PAGINA))
+  const itemPageAtual   = Math.min(itemPage, totalItemPages - 1)
+  const itensPaginados  = freq.itens.slice(itemPageAtual * ITENS_POR_PAGINA, (itemPageAtual + 1) * ITENS_POR_PAGINA)
 
   async function handleAdd(req: FrequenciaItemRequest) {
     await frequenciasApi.adicionarItem(freq.id, req)
@@ -676,7 +686,7 @@ function PainelFrequencia({
                 </tr>
               </thead>
               <tbody className="divide-y divide-ds-border">
-                {freq.itens.map(item => (
+                {itensPaginados.map(item => (
                   <tr key={item.id}
                     className={`hover:bg-ds-surface/50 transition-colors group ${editandoId === item.id ? 'bg-yellow-50/40' : ''}`}>
                     <td className="px-5 py-3 text-sm font-medium text-ds-text whitespace-nowrap">{formatDate(item.dataExecucao)}</td>
@@ -728,6 +738,28 @@ function PainelFrequencia({
             </table>
           </div>
         </div>
+
+        {/* ── Paginação dos plantões ──────────────────────────────────────── */}
+        {freq.itens.length > 0 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-ds-border shrink-0 bg-white text-xs text-ds-light">
+            <span>
+              Exibindo <strong className="text-ds-mid">{Math.min(itemPageAtual * ITENS_POR_PAGINA + 1, freq.itens.length)}
+              –{Math.min((itemPageAtual + 1) * ITENS_POR_PAGINA, freq.itens.length)}</strong> de{' '}
+              <strong className="text-ds-mid">{freq.itens.length}</strong> plantõe{freq.itens.length !== 1 ? 's' : ''}
+            </span>
+            {totalItemPages > 1 && (
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" disabled={itemPageAtual === 0} onClick={() => setItemPage(itemPageAtual - 1)}>
+                  Anterior
+                </Button>
+                <span className="px-2 text-ds-mid font-medium">{itemPageAtual + 1} / {totalItemPages}</span>
+                <Button variant="ghost" size="sm" disabled={itemPageAtual >= totalItemPages - 1} onClick={() => setItemPage(itemPageAtual + 1)}>
+                  Próximo
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
