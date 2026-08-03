@@ -4482,6 +4482,136 @@ agora só existe dentro do fluxo de Editar/Novo Tomador.
 
 ---
 
+## Grid Estilo Planilha para Adicionar Plantões (PINSAUDE-13.15)
+
+### Problema: lançar vários plantões era 1 formulário → salvar → reabrir, repetido N vezes
+`PlantaoFormPanel` (painel de "Novo Plantão" em `FrequenciasPage.tsx`) só lançava um plantão por
+vez — o usuário reportou que preencher uma frequência inteira (várias datas) era muito repetitivo.
+Pediu algo "como uma planilha do Excel": uma coluna de dia, uma coluna de modalidade (select) e
+uma coluna de ocorrência, navegável por Tab — só no desktop, mobile continua como está.
+
+### Novo `PlantaoGridPanel` — várias linhas, cada uma persistida via `adicionarItem` individual
+Componente novo (não reaproveita `PlantaoFormPanel`) com uma tabela HTML de `<input type="date">`
++ `<select>` + `<input type="text">` por linha — **Tab funciona nativamente** sem nenhum JS extra,
+porque são elementos de formulário reais em ordem de DOM (mesmo princípio de qualquer form HTML).
+Começa com 6 linhas vazias (`criarLinhasVazias(6)`), com botão "+ Adicionar linha" pra quem precisar
+de mais. Ao clicar "Adicionar Plantões", itera as linhas com `dataExecucao` e `modalidadeId`
+preenchidos e chama `frequenciasApi.adicionarItem` uma vez por linha (sequencial, não em paralelo)
+— **não existe endpoint de criação em lote no backend**, nem foi criado um; o grid só melhora a
+ergonomia do preenchimento no frontend.
+
+### Falha parcial não duplica no retry — linhas já salvas somem da grade
+Se uma chamada falhar no meio do loop (ex.: 3ª de 5 linhas), as linhas já persistidas são removidas
+do estado local (`restantes`) antes do erro ser exibido — clicar "Adicionar Plantões" de novo só
+reenvia o que ainda não foi salvo, sem duplicar as 2 primeiras. Implementado com um array `restantes`
+copiado antes do loop, removendo cada linha bem-sucedida por `key`, e só substituindo `rows` por
+`restantes` no `catch`.
+
+### Desktop vs mobile — dois componentes montados, um escondido por CSS (mesmo padrão de EPIC-13.13)
+```tsx
+<div className="hidden sm:block">
+  <PlantaoGridPanel freqId={freq.id} tomadorId={freq.tomadorId} onSaved={handleAddGrid} onCancel={...} />
+</div>
+<div className="sm:hidden">
+  <PlantaoFormPanel tomadorId={freq.tomadorId} onSave={handleAdd} onCancel={...} />
+</div>
+```
+Mesma técnica já usada em `TomadorFormModal.tsx` (EPIC-13.13): os dois ficam montados, CSS decide
+qual aparece. Custo aceito: ambos chamam `tomadoresApi.listarModalidades` de forma independente
+(pequena duplicação de fetch), mas evita qualquer lógica de detecção de viewport em JS.
+
+### Fora de escopo, deliberadamente: `PlantaoFormPanel` de edição e Portal do Médico
+Só o formulário de **adicionar** foi trocado — editar um plantão (`editandoId`) continua sendo o
+`PlantaoFormPanel` de 1 linha, sem grid (editar é sempre uma linha, não tem o mesmo problema de
+repetição). `PortalFrequenciaPage.tsx` tem uma cópia própria de `PlantaoFormPanel` (código
+duplicado, já documentado antes) — mantida como estava, porque o médico lançando o próprio plantão
+individual não tem o mesmo padrão de uso em massa que motivou o pedido do grid na tela de operação.
+
+### Tab na última linha também adiciona linha nova (refinamento pós-13.15)
+Cliente pediu que, além do botão "+ Adicionar linha", dar Tab a partir do campo Ocorrência da
+**última** linha já adicione e foque a próxima — fluxo 100% por teclado, sem precisar soltar o Tab
+para clicar no botão. Implementado com um `useRef<number | null>` (`focarProximaLinha`) que guarda
+a `key` da linha recém-criada; um `useEffect` com dependência `[rows]` faz o `querySelector`
+por `input[data-row-key="${key}"][data-field="dia"]` e chama `.focus()` assim que a linha nova
+já estiver no DOM, depois zera o ref. Funciona porque a `key` da nova linha é gerada de forma
+síncrona (contador `plantaoRowKey++` no module scope) **antes** do `setRows`, então não há
+stale-closure entre o clique/Tab e o `useEffect`:
+```tsx
+function handleOcorrenciaKeyDown(e: React.KeyboardEvent<HTMLInputElement>, rowKey: number) {
+  const isUltimaLinha = rows[rows.length - 1]?.key === rowKey
+  if (e.key === 'Tab' && !e.shiftKey && isUltimaLinha) {
+    e.preventDefault()
+    addRow(true) // true = foca a nova linha via o ref acima
+  }
+}
+```
+Tab em qualquer linha que **não** seja a última continua com o comportamento nativo do browser
+(vai para a próxima linha), sem `preventDefault` — só a última linha aciona o auto-add. O botão
+"Remover linha" (ícone de lixeira) já tinha `tabIndex={-1}` desde a 13.15, então continua fora da
+ordem de Tab e não interfere nesse fluxo.
+
+### Validação de modalidade obrigatória no grid — bloqueia o submit e destaca a linha (refinamento pós-13.15)
+Antes, `handleSalvarTodos` filtrava silenciosamente as linhas incompletas
+(`rows.filter(r => r.dataExecucao && r.modalidadeId)`) — uma linha com dia preenchido mas sem
+modalidade selecionada era simplesmente ignorada, sem nenhum aviso, dando a falsa impressão de que
+"não tinha nada pra salvar ali". Corrigido: uma linha é considerada **"em uso"** quando tem
+`dataExecucao` OU `ocorrencia` preenchidos; se alguma linha em uso estiver sem `modalidadeId`, o
+submit é bloqueado e a mensagem `"Selecione a modalidade em N linha(s) destacada(s)..."` aparece,
+com o `<select>` daquela(s) linha(s) ganhando borda vermelha (`linhasSemModalidade: Set<number>`
+guarda as `key`s). O destaque some assim que o usuário seleciona uma modalidade naquela linha
+(`updateRow` remove a key do set quando `patch.modalidadeId` é truthy) ou remove a linha
+(`removeRow` também limpa o set).
+
+**Armadilha corrigida junto:** o botão "Adicionar Plantões" ficava com `disabled={qtdPreenchidas
+=== 0}` — que usa o mesmo critério de linha **completa** (dia + modalidade). Isso significa que,
+com só uma linha parcialmente preenchida (dia sem modalidade) e nenhuma outra completa, o botão
+ficava desabilitado e o clique nunca disparava a validação — o usuário ficaria sem nenhum feedback.
+Criado um segundo derivado, `linhasEmUso` (mesmo critério de "em uso" da validação, mas incluindo
+`modalidadeId` também), e o `disabled` do botão passou a usar `linhasEmUso === 0` — `qtdPreenchidas`
+continua servindo só pro texto do botão ("Adicionar N Plantões").
+
+---
+
+## Paginação dos Plantões no Modal de Frequência (PINSAUDE-13.16)
+
+### Problema: tabela de itens sem paginação deixava o modal gigantesco
+`PainelFrequencia` (modal de detalhe da Frequência Médica) listava todos os `freq.itens` numa
+única tabela sem paginação — frequências com muitos plantões lançados (dezenas de linhas) faziam
+o modal crescer demais, exigindo scroll extenso e prejudicando a leitura dos dados.
+
+### Implementação — mesmo padrão de paginação já usado na lista principal da página
+Reaproveitado o padrão já estabelecido no `FrequenciasPage` (lista de frequências, `page`/
+`pageSize`/`totalPages` com botões `Anterior`/`Próximo` do `@pinsaude/ui`), mas aplicado à lista
+de itens dentro do modal, com `ITENS_POR_PAGINA = 5` (constante de módulo):
+```tsx
+const [itemPage, setItemPage] = useState(0)
+useEffect(() => { setItemPage(0) }, [freq.id])   // reseta ao abrir outra frequência
+
+const totalItemPages = Math.max(1, Math.ceil(freq.itens.length / ITENS_POR_PAGINA))
+const itemPageAtual  = Math.min(itemPage, totalItemPages - 1)
+const itensPaginados = freq.itens.slice(itemPageAtual * ITENS_POR_PAGINA, (itemPageAtual + 1) * ITENS_POR_PAGINA)
+```
+A tabela mapeia `itensPaginados` em vez de `freq.itens` diretamente. Os controles
+(Anterior/Próximo + "X / Y") só aparecem quando `totalItemPages > 1` — com poucos itens (≤5), só
+o texto "Exibindo N de N plantões" é exibido, sem botões.
+
+### `itemPageAtual` clampado no render evita depender de `useEffect` para corrigir overflow
+Em vez de um `useEffect` adicional para "clampar" a página quando um plantão é removido e a
+página atual fica fora do range (ex.: estava na última página com 1 item e esse item foi
+removido), `itemPageAtual` já é derivado com `Math.min(itemPage, totalItemPages - 1)` a cada
+render — a página nunca aparece fora do intervalo válido, mesmo que o state bruto `itemPage`
+temporariamente guarde um valor mais alto. Simplicidade equivalente ao padrão de reset explícito
+já usado na lista principal (`setPage(0)` a cada mudança de filtro), sem precisar espalhar
+chamadas de clamp em `handleRemove`/`handleAdd`/`handleEdit`.
+
+### Fora de escopo: grid de adição (`PlantaoGridPanel`) e painel de edição
+A paginação afeta só a tabela de leitura dos plantões já lançados. O grid de adicionar vários
+plantões de uma vez (PINSAUDE-13.15) e o painel de edição de um plantão continuam operando sobre
+`freq.itens` completo (edição busca o item por `id` na lista inteira, não na página atual) — sem
+nenhuma alteração nesses fluxos.
+
+---
+
 ## Modalidades com Horas Livres e Tipo Mensal (PINSAUDE-13.17)
 
 ### Novo campo `tipo` — PLANTAO (padrão) vs MENSAL, com turno/horário/horas condicionais
