@@ -4550,6 +4550,26 @@ Tab em qualquer linha que **não** seja a última continua com o comportamento n
 "Remover linha" (ícone de lixeira) já tinha `tabIndex={-1}` desde a 13.15, então continua fora da
 ordem de Tab e não interfere nesse fluxo.
 
+### Validação de modalidade obrigatória no grid — bloqueia o submit e destaca a linha (refinamento pós-13.15)
+Antes, `handleSalvarTodos` filtrava silenciosamente as linhas incompletas
+(`rows.filter(r => r.dataExecucao && r.modalidadeId)`) — uma linha com dia preenchido mas sem
+modalidade selecionada era simplesmente ignorada, sem nenhum aviso, dando a falsa impressão de que
+"não tinha nada pra salvar ali". Corrigido: uma linha é considerada **"em uso"** quando tem
+`dataExecucao` OU `ocorrencia` preenchidos; se alguma linha em uso estiver sem `modalidadeId`, o
+submit é bloqueado e a mensagem `"Selecione a modalidade em N linha(s) destacada(s)..."` aparece,
+com o `<select>` daquela(s) linha(s) ganhando borda vermelha (`linhasSemModalidade: Set<number>`
+guarda as `key`s). O destaque some assim que o usuário seleciona uma modalidade naquela linha
+(`updateRow` remove a key do set quando `patch.modalidadeId` é truthy) ou remove a linha
+(`removeRow` também limpa o set).
+
+**Armadilha corrigida junto:** o botão "Adicionar Plantões" ficava com `disabled={qtdPreenchidas
+=== 0}` — que usa o mesmo critério de linha **completa** (dia + modalidade). Isso significa que,
+com só uma linha parcialmente preenchida (dia sem modalidade) e nenhuma outra completa, o botão
+ficava desabilitado e o clique nunca disparava a validação — o usuário ficaria sem nenhum feedback.
+Criado um segundo derivado, `linhasEmUso` (mesmo critério de "em uso" da validação, mas incluindo
+`modalidadeId` também), e o `disabled` do botão passou a usar `linhasEmUso === 0` — `qtdPreenchidas`
+continua servindo só pro texto do botão ("Adicionar N Plantões").
+
 ---
 
 ## Convenções de Commit e Branch

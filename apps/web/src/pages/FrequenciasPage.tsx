@@ -478,6 +478,7 @@ function PlantaoGridPanel({
   const [rows,        setRows]        = useState<PlantaoRow[]>(() => criarLinhasVazias(6))
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
+  const [linhasSemModalidade, setLinhasSemModalidade] = useState<Set<number>>(new Set())
   const gridRef        = useRef<HTMLDivElement>(null)
   const focarProximaLinha = useRef<number | null>(null)
 
@@ -500,6 +501,14 @@ function PlantaoGridPanel({
   function updateRow(key: number, patch: Partial<PlantaoRow>) {
     setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r))
     setErr(null)
+    if (patch.modalidadeId) {
+      setLinhasSemModalidade(prev => {
+        if (!prev.has(key)) return prev
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    }
   }
 
   function addRow(foco = false) {
@@ -510,6 +519,12 @@ function PlantaoGridPanel({
 
   function removeRow(key: number) {
     setRows(prev => prev.filter(r => r.key !== key))
+    setLinhasSemModalidade(prev => {
+      if (!prev.has(key)) return prev
+      const next = new Set(prev)
+      next.delete(key)
+      return next
+    })
   }
 
   // Tab na Ocorrência da última linha adiciona e foca automaticamente a próxima —
@@ -523,6 +538,16 @@ function PlantaoGridPanel({
   }
 
   async function handleSalvarTodos() {
+    // Linha "em uso" = tem dia ou ocorrência preenchidos — se estiver sem modalidade,
+    // não pode ser silenciosamente ignorada (o usuário claramente começou a preencher essa linha).
+    const emUsoSemModalidade = rows.filter(r => (r.dataExecucao || r.ocorrencia.trim()) && !r.modalidadeId)
+    if (emUsoSemModalidade.length > 0) {
+      setLinhasSemModalidade(new Set(emUsoSemModalidade.map(r => r.key)))
+      setErr(`Selecione a modalidade em ${emUsoSemModalidade.length === 1 ? 'linha' : `${emUsoSemModalidade.length} linhas`} destacada${emUsoSemModalidade.length === 1 ? '' : 's'} antes de continuar`)
+      return
+    }
+    setLinhasSemModalidade(new Set())
+
     const validas = rows.filter(r => r.dataExecucao && r.modalidadeId)
     if (validas.length === 0) { setErr('Preencha ao menos uma linha com dia e modalidade'); return }
     setSaving(true); setErr(null)
@@ -548,6 +573,7 @@ function PlantaoGridPanel({
   }
 
   const qtdPreenchidas = rows.filter(r => r.dataExecucao && r.modalidadeId).length
+  const linhasEmUso = rows.filter(r => r.dataExecucao || r.modalidadeId || r.ocorrencia.trim()).length
 
   return (
     <div className="mx-5 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
@@ -584,7 +610,11 @@ function PlantaoGridPanel({
                   <select value={r.modalidadeId}
                     onChange={e => updateRow(r.key, { modalidadeId: e.target.value })}
                     disabled={modalidades.length === 0}
-                    className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50">
+                    className={`w-full border rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 disabled:opacity-50 ${
+                      linhasSemModalidade.has(r.key)
+                        ? 'border-red-400 focus:border-red-500 focus:ring-red-300'
+                        : 'border-transparent hover:border-ds-border focus:border-primary focus:ring-primary/30'
+                    }`}>
                     <option value="">{modalidades.length === 0 ? 'Sem modalidades' : 'Selecione...'}</option>
                     {modalidades.map(m => (
                       <option key={m.id} value={m.id}>{m.nome} — {m.turno} · {m.horario}</option>
@@ -624,7 +654,7 @@ function PlantaoGridPanel({
           className="px-4 py-2 rounded-lg border border-ds-border text-xs font-semibold text-ds-mid hover:bg-white transition-colors">
           Cancelar
         </button>
-        <button type="button" onClick={handleSalvarTodos} disabled={saving || qtdPreenchidas === 0}
+        <button type="button" onClick={handleSalvarTodos} disabled={saving || linhasEmUso === 0}
           className="flex-1 px-4 py-2 rounded-lg text-white text-xs font-bold disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5 bg-primary hover:bg-primary-700">
           {saving
             ? <><Loader2 size={12} className="animate-spin" />Adicionando...</>
