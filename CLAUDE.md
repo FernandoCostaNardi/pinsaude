@@ -4572,6 +4572,46 @@ continua servindo só pro texto do botão ("Adicionar N Plantões").
 
 ---
 
+## Paginação dos Plantões no Modal de Frequência (PINSAUDE-13.16)
+
+### Problema: tabela de itens sem paginação deixava o modal gigantesco
+`PainelFrequencia` (modal de detalhe da Frequência Médica) listava todos os `freq.itens` numa
+única tabela sem paginação — frequências com muitos plantões lançados (dezenas de linhas) faziam
+o modal crescer demais, exigindo scroll extenso e prejudicando a leitura dos dados.
+
+### Implementação — mesmo padrão de paginação já usado na lista principal da página
+Reaproveitado o padrão já estabelecido no `FrequenciasPage` (lista de frequências, `page`/
+`pageSize`/`totalPages` com botões `Anterior`/`Próximo` do `@pinsaude/ui`), mas aplicado à lista
+de itens dentro do modal, com `ITENS_POR_PAGINA = 5` (constante de módulo):
+```tsx
+const [itemPage, setItemPage] = useState(0)
+useEffect(() => { setItemPage(0) }, [freq.id])   // reseta ao abrir outra frequência
+
+const totalItemPages = Math.max(1, Math.ceil(freq.itens.length / ITENS_POR_PAGINA))
+const itemPageAtual  = Math.min(itemPage, totalItemPages - 1)
+const itensPaginados = freq.itens.slice(itemPageAtual * ITENS_POR_PAGINA, (itemPageAtual + 1) * ITENS_POR_PAGINA)
+```
+A tabela mapeia `itensPaginados` em vez de `freq.itens` diretamente. Os controles
+(Anterior/Próximo + "X / Y") só aparecem quando `totalItemPages > 1` — com poucos itens (≤5), só
+o texto "Exibindo N de N plantões" é exibido, sem botões.
+
+### `itemPageAtual` clampado no render evita depender de `useEffect` para corrigir overflow
+Em vez de um `useEffect` adicional para "clampar" a página quando um plantão é removido e a
+página atual fica fora do range (ex.: estava na última página com 1 item e esse item foi
+removido), `itemPageAtual` já é derivado com `Math.min(itemPage, totalItemPages - 1)` a cada
+render — a página nunca aparece fora do intervalo válido, mesmo que o state bruto `itemPage`
+temporariamente guarde um valor mais alto. Simplicidade equivalente ao padrão de reset explícito
+já usado na lista principal (`setPage(0)` a cada mudança de filtro), sem precisar espalhar
+chamadas de clamp em `handleRemove`/`handleAdd`/`handleEdit`.
+
+### Fora de escopo: grid de adição (`PlantaoGridPanel`) e painel de edição
+A paginação afeta só a tabela de leitura dos plantões já lançados. O grid de adicionar vários
+plantões de uma vez (PINSAUDE-13.15) e o painel de edição de um plantão continuam operando sobre
+`freq.itens` completo (edição busca o item por `id` na lista inteira, não na página atual) — sem
+nenhuma alteração nesses fluxos.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
