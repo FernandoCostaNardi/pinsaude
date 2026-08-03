@@ -4447,6 +4447,41 @@ serviços quando a prop `tomador` muda — evita abrir o modal de um tomador nov
 
 ---
 
+## Empresas Pin consolidado no Modal de Tomador (PINSAUDE-13.14)
+
+### De modal separado + ícone próprio para 5ª aba do TomadorFormModal
+A associação Tomador ↔ Empresa Pin (EPIC-13.12) nasceu como um modal dedicado
+(`TomadorEmpresasModal.tsx`), aberto por um ícone próprio na tela de Tomadores — mesmo padrão de
+`TomadorGruposModal`/`TomadorMedicosModal`. Assim que o modal de cadastro/edição ganhou abas
+(EPIC-13.13), o usuário pediu pra consolidar ali, sem precisar de mais um ícone. `TomadorEmpresasModal.tsx`
+foi **deletado** (não sobrou nenhum outro consumidor) e sua lógica foi portada como 5ª aba
+("Empresas Pin") dentro de `TomadorFormModal.tsx`, seguindo o mesmo padrão de duas fontes
+(pendente no cadastro, imediato na edição) já usado por CNAEs/Serviços no mesmo arquivo.
+
+### Funciona em cadastro E edição — lista pendente igual a CNAEs/Serviços
+Diferente do modal antigo (que só existia para tomador já persistido, `tomador: Tomador` sem
+`| null` nas props), a aba dentro do form precisa suportar `tomador === null` (Novo Tomador).
+Replicado o padrão exato já usado por `pendingCnaes`/`pendingServicos`: `pendingEmpresas:
+PendingEmpresa[]` acumula vínculos localmente até o `handleSubmit` criar o tomador, e só então
+`tomadoresApi.adicionarEmpresa(id, ...)` é chamado pra cada pendente. Na edição, cada
+adicionar/remover já dispara a API na hora (padrão idêntico ao das outras seções).
+
+### `vinculadas` inicializado direto de `tomador.empresas` — sem fetch extra
+Como `TomadorResponse.empresas` já vem embutido na resposta de `GET /api/tomadores` (decisão da
+EPIC-13.12, exatamente pra evitar esse tipo de fetch adicional), a aba não precisa de nenhuma
+chamada própria pra carregar os vínculos existentes — `setVinculadas(tomador.empresas ?? [])` no
+mesmo `useEffect` que já reresseta form/CNAEs/serviços ao trocar de tomador. Só o catálogo
+completo de empresas (`todasEmpresas`, pro combo de "adicionar") precisa de fetch, carregado uma
+vez no mount junto com `catalogoServicos`.
+
+### Ícone "Empresas Pin vinculadas" removido de `TomadoresPage.tsx` (mobile + desktop)
+Os dois blocos de botões de ação (card mobile e linha de tabela desktop) tinham o ícone
+`Building2` chamando `setEmpresasTomador(t)`. Removidos junto com o state `empresasTomador`, o
+import de `TomadorEmpresasModal` e o bloco de render condicional do modal — a gestão de empresas
+agora só existe dentro do fluxo de Editar/Novo Tomador.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
