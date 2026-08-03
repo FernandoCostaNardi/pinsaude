@@ -293,7 +293,29 @@ class TomadorGruposModalidadesServiceTest {
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
-            .hasMessageContaining("obrigatórios para modalidade do tipo Plantão");
+            .hasMessageContaining("obrigatórias para modalidade do tipo Plantão");
+    }
+
+    @Test
+    void criarModalidade_plantaoSoComHoras_aceitaTurnoEHorarioNulos() {
+        when(modalidadeRepo.save(any())).thenAnswer(inv -> {
+            TomadorModalidade mm = inv.getArgument(0);
+            try {
+                var f = TomadorModalidade.class.getDeclaredField("id");
+                f.setAccessible(true); f.set(mm, UUID.randomUUID());
+            } catch (Exception ignored) {}
+            return mm;
+        });
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Plantão 20h", "PLANTAO", null, null, BigDecimal.valueOf(20), 1_100_000L, 0L, true);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.tipo()).isEqualTo("PLANTAO");
+        assertThat(resp.turno()).isNull();
+        assertThat(resp.horario()).isNull();
+        assertThat(resp.horas()).isEqualByComparingTo(BigDecimal.valueOf(20));
     }
 
     @Test

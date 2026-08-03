@@ -179,7 +179,7 @@ function ModalidadeFormInline({
               ].join(' ')}
             >
               Por Plantão
-              <span className="block font-normal text-[10px] text-ds-light mt-0.5">horário e horas (turno opcional)</span>
+              <span className="block font-normal text-[10px] text-ds-light mt-0.5">quantidade de horas (turno e horário opcionais)</span>
             </button>
             <button
               type="button"
@@ -241,11 +241,11 @@ function ModalidadeFormInline({
             </div>
 
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Horário *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Horário</label>
               <input
                 value={form.horario}
                 onChange={e => onChange({ horario: e.target.value })}
-                placeholder="ex: 07:00 as 17:00"
+                placeholder="ex: 07:00 as 17:00 (opcional)"
                 className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
               />
             </div>
@@ -518,12 +518,12 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
 
     if (!isMensal) {
       horas = parseFloat(modForm.horasStr.replace(',', '.'))
-      if (!modForm.horario.trim() || isNaN(horas) || horas <= 0) {
-        setModErr('Preencha horário e horas (> 0) corretamente')
+      if (isNaN(horas) || horas <= 0) {
+        setModErr('Preencha a quantidade de horas corretamente')
         return
       }
       turno = modForm.turno || null
-      horario = modForm.horario.trim()
+      horario = modForm.horario.trim() || null
     }
 
     setModSaving(true)

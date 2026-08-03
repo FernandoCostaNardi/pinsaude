@@ -4570,6 +4570,30 @@ turno mostra `"${nome} — ${horario}"` (sem o `turno ·` no meio) — sem isso 
 no label. Tabela de listagem já mostrava "—" para turno nulo (reaproveitado do caso MENSAL, nenhuma
 mudança necessária ali).
 
+### Segundo refinamento pós-13.17 — Horário também vira opcional, só Horas é obrigatório
+Sequência do pedido anterior: "quando não tem turno, o horário pode nem ser pedido" — decisão:
+horário vira **sempre opcional** pra PLANTAO (não só quando falta turno), deixando `horas` como o
+único campo realmente obrigatório desse tipo. Migration `V26__make_horario_opcional_plantao.sql`
+recria o CHECK mais uma vez: `tipo = 'PLANTAO' AND horas IS NOT NULL` (sem mais exigir horário).
+`aplicarCamposPorTipo()`: a checagem de incompletude virou só `req.horas() == null`; `horario`
+segue o mesmo padrão de normalização do turno (`string vazia/branco → null`).
+
+**Helper `detalheModalidade(m)`** criado em `FrequenciasPage.tsx` e `PortalFrequenciaPage.tsx`
+(duplicado localmente em cada arquivo, mesmo padrão já usado pra outros helpers pequenos e
+específicos de tela neste projeto — ver `formatDocumentoTomador` em `MedicoPerfilPage.tsx`) pra
+não espalhar `if/else` toda vez que o texto de detalhe da modalidade (label do dropdown + preview)
+precisa ser montado a partir de turno/horário/horas, todos agora potencialmente `null`:
+```tsx
+function detalheModalidade(m: TomadorModalidade): string {
+  if (m.tipo === 'MENSAL') return 'Mensal'
+  const partes = [m.turno, m.horario].filter(Boolean)
+  return partes.length > 0 ? partes.join(' · ') : `${m.horas}h`
+}
+```
+Cobre as 4 combinações possíveis pra PLANTAO (turno+horário, só turno, só horário, nenhum dos
+dois → cai pro fallback `"Nh"`) sem nunca imprimir `"undefined"` no label do `<select>` de
+modalidade nem no preview de valores.
+
 ---
 
 ## Convenções de Commit e Branch
