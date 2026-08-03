@@ -208,15 +208,69 @@ class TomadorGruposModalidadesServiceTest {
         });
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "plantão 12h noturno", "NOTURNO", "19:00 as 07:00",
+            "plantão 12h noturno", "PLANTAO", "NOTURNO", "19:00 as 07:00",
             BigDecimal.valueOf(12), 1_000_000L, 0L, true);
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
         assertThat(resp.nome()).isEqualTo("plantão 12h noturno");
+        assertThat(resp.tipo()).isEqualTo("PLANTAO");
         assertThat(resp.turno()).isEqualTo("NOTURNO");
         assertThat(resp.horas()).isEqualByComparingTo(BigDecimal.valueOf(12));
         verify(modalidadeRepo).save(any());
+    }
+
+    @Test
+    void criarModalidade_horasLivres_aceitaQualquerQuantidade() {
+        when(modalidadeRepo.save(any())).thenAnswer(inv -> {
+            TomadorModalidade mm = inv.getArgument(0);
+            try {
+                var f = TomadorModalidade.class.getDeclaredField("id");
+                f.setAccessible(true); f.set(mm, UUID.randomUUID());
+            } catch (Exception ignored) {}
+            return mm;
+        });
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Diária 10h", "PLANTAO", "DIURNO", "07:00 as 17:00",
+            BigDecimal.valueOf(10), 800_000L, 0L, true);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.horas()).isEqualByComparingTo(BigDecimal.valueOf(10));
+    }
+
+    @Test
+    void criarModalidade_mensal_ignoraTurnoHorarioHoras() {
+        when(modalidadeRepo.save(any())).thenAnswer(inv -> {
+            TomadorModalidade mm = inv.getArgument(0);
+            try {
+                var f = TomadorModalidade.class.getDeclaredField("id");
+                f.setAccessible(true); f.set(mm, UUID.randomUUID());
+            } catch (Exception ignored) {}
+            return mm;
+        });
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Coordenação de UTI", "MENSAL", null, null, null, 1_500_000L, 0L, true);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.tipo()).isEqualTo("MENSAL");
+        assertThat(resp.turno()).isNull();
+        assertThat(resp.horario()).isNull();
+        assertThat(resp.horas()).isNull();
+        assertThat(resp.valorCentavos()).isEqualTo(1_500_000L);
+    }
+
+    @Test
+    void criarModalidade_plantaoSemHoras_lanca422() {
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Diária incompleta", "PLANTAO", "DIURNO", "07:00 as 17:00", null, 800_000L, 0L, true);
+
+        assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("obrigatórios para modalidade do tipo Plantão");
     }
 
     @Test
@@ -225,7 +279,7 @@ class TomadorGruposModalidadesServiceTest {
         when(modalidadeRepo.findById(modalidadeId)).thenReturn(Optional.empty());
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "x", "DIURNO", "07:00 as 19:00", BigDecimal.valueOf(12), 0L, 0L, true);
+            "x", "PLANTAO", "DIURNO", "07:00 as 19:00", BigDecimal.valueOf(12), 0L, 0L, true);
 
         assertThatThrownBy(() -> service.atualizarModalidade(tomadorId, modalidadeId, req))
             .isInstanceOf(ResponseStatusException.class)

@@ -20,13 +20,16 @@ public class TomadorModalidade {
     @Column(name = "nome", nullable = false, length = 120)
     private String nome;
 
-    @Column(name = "turno", nullable = false, length = 10)
+    @Column(name = "tipo", nullable = false, length = 10)
+    private String tipo = "PLANTAO";
+
+    @Column(name = "turno", length = 10)
     private String turno;
 
-    @Column(name = "horario", nullable = false, length = 30)
+    @Column(name = "horario", length = 30)
     private String horario;
 
-    @Column(name = "horas", nullable = false, precision = 6, scale = 2)
+    @Column(name = "horas", precision = 6, scale = 2)
     private BigDecimal horas;
 
     @Column(name = "valor_centavos", nullable = false)
@@ -51,6 +54,8 @@ public class TomadorModalidade {
     public void setTomadorId(UUID v)              { this.tomadorId = v; }
     public String getNome()                       { return nome; }
     public void setNome(String v)                 { this.nome = v; }
+    public String getTipo()                       { return tipo; }
+    public void setTipo(String v)                 { this.tipo = v; }
     public String getTurno()                      { return turno; }
     public void setTurno(String v)                { this.turno = v; }
     public String getHorario()                    { return horario; }

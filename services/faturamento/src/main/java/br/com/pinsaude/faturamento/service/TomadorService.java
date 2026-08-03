@@ -387,9 +387,7 @@ public class TomadorService {
         TomadorModalidade m = new TomadorModalidade();
         m.setTomadorId(tomadorId);
         m.setNome(req.nome());
-        m.setTurno(req.turno());
-        m.setHorario(req.horario());
-        m.setHoras(req.horas());
+        aplicarCamposPorTipo(m, req);
         m.setValorCentavos(req.valorCentavos());
         m.setDeslocamentoCentavos(req.deslocamentoCentavos());
         m.setAtivo(req.ativo());
@@ -404,13 +402,34 @@ public class TomadorService {
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Modalidade não encontrada"));
         m.setNome(req.nome());
-        m.setTurno(req.turno());
-        m.setHorario(req.horario());
-        m.setHoras(req.horas());
+        aplicarCamposPorTipo(m, req);
         m.setValorCentavos(req.valorCentavos());
         m.setDeslocamentoCentavos(req.deslocamentoCentavos());
         m.setAtivo(req.ativo());
         return TomadorModalidadeResponse.from(modalidadeRepo.save(m));
+    }
+
+    // Modalidade PLANTAO exige turno+horario+horas; MENSAL (valor fixo, ex: "Coordenação de UTI")
+    // ignora esses 3 campos independente do que vier no request, mantendo a tabela consistente.
+    private void aplicarCamposPorTipo(TomadorModalidade m, TomadorModalidadeRequest req) {
+        if ("MENSAL".equals(req.tipo())) {
+            m.setTipo("MENSAL");
+            m.setTurno(null);
+            m.setHorario(null);
+            m.setHoras(null);
+            return;
+        }
+        boolean incompleto = req.turno() == null || req.turno().isBlank()
+            || req.horario() == null || req.horario().isBlank()
+            || req.horas() == null;
+        if (incompleto) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Turno, horário e horas são obrigatórios para modalidade do tipo Plantão");
+        }
+        m.setTipo("PLANTAO");
+        m.setTurno(req.turno());
+        m.setHorario(req.horario());
+        m.setHoras(req.horas());
     }
 
     @Transactional

@@ -4482,6 +4482,80 @@ agora só existe dentro do fluxo de Editar/Novo Tomador.
 
 ---
 
+## Modalidades com Horas Livres e Tipo Mensal (PINSAUDE-13.17)
+
+### Novo campo `tipo` — PLANTAO (padrão) vs MENSAL, com turno/horário/horas condicionais
+A tabela de preços (`faturamento.tomador_modalidades`) só suportava um modelo: turno
+(DIURNO/NOTURNO) + horário (texto livre) + horas, todos `NOT NULL`. Cliente pediu duas coisas:
+(1) modalidades com quantidade de horas livre (ex: "Diária 10h", "Diarista 20h" — não só 6/12
+como antes) e (2) modalidades sem turno/horário/horas, com valor fixo mensal (ex: "Coordenação
+de UTI"). Resolvido com um discriminador `tipo VARCHAR(10) CHECK IN ('PLANTAO','MENSAL')`
+(migration `V24__add_tipo_modalidade.sql`, mesmo padrão VARCHAR+CHECK já usado no projeto em vez
+de enum nativo do Postgres — ver `regime_presuncao`), tornando `turno`/`horario`/`horas`
+opcionais (`DROP NOT NULL`) com CHECK condicional garantindo consistência:
+```sql
+ALTER TABLE faturamento.tomador_modalidades
+    ADD CONSTRAINT tomador_modalidades_tipo_campos_check CHECK (
+        (tipo = 'PLANTAO' AND turno IS NOT NULL AND horario IS NOT NULL AND horas IS NOT NULL)
+        OR
+        (tipo = 'MENSAL' AND turno IS NULL AND horario IS NULL AND horas IS NULL)
+    );
+```
+Os CHECKs antigos de `turno`/`horas` (que exigiam sempre não-nulo) foram recriados tolerando
+`NULL` (`turno IS NULL OR turno IN (...)`, `horas IS NULL OR horas > 0`) — sem isso, o `DROP NOT
+NULL` sozinho não bastaria, o CHECK antigo continuaria rejeitando linhas MENSAL.
+
+### Validação condicional no service, não em Bean Validation declarativo
+`TomadorModalidadeRequest` teve `@NotBlank`/`@NotNull` removidos de `turno`/`horario`/`horas`
+(Bean Validation trata `null` como válido para a maioria dos constraints quando não combinado com
+`@NotNull` — `@Pattern`/`@Size`/`@DecimalMin` continuam funcionando normalmente quando o valor
+vem preenchido, só passam a tolerar `null`). A obrigatoriedade condicional (PLANTAO exige os 3
+campos; MENSAL não aceita nenhum) é validada em `TomadorService.aplicarCamposPorTipo()`, chamado
+por `criarModalidade`/`atualizarModalidade`: lança 422 se PLANTAO vier incompleto; se MENSAL,
+**ignora** silenciosamente qualquer turno/horário/horas que vier no request (zera os 3 campos),
+em vez de rejeitar — mais tolerante a um frontend que não limpe esses campos corretamente.
+
+### Frontend — `TomadorGruposModal.tsx`, aba Modalidades
+Removida a lógica de sincronização automática `syncByTurnoHoras`/`syncByHorario` (que travava
+Horário↔Turno↔Horas nos 4 combos fixos de `HORARIOS_FIXOS`). Agora:
+- **Seletor de Tipo** (2 botões: "Por Plantão" / "Valor Fixo Mensal") no topo do form, controla
+  quais campos aparecem.
+- **PLANTAO**: `HORARIOS_FIXOS` vira uma linha de "chips" de preenchimento rápido (clicar prepreenche
+  turno+horas+horário, mas os 3 campos continuam livres para editar depois) — Turno continua
+  `<select>`, mas **Horas agora é `<input type="number" step="0.5">` livre** (não mais limitado a
+  6/12) e **Horário é `<input type="text">` livre** (não mais um `<select>` fechado).
+- **MENSAL**: esconde Turno/Horário/Horas/Deslocamento por completo, mostra só Nome + "Valor
+  Mensal" + Ativo.
+- Tabela de listagem ganhou coluna "Tipo" (badge PLANTÃO azul / MENSAL roxo); Turno/Horário/Horas
+  mostram "—" quando `null` (linhas MENSAL).
+
+### Outras telas que exibem turno/horário — todas já toleravam `null`, só precisou ajustar o label
+`FrequenciasPage.tsx`/`PortalFrequenciaPage.tsx`: o label do `<select>` de modalidade
+(`` `${m.nome} — ${m.turno} · ${m.horario}` ``) virou condicional:
+`m.tipo === 'MENSAL' ? \`${m.nome} — Mensal\` : ...`. O preview de valores (`modalidade.horario`)
+segue o mesmo padrão. `frequenciaPdf.ts` (`gerarOcorrencia()`) **já era null-safe** (`item.
+modalidadeTurno ? ... : ''`, filtrado com `.filter(Boolean)`) — uma linha MENSAL no PDF mostra só
+o dia da semana, sem turno/horas, sem nenhuma mudança de código. `FechamentoPage.tsx`
+(`fmtHoras`) só precisou aceitar `number | null` na assinatura (já retornava `''` para valores
+falsy). `ModalidadeDetalhe` (`fechamentosApi.ts`) teve `turno`/`horas` tipados como `string |
+null`/`number | null` — o backend (`FechamentoPreviewResponse.ModalidadeDetalhe`, Java) já eram
+tipos de referência (`String`/`BigDecimal`), então nenhuma mudança foi necessária no Java além da
+tipagem do TS no frontend.
+
+### ⚠️ Armadilha: processo Java do faturamento rodando com código compilado ANTES da mudança
+Ao testar manualmente a criação de uma modalidade MENSAL pela UI, o backend retornou 400 com
+`"turno: não deve estar em branco"` — exatamente a mensagem do `@NotBlank` que **já tinha sido
+removido** do código-fonte. Causa: o processo `java.exe` do `faturamento` em execução no ambiente
+local (via `mvn spring-boot:run`) foi iniciado **antes** desta sessão de edição, rodando o `.class`
+antigo em `target/classes` — mesmo padrão já documentado para onboarding/gateway (ver EPIC-14.6),
+agora confirmado também no faturamento. **Sempre que uma mudança de backend não aparentar efeito
+ao testar manualmente (comportamento antigo persistindo), verificar se o processo em execução foi
+iniciado antes da edição** (`Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where
+CommandLine -like "*faturamento*"`) e reiniciá-lo (`mvn compile` + `mvn spring-boot:run`) antes de
+assumir que o código está errado.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

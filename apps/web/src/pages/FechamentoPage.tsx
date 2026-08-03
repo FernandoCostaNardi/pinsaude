@@ -56,7 +56,7 @@ function fmtNum(centavos: number): string {
   return (centavos / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function fmtHoras(h: number): string {
+function fmtHoras(h: number | null): string {
   if (!h) return ''
   return h % 1 === 0 ? String(Math.round(h)) : h.toFixed(1).replace('.', ',')
 }

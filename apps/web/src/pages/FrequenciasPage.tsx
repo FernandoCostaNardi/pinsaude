@@ -401,7 +401,7 @@ function PlantaoFormPanel({
           items={modalidades}
           value={modalidade}
           onChange={setModalidade}
-          getLabel={m => `${m.nome} — ${m.turno} · ${m.horario}`}
+          getLabel={m => m.tipo === 'MENSAL' ? `${m.nome} — Mensal` : `${m.nome} — ${m.turno} · ${m.horario}`}
           disabled={modalidades.length === 0}
         />
       </div>
@@ -409,7 +409,7 @@ function PlantaoFormPanel({
       {/* Preview de valores */}
       {modalidade && (
         <div className="bg-white rounded-lg px-4 py-2.5 mb-3 flex items-center gap-5 text-xs border border-ds-border/60">
-          <span className="text-ds-light">{modalidade.horario}</span>
+          <span className="text-ds-light">{modalidade.tipo === 'MENSAL' ? 'Mensal' : modalidade.horario}</span>
           <span className="text-ds-mid">Valor: <span className="font-bold text-ds-text">{formatBRL(modalidade.valorCentavos)}</span></span>
           {modalidade.deslocamentoCentavos > 0 && (
             <span className="text-ds-mid">Deslocamento: <span className="font-bold text-ds-text">{formatBRL(modalidade.deslocamentoCentavos)}</span></span>
