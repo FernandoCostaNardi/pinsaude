@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, CheckCircle, Info, Plus, Trash2 } from 'lucide-react'
+import { Loader2, CheckCircle, Info, Plus, Trash2, Building2 } from 'lucide-react'
 import { Modal, Input, Button, Alert } from '@pinsaude/ui'
 import { CnpjInput } from './CnpjInput'
 import { CpfInput } from './CpfInput'
 import { isValidCnpj } from '../utils/cnpj'
-import { Tomador, TomadorRequest, TipoTomador, TomadorCnae, TomadorServico, tomadoresApi } from '../api/tomadoresApi'
+import { Tomador, TomadorRequest, TipoTomador, TomadorCnae, TomadorServico, TomadorEmpresa, tomadoresApi } from '../api/tomadoresApi'
 import { Servico, servicosApi } from '../api/servicosApi'
+import { Empresa, empresasApi } from '../api/empresasApi'
 import { CnaeSelect, formatCnae } from './CnaeSelect'
 
 const TIPO_OPTIONS: { value: TipoTomador; label: string }[] = [
@@ -29,14 +30,16 @@ const EMPTY_ALIQ: Record<Tributo, string> = { ISS: '', IR: '', CSLL: '', PIS: ''
 
 interface PendingCnae { codigo: string; descricao: string; key: number }
 interface PendingServico { servicoId: string; key: number }
+interface PendingEmpresa { empresaId: string; key: number }
 
-type Aba = 'identificacao' | 'contato' | 'fiscal' | 'servicos'
+type Aba = 'identificacao' | 'contato' | 'fiscal' | 'servicos' | 'empresas'
 
 const ABAS: { key: Aba; label: string }[] = [
   { key: 'identificacao', label: 'Identificação' },
   { key: 'contato',       label: 'Contato e Endereço' },
   { key: 'fiscal',        label: 'Fiscal' },
   { key: 'servicos',      label: 'CNAEs e Serviços' },
+  { key: 'empresas',      label: 'Empresas Pin' },
 ]
 
 interface Props {
@@ -65,6 +68,7 @@ const emptyForm = (): TomadorRequest => ({
 
 let cnaeKey = 1
 let servicoKey = 1
+let empresaKey = 1
 
 export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
   const isEditing = tomador !== null
@@ -95,8 +99,17 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
   const [servicoLoading, setServicoLoading]     = useState(false)
   const [servicoError, setServicoError]         = useState<string | null>(null)
 
+  // Empresas Pin vinculadas — catálogo + vínculos do tomador
+  const [todasEmpresas, setTodasEmpresas]       = useState<Empresa[]>([])
+  const [vinculadas, setVinculadas]             = useState<TomadorEmpresa[]>([])
+  const [pendingEmpresas, setPendingEmpresas]   = useState<PendingEmpresa[]>([])
+  const [novoEmpresaId, setNovoEmpresaId]       = useState('')
+  const [empresaLoading, setEmpresaLoading]     = useState(false)
+  const [empresaError, setEmpresaError]         = useState<string | null>(null)
+
   useEffect(() => {
     servicosApi.listar().then(setCatalogoServicos).catch(() => setCatalogoServicos([]))
+    empresasApi.listar(0, 1000).then(p => setTodasEmpresas(p.content)).catch(() => setTodasEmpresas([]))
   }, [])
 
   useEffect(() => {
@@ -127,6 +140,8 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
       setPendingCnaes([])
       setServicos(tomador.servicos ?? [])
       setPendingServicos([])
+      setVinculadas(tomador.empresas ?? [])
+      setPendingEmpresas([])
     } else {
       setForm(emptyForm())
       setAliqForm({ ...EMPTY_ALIQ })
@@ -134,6 +149,8 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
       setPendingCnaes([])
       setServicos([])
       setPendingServicos([])
+      setVinculadas([])
+      setPendingEmpresas([])
     }
     setAba('identificacao')
     setErrors({})
@@ -143,6 +160,8 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
     setNovoCnae({ codigo: '', descricao: '' })
     setServicoError(null)
     setNovoServicoId('')
+    setEmpresaError(null)
+    setNovoEmpresaId('')
   }, [tomador])
 
   // Auto-fill Receita Federal
@@ -230,6 +249,9 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
         for (const servico of pendingServicos) {
           await tomadoresApi.adicionarServico(id, servico.servicoId)
         }
+        for (const empresa of pendingEmpresas) {
+          await tomadoresApi.adicionarEmpresa(id, empresa.empresaId)
+        }
       }
 
       const final = await tomadoresApi.buscarPorId(id)
@@ -315,6 +337,46 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
     }
   }
 
+  // IDs de empresa já vinculados (persistidos ou pendentes) — para não oferecer duplicados
+  const empresaIdsUsados = new Set<string>(
+    isEditing ? vinculadas.map(v => v.empresaId) : pendingEmpresas.map(p => p.empresaId),
+  )
+  const empresasDisponiveis = todasEmpresas.filter(e => !empresaIdsUsados.has(e.id))
+
+  async function handleAdicionarEmpresa() {
+    if (!novoEmpresaId) { setEmpresaError('Selecione uma empresa'); return }
+    setEmpresaError(null)
+
+    if (isEditing) {
+      setEmpresaLoading(true)
+      try {
+        const saved = await tomadoresApi.adicionarEmpresa(tomador!.id, novoEmpresaId)
+        setVinculadas(prev => [...prev, saved])
+        setNovoEmpresaId('')
+      } catch (err) {
+        setEmpresaError(err instanceof Error ? err.message : 'Erro ao adicionar empresa')
+      } finally {
+        setEmpresaLoading(false)
+      }
+    } else {
+      if (pendingEmpresas.some(p => p.empresaId === novoEmpresaId)) {
+        setEmpresaError('Esta empresa já foi adicionada')
+        return
+      }
+      setPendingEmpresas(prev => [...prev, { empresaId: novoEmpresaId, key: empresaKey++ }])
+      setNovoEmpresaId('')
+    }
+  }
+
+  async function handleRemoverEmpresa(empresaId: string) {
+    try {
+      await tomadoresApi.removerEmpresa(tomador!.id, empresaId)
+      setVinculadas(prev => prev.filter(v => v.empresaId !== empresaId))
+    } catch (err) {
+      setEmpresaError(err instanceof Error ? err.message : 'Erro ao remover empresa')
+    }
+  }
+
   const isPf = form.tipo === 'PACIENTE_PF'
 
   // Lista unificada para exibição de CNAEs (edit = persistidos; create = pendentes)
@@ -333,6 +395,16 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
   const servicosExibidos: { key: string; label: string; isPending: boolean; pendingKey?: number; ref?: TomadorServico }[] = isEditing
     ? servicos.map(s => ({ key: s.id, label: servicoLabel(s.servicoId, s.codigoLc116, s.descricaoPadrao), isPending: false, ref: s }))
     : pendingServicos.map(s => ({ key: String(s.key), label: servicoLabel(s.servicoId), isPending: true, pendingKey: s.key }))
+
+  // Lista unificada para exibição de Empresas Pin (edit = persistidos; create = pendentes)
+  function empresaLabel(empresaId: string): { razaoSocial: string; cnpj: string | null } {
+    const emp = todasEmpresas.find(e => e.id === empresaId)
+    return { razaoSocial: emp?.razaoSocial ?? empresaId, cnpj: emp?.cnpj ?? null }
+  }
+
+  const empresasExibidas: { key: string; empresaId: string; isPending: boolean; pendingKey?: number }[] = isEditing
+    ? vinculadas.map(v => ({ key: v.empresaId, empresaId: v.empresaId, isPending: false }))
+    : pendingEmpresas.map(p => ({ key: String(p.key), empresaId: p.empresaId, isPending: true, pendingKey: p.key }))
 
   // No mobile todas as abas ficam empilhadas e visíveis (comportamento atual preservado);
   // no desktop (sm+) só a aba ativa aparece, permitindo um modal mais largo sem ficar "puxado".
@@ -736,6 +808,78 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
 
         </div>
         {/* ── /CNAEs e Serviços ── */}
+
+        {/* ── Empresas Pin ── */}
+        <div className={abaClass('empresas')}>
+        <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
+          <p className="text-xs font-semibold text-ds-mid mb-0.5 uppercase tracking-wide">Empresas Pin Vinculadas</p>
+          <p className="text-[11px] text-ds-light mb-3">
+            A empresa emissora é pré-selecionada automaticamente ao criar Produção/Nota para este tomador.
+            Sem nenhuma vinculada, todo o catálogo fica disponível na seleção manual.
+          </p>
+
+          {empresaError && (
+            <p className="text-xs text-red-600 mb-2">{empresaError}</p>
+          )}
+
+          {empresasExibidas.length > 0 && (
+            <div className="mb-3 space-y-1.5">
+              {empresasExibidas.map(e => {
+                const { razaoSocial, cnpj } = empresaLabel(e.empresaId)
+                return (
+                  <div key={e.key} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-ds-border">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Building2 size={13} className="text-primary shrink-0" />
+                      <span className="text-xs font-semibold text-ds-text truncate">{razaoSocial}</span>
+                      {cnpj && <span className="text-xs text-ds-light shrink-0">{cnpj}</span>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (e.isPending) {
+                          setPendingEmpresas(prev => prev.filter(p => p.key !== e.pendingKey))
+                        } else {
+                          handleRemoverEmpresa(e.empresaId)
+                        }
+                      }}
+                      className="text-ds-light hover:text-red-500 transition-colors shrink-0 ml-2"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <select
+                value={novoEmpresaId}
+                onChange={e => setNovoEmpresaId(e.target.value)}
+                className="w-full h-[42px] rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
+              >
+                <option value="">Selecione uma empresa...</option>
+                {empresasDisponiveis.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.razaoSocial} — {e.cnpj}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={handleAdicionarEmpresa}
+              disabled={empresaLoading || !novoEmpresaId}
+              className="h-[42px] px-3 rounded-lg bg-primary text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-primary-600 disabled:opacity-50 transition-colors self-end"
+            >
+              {empresaLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              Adicionar
+            </button>
+          </div>
+        </div>
+        </div>
+        {/* ── /Empresas Pin ── */}
 
         {/* ── Ações ── */}
         <div className="flex justify-end gap-3 pt-1 border-t border-ds-border">
