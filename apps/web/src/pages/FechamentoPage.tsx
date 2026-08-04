@@ -302,7 +302,9 @@ export function FechamentoPage() {
               >
                 <option value="">— Selecione o tomador —</option>
                 {tomadores.map(t => (
-                  <option key={t.id} value={t.id}>{t.razaoSocialNome}</option>
+                  <option key={t.id} value={t.id}>
+                    {t.razaoSocialNome}{t.nomeFantasia ? ` — ${t.nomeFantasia}` : ''}
+                  </option>
                 ))}
               </select>
               <ChevronDown size={14} className="absolute right-2.5 top-3 text-ds-light pointer-events-none" />
@@ -365,6 +367,9 @@ export function FechamentoPage() {
                     </span>
                   </div>
                   <p className="text-xs text-ds-light">{tomadorSelecionado?.razaoSocialNome}</p>
+                  {tomadorSelecionado?.nomeFantasia && (
+                    <p className="text-xs font-medium text-red-600">{tomadorSelecionado.nomeFantasia}</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-6 flex-wrap">
                   <div className="text-center">

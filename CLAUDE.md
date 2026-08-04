@@ -4804,6 +4804,22 @@ classes CSS que "SECRETARIA DA SAUDE DO ESTADO DO CEARA" mostra "SESA" em vermel
 em cinza, tanto na lista aberta quanto no botão fechado após selecionar; tomadores sem nome
 fantasia mostram só 2 linhas, sem lacuna vazia no lugar da linha vermelha.
 
+### Terceiro refinamento pós-13.18 — mesmo padrão em `FechamentoPage.tsx`
+Rota é `/fechamentos` (plural) — não confundir com `/frequencias`. O `<select>` de tomador (nativo,
+mesmo caso do filtro de `FrequenciasPage.tsx`) ganhou nome fantasia concatenado na opção:
+`` `${t.razaoSocialNome}${t.nomeFantasia ? ` — ${t.nomeFantasia}` : ''}` ``. O cabeçalho do preview
+("Totalizador — competência", ao lado de `tomadorSelecionado?.razaoSocialNome`) ganhou o mesmo
+parágrafo vermelho condicional usado no header do modal de Frequência:
+```tsx
+<p className="text-xs text-ds-light">{tomadorSelecionado?.razaoSocialNome}</p>
+{tomadorSelecionado?.nomeFantasia && (
+  <p className="text-xs font-medium text-red-600">{tomadorSelecionado.nomeFantasia}</p>
+)}
+```
+Testado manualmente: selecionei HAPVIDA no `<select>`, gerei o preview e confirmei via inspeção de
+classes CSS que "HAPVIDA" aparece com `text-xs font-medium text-red-600` abaixo da razão social no
+cabeçalho do totalizador.
+
 ---
 
 ## Convenções de Commit e Branch
