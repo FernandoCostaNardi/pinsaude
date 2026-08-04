@@ -98,7 +98,7 @@ function StatCard({ icon: Icon, label, value, sub, iconBg, iconColor }: {
 // ─── Dropdown genérico (com portal para evitar clipping por overflow) ─────────
 
 function Dropdown<T extends { id: string }>({
-  label, placeholder, items, value, onChange, getLabel, disabled,
+  label, placeholder, items, value, onChange, getLabel, getSubLabel, getMeta, disabled,
 }: {
   label?: string
   placeholder: string
@@ -106,6 +106,8 @@ function Dropdown<T extends { id: string }>({
   value: T | null
   onChange: (v: T) => void
   getLabel: (v: T) => string
+  getSubLabel?: (v: T) => string | null | undefined
+  getMeta?: (v: T) => string | null | undefined
   disabled?: boolean
 }) {
   const [open, setOpen]       = useState(false)
@@ -136,7 +138,11 @@ function Dropdown<T extends { id: string }>({
     setOpen(o => !o)
   }
 
-  const filtered = items.filter(i => getLabel(i).toLowerCase().includes(q.toLowerCase()))
+  const filtered = items.filter(i =>
+    getLabel(i).toLowerCase().includes(q.toLowerCase()) ||
+    (getSubLabel?.(i) ?? '').toLowerCase().includes(q.toLowerCase()) ||
+    (getMeta?.(i) ?? '').toLowerCase().includes(q.toLowerCase())
+  )
 
   return (
     <div ref={containerRef} className="relative">
@@ -146,7 +152,19 @@ function Dropdown<T extends { id: string }>({
         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm transition-colors disabled:opacity-50 ${
           value ? 'border-primary/40 bg-primary-50 text-ds-text font-medium' : 'border-ds-border bg-white text-ds-light'
         }`}>
-        <span className="truncate">{value ? getLabel(value) : placeholder}</span>
+        {value ? (
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block truncate">{getLabel(value)}</span>
+            {getSubLabel?.(value) && (
+              <span className="block truncate text-xs font-medium text-red-600">{getSubLabel(value)}</span>
+            )}
+            {getMeta?.(value) && (
+              <span className="block truncate text-xs text-ds-light">{getMeta(value)}</span>
+            )}
+          </span>
+        ) : (
+          <span className="truncate">{placeholder}</span>
+        )}
         <ChevronDown size={14} className={`shrink-0 ml-2 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -165,7 +183,13 @@ function Dropdown<T extends { id: string }>({
                 <button key={item.id} type="button"
                   onClick={() => { onChange(item); setOpen(false); setQ('') }}
                   className="w-full text-left px-3 py-2.5 text-sm hover:bg-ds-surface transition-colors">
-                  {getLabel(item)}
+                  <span className="block truncate">{getLabel(item)}</span>
+                  {getSubLabel?.(item) && (
+                    <span className="block truncate text-xs font-medium text-red-600">{getSubLabel(item)}</span>
+                  )}
+                  {getMeta?.(item) && (
+                    <span className="block truncate text-xs text-ds-light">{getMeta(item)}</span>
+                  )}
                 </button>
               ))
             }
@@ -281,7 +305,9 @@ function NovaFrequenciaModal({
               items={tomadoresDisponiveis}
               value={tomador}
               onChange={t => { setTomador(t); setSetor(null) }}
-              getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
+              getLabel={t => t.razaoSocialNome}
+              getSubLabel={t => t.nomeFantasia}
+              getMeta={t => t.municipio}
             />
             {tomadoresFiltrados && (
               <p className="mt-1 text-[11px] text-ds-light">

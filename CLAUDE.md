@@ -4768,6 +4768,42 @@ vermelho condicional entre a razão social e a linha de competência:
 `tomador` já vinha resolvido via `tomadores.find(t => t.id === freq.tomadorId)` no topo do
 componente — nenhum dado novo precisou ser buscado.
 
+### Segundo refinamento pós-13.18 — `Dropdown<T>` genérico ganha `getSubLabel`/`getMeta` (3 linhas)
+O modal "Nova Frequência Médica" seleciona o tomador via um `Dropdown<T>` genérico (componente
+local do arquivo, com portal + busca — diferente da tabela/header, que são HTML livre), então não
+dava pra simplesmente inserir um `<span>` vermelho como nos outros lugares: o componente só tinha
+`getLabel(v): string`, uma linha só, tanto no botão fechado quanto em cada item da lista aberta.
+
+Estendido com dois novos render props opcionais, replicando a mesma hierarquia visual de 3 níveis
+já usada no `Autocomplete` de `ProducaoNovaPage.tsx` (`label` → `highlight` vermelho → `sublabel`
+cinza):
+```tsx
+getSubLabel?: (v: T) => string | null | undefined  // linha vermelha (nome fantasia)
+getMeta?:     (v: T) => string | null | undefined  // linha cinza (município)
+```
+Renderizado tanto no botão fechado (`value ? getLabel(value) : placeholder`) quanto em cada
+`<button>` da lista de opções — cada linha só aparece (`{getSubLabel?.(v) && ...}`) quando a
+função existe E retorna algo truthy, então itens sem nome fantasia continuam mostrando só 2 linhas
+(razão social + município), sem espaço em branco.
+
+**Busca (`filtered`) também passou a considerar as 3 fontes** (`getLabel` OR `getSubLabel` OR
+`getMeta`) — antes a busca só batia contra `getLabel`, que já embutia o município concatenado
+numa string só (`razaoSocialNome + ' — ' + municipio`); ao quebrar isso em 3 campos separados
+para poder estilizar cada um, a busca por município deixaria de funcionar se o filtro não fosse
+atualizado junto.
+
+Chamada no Dropdown de Tomador (única que usa os novos props — Médico e Setor continuam só com
+`getLabel`, sem sublabel/meta):
+```tsx
+getLabel={t => t.razaoSocialNome}
+getSubLabel={t => t.nomeFantasia}
+getMeta={t => t.municipio}
+```
+Testado manualmente: abri "Nova Frequência" → dropdown de Tomador → confirmado via inspeção de
+classes CSS que "SECRETARIA DA SAUDE DO ESTADO DO CEARA" mostra "SESA" em vermelho e "FORTALEZA"
+em cinza, tanto na lista aberta quanto no botão fechado após selecionar; tomadores sem nome
+fantasia mostram só 2 linhas, sem lacuna vazia no lugar da linha vermelha.
+
 ---
 
 ## Convenções de Commit e Branch
