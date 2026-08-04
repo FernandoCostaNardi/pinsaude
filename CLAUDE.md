@@ -4754,6 +4754,20 @@ SAUDE DO ESTADO DO CEARA", que **não** é substring da razão social — bom ca
 que o match realmente veio do nome fantasia e não só coincidência com a razão social) — filtrou
 corretamente para as 3 frequências desse tomador.
 
+### Refinamento pós-13.18 — mesmo tratamento no header do modal de detalhe
+O cabeçalho "Dados do profissional" do modal `PainelFrequencia` (célula "Tomador", ao lado de
+"Médico" e "Total Apurado") também mostrava só a razão social. Adicionado o mesmo parágrafo
+vermelho condicional entre a razão social e a linha de competência:
+```tsx
+<p className="text-sm font-semibold text-ds-text truncate">{tomador?.razaoSocialNome ?? '—'}</p>
+{tomador?.nomeFantasia && (
+  <p className="text-xs font-medium text-red-600 truncate">{tomador.nomeFantasia}</p>
+)}
+<p className="text-xs text-ds-light">{formatCompetencia(freq.competencia)}</p>
+```
+`tomador` já vinha resolvido via `tomadores.find(t => t.id === freq.tomadorId)` no topo do
+componente — nenhum dado novo precisou ser buscado.
+
 ---
 
 ## Convenções de Commit e Branch

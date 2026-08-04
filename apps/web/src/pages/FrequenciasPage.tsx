@@ -833,6 +833,9 @@ function PainelFrequencia({
           <div className="px-6 py-3 border-r border-ds-border">
             <p className="text-[10px] font-bold text-ds-light uppercase tracking-wider mb-0.5">Tomador</p>
             <p className="text-sm font-semibold text-ds-text truncate">{tomador?.razaoSocialNome ?? '—'}</p>
+            {tomador?.nomeFantasia && (
+              <p className="text-xs font-medium text-red-600 truncate">{tomador.nomeFantasia}</p>
+            )}
             <p className="text-xs text-ds-light">{formatCompetencia(freq.competencia)}</p>
           </div>
           <div className="px-6 py-3">
