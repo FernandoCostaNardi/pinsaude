@@ -4726,6 +4726,36 @@ modalidade nem no preview de valores.
 
 ---
 
+## Nome Fantasia do Tomador no Filtro e na Tabela de Frequências (PINSAUDE-13.18)
+
+### Mesmo padrão visual já usado em `ProducoesPage.tsx` — sem novo componente
+`FrequenciasPage.tsx` já carregava `tomadoresMap` com o objeto `Tomador` completo (não só um mapa
+id→nome), então `nomeFantasia` já estava disponível sem precisar de nenhum map novo (diferente de
+`ProducoesPage.tsx`, que precisou de um `tomadorNomeFantasiaMap` dedicado). Coluna "Tomador" da
+tabela ganhou a mesma segunda linha condicional já usada na Produção:
+```tsx
+{tomadoresMap[f.tomadorId]?.nomeFantasia && (
+  <div className="text-xs font-medium text-red-600 truncate max-w-[200px]">
+    {tomadoresMap[f.tomadorId]?.nomeFantasia}
+  </div>
+)}
+```
+
+### Filtro de tomador é um `<select>` nativo — nome fantasia entra concatenado no texto da opção
+Diferente da tabela (HTML livre, duas linhas), um `<option>` de `<select>` nativo só aceita texto
+puro em uma linha — não dá pra replicar o span vermelho ali. Solução: concatenar direto no label
+da opção, mesmo padrão já usado no `getLabel` do `Dropdown` de tomador desta mesma página (que já
+concatenava `municipio`): `` `${t.razaoSocialNome}${t.nomeFantasia ? ` — ${t.nomeFantasia}` : ''}` ``.
+
+### Busca por texto livre (`q`) passou a considerar `nomeFantasia`
+`filtradas` (useMemo) ganhou `tomFantasia = tomadoresMap[f.tomadorId]?.nomeFantasia?.toLowerCase()
+?? ''` no `matchQ`. Testado manualmente buscando por `"sesa"` (nome fantasia de "SECRETARIA DA
+SAUDE DO ESTADO DO CEARA", que **não** é substring da razão social — bom caso de teste, garante
+que o match realmente veio do nome fantasia e não só coincidência com a razão social) — filtrou
+corretamente para as 3 frequências desse tomador.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

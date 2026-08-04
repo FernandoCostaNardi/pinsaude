@@ -1080,8 +1080,9 @@ export function FrequenciasPage() {
     const qL = q.toLowerCase()
     return frequencias.filter(f => {
       const tomNome = tomadoresMap[f.tomadorId]?.razaoSocialNome?.toLowerCase() ?? ''
+      const tomFantasia = tomadoresMap[f.tomadorId]?.nomeFantasia?.toLowerCase() ?? ''
       const medNome = medicosMap[f.medicoId]?.nome?.toLowerCase() ?? ''
-      const matchQ = !q || tomNome.includes(qL) || medNome.includes(qL)
+      const matchQ = !q || tomNome.includes(qL) || tomFantasia.includes(qL) || medNome.includes(qL)
         || (f.tipoMedico ?? '').toLowerCase().includes(qL)
         || (f.servicoOperacionalNome ?? '').toLowerCase().includes(qL)
         || f.competencia.includes(q)
@@ -1174,7 +1175,11 @@ export function FrequenciasPage() {
           </div>
           <select value={filtroTomador} onChange={e => { setFiltroTomador(e.target.value); setPage(0) }} className={`${selectCls} flex-1 min-w-[160px]`}>
             <option value="">Todos os tomadores</option>
-            {tomadores.map(t => <option key={t.id} value={t.id}>{t.razaoSocialNome}</option>)}
+            {tomadores.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.razaoSocialNome}{t.nomeFantasia ? ` — ${t.nomeFantasia}` : ''}
+              </option>
+            ))}
           </select>
           <select value={filtroMedico} onChange={e => { setFiltroMedico(e.target.value); setPage(0) }} className={`${selectCls} flex-1 min-w-[160px]`}>
             <option value="">Todos os médicos</option>
@@ -1245,6 +1250,11 @@ export function FrequenciasPage() {
                   <div className="text-sm text-ds-mid truncate max-w-[200px]">
                     {tomadoresMap[f.tomadorId]?.razaoSocialNome ?? '—'}
                   </div>
+                  {tomadoresMap[f.tomadorId]?.nomeFantasia && (
+                    <div className="text-xs font-medium text-red-600 truncate max-w-[200px]">
+                      {tomadoresMap[f.tomadorId]?.nomeFantasia}
+                    </div>
+                  )}
                 </TD>
                 <TD>
                   <div className="text-sm text-ds-light truncate max-w-[160px]">
