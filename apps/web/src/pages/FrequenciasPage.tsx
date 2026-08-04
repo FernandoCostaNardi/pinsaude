@@ -98,7 +98,7 @@ function StatCard({ icon: Icon, label, value, sub, iconBg, iconColor }: {
 // ─── Dropdown genérico (com portal para evitar clipping por overflow) ─────────
 
 function Dropdown<T extends { id: string }>({
-  label, placeholder, items, value, onChange, getLabel, disabled,
+  label, placeholder, items, value, onChange, getLabel, getSubLabel, getMeta, disabled,
 }: {
   label?: string
   placeholder: string
@@ -106,6 +106,8 @@ function Dropdown<T extends { id: string }>({
   value: T | null
   onChange: (v: T) => void
   getLabel: (v: T) => string
+  getSubLabel?: (v: T) => string | null | undefined
+  getMeta?: (v: T) => string | null | undefined
   disabled?: boolean
 }) {
   const [open, setOpen]       = useState(false)
@@ -136,7 +138,11 @@ function Dropdown<T extends { id: string }>({
     setOpen(o => !o)
   }
 
-  const filtered = items.filter(i => getLabel(i).toLowerCase().includes(q.toLowerCase()))
+  const filtered = items.filter(i =>
+    getLabel(i).toLowerCase().includes(q.toLowerCase()) ||
+    (getSubLabel?.(i) ?? '').toLowerCase().includes(q.toLowerCase()) ||
+    (getMeta?.(i) ?? '').toLowerCase().includes(q.toLowerCase())
+  )
 
   return (
     <div ref={containerRef} className="relative">
@@ -146,7 +152,19 @@ function Dropdown<T extends { id: string }>({
         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm transition-colors disabled:opacity-50 ${
           value ? 'border-primary/40 bg-primary-50 text-ds-text font-medium' : 'border-ds-border bg-white text-ds-light'
         }`}>
-        <span className="truncate">{value ? getLabel(value) : placeholder}</span>
+        {value ? (
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block truncate">{getLabel(value)}</span>
+            {getSubLabel?.(value) && (
+              <span className="block truncate text-xs font-medium text-red-600">{getSubLabel(value)}</span>
+            )}
+            {getMeta?.(value) && (
+              <span className="block truncate text-xs text-ds-light">{getMeta(value)}</span>
+            )}
+          </span>
+        ) : (
+          <span className="truncate">{placeholder}</span>
+        )}
         <ChevronDown size={14} className={`shrink-0 ml-2 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -165,7 +183,13 @@ function Dropdown<T extends { id: string }>({
                 <button key={item.id} type="button"
                   onClick={() => { onChange(item); setOpen(false); setQ('') }}
                   className="w-full text-left px-3 py-2.5 text-sm hover:bg-ds-surface transition-colors">
-                  {getLabel(item)}
+                  <span className="block truncate">{getLabel(item)}</span>
+                  {getSubLabel?.(item) && (
+                    <span className="block truncate text-xs font-medium text-red-600">{getSubLabel(item)}</span>
+                  )}
+                  {getMeta?.(item) && (
+                    <span className="block truncate text-xs text-ds-light">{getMeta(item)}</span>
+                  )}
                 </button>
               ))
             }
@@ -281,7 +305,9 @@ function NovaFrequenciaModal({
               items={tomadoresDisponiveis}
               value={tomador}
               onChange={t => { setTomador(t); setSetor(null) }}
-              getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
+              getLabel={t => t.razaoSocialNome}
+              getSubLabel={t => t.nomeFantasia}
+              getMeta={t => t.municipio}
             />
             {tomadoresFiltrados && (
               <p className="mt-1 text-[11px] text-ds-light">
@@ -833,6 +859,9 @@ function PainelFrequencia({
           <div className="px-6 py-3 border-r border-ds-border">
             <p className="text-[10px] font-bold text-ds-light uppercase tracking-wider mb-0.5">Tomador</p>
             <p className="text-sm font-semibold text-ds-text truncate">{tomador?.razaoSocialNome ?? '—'}</p>
+            {tomador?.nomeFantasia && (
+              <p className="text-xs font-medium text-red-600 truncate">{tomador.nomeFantasia}</p>
+            )}
             <p className="text-xs text-ds-light">{formatCompetencia(freq.competencia)}</p>
           </div>
           <div className="px-6 py-3">
@@ -1080,8 +1109,9 @@ export function FrequenciasPage() {
     const qL = q.toLowerCase()
     return frequencias.filter(f => {
       const tomNome = tomadoresMap[f.tomadorId]?.razaoSocialNome?.toLowerCase() ?? ''
+      const tomFantasia = tomadoresMap[f.tomadorId]?.nomeFantasia?.toLowerCase() ?? ''
       const medNome = medicosMap[f.medicoId]?.nome?.toLowerCase() ?? ''
-      const matchQ = !q || tomNome.includes(qL) || medNome.includes(qL)
+      const matchQ = !q || tomNome.includes(qL) || tomFantasia.includes(qL) || medNome.includes(qL)
         || (f.tipoMedico ?? '').toLowerCase().includes(qL)
         || (f.servicoOperacionalNome ?? '').toLowerCase().includes(qL)
         || f.competencia.includes(q)
@@ -1174,7 +1204,11 @@ export function FrequenciasPage() {
           </div>
           <select value={filtroTomador} onChange={e => { setFiltroTomador(e.target.value); setPage(0) }} className={`${selectCls} flex-1 min-w-[160px]`}>
             <option value="">Todos os tomadores</option>
-            {tomadores.map(t => <option key={t.id} value={t.id}>{t.razaoSocialNome}</option>)}
+            {tomadores.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.razaoSocialNome}{t.nomeFantasia ? ` — ${t.nomeFantasia}` : ''}
+              </option>
+            ))}
           </select>
           <select value={filtroMedico} onChange={e => { setFiltroMedico(e.target.value); setPage(0) }} className={`${selectCls} flex-1 min-w-[160px]`}>
             <option value="">Todos os médicos</option>
@@ -1245,6 +1279,11 @@ export function FrequenciasPage() {
                   <div className="text-sm text-ds-mid truncate max-w-[200px]">
                     {tomadoresMap[f.tomadorId]?.razaoSocialNome ?? '—'}
                   </div>
+                  {tomadoresMap[f.tomadorId]?.nomeFantasia && (
+                    <div className="text-xs font-medium text-red-600 truncate max-w-[200px]">
+                      {tomadoresMap[f.tomadorId]?.nomeFantasia}
+                    </div>
+                  )}
                 </TD>
                 <TD>
                   <div className="text-sm text-ds-light truncate max-w-[160px]">

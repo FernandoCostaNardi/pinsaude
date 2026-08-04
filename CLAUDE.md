@@ -4726,6 +4726,102 @@ modalidade nem no preview de valores.
 
 ---
 
+## Nome Fantasia do Tomador no Filtro e na Tabela de Frequências (PINSAUDE-13.18)
+
+### Mesmo padrão visual já usado em `ProducoesPage.tsx` — sem novo componente
+`FrequenciasPage.tsx` já carregava `tomadoresMap` com o objeto `Tomador` completo (não só um mapa
+id→nome), então `nomeFantasia` já estava disponível sem precisar de nenhum map novo (diferente de
+`ProducoesPage.tsx`, que precisou de um `tomadorNomeFantasiaMap` dedicado). Coluna "Tomador" da
+tabela ganhou a mesma segunda linha condicional já usada na Produção:
+```tsx
+{tomadoresMap[f.tomadorId]?.nomeFantasia && (
+  <div className="text-xs font-medium text-red-600 truncate max-w-[200px]">
+    {tomadoresMap[f.tomadorId]?.nomeFantasia}
+  </div>
+)}
+```
+
+### Filtro de tomador é um `<select>` nativo — nome fantasia entra concatenado no texto da opção
+Diferente da tabela (HTML livre, duas linhas), um `<option>` de `<select>` nativo só aceita texto
+puro em uma linha — não dá pra replicar o span vermelho ali. Solução: concatenar direto no label
+da opção, mesmo padrão já usado no `getLabel` do `Dropdown` de tomador desta mesma página (que já
+concatenava `municipio`): `` `${t.razaoSocialNome}${t.nomeFantasia ? ` — ${t.nomeFantasia}` : ''}` ``.
+
+### Busca por texto livre (`q`) passou a considerar `nomeFantasia`
+`filtradas` (useMemo) ganhou `tomFantasia = tomadoresMap[f.tomadorId]?.nomeFantasia?.toLowerCase()
+?? ''` no `matchQ`. Testado manualmente buscando por `"sesa"` (nome fantasia de "SECRETARIA DA
+SAUDE DO ESTADO DO CEARA", que **não** é substring da razão social — bom caso de teste, garante
+que o match realmente veio do nome fantasia e não só coincidência com a razão social) — filtrou
+corretamente para as 3 frequências desse tomador.
+
+### Refinamento pós-13.18 — mesmo tratamento no header do modal de detalhe
+O cabeçalho "Dados do profissional" do modal `PainelFrequencia` (célula "Tomador", ao lado de
+"Médico" e "Total Apurado") também mostrava só a razão social. Adicionado o mesmo parágrafo
+vermelho condicional entre a razão social e a linha de competência:
+```tsx
+<p className="text-sm font-semibold text-ds-text truncate">{tomador?.razaoSocialNome ?? '—'}</p>
+{tomador?.nomeFantasia && (
+  <p className="text-xs font-medium text-red-600 truncate">{tomador.nomeFantasia}</p>
+)}
+<p className="text-xs text-ds-light">{formatCompetencia(freq.competencia)}</p>
+```
+`tomador` já vinha resolvido via `tomadores.find(t => t.id === freq.tomadorId)` no topo do
+componente — nenhum dado novo precisou ser buscado.
+
+### Segundo refinamento pós-13.18 — `Dropdown<T>` genérico ganha `getSubLabel`/`getMeta` (3 linhas)
+O modal "Nova Frequência Médica" seleciona o tomador via um `Dropdown<T>` genérico (componente
+local do arquivo, com portal + busca — diferente da tabela/header, que são HTML livre), então não
+dava pra simplesmente inserir um `<span>` vermelho como nos outros lugares: o componente só tinha
+`getLabel(v): string`, uma linha só, tanto no botão fechado quanto em cada item da lista aberta.
+
+Estendido com dois novos render props opcionais, replicando a mesma hierarquia visual de 3 níveis
+já usada no `Autocomplete` de `ProducaoNovaPage.tsx` (`label` → `highlight` vermelho → `sublabel`
+cinza):
+```tsx
+getSubLabel?: (v: T) => string | null | undefined  // linha vermelha (nome fantasia)
+getMeta?:     (v: T) => string | null | undefined  // linha cinza (município)
+```
+Renderizado tanto no botão fechado (`value ? getLabel(value) : placeholder`) quanto em cada
+`<button>` da lista de opções — cada linha só aparece (`{getSubLabel?.(v) && ...}`) quando a
+função existe E retorna algo truthy, então itens sem nome fantasia continuam mostrando só 2 linhas
+(razão social + município), sem espaço em branco.
+
+**Busca (`filtered`) também passou a considerar as 3 fontes** (`getLabel` OR `getSubLabel` OR
+`getMeta`) — antes a busca só batia contra `getLabel`, que já embutia o município concatenado
+numa string só (`razaoSocialNome + ' — ' + municipio`); ao quebrar isso em 3 campos separados
+para poder estilizar cada um, a busca por município deixaria de funcionar se o filtro não fosse
+atualizado junto.
+
+Chamada no Dropdown de Tomador (única que usa os novos props — Médico e Setor continuam só com
+`getLabel`, sem sublabel/meta):
+```tsx
+getLabel={t => t.razaoSocialNome}
+getSubLabel={t => t.nomeFantasia}
+getMeta={t => t.municipio}
+```
+Testado manualmente: abri "Nova Frequência" → dropdown de Tomador → confirmado via inspeção de
+classes CSS que "SECRETARIA DA SAUDE DO ESTADO DO CEARA" mostra "SESA" em vermelho e "FORTALEZA"
+em cinza, tanto na lista aberta quanto no botão fechado após selecionar; tomadores sem nome
+fantasia mostram só 2 linhas, sem lacuna vazia no lugar da linha vermelha.
+
+### Terceiro refinamento pós-13.18 — mesmo padrão em `FechamentoPage.tsx`
+Rota é `/fechamentos` (plural) — não confundir com `/frequencias`. O `<select>` de tomador (nativo,
+mesmo caso do filtro de `FrequenciasPage.tsx`) ganhou nome fantasia concatenado na opção:
+`` `${t.razaoSocialNome}${t.nomeFantasia ? ` — ${t.nomeFantasia}` : ''}` ``. O cabeçalho do preview
+("Totalizador — competência", ao lado de `tomadorSelecionado?.razaoSocialNome`) ganhou o mesmo
+parágrafo vermelho condicional usado no header do modal de Frequência:
+```tsx
+<p className="text-xs text-ds-light">{tomadorSelecionado?.razaoSocialNome}</p>
+{tomadorSelecionado?.nomeFantasia && (
+  <p className="text-xs font-medium text-red-600">{tomadorSelecionado.nomeFantasia}</p>
+)}
+```
+Testado manualmente: selecionei HAPVIDA no `<select>`, gerei o preview e confirmei via inspeção de
+classes CSS que "HAPVIDA" aparece com `text-xs font-medium text-red-600` abaixo da razão social no
+cabeçalho do totalizador.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
