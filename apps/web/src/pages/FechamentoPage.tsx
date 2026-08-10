@@ -6,7 +6,7 @@ import {
   ReceiptText, History, TriangleAlert,
 } from 'lucide-react'
 import { Button, Alert } from '@pinsaude/ui'
-import { tomadoresApi, Tomador } from '../api/tomadoresApi'
+import { tomadoresApi, Tomador, TomadorModalidade } from '../api/tomadoresApi'
 import {
   fechamentosApi,
   FechamentoPreviewResp,
@@ -63,7 +63,21 @@ function fmtHoras(h: number | null): string {
 
 // ─── Tabela de Modalidades ────────────────────────────────────────────────────
 
-function TabelaModalidades({ modalidades }: { modalidades: ModalidadeDetalhe[] }) {
+// Modalidade META paga proporcional (por hora/dia) — o "valor do bloco" cadastrado não é o
+// valor real por lançamento. Mostra a meta como badge e o valor MÉDIO apurado (totalCentavos ÷
+// quantidade), calculado só a partir de dados já corretos do preview — sem precisar de nenhuma
+// mudança no backend, já que totalCentavos/quantidade somam corretamente os itens proporcionais.
+function metaBadge(cat: TomadorModalidade): string {
+  return cat.unidadeCalculo === 'HORA' ? `${cat.metaHoras}h` : `${cat.metaDias}d`
+}
+
+function TabelaModalidades({ modalidades, catalogo }: { modalidades: ModalidadeDetalhe[]; catalogo: TomadorModalidade[] }) {
+  const catalogoMap = useMemo(() => {
+    const map: Record<string, TomadorModalidade> = {}
+    catalogo.forEach(c => { map[c.id] = c })
+    return map
+  }, [catalogo])
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs border-collapse">
@@ -87,10 +101,17 @@ function TabelaModalidades({ modalidades }: { modalidades: ModalidadeDetalhe[] }
               ? 'bg-gray-200 text-gray-800'
               : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
             const hasDesl = m.deslocamentoCentavos > 0
+            const cat = catalogoMap[m.modalidadeId]
+            const isMeta = cat?.tipo === 'META'
+            const valorMedioApurado = m.quantidade > 0 ? Math.round(m.totalCentavos / m.quantidade) : 0
             return (
               <tr key={m.modalidadeId} className={`border-b border-gray-200 ${rowCls}`}>
                 <td className="px-3 py-1.5 font-medium">{m.nome}</td>
-                <td className="px-2 py-1.5 text-center tabular-nums">{fmtHoras(m.horas)}</td>
+                <td className="px-2 py-1.5 text-center tabular-nums">
+                  {isMeta
+                    ? <span className="inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-teal-100 text-teal-700">{metaBadge(cat)}</span>
+                    : fmtHoras(m.horas)}
+                </td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">
                   {hasDesl ? fmtNum(m.valorUnitarioCentavos) : ''}
                 </td>
@@ -98,7 +119,9 @@ function TabelaModalidades({ modalidades }: { modalidades: ModalidadeDetalhe[] }
                   {hasDesl ? fmtNum(m.deslocamentoCentavos) : ''}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums font-medium">
-                  {fmtNum(m.valorItemCentavos)}
+                  {isMeta
+                    ? <span title="Valor médio apurado (proporcional à meta)">{fmtNum(valorMedioApurado)}</span>
+                    : fmtNum(m.valorItemCentavos)}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums">
                   {m.quantidade > 0 ? `${m.quantidade},00` : '0,00'}
@@ -207,6 +230,7 @@ export function FechamentoPage() {
   const [tomadorId, setTomadorId] = useState('')
   const [competencia, setCompetencia] = useState(COMPETENCIAS[1] ?? COMPETENCIAS[0])
   const [preview, setPreview] = useState<FechamentoPreviewResp | null>(null)
+  const [modalidadesCatalogo, setModalidadesCatalogo] = useState<TomadorModalidade[]>([])
   const [resultado, setResultado] = useState<FechamentoResp | null>(null)
   const [historico, setHistorico] = useState<FechamentoResp[]>([])
   const [tomadorNomeMap, setTomadorNomeMap] = useState<Record<string, string>>({})
@@ -243,8 +267,12 @@ export function FechamentoPage() {
     setPreview(null)
     setResultado(null)
     try {
-      const data = await fechamentosApi.preview(tomadorId, competencia)
+      const [data, modalidades] = await Promise.all([
+        fechamentosApi.preview(tomadorId, competencia),
+        tomadoresApi.listarModalidades(tomadorId).catch(() => []),
+      ])
       setPreview(data)
+      setModalidadesCatalogo(modalidades)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar preview')
     } finally {
@@ -407,7 +435,7 @@ export function FechamentoPage() {
                 {/* Tabela de modalidades (top) */}
                 {preview.modalidades.length > 0 && (
                   <div className="border-b border-ds-border">
-                    <TabelaModalidades modalidades={preview.modalidades} />
+                    <TabelaModalidades modalidades={preview.modalidades} catalogo={modalidadesCatalogo} />
                   </div>
                 )}
 

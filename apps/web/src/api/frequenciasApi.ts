@@ -36,10 +36,25 @@ export interface FrequenciaItemResp {
   modalidadeHoras: number | null
   dataExecucao: string
   ocorrencia: string | null
+  horasTrabalhadas: number | null
   valorUnitarioCentavos: number
   deslocamentoCentavos: number
   totalItemCentavos: number
   createdAt: string
+}
+
+// Acompanhamento (read-only) de uma modalidade META usada na frequência: quanto já foi
+// acumulado e quanto falta para fechar o bloco atual da meta. Não afeta o cálculo do valor.
+export interface FrequenciaModalidadeProgresso {
+  modalidadeId: string
+  modalidadeNome: string
+  unidadeCalculo: 'HORA' | 'DIA'
+  metaHoras: number | null
+  metaDias: number | null
+  acumuladoHoras: number
+  acumuladoDias: number
+  blocosCompletos: number
+  restanteBlocoAtual: number
 }
 
 export interface FrequenciaMedicaResp {
@@ -59,6 +74,7 @@ export interface FrequenciaMedicaResp {
   createdAt: string
   itens: FrequenciaItemResp[]
   totalValorCentavos: number
+  progressoMetas: FrequenciaModalidadeProgresso[]
 }
 
 export interface FrequenciaMedicaRequest {
@@ -73,6 +89,7 @@ export interface FrequenciaItemRequest {
   modalidadeId: string
   dataExecucao: string
   ocorrencia?: string
+  horasTrabalhadas?: number
 }
 
 export const frequenciasApi = {
