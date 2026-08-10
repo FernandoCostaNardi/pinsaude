@@ -2,6 +2,7 @@ package br.com.pinsaude.faturamento.domain;
 
 import jakarta.persistence.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -25,6 +26,12 @@ public class FrequenciaItem {
 
     @Column(name = "ocorrencia", length = 120)
     private String ocorrencia;
+
+    // Horas trabalhadas neste lançamento — só participa do cálculo quando a modalidade é
+    // META com unidade_calculo=HORA (ver FrequenciaService.calcularValorItem). Para as demais
+    // combinações (PLANTAO/MENSAL/META-DIA) fica NULL.
+    @Column(name = "horas_trabalhadas", precision = 6, scale = 2)
+    private BigDecimal horasTrabalhadas;
 
     // Snapshot dos preços da modalidade no momento do lançamento
     @Column(name = "valor_unitario_centavos", nullable = false)
@@ -50,6 +57,8 @@ public class FrequenciaItem {
     public void setDataExecucao(LocalDate v)    { this.dataExecucao = v; }
     public String getOcorrencia()                { return ocorrencia; }
     public void setOcorrencia(String v)         { this.ocorrencia = v; }
+    public BigDecimal getHorasTrabalhadas()      { return horasTrabalhadas; }
+    public void setHorasTrabalhadas(BigDecimal v) { this.horasTrabalhadas = v; }
     public long getValorUnitarioCentavos()       { return valorUnitarioCentavos; }
     public void setValorUnitarioCentavos(long v){ this.valorUnitarioCentavos = v; }
     public long getDeslocamentoCentavos()        { return deslocamentoCentavos; }
