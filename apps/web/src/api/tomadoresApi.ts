@@ -393,24 +393,31 @@ export interface TomadorModalidade {
   id: string
   tomadorId: string
   nome: string
-  tipo: 'PLANTAO' | 'MENSAL'
+  tipo: 'PLANTAO' | 'MENSAL' | 'META'
   turno: 'DIURNO' | 'NOTURNO' | null
   horario: string | null
   horas: number | null
   valorCentavos: number
   deslocamentoCentavos: number
   ativo: boolean
+  // Campos do tipo META (pagamento proporcional por hora/dia)
+  unidadeCalculo: 'HORA' | 'DIA' | null
+  metaHoras: number | null
+  metaDias: number | null
 }
 
 export interface TomadorModalidadeRequest {
   nome: string
-  tipo: 'PLANTAO' | 'MENSAL'
+  tipo: 'PLANTAO' | 'MENSAL' | 'META'
   turno: 'DIURNO' | 'NOTURNO' | null
   horario: string | null
   horas: number | null
   valorCentavos: number
   deslocamentoCentavos: number
   ativo: boolean
+  unidadeCalculo: 'HORA' | 'DIA' | null
+  metaHoras: number | null
+  metaDias: number | null
 }
 
 export interface TomadorServicoOperacionalRequest {
