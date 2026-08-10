@@ -49,6 +49,13 @@ function formatDate(iso: string): string {
 // com o que estiver preenchido, caindo para "Nh" quando nenhum dos dois foi informado.
 function detalheModalidade(m: TomadorModalidade): string {
   if (m.tipo === 'MENSAL') return 'Mensal'
+  if (m.tipo === 'META') {
+    const partes: string[] = []
+    if (m.metaHoras != null) partes.push(`${m.metaHoras}h`)
+    if (m.metaDias != null) partes.push(`${m.metaDias}d`)
+    const meta = partes.join(' + ')
+    return meta ? `Meta ${meta}` : 'Meta'
+  }
   const partes = [m.turno, m.horario].filter(Boolean)
   return partes.length > 0 ? partes.join(' · ') : `${m.horas}h`
 }

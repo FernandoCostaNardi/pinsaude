@@ -4867,6 +4867,44 @@ própria transação (`BEGIN; INSERT; ROLLBACK;` por caso) ou usar `SAVEPOINT`/`
 
 ---
 
+## Cadastro de Modalidade META no frontend (PINSAUDE-13.19.2)
+
+Tela de cadastro (`TomadorGruposModal.tsx`, aba Modalidades) para o tipo META da 13.19.1.
+
+### Modo de UI (4) ≠ tipo do backend (3)
+O backend tem 3 tipos (`PLANTAO`/`MENSAL`/`META`), mas o form apresenta **4 modos** —
+`ModalidadeModo = 'PLANTAO' | 'MENSAL' | 'HORAS' | 'MES'` — porque META é mostrado com o vocabulário
+do cliente em dois botões: **"Por Horas"** (META unidade HORA) e **"Por Mês"** (META unidade
+HORA/DIA + metas). `ModalidadeForm.tipo` guarda o **modo de UI**, não o tipo do backend. A conversão
+mora em duas funções:
+- `salvarModalidade`: modo → request. HORAS/MES viram `tipo:'META'` (HORAS força `unidadeCalculo:'HORA'`;
+  MES usa a unidade escolhida). PLANTAO/MENSAL 1:1. Valida no cliente antes do POST (meta da unidade > 0).
+- `abrirEditarModalidade`: backend → modo. `META + unidade HORA + metaDias==null → 'HORAS'`; qualquer
+  outro META → `'MES'`. Round-trip testado (editar uma "Por Horas" reabre no modo certo com a meta).
+  Essa heurística é cosmética: uma "Por Mês" criada com unidade HORA e sem meta de dias reabre como
+  "Por Horas" — funcionalmente idênticas, aceitável.
+
+### Tabela: badge por unidade + coluna "Horas/Meta"
+`tipoBadgeInfo(m)` mostra PLANTÃO (azul) / MENSAL (roxo) / **POR HORA|POR DIA (teal)** — para META o
+badge reflete a `unidadeCalculo`, não o modo de UI (que não é persistido). A coluna "Horas" virou
+"Horas/Meta": para META usa `metaResumo(m)` (`"40h"`, `"20d"`, ou `"160h + 20d"`); para PLANTAO segue `${horas}h`.
+
+### `detalheModalidade` (label do lançamento) precisou tratar META pra não imprimir `undefinedh`
+`detalheModalidade` em `FrequenciasPage.tsx` **e** `PortalFrequenciaPage.tsx` (helper duplicado) caía
+no fallback `${m.horas}h` → `nullh` para META (horas é null). Adicionado ramo META que monta
+`"Meta 40h"` / `"Meta 20d"`. Necessário mesmo nesta task (cadastro) porque o tipo TS
+`TomadorModalidade` ganhou `unidadeCalculo/metaHoras/metaDias` **obrigatórios** (não-opcionais) — e
+qualquer modalidade META já aparece nesses dropdowns. A valoração/uso real no lançamento é a 13.19.4.
+
+### ⚠️ Dev server web precisa ser iniciado — porta 3000 não sobe sozinha
+O `gateway` (8090) e o `faturamento` (8082) podem estar no ar sem o dev server do frontend. Checar
+`curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/` (000 = não está rodando) e subir com
+`node tools/scripts/build-web.js dev` (em background) antes de testar no navegador — senão o
+`navigate` do Chrome cai em "error page". E, como sempre nesta feature: **reiniciar o faturamento**
+(rebuild + `spring-boot:run`) pra ter o código da 13.19.1 no ar, senão o POST de META volta 400.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
