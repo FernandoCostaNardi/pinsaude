@@ -4905,6 +4905,67 @@ O `gateway` (8090) e o `faturamento` (8082) podem estar no ar sem o dev server d
 
 ---
 
+## Horas trabalhadas + valoração proporcional da Modalidade META (PINSAUDE-13.19.3)
+
+Coração da feature de modalidades avançadas: calcula o `valor_unitario_centavos` de cada item de
+frequência conforme o `tipo` da modalidade, no momento do lançamento (`adicionarItem`/`atualizarItem`).
+
+### Insight-chave confirmado na prática: Fechamento não precisou de nenhuma mudança
+Como a valoração proporcional é **linear**, bastou calcular o valor certo no snapshot já existente
+(`valor_unitario_centavos`) — `FechamentoService.computeAggregation` (l.316,
+`item.getValorUnitarioCentavos() + item.getDeslocamentoCentavos()`) continuou funcionando sem
+nenhuma alteração. Testado manualmente ponta a ponta: lancei itens META/HORA e META/DIA numa
+frequência real e o preview de Fechamento (`GET /api/fechamentos/preview`) somou corretamente os
+valores já calculados, junto com modalidades PLANTAO pré-existentes na mesma competência — zero
+regressão, zero código novo no Fechamento.
+
+### `horas_trabalhadas` em `frequencia_itens` (V28) — nullable, só participa do cálculo em META/HORA
+Coluna aditiva (`NUMERIC(6,2) NULL`, CHECK `> 0` quando não nulo) — não quebra itens já existentes.
+`FrequenciaItemRequest` ganhou `horasTrabalhadas` (4º campo do record — quebrou os 3 construtores
+`new FrequenciaItemRequest(...)` do teste existente, mesmo padrão de arity-break já documentado
+outras vezes neste projeto). Validação de obrigatoriedade **não é Bean Validation** (é condicional
+ao tipo da modalidade) — fica no service.
+
+### `calcularValorItem` — três ramos, PLANTAO/MENSAL inalterados
+```java
+private long calcularValorItem(TomadorModalidade modalidade, BigDecimal horasTrabalhadas) {
+    if (!"META".equals(modalidade.getTipo())) return modalidade.getValorCentavos(); // inalterado
+    // HORA: round(horasTrabalhadas × (valorCentavos ÷ metaHoras)), exige horasTrabalhadas > 0
+    // DIA : round(valorCentavos ÷ metaDias) — cada item lançado = 1 dia, ignora horasTrabalhadas
+}
+```
+`BigDecimal.divide(..., 8, RoundingMode.HALF_UP)` para o valor-por-hora (precisão intermediária),
+depois `.setScale(0, HALF_UP).longValueExact()` no resultado final em centavos. **Excedente da meta
+não é bloqueado** — testado manualmente lançando 45h contra uma meta de 40h: pagou R$4.500,00
+(45 × R$100/h) sem erro, exatamente como definido com o cliente ("o bloco é conceito de
+acompanhamento, não muda o cálculo do dinheiro, que é sempre linear").
+
+### Progresso da meta — `FrequenciaModalidadeProgressoResponse`, calculado em `FrequenciaMedicaResponse`
+Novo campo `progressoMetas: List<FrequenciaModalidadeProgressoResponse>` no response da frequência,
+um item por modalidade META **efetivamente usada** nos itens já lançados (modalidades PLANTAO/MENSAL
+nunca aparecem ali). Precisou de um novo overload `FrequenciaMedicaResponse.from(f, setor, itens,
+modalidadesMap)` (o overload de 3 argumentos existente delega para este com `Map.of()`, preservando
+o call site de `criar()` que nunca tem itens). Cálculo do "quanto falta pro bloco atual"
+(`restanteBlocoAtual`) tem um caso de borda que exigiu tratamento explícito: quando o acumulado é
+**exatamente** um múltiplo da meta (ex: 40h de uma meta de 40h), o resto da divisão é 0 — mas isso
+significa "bloco fechado, nada pendente" (`restante=0`), **não** "meta zerada, falta tudo". Já
+`acumulado=0` (nenhum item lançado ainda) deve retornar `restante=meta` (falta a meta inteira). As
+duas situações têm resto=0 mas significados opostos — resolvido checando `acumulado.signum()==0`
+antes de aplicar a fórmula do resto. Testado manualmente: 25h de 40h → restam 15h; 45h de 40h →
+1 bloco completo, restam 35h pro próximo.
+
+### Teste manual ponta a ponta — reaproveitando dados reais já existentes (sem massa fake)
+Reaproveitado o tomador/setor/médico já usados em sessões anteriores desta EPIC (`SECRETARIA DA
+SAUDE DO ESTADO DO CEARA`, setor `Emergência Cardiológica`, médico `medico@pinsaude.com.br`, já
+alocado via `medico_tomadores`) — criadas 2 modalidades META temporárias (`TESTE-13.19.3 Diaria
+40h` HORA, `TESTE-13.19.3 Evolucionista` DIA) via API, uma frequência nova na competência `2026-08`
+(não colide com dados reais de competências anteriores), lançados os itens, validado o cálculo e o
+preview de Fechamento, depois tudo removido: itens e modalidades via `DELETE` da API (204), a
+`FrequenciaMedica` de teste via SQL direto (sem endpoint de exclusão de frequência inteira — só de
+itens). Terminou com 0 registros de teste remanescentes, confirmado por `SELECT count(*)`.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

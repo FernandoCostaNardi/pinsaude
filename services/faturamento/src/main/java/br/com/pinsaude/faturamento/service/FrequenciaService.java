@@ -20,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -133,7 +135,7 @@ public class FrequenciaService {
                 .sorted((a, b) -> a.getDataExecucao().compareTo(b.getDataExecucao()))
                 .map(i -> FrequenciaItemResponse.from(i, modalidadesMap.get(i.getModalidadeId())))
                 .toList();
-            return FrequenciaMedicaResponse.from(f, setoresMap.get(f.getServicoOperacionalId()), itemResponses);
+            return FrequenciaMedicaResponse.from(f, setoresMap.get(f.getServicoOperacionalId()), itemResponses, modalidadesMap);
         }).toList();
     }
 
@@ -162,8 +164,9 @@ public class FrequenciaService {
         item.setModalidadeId(req.modalidadeId());
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
-        // Snapshot de preço no momento do lançamento
-        item.setValorUnitarioCentavos(modalidade.getValorCentavos());
+        item.setHorasTrabalhadas(req.horasTrabalhadas());
+        // Snapshot de preço no momento do lançamento — proporcional para modalidade META
+        item.setValorUnitarioCentavos(calcularValorItem(modalidade, req.horasTrabalhadas()));
         item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
         itemRepo.save(item);
 
@@ -190,7 +193,8 @@ public class FrequenciaService {
         item.setModalidadeId(req.modalidadeId());
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
-        item.setValorUnitarioCentavos(modalidade.getValorCentavos());
+        item.setHorasTrabalhadas(req.horasTrabalhadas());
+        item.setValorUnitarioCentavos(calcularValorItem(modalidade, req.horasTrabalhadas()));
         item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
         itemRepo.save(item);
 
@@ -277,6 +281,45 @@ public class FrequenciaService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    // PLANTAO/MENSAL: valor flat da modalidade (comportamento inalterado desde antes do EPIC-13.19).
+    // META/HORA: proporcional às horas lançadas — round(horasTrabalhadas × (valorCentavos ÷ metaHoras)).
+    // META/DIA: cada item lançado equivale a 1 dia — round(valorCentavos ÷ metaDias).
+    // A soma dos itens continua correta automaticamente (Fechamento só soma o snapshot já calculado
+    // aqui) porque a valoração proporcional é linear — não há necessidade de redesenhar a agregação.
+    private long calcularValorItem(TomadorModalidade modalidade, BigDecimal horasTrabalhadas) {
+        if (!"META".equals(modalidade.getTipo())) {
+            return modalidade.getValorCentavos();
+        }
+        String unidade = modalidade.getUnidadeCalculo();
+        if (unidade == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Modalidade do tipo Meta está sem unidade de cálculo configurada");
+        }
+        if ("HORA".equals(unidade)) {
+            if (horasTrabalhadas == null || horasTrabalhadas.signum() <= 0) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Informe as horas trabalhadas para lançar um item desta modalidade (meta por hora)");
+            }
+            BigDecimal metaHoras = modalidade.getMetaHoras();
+            if (metaHoras == null || metaHoras.signum() <= 0) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Modalidade do tipo Meta por hora está sem meta de horas configurada");
+            }
+            BigDecimal valorPorHora = BigDecimal.valueOf(modalidade.getValorCentavos())
+                .divide(metaHoras, 8, RoundingMode.HALF_UP);
+            return horasTrabalhadas.multiply(valorPorHora).setScale(0, RoundingMode.HALF_UP).longValueExact();
+        }
+        // unidade == DIA — cada item lançado equivale a 1 dia dentro do bloco da meta
+        Integer metaDias = modalidade.getMetaDias();
+        if (metaDias == null || metaDias <= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Modalidade do tipo Meta por dia está sem meta de dias configurada");
+        }
+        return BigDecimal.valueOf(modalidade.getValorCentavos())
+            .divide(BigDecimal.valueOf(metaDias), 0, RoundingMode.HALF_UP)
+            .longValueExact();
+    }
+
     private FrequenciaMedica findOrThrow(UUID id) {
         return frequenciaRepo.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -299,6 +342,6 @@ public class FrequenciaService {
             .map(i -> FrequenciaItemResponse.from(i, modalidadesMap.get(i.getModalidadeId())))
             .toList();
 
-        return FrequenciaMedicaResponse.from(f, setor, itemResponses);
+        return FrequenciaMedicaResponse.from(f, setor, itemResponses, modalidadesMap);
     }
 }
