@@ -4822,6 +4822,51 @@ cabeçalho do totalizador.
 
 ---
 
+## Modalidade META — pagamento proporcional por hora/dia (PINSAUDE-13.19.1, backend)
+
+Terceiro tipo de modalidade em `faturamento.tomador_modalidades` (além de PLANTAO e MENSAL): `META`,
+para "por horas" (ex: Diária 40h) e "por mês" (ex: Evolucionista). Regra de negócio: pagamento
+**proporcional por unidade** (`valor_por_unidade = valor_do_bloco ÷ meta`); ao passar da meta,
+inicia um novo bloco — como é linear, o dinheiro é simplesmente proporcional às unidades lançadas
+(o "bloco" é acompanhamento/validação, decidido com o cliente). **Esta task é só o cadastro** — a
+valoração no lançamento da frequência é a 13.19.3.
+
+### Colunas novas (V27) e o CHECK de 3 vias
+`unidade_calculo VARCHAR(4)` (HORA|DIA), `meta_horas NUMERIC(6,2)`, `meta_dias INT`. `valor_centavos`
+(já existia) = valor de **um bloco completo**. A `unidade_calculo` decide a base do rateio do
+dinheiro; a outra meta (dias quando unidade=HORA, ou vice-versa) é **opcional** e serve de validação
+secundária ("x horas e/ou x dias"). O `tomador_modalidades_tipo_campos_check` virou 3 ramos —
+PLANTAO exige `horas` + campos META vazios; MENSAL vazio tudo + campos META vazios; META exige
+`unidade_calculo` + a meta da unidade (`HORA→meta_horas`, `DIA→meta_dias`) e proíbe turno/horário/horas.
+O `..._tipo_check` inline (nomeado `tomador_modalidades_tipo_check` pelo Postgres) precisou de DROP +
+recreate pra aceitar `'META'`. Padrão já usado nas V24-V26; ver nomes exatos das constraints com
+`SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'faturamento.tomador_modalidades'::regclass AND contype='c'`.
+
+### Validação condicional no service, não só no CHECK
+`TomadorService.aplicarCamposPorTipo` ganhou um ramo `aplicarCamposMeta` que lança **422** com
+mensagem amigável (unidade obrigatória; meta de horas/dias obrigatória conforme a unidade) — o CHECK
+do banco é o backstop. Nos tipos PLANTAO/MENSAL, os campos META são sempre **zerados** (`setUnidadeCalculo(null)`
+etc.) pra não violar o CHECK caso o request venha sujo. META também **ignora** (zera) turno/horário/horas
+mesmo se enviados, igual ao MENSAL.
+
+### ⚠️ Record `TomadorModalidadeRequest` ganhou 3 campos → todos os `new TomadorModalidadeRequest(...)` quebram
+Adicionar campos a um Java `record` muda a aridade do construtor canônico. As 7 chamadas em
+`TomadorGruposModalidadesServiceTest` tiveram que receber `, null, null, null` no fim (não-META).
+Os novos campos foram **anexados no fim** do record (`unidadeCalculo, metaHoras, metaDias`) — mantém
+o diff dos campos existentes limpo e agrupa os campos META. `@Positive Integer metaDias` e
+`@DecimalMin("0.5") BigDecimal metaHoras` no request; `@Pattern("HORA|DIA")` em `unidadeCalculo`;
+`tipo` agora `@Pattern("PLANTAO|MENSAL|META")`.
+
+### Teste funcional das constraints — savepoints, não um único BEGIN
+Ao validar os CHECKs via `psql` como `svc_faturamento`, um único `BEGIN ... vários INSERT ... ROLLBACK`
+**aborta a transação no primeiro erro** (Postgres) e os comandos seguintes falham com "current
+transaction is aborted". Para exercitar cada caso inválido isoladamente, rodar cada INSERT em sua
+própria transação (`BEGIN; INSERT; ROLLBACK;` por caso) ou usar `SAVEPOINT`/`ROLLBACK TO`. E lembrar:
+`psql -q` (quiet) **suprime o tag `INSERT 0 1`** — um insert válido aparece como saída vazia; só os
+`ERROR` continuam visíveis. Conferir persistência com um `SELECT count(*)` fora da transação.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
