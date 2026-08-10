@@ -209,7 +209,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "plantão 12h noturno", "PLANTAO", "NOTURNO", "19:00 as 07:00",
-            BigDecimal.valueOf(12), 1_000_000L, 0L, true);
+            BigDecimal.valueOf(12), 1_000_000L, 0L, true, null, null, null);
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -233,7 +233,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Diária 10h", "PLANTAO", "DIURNO", "07:00 as 17:00",
-            BigDecimal.valueOf(10), 800_000L, 0L, true);
+            BigDecimal.valueOf(10), 800_000L, 0L, true, null, null, null);
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -253,7 +253,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Diária 15h", "PLANTAO", null, "07:00 as 22:00",
-            BigDecimal.valueOf(15), 900_000L, 0L, true);
+            BigDecimal.valueOf(15), 900_000L, 0L, true, null, null, null);
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -275,7 +275,7 @@ class TomadorGruposModalidadesServiceTest {
         });
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "Coordenação de UTI", "MENSAL", null, null, null, 1_500_000L, 0L, true);
+            "Coordenação de UTI", "MENSAL", null, null, null, 1_500_000L, 0L, true, null, null, null);
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -289,7 +289,7 @@ class TomadorGruposModalidadesServiceTest {
     @Test
     void criarModalidade_plantaoSemHoras_lanca422() {
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "Diária incompleta", "PLANTAO", "DIURNO", "07:00 as 17:00", null, 800_000L, 0L, true);
+            "Diária incompleta", "PLANTAO", "DIURNO", "07:00 as 17:00", null, 800_000L, 0L, true, null, null, null);
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -308,7 +308,7 @@ class TomadorGruposModalidadesServiceTest {
         });
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "Plantão 20h", "PLANTAO", null, null, BigDecimal.valueOf(20), 1_100_000L, 0L, true);
+            "Plantão 20h", "PLANTAO", null, null, BigDecimal.valueOf(20), 1_100_000L, 0L, true, null, null, null);
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -318,13 +318,128 @@ class TomadorGruposModalidadesServiceTest {
         assertThat(resp.horas()).isEqualByComparingTo(BigDecimal.valueOf(20));
     }
 
+    // ─── Modalidade META (por horas / por mês) ────────────────────────────────
+
+    @Test
+    void criarModalidade_metaPorHora_salva() {
+        stubSaveComId();
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Diária 40h", "META", null, null, null, 4_000_000L, 0L, true,
+            "HORA", BigDecimal.valueOf(40), null);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.tipo()).isEqualTo("META");
+        assertThat(resp.unidadeCalculo()).isEqualTo("HORA");
+        assertThat(resp.metaHoras()).isEqualByComparingTo(BigDecimal.valueOf(40));
+        assertThat(resp.metaDias()).isNull();
+        assertThat(resp.valorCentavos()).isEqualTo(4_000_000L);
+        // turno/horário/horas não se aplicam a META
+        assertThat(resp.turno()).isNull();
+        assertThat(resp.horario()).isNull();
+        assertThat(resp.horas()).isNull();
+    }
+
+    @Test
+    void criarModalidade_metaPorDia_salva() {
+        stubSaveComId();
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Evolucionista", "META", null, null, null, 8_000_000L, 0L, true,
+            "DIA", null, 20);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.tipo()).isEqualTo("META");
+        assertThat(resp.unidadeCalculo()).isEqualTo("DIA");
+        assertThat(resp.metaDias()).isEqualTo(20);
+        assertThat(resp.metaHoras()).isNull();
+        assertThat(resp.valorCentavos()).isEqualTo(8_000_000L);
+    }
+
+    @Test
+    void criarModalidade_metaPorHoraComMetaDiasSecundaria_guardaAmbas() {
+        stubSaveComId();
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Evolucionista 160h", "META", null, null, null, 8_000_000L, 0L, true,
+            "HORA", BigDecimal.valueOf(160), 20);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.unidadeCalculo()).isEqualTo("HORA");
+        assertThat(resp.metaHoras()).isEqualByComparingTo(BigDecimal.valueOf(160));
+        assertThat(resp.metaDias()).isEqualTo(20); // meta secundária de validação
+    }
+
+    @Test
+    void criarModalidade_metaZeraTurnoHorarioHoras() {
+        stubSaveComId();
+
+        // Mesmo que o request venha com turno/horário/horas, META os ignora (zera)
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Diária 40h", "META", "DIURNO", "07:00 as 19:00", BigDecimal.valueOf(12), 4_000_000L, 0L, true,
+            "HORA", BigDecimal.valueOf(40), null);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.turno()).isNull();
+        assertThat(resp.horario()).isNull();
+        assertThat(resp.horas()).isNull();
+    }
+
+    @Test
+    void criarModalidade_metaSemUnidade_lanca422() {
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Meta sem unidade", "META", null, null, null, 4_000_000L, 0L, true,
+            null, BigDecimal.valueOf(40), null);
+
+        assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Unidade de cálculo");
+    }
+
+    @Test
+    void criarModalidade_metaPorHoraSemMetaHoras_lanca422() {
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Meta hora sem meta", "META", null, null, null, 4_000_000L, 0L, true,
+            "HORA", null, null);
+
+        assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Meta de horas");
+    }
+
+    @Test
+    void criarModalidade_metaPorDiaSemMetaDias_lanca422() {
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Meta dia sem meta", "META", null, null, null, 4_000_000L, 0L, true,
+            "DIA", null, null);
+
+        assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Meta de dias");
+    }
+
+    private void stubSaveComId() {
+        when(modalidadeRepo.save(any())).thenAnswer(inv -> {
+            TomadorModalidade mm = inv.getArgument(0);
+            try {
+                var f = TomadorModalidade.class.getDeclaredField("id");
+                f.setAccessible(true); f.set(mm, UUID.randomUUID());
+            } catch (Exception ignored) {}
+            return mm;
+        });
+    }
+
     @Test
     void atualizarModalidade_naoEncontrada_lanca404() {
         UUID modalidadeId = UUID.randomUUID();
         when(modalidadeRepo.findById(modalidadeId)).thenReturn(Optional.empty());
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "x", "PLANTAO", "DIURNO", "07:00 as 19:00", BigDecimal.valueOf(12), 0L, 0L, true);
+            "x", "PLANTAO", "DIURNO", "07:00 as 19:00", BigDecimal.valueOf(12), 0L, 0L, true, null, null, null);
 
         assertThatThrownBy(() -> service.atualizarModalidade(tomadorId, modalidadeId, req))
             .isInstanceOf(ResponseStatusException.class)
