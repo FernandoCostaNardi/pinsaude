@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Plus, Pencil, Trash2, Layers, ChevronDown, ChevronRight,
-  Moon, Sun, Loader2, FolderOpen,
+  Moon, Sun, Loader2, FolderOpen, Tag,
 } from 'lucide-react'
 import { Modal, Button, Input, Alert, Spinner } from '@pinsaude/ui'
 import {
@@ -10,6 +10,8 @@ import {
   TomadorGrupoFaturamentoRequest,
   TomadorModalidade,
   TomadorModalidadeRequest,
+  TomadorOcorrencia,
+  TomadorOcorrenciaRequest,
   TomadorServicoOperacionalRequest,
   tomadoresApi,
 } from '../api/tomadoresApi'
@@ -54,6 +56,13 @@ function metaResumo(m: TomadorModalidade): string {
   if (m.metaHoras != null) parts.push(`${m.metaHoras}h`)
   if (m.metaDias != null) parts.push(`${m.metaDias}d`)
   return parts.join(' + ')
+}
+
+// Badge do tipo de valor na tabela de ocorrências.
+function ocorrenciaTipoBadge(o: TomadorOcorrencia): { label: string; cls: string } {
+  if (o.tipoValor === 'PERCENTUAL') return { label: 'PERCENTUAL', cls: 'bg-green-50 text-green-700' }
+  if (o.tipoValor === 'FIXO') return { label: 'FIXO', cls: 'bg-orange-50 text-orange-700' }
+  return { label: 'SEM VALOR', cls: 'bg-gray-100 text-gray-500' }
 }
 
 // ─── Mapeamento fixo turno × horas × horário ──────────────────────────────────
@@ -102,6 +111,20 @@ function emptyModalidadeForm(): ModalidadeForm {
     horasStr: '', valorStr: '', deslocamentoStr: '', ativo: true,
     unidadeCalculo: 'HORA', metaHorasStr: '', metaDiasStr: '',
   }
+}
+
+// Ocorrência PERCENTUAL e FIXO podem coexistir ("10% + R$ 50,00") — tipoValor só decide qual
+// dos dois campos é obrigatório, o outro fica sempre disponível como valor extra opcional.
+interface OcorrenciaForm {
+  nome: string
+  tipoValor: 'PERCENTUAL' | 'FIXO' | 'SEM_VALOR'
+  valorPercentualStr: string
+  valorStr: string
+  ativo: boolean
+}
+
+function emptyOcorrenciaForm(): OcorrenciaForm {
+  return { nome: '', tipoValor: 'SEM_VALOR', valorPercentualStr: '', valorStr: '', ativo: true }
 }
 
 const MODALIDADE_TIPOS: { modo: ModalidadeModo; titulo: string; sub: string }[] = [
@@ -413,6 +436,121 @@ function ModalidadeFormInline({
   )
 }
 
+function OcorrenciaFormInline({
+  form, onChange, onSave, onCancel, saving, isNew,
+}: {
+  form: OcorrenciaForm
+  onChange: (patch: Partial<OcorrenciaForm>) => void
+  onSave: () => void
+  onCancel: () => void
+  saving: boolean
+  isNew: boolean
+}) {
+  const isPercentual = form.tipoValor === 'PERCENTUAL'
+  const isFixo = form.tipoValor === 'FIXO'
+  const isSemValor = form.tipoValor === 'SEM_VALOR'
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Input
+            label="Nome da ocorrência *"
+            value={form.nome}
+            onChange={e => onChange({ nome: e.target.value })}
+            placeholder="ex: Feriado, Sobreaviso, Observação"
+          />
+        </div>
+
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de valor *</label>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { tipo: 'PERCENTUAL' as const, titulo: 'Percentual', sub: '% sobre a modalidade' },
+              { tipo: 'FIXO' as const,       titulo: 'Valor Fixo', sub: 'soma em R$' },
+              { tipo: 'SEM_VALOR' as const,  titulo: 'Sem Valor',  sub: 'só observação' },
+            ]).map(t => (
+              <button
+                key={t.tipo}
+                type="button"
+                onClick={() => onChange({ tipoValor: t.tipo })}
+                className={[
+                  'px-3 py-2 rounded-lg border text-xs font-semibold text-left transition-colors',
+                  form.tipoValor === t.tipo ? 'border-primary bg-primary-50 text-primary' : 'border-gray-300 text-gray-600 hover:border-primary/40',
+                ].join(' ')}
+              >
+                {t.titulo}
+                <span className="block font-normal text-[10px] text-ds-light mt-0.5">{t.sub}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!isSemValor && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Percentual (%) {isPercentual ? '*' : <span className="font-normal text-ds-light">(opcional, soma ao valor fixo)</span>}
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.valorPercentualStr}
+                onChange={e => onChange({ valorPercentualStr: e.target.value })}
+                placeholder="ex: 50"
+                className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Valor Fixo {isFixo ? '*' : <span className="font-normal text-ds-light">(opcional, soma ao percentual)</span>}
+              </label>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-ds-mid pointer-events-none">R$</span>
+                <input
+                  value={form.valorStr}
+                  onChange={e => onChange({ valorStr: maskValor(e) })}
+                  placeholder="0,00"
+                  className="block w-full pl-7 pr-3 py-2 rounded-lg border border-gray-300 text-sm text-right text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
+                />
+              </div>
+            </div>
+            <p className="col-span-2 text-[11px] text-ds-light -mt-1">
+              O valor soma ao lançamento: (percentual × valor cadastrado da modalidade) + valor fixo.
+            </p>
+          </>
+        )}
+        {isSemValor && (
+          <p className="col-span-2 text-[11px] text-ds-light">
+            Ocorrência apenas informativa — não altera o valor pago ao médico.
+          </p>
+        )}
+
+        <div className="col-span-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.ativo}
+              onChange={e => onChange({ ativo: e.target.checked })}
+              className="rounded border-gray-300 text-primary focus:ring-primary"
+            />
+            <span className="text-sm font-medium text-gray-700">Ocorrência ativa</span>
+          </label>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-2 border-t border-ds-border">
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
+          Cancelar
+        </Button>
+        <Button size="sm" onClick={onSave} loading={saving}>
+          {isNew ? 'Adicionar Ocorrência' : 'Salvar Alterações'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -422,7 +560,7 @@ interface Props {
 }
 
 export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
-  const [aba, setAba] = useState<'grupos' | 'modalidades'>('grupos')
+  const [aba, setAba] = useState<'grupos' | 'modalidades' | 'ocorrencias'>('grupos')
 
   // ── Grupos ────────────────────────────────────────────────────────────────
   const [grupos, setGrupos] = useState<TomadorGrupoFaturamento[]>([])
@@ -445,6 +583,15 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   const [modForm, setModForm] = useState<ModalidadeForm | null>(null)
   const [editingModId, setEditingModId] = useState<string | null>(null)
   const [modSaving, setModSaving] = useState(false)
+
+  // ── Ocorrências ───────────────────────────────────────────────────────────
+  const [ocorrencias, setOcorrencias] = useState<TomadorOcorrencia[]>([])
+  const [ocLoading, setOcLoading] = useState(false)
+  const [ocErr, setOcErr] = useState<string | null>(null)
+
+  const [ocForm, setOcForm] = useState<OcorrenciaForm | null>(null)
+  const [editingOcId, setEditingOcId] = useState<string | null>(null)
+  const [ocSaving, setOcSaving] = useState(false)
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -473,10 +620,22 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     }
   }, [tomador.id])
 
+  const carregarOcorrencias = useCallback(async () => {
+    setOcLoading(true)
+    try {
+      setOcorrencias(await tomadoresApi.listarOcorrencias(tomador.id))
+    } catch (e) {
+      setOcErr(e instanceof Error ? e.message : 'Erro ao carregar ocorrências')
+    } finally {
+      setOcLoading(false)
+    }
+  }, [tomador.id])
+
   useEffect(() => {
     carregarGrupos()
     carregarModalidades()
-  }, [carregarGrupos, carregarModalidades])
+    carregarOcorrencias()
+  }, [carregarGrupos, carregarModalidades, carregarOcorrencias])
 
   // ── Grupos CRUD ───────────────────────────────────────────────────────────
 
@@ -704,6 +863,91 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     }
   }
 
+  // ── Ocorrências CRUD ──────────────────────────────────────────────────────
+
+  function abrirNovaOcorrencia() {
+    setOcForm(emptyOcorrenciaForm())
+    setEditingOcId(null)
+    setOcErr(null)
+  }
+
+  function abrirEditarOcorrencia(o: TomadorOcorrencia) {
+    setOcForm({
+      nome: o.nome,
+      tipoValor: o.tipoValor,
+      valorPercentualStr: o.valorPercentual != null ? String(o.valorPercentual) : '',
+      valorStr: o.valorCentavos != null && o.valorCentavos > 0 ? centavosParaBrl(o.valorCentavos) : '',
+      ativo: o.ativo,
+    })
+    setEditingOcId(o.id)
+    setOcErr(null)
+  }
+
+  function cancelarOcorrencia() {
+    setOcForm(null)
+    setEditingOcId(null)
+    setOcErr(null)
+  }
+
+  async function salvarOcorrencia() {
+    if (!ocForm) return
+    if (!ocForm.nome.trim()) {
+      setOcErr('Preencha o nome da ocorrência')
+      return
+    }
+
+    const percentualNum = ocForm.valorPercentualStr.trim()
+      ? parseFloat(ocForm.valorPercentualStr.replace(',', '.'))
+      : null
+    const centavosNum = ocForm.tipoValor !== 'SEM_VALOR' ? parseCentavos(ocForm.valorStr) : 0
+    const percentualValido = percentualNum != null && !isNaN(percentualNum) && percentualNum > 0
+    const centavosValido = centavosNum > 0
+
+    if (ocForm.tipoValor === 'PERCENTUAL' && !percentualValido) {
+      setOcErr('Preencha o percentual corretamente')
+      return
+    }
+    if (ocForm.tipoValor === 'FIXO' && !centavosValido) {
+      setOcErr('Preencha o valor fixo corretamente')
+      return
+    }
+
+    const req: TomadorOcorrenciaRequest = {
+      nome: ocForm.nome.trim(),
+      tipoValor: ocForm.tipoValor,
+      valorPercentual: ocForm.tipoValor !== 'SEM_VALOR' && percentualValido ? percentualNum : null,
+      valorCentavos: ocForm.tipoValor !== 'SEM_VALOR' && centavosValido ? centavosNum : null,
+      ativo: ocForm.ativo,
+    }
+
+    setOcSaving(true)
+    setOcErr(null)
+    try {
+      if (editingOcId) {
+        await tomadoresApi.atualizarOcorrencia(tomador.id, editingOcId, req)
+      } else {
+        await tomadoresApi.criarOcorrencia(tomador.id, req)
+      }
+      cancelarOcorrencia()
+      await carregarOcorrencias()
+    } catch (e) {
+      setOcErr(e instanceof Error ? e.message : 'Erro ao salvar ocorrência')
+    } finally {
+      setOcSaving(false)
+    }
+  }
+
+  async function removerOcorrencia(id: string, nome: string) {
+    if (!window.confirm(`Remover a ocorrência "${nome}"?`)) return
+    setOcErr(null)
+    try {
+      await tomadoresApi.removerOcorrencia(tomador.id, id)
+      await carregarOcorrencias()
+    } catch (e) {
+      setOcErr(e instanceof Error ? e.message : 'Erro ao remover ocorrência')
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -726,6 +970,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
         {([
           ['grupos', 'Grupos & Setores'],
           ['modalidades', 'Modalidades (Tabela de Preços)'],
+          ['ocorrencias', 'Ocorrências'],
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -1085,6 +1330,126 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
               className="flex items-center gap-2 justify-center w-full py-2.5 rounded-xl border-2 border-dashed border-ds-border text-ds-light hover:border-primary hover:text-primary text-xs font-semibold transition-all"
             >
               <Plus size={14} /> Nova Modalidade
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Aba: Ocorrências ── */}
+      {aba === 'ocorrencias' && (
+        <div className="flex flex-col gap-3">
+          {ocErr && (
+            <Alert variant="error" onClose={() => setOcErr(null)}>{ocErr}</Alert>
+          )}
+
+          {ocLoading ? (
+            <div className="flex justify-center py-10"><Spinner /></div>
+          ) : ocorrencias.length === 0 && !ocForm ? (
+            <div className="flex flex-col items-center py-10 gap-2 text-ds-light">
+              <Tag size={36} className="opacity-25" />
+              <p className="text-sm font-semibold">Nenhuma ocorrência cadastrada</p>
+              <p className="text-xs">Ex: Feriado (+50%), Sobreaviso (+R$ 150,00), Observação (sem valor)</p>
+              {canWrite && (
+                <Button size="sm" className="mt-2" onClick={abrirNovaOcorrencia}>
+                  <Plus size={14} /> Adicionar primeira ocorrência
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-ds-border">
+              <table className="w-full text-xs min-w-[560px]">
+                <thead>
+                  <tr className="bg-ds-surface border-b border-ds-border">
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Nome</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Tipo</th>
+                    <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Percentual</th>
+                    <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Valor Fixo</th>
+                    <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-ds-light">Status</th>
+                    {canWrite && <th className="px-3 py-2.5 w-16" />}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ds-border">
+                  {ocorrencias.map(o => (
+                    <tr key={o.id} className="hover:bg-ds-surface/50">
+                      <td className="px-3 py-2 font-medium text-ds-text">{o.nome}</td>
+                      <td className="px-3 py-2">
+                        {(() => {
+                          const b = ocorrenciaTipoBadge(o)
+                          return (
+                            <span className={['px-1.5 py-0.5 rounded text-[10px] font-bold', b.cls].join(' ')}>
+                              {b.label}
+                            </span>
+                          )
+                        })()}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {o.valorPercentual != null ? `${o.valorPercentual}%` : <span className="text-ds-light">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {o.valorCentavos != null ? formatBRL(o.valorCentavos) : <span className="text-ds-light">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={[
+                          'px-1.5 py-0.5 rounded text-[10px] font-bold',
+                          o.ativo ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500',
+                        ].join(' ')}>
+                          {o.ativo ? 'ATIVO' : 'INATIVO'}
+                        </span>
+                      </td>
+                      {canWrite && (
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1 justify-end">
+                            <button
+                              type="button"
+                              onClick={() => abrirEditarOcorrencia(o)}
+                              className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
+                              title="Editar"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removerOcorrencia(o.id, o.nome)}
+                              className="p-1 rounded text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors"
+                              title="Remover"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Form de nova / editar ocorrência */}
+          {canWrite && ocForm && (
+            <div className="rounded-xl border border-primary/30 bg-primary-50/30 p-4">
+              <p className="text-xs font-bold text-ds-mid uppercase mb-3">
+                {editingOcId ? 'Editar ocorrência' : 'Nova ocorrência'}
+              </p>
+              <OcorrenciaFormInline
+                form={ocForm}
+                onChange={patch => setOcForm(f => f ? { ...f, ...patch } : f)}
+                onSave={salvarOcorrencia}
+                onCancel={cancelarOcorrencia}
+                saving={ocSaving}
+                isNew={!editingOcId}
+              />
+            </div>
+          )}
+
+          {/* Botão adicionar ocorrência */}
+          {canWrite && !ocForm && ocorrencias.length > 0 && (
+            <button
+              type="button"
+              onClick={abrirNovaOcorrencia}
+              className="flex items-center gap-2 justify-center w-full py-2.5 rounded-xl border-2 border-dashed border-ds-border text-ds-light hover:border-primary hover:text-primary text-xs font-semibold transition-all"
+            >
+              <Plus size={14} /> Nova Ocorrência
             </button>
           )}
         </div>

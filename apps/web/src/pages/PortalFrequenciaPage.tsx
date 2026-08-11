@@ -7,7 +7,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { Spinner, Alert } from '@pinsaude/ui'
 import { portalApi, PerfilMedico } from '../api/portalApi'
-import { tomadoresApi, Tomador, TomadorGrupoFaturamento, TomadorModalidade } from '../api/tomadoresApi'
+import { tomadoresApi, Tomador, TomadorGrupoFaturamento, TomadorModalidade, TomadorOcorrencia } from '../api/tomadoresApi'
 import {
   frequenciasApi,
   FrequenciaMedicaResp,
@@ -75,6 +75,20 @@ function calcularValorPreview(m: TomadorModalidade, horasStr: string): number | 
 
 function precisaHorasTrabalhadas(m: TomadorModalidade | null): boolean {
   return m?.tipo === 'META' && m?.unidadeCalculo === 'HORA'
+}
+
+// Espelha FrequenciaService.calcularValorOcorrencia (backend) só para preview — o % sempre
+// incide sobre o valor CADASTRADO da modalidade, nunca sobre o valor proporcional do item (META).
+function calcularValorOcorrenciaPreview(o: TomadorOcorrencia | null, valorModalidadeCentavos: number): number {
+  if (!o) return 0
+  let total = 0
+  if (o.valorPercentual != null) {
+    total += Math.round((valorModalidadeCentavos * o.valorPercentual) / 100)
+  }
+  if (o.valorCentavos != null) {
+    total += o.valorCentavos
+  }
+  return total
 }
 
 function fmtQtd(n: number): string {
@@ -379,6 +393,8 @@ function PlantaoFormPanel({
   const [modalidade,  setModalidade]  = useState<TomadorModalidade | null>(null)
   const [data,        setData]        = useState(new Date().toISOString().slice(0, 10))
   const [ocorrencia,  setOcorrencia]  = useState('')
+  const [ocorrencias, setOcorrencias] = useState<TomadorOcorrencia[]>([])
+  const [ocorrenciaId, setOcorrenciaId] = useState('')
   const [horas,       setHoras]       = useState('')
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
@@ -387,9 +403,13 @@ function PlantaoFormPanel({
     tomadoresApi.listarModalidades(tomadorId)
       .then(ms => setModalidades(ms.filter(m => m.ativo)))
       .catch(() => {})
+    tomadoresApi.listarOcorrencias(tomadorId)
+      .then(os => setOcorrencias(os.filter(o => o.ativo)))
+      .catch(() => {})
   }, [tomadorId])
 
   const precisaHoras = precisaHorasTrabalhadas(modalidade)
+  const ocorrenciaSelecionada = ocorrencias.find(o => o.id === ocorrenciaId) ?? null
 
   async function handleSave() {
     if (!modalidade) return
@@ -403,6 +423,7 @@ function PlantaoFormPanel({
         modalidadeId: modalidade.id,
         dataExecucao: data,
         ocorrencia: ocorrencia || undefined,
+        ocorrenciaId: ocorrenciaId || undefined,
         horasTrabalhadas: precisaHoras ? Number(horas) : undefined,
       })
     } catch (e) {
@@ -410,7 +431,9 @@ function PlantaoFormPanel({
     } finally { setSaving(false) }
   }
 
-  const total = modalidade ? calcularValorPreview(modalidade, horas) : null
+  const totalModalidade = modalidade ? calcularValorPreview(modalidade, horas) : null
+  const ocorrenciaValor = modalidade ? calcularValorOcorrenciaPreview(ocorrenciaSelecionada, modalidade.valorCentavos) : 0
+  const total = totalModalidade != null ? totalModalidade + ocorrenciaValor : null
 
   return (
     <div className="mx-3 sm:mx-4 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
@@ -464,6 +487,9 @@ function PlantaoFormPanel({
           {modalidade.deslocamentoCentavos > 0 && (
             <span className="text-ds-mid">Desl.: <span className="font-bold text-ds-text">{formatBRL(modalidade.deslocamentoCentavos)}</span></span>
           )}
+          {ocorrenciaSelecionada && (
+            <span className="text-ds-mid">Ocorrência: <span className="font-bold text-ds-text">{formatBRL(ocorrenciaValor)}</span></span>
+          )}
           <span className="text-sm font-black text-primary sm:ml-auto">
             {total != null ? `Total: ${formatBRL(total)}` : 'Informe as horas para calcular'}
           </span>
@@ -472,7 +498,20 @@ function PlantaoFormPanel({
 
       <div className="mb-3">
         <label className="block text-xs font-bold text-ds-mid mb-1">
-          Ocorrência <span className="font-normal text-ds-light">(opcional)</span>
+          Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
+        </label>
+        <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
+          className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
+          <option value="">Nenhuma</option>
+          {ocorrencias.map(o => (
+            <option key={o.id} value={o.id}>{o.nome}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-xs font-bold text-ds-mid mb-1">
+          Observação <span className="font-normal text-ds-light">(opcional, texto livre sem valor)</span>
         </label>
         <input type="text" value={ocorrencia} onChange={e => setOcorrencia(e.target.value)}
           placeholder="Descreva alguma ocorrência especial..."
@@ -694,6 +733,12 @@ function FrequenciaItensPanel({
                     {item.horasTrabalhadas != null && (
                       <p className="text-[11px] text-teal-600 font-medium mt-0.5">{fmtQtd(item.horasTrabalhadas)}h lançadas</p>
                     )}
+                    {item.ocorrenciaNome && (
+                      <p className="text-[11px] text-teal-600 font-medium mt-0.5">
+                        {item.ocorrenciaNome}
+                        {!!item.ocorrenciaValorCentavos && ` +${formatBRL(item.ocorrenciaValorCentavos)}`}
+                      </p>
+                    )}
                     {item.ocorrencia && (
                       <p className="text-[11px] text-ds-mid italic mt-1">"{item.ocorrencia}"</p>
                     )}
@@ -750,7 +795,18 @@ function FrequenciaItensPanel({
                         <p className="text-[10px] text-teal-600 font-medium">{fmtQtd(item.horasTrabalhadas)}h lançadas</p>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-ds-mid">{item.ocorrencia ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-xs text-ds-mid">
+                      {item.ocorrenciaNome && (
+                        <p className="text-ds-text font-medium">
+                          {item.ocorrenciaNome}
+                          {!!item.ocorrenciaValorCentavos && (
+                            <span className="text-green-600 font-bold"> +{formatBRL(item.ocorrenciaValorCentavos)}</span>
+                          )}
+                        </p>
+                      )}
+                      {item.ocorrencia && <p className={item.ocorrenciaNome ? 'text-[10px] italic' : ''}>{item.ocorrencia}</p>}
+                      {!item.ocorrenciaNome && !item.ocorrencia && '—'}
+                    </td>
                     <td className="px-3 py-2.5 text-xs tabular-nums text-right text-ds-mid">
                       {formatBRL(item.valorUnitarioCentavos)}
                     </td>
