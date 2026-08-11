@@ -5112,6 +5112,65 @@ quebra o teste que efetivamente toca aquele campo.
 
 ---
 
+## Cadastro de Ocorrências + seleção na frequência (PINSAUDE-13.19.6) — fecha o EPIC-13.19
+
+Última task do EPIC-13.19 (Modalidades por meta + Ocorrências com valor). Puramente frontend —
+zero mudança de backend, só consome os endpoints/campos já prontos desde a 13.19.5.
+
+### Terceira aba no `TomadorGruposModal.tsx` — mesmo padrão de Grupos/Modalidades, sem componente novo
+`aba` virou `'grupos' | 'modalidades' | 'ocorrencias'`. O form (`OcorrenciaFormInline`) espelha a
+UX do `ModalidadeFormInline`: 3 botões de tipo (Percentual/Fixo/Sem Valor) que decidem qual campo é
+obrigatório, mas **os dois campos de valor (percentual e fixo) ficam sempre visíveis e editáveis**
+quando o tipo não é SEM_VALOR — refletindo na UI a mesma flexibilidade "e/ou" já implementada no
+backend (13.19.5): uma ocorrência tipo PERCENTUAL pode ter um valor fixo extra preenchido, e
+vice-versa. O rótulo do campo não-obrigatório muda dinamicamente para "(opcional, soma ao
+percentual/fixo)" — evita a UI mentir sobre o que realmente acontece no cálculo.
+
+### Ocorrência do item = 2 campos independentes, não um único seletor com "modo texto livre"
+A primeira ideia (um único `<select>` com uma opção sentinela "✍️ Texto livre" que troca pra um
+`<input>`) foi descartada em favor de **dois controles sempre visíveis e independentes**:
+`<select>` "Ocorrência do catálogo (opcional)" (dirige `ocorrenciaId` + o valor) e `<input>`
+"Observação (opcional, texto livre sem valor)" (mapeia pro `ocorrencia` de sempre, nunca afeta
+valor). Motivo: o backend já modela os dois campos como totalmente independentes (podem coexistir,
+um dos dois, ou nenhum — ver 13.19.5) — um único seletor com toggle esconderia essa capacidade e
+obrigaria escolher entre "nota" OU "catálogo", quando na real o médico pode querer os dois ao
+mesmo tempo (ex: escolher "Sobreaviso" do catálogo E escrever "chegou 15min atrasado" como nota).
+
+### Grid (`PlantaoGridPanel`) ganhou uma coluna nova, não substituiu a existente
+Tabela passou de "Dia | Modalidade | Horas | Ocorrência | (remover)" para "Dia | Modalidade | Horas
+| **Ocorrência** (select do catálogo, nova) | **Nota** (o antigo input de texto livre, renomeado) |
+(remover)". O `<select>` de Ocorrência funciona exatamente como o de Modalidade (`<option>` vazia
+= nenhuma) — sem precisar do tratamento de "opção inativa selecionada" que o form de edição precisa
+(grid nunca edita, só adiciona, então toda ocorrência oferecida já está ativa por definição). O
+`handleOcorrenciaKeyDown` (Tab-para-adicionar-linha, EPIC-13.15/13.16) continua ancorado no campo
+"Nota" (ainda o último campo de texto antes do botão remover) — não precisou de nenhum ajuste.
+
+### Preview de valor no form de 1 item — replica a fórmula do backend, mas só para feedback visual
+`calcularValorOcorrenciaPreview(ocorrencia, valorModalidadeCentavos)` (duplicado nas 2 páginas,
+mesmo padrão de `calcularValorPreview` da 13.19.4): `round(valorModalidade × %/100) + fixo`. Testado
+manualmente: modalidade de R$801,48 + ocorrência "Feriado" (50%) → preview mostrou "Ocorrência:
+R$400,74" e o valor persistido bateu exatamente igual depois do POST — confirma que a fórmula do
+frontend está sincronizada com `FrequenciaService.calcularValorOcorrencia` (backend).
+
+### Edição de item com ocorrência inativa — mesmo tratamento já usado para modalidade inativa
+`PlantaoFormPanel` (form de 1 item, com modo edição) busca **todas** as ocorrências do tomador
+(sem filtrar por `ativo`), mas só oferece as ativas como opção — **exceto** quando a ocorrência
+atualmente selecionada no item sendo editado está inativa, caso em que ela é injetada no topo da
+lista de opções (`[ocorrenciaSelecionada, ...ocorrenciasAtivas]`) pra não deixar o `<select>` em
+branco. Réplica exata do padrão já usado pra modalidade inativa (13.19.2) — só que ali era resolvido
+via o componente `Dropdown` custom (que aceita `value` fora da lista `items`); aqui, como optei por
+`<select>` nativo (mais simples pra permitir "nenhuma" com uma option vazia), o `<select>` exige que
+a opção exista de fato no DOM, daí a necessidade de injetá-la manualmente na lista.
+
+### Teste manual ponta a ponta — 4 cenários no grid + 1 no Portal, todos batendo com o cálculo do backend
+`PLANTAO (R$801,48) + Feriado 50%` → R$1.202,22 ✅ · `PLANTAO + Sobreaviso R$150 fixo` → R$951,48 ✅
+· `PLANTAO + nota livre sem catálogo` → R$801,48 inalterado (zero regressão) ✅ · edição trocando
+Feriado→Sobreaviso recalculou o item e o total da frequência corretamente ✅ · mesmo fluxo repetido
+no Portal do Médico (form de 1 item) com idêntico resultado ✅. Total apurado da frequência de teste
+bateu em cada etapa (verificado por soma manual dos itens).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

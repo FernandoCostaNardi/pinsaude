@@ -290,6 +290,39 @@ export const tomadoresApi = {
     return handleResponse<void>(res)
   },
 
+  // ─── Ocorrências pré-cadastradas com valor ───────────────────────────────
+
+  async listarOcorrencias(tomadorId: string): Promise<TomadorOcorrencia[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/ocorrencias`, { headers: authHeaders() })
+    return handleResponse<TomadorOcorrencia[]>(res)
+  },
+
+  async criarOcorrencia(tomadorId: string, req: TomadorOcorrenciaRequest): Promise<TomadorOcorrencia> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/ocorrencias`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorOcorrencia>(res)
+  },
+
+  async atualizarOcorrencia(tomadorId: string, ocorrenciaId: string, req: TomadorOcorrenciaRequest): Promise<TomadorOcorrencia> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/ocorrencias/${ocorrenciaId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorOcorrencia>(res)
+  },
+
+  async removerOcorrencia(tomadorId: string, ocorrenciaId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/ocorrencias/${ocorrenciaId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
+
   // ─── Serviços operacionais (setores) ─────────────────────────────────────
 
   async criarServicoOperacional(tomadorId: string, req: TomadorServicoOperacionalRequest): Promise<TomadorServicoOperacional> {
@@ -423,6 +456,24 @@ export interface TomadorModalidadeRequest {
 export interface TomadorServicoOperacionalRequest {
   grupoId: string
   nome: string
+  ativo: boolean
+}
+
+export interface TomadorOcorrencia {
+  id: string
+  tomadorId: string
+  nome: string
+  tipoValor: 'PERCENTUAL' | 'FIXO' | 'SEM_VALOR'
+  valorPercentual: number | null
+  valorCentavos: number | null
+  ativo: boolean
+}
+
+export interface TomadorOcorrenciaRequest {
+  nome: string
+  tipoValor: 'PERCENTUAL' | 'FIXO' | 'SEM_VALOR'
+  valorPercentual: number | null
+  valorCentavos: number | null
   ativo: boolean
 }
 

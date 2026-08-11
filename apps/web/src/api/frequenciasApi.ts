@@ -36,6 +36,9 @@ export interface FrequenciaItemResp {
   modalidadeHoras: number | null
   dataExecucao: string
   ocorrencia: string | null
+  ocorrenciaId: string | null
+  ocorrenciaNome: string | null
+  ocorrenciaValorCentavos: number | null
   horasTrabalhadas: number | null
   valorUnitarioCentavos: number
   deslocamentoCentavos: number
@@ -90,6 +93,7 @@ export interface FrequenciaItemRequest {
   dataExecucao: string
   ocorrencia?: string
   horasTrabalhadas?: number
+  ocorrenciaId?: string
 }
 
 export const frequenciasApi = {
