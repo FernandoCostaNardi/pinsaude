@@ -5,9 +5,11 @@ import br.com.pinsaude.faturamento.domain.MedicoTomador;
 import br.com.pinsaude.faturamento.domain.TipoTomador;
 import br.com.pinsaude.faturamento.domain.Tomador;
 import br.com.pinsaude.faturamento.domain.TomadorEmpresa;
+import br.com.pinsaude.faturamento.domain.TomadorHorarioPadrao;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorEmpresaRequest;
+import br.com.pinsaude.faturamento.dto.TomadorHorarioPadraoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
@@ -19,6 +21,7 @@ import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorEmpresaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
+import br.com.pinsaude.faturamento.repository.TomadorHorarioPadraoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
@@ -67,6 +70,7 @@ class TomadorServiceTest {
     @Mock MedicoTomadorRepository medicoTomadorRepo;
     @Mock TomadorEmpresaRepository empresaTomadorRepo;
     @Mock TomadorOcorrenciaRepository ocorrenciaRepo;
+    @Mock TomadorHorarioPadraoRepository horarioPadraoRepo;
 
     @InjectMocks TomadorService service;
 
@@ -721,6 +725,92 @@ class TomadorServiceTest {
             .hasMessageContaining("não encontrada");
     }
 
+    // ─── preenchimento rápido de turno (PINSAUDE-13.20) ────────────────────────
+
+    @Test
+    void listarHorariosPadrao_retornaCatalogoDoTomador() {
+        UUID tomadorId = UUID.randomUUID();
+        TomadorHorarioPadrao h = horarioPadraoFixture(tomadorId, "DIURNO", "6", "07:00 as 13:00", 1);
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(horarioPadraoRepo.findByTomadorIdOrderByOrdemAsc(tomadorId)).thenReturn(List.of(h));
+
+        var result = service.listarHorariosPadrao(tomadorId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).turno()).isEqualTo("DIURNO");
+        assertThat(result.get(0).horario()).isEqualTo("07:00 as 13:00");
+    }
+
+    @Test
+    void criarHorarioPadrao_valido_salvaRetornaResponse() {
+        UUID tomadorId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(horarioPadraoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var req = new TomadorHorarioPadraoRequest("NOTURNO", new java.math.BigDecimal("12"), "19:00 as 07:00", 1, true);
+        var result = service.criarHorarioPadrao(tomadorId, req);
+
+        assertThat(result.turno()).isEqualTo("NOTURNO");
+        assertThat(result.horas()).isEqualByComparingTo("12");
+        assertThat(result.horario()).isEqualTo("19:00 as 07:00");
+        assertThat(result.ativo()).isTrue();
+        verify(horarioPadraoRepo).save(any());
+    }
+
+    @Test
+    void atualizarHorarioPadrao_inexistente_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID horarioId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(horarioPadraoRepo.findById(horarioId)).thenReturn(Optional.empty());
+
+        var req = new TomadorHorarioPadraoRequest("DIURNO", new java.math.BigDecimal("6"), "07:00 as 13:00", 1, true);
+
+        assertThatThrownBy(() -> service.atualizarHorarioPadrao(tomadorId, horarioId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não encontrado");
+    }
+
+    @Test
+    void atualizarHorarioPadrao_valido_atualizaCampos() {
+        UUID tomadorId = UUID.randomUUID();
+        TomadorHorarioPadrao h = horarioPadraoFixture(tomadorId, "DIURNO", "6", "07:00 as 13:00", 1);
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(horarioPadraoRepo.findById(h.getId())).thenReturn(Optional.of(h));
+        when(horarioPadraoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var req = new TomadorHorarioPadraoRequest("DIURNO", new java.math.BigDecimal("8"), "07:00 as 15:00", 1, true);
+        var result = service.atualizarHorarioPadrao(tomadorId, h.getId(), req);
+
+        assertThat(result.horas()).isEqualByComparingTo("8");
+        assertThat(result.horario()).isEqualTo("07:00 as 15:00");
+    }
+
+    @Test
+    void removerHorarioPadrao_existente_deletaComSucesso() {
+        UUID tomadorId = UUID.randomUUID();
+        TomadorHorarioPadrao h = horarioPadraoFixture(tomadorId, "DIURNO", "6", "07:00 as 13:00", 1);
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(horarioPadraoRepo.findById(h.getId())).thenReturn(Optional.of(h));
+
+        service.removerHorarioPadrao(tomadorId, h.getId());
+
+        verify(horarioPadraoRepo).delete(h);
+    }
+
+    @Test
+    void removerHorarioPadrao_deOutroTomador_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID outroTomadorId = UUID.randomUUID();
+        TomadorHorarioPadrao h = horarioPadraoFixture(outroTomadorId, "DIURNO", "6", "07:00 as 13:00", 1);
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(horarioPadraoRepo.findById(h.getId())).thenReturn(Optional.of(h));
+
+        assertThatThrownBy(() -> service.removerHorarioPadrao(tomadorId, h.getId()))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não encontrado");
+    }
+
     // ─── fixtures ────────────────────────────────────────────────────────────
 
     private TomadorOcorrencia ocorrenciaFixture(UUID tomadorId, String tipoValor,
@@ -738,6 +828,22 @@ class TomadorServiceTest {
         o.setValorCentavos(valorCentavos);
         o.setAtivo(true);
         return o;
+    }
+
+    private TomadorHorarioPadrao horarioPadraoFixture(UUID tomadorId, String turno, String horas, String horario, int ordem) {
+        TomadorHorarioPadrao h = new TomadorHorarioPadrao();
+        try {
+            var f = TomadorHorarioPadrao.class.getDeclaredField("id");
+            f.setAccessible(true);
+            f.set(h, UUID.randomUUID());
+        } catch (Exception ignored) {}
+        h.setTomadorId(tomadorId);
+        h.setTurno(turno);
+        h.setHoras(new java.math.BigDecimal(horas));
+        h.setHorario(horario);
+        h.setOrdem(ordem);
+        h.setAtivo(true);
+        return h;
     }
 
     private br.com.pinsaude.faturamento.domain.Servico servicoFixture() {

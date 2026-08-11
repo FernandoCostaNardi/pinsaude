@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Plus, Pencil, Trash2, Layers, ChevronDown, ChevronRight,
-  Moon, Sun, Loader2, FolderOpen, Tag,
+  Moon, Sun, Loader2, FolderOpen, Tag, Clock,
 } from 'lucide-react'
 import { Modal, Button, Input, Alert, Spinner } from '@pinsaude/ui'
 import {
   Tomador,
   TomadorGrupoFaturamento,
   TomadorGrupoFaturamentoRequest,
+  TomadorHorarioPadrao,
+  TomadorHorarioPadraoRequest,
   TomadorModalidade,
   TomadorModalidadeRequest,
   TomadorOcorrencia,
@@ -65,14 +67,13 @@ function ocorrenciaTipoBadge(o: TomadorOcorrencia): { label: string; cls: string
   return { label: 'SEM VALOR', cls: 'bg-gray-100 text-gray-500' }
 }
 
-// ─── Mapeamento fixo turno × horas × horário ──────────────────────────────────
-
-const HORARIOS_FIXOS = [
-  { turno: 'DIURNO'  as const, horas: 6,  horario: '07:00 as 13:00', label: '☀️ Diurno 6h — 07:00 as 13:00' },
-  { turno: 'DIURNO'  as const, horas: 12, horario: '07:00 as 19:00', label: '☀️ Diurno 12h — 07:00 as 19:00' },
-  { turno: 'NOTURNO' as const, horas: 6,  horario: '19:00 as 00:00', label: '🌙 Noturno 6h — 19:00 as 00:00' },
-  { turno: 'NOTURNO' as const, horas: 12, horario: '19:00 as 07:00', label: '🌙 Noturno 12h — 19:00 as 07:00' },
-]
+// PINSAUDE-13.20: os presets de "preencher rápido" (turno × horas × horário) deixaram de ser um
+// array fixo global — agora vêm da API, configuráveis por tomador (aba "Preenchimento Rápido").
+function formatHorarioPadraoLabel(h: TomadorHorarioPadrao): string {
+  const icone = h.turno === 'DIURNO' ? '☀️' : '🌙'
+  const turnoLabel = h.turno === 'DIURNO' ? 'Diurno' : 'Noturno'
+  return `${icone} ${turnoLabel} ${h.horas}h — ${h.horario}`
+}
 
 // ─── Form state types ─────────────────────────────────────────────────────────
 
@@ -125,6 +126,17 @@ interface OcorrenciaForm {
 
 function emptyOcorrenciaForm(): OcorrenciaForm {
   return { nome: '', tipoValor: 'SEM_VALOR', valorPercentualStr: '', valorStr: '', ativo: true }
+}
+
+interface HorarioPadraoForm {
+  turno: 'DIURNO' | 'NOTURNO'
+  horasStr: string
+  horario: string
+  ativo: boolean
+}
+
+function emptyHorarioPadraoForm(): HorarioPadraoForm {
+  return { turno: 'DIURNO', horasStr: '', horario: '', ativo: true }
 }
 
 const MODALIDADE_TIPOS: { modo: ModalidadeModo; titulo: string; sub: string }[] = [
@@ -200,7 +212,7 @@ function GrupoFormInline({
 }
 
 function ModalidadeFormInline({
-  form, onChange, onSave, onCancel, saving, isNew,
+  form, onChange, onSave, onCancel, saving, isNew, horariosPadrao,
 }: {
   form: ModalidadeForm
   onChange: (patch: Partial<ModalidadeForm>) => void
@@ -208,6 +220,7 @@ function ModalidadeFormInline({
   onCancel: () => void
   saving: boolean
   isNew: boolean
+  horariosPadrao: TomadorHorarioPadrao[]
 }) {
   const SELECT_CLS = 'w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white'
   const isPlantao = form.tipo === 'PLANTAO'
@@ -255,21 +268,28 @@ function ModalidadeFormInline({
         {/* ── PLANTÃO: turno/horas/horário ── */}
         {isPlantao && (
           <>
-            {/* Presets rápidos — preenchem turno + horas + horário de uma vez, mas os 3 campos abaixo continuam livres para edição */}
+            {/* Presets rápidos — preenchem turno + horas + horário de uma vez, mas os 3 campos abaixo continuam livres para edição.
+                Configuráveis por tomador na aba "Preenchimento Rápido" (PINSAUDE-13.20). */}
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Preencher rápido (opcional)</label>
-              <div className="flex flex-wrap gap-1.5">
-                {HORARIOS_FIXOS.map(c => (
-                  <button
-                    key={c.horario}
-                    type="button"
-                    onClick={() => onChange({ turno: c.turno, horasStr: String(c.horas), horario: c.horario })}
-                    className="px-2.5 py-1 rounded-lg border border-gray-300 text-[11px] text-gray-700 hover:border-primary hover:text-primary transition-colors"
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
+              {horariosPadrao.length === 0 ? (
+                <p className="text-[11px] text-ds-light">
+                  Nenhum preenchimento rápido cadastrado para este tomador — configure na aba "Preenchimento Rápido".
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {horariosPadrao.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => onChange({ turno: c.turno, horasStr: String(c.horas), horario: c.horario })}
+                      className="px-2.5 py-1 rounded-lg border border-gray-300 text-[11px] text-gray-700 hover:border-primary hover:text-primary transition-colors"
+                    >
+                      {formatHorarioPadraoLabel(c)}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>
@@ -551,6 +571,77 @@ function OcorrenciaFormInline({
   )
 }
 
+function HorarioPadraoFormInline({
+  form, onChange, onSave, onCancel, saving, isNew,
+}: {
+  form: HorarioPadraoForm
+  onChange: (patch: Partial<HorarioPadraoForm>) => void
+  onSave: () => void
+  onCancel: () => void
+  saving: boolean
+  isNew: boolean
+}) {
+  const SELECT_CLS = 'w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white'
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Turno *</label>
+          <select
+            value={form.turno}
+            onChange={e => onChange({ turno: e.target.value as 'DIURNO' | 'NOTURNO' })}
+            className={SELECT_CLS}
+          >
+            <option value="DIURNO">☀️ DIURNO</option>
+            <option value="NOTURNO">🌙 NOTURNO</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Horas *</label>
+          <input
+            type="number"
+            step="0.5"
+            min="0.5"
+            value={form.horasStr}
+            onChange={e => onChange({ horasStr: e.target.value })}
+            placeholder="ex: 6"
+            className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Horário *</label>
+          <input
+            value={form.horario}
+            onChange={e => onChange({ horario: e.target.value })}
+            placeholder="ex: 07:00 as 13:00"
+            className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.ativo}
+              onChange={e => onChange({ ativo: e.target.checked })}
+              className="rounded border-gray-300 text-primary focus:ring-primary"
+            />
+            <span className="text-sm font-medium text-gray-700">Preset ativo</span>
+          </label>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-2 border-t border-ds-border">
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
+          Cancelar
+        </Button>
+        <Button size="sm" onClick={onSave} loading={saving}>
+          {isNew ? 'Adicionar Preset' : 'Salvar Alterações'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -560,7 +651,7 @@ interface Props {
 }
 
 export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
-  const [aba, setAba] = useState<'grupos' | 'modalidades' | 'ocorrencias'>('grupos')
+  const [aba, setAba] = useState<'grupos' | 'modalidades' | 'ocorrencias' | 'horarios'>('grupos')
 
   // ── Grupos ────────────────────────────────────────────────────────────────
   const [grupos, setGrupos] = useState<TomadorGrupoFaturamento[]>([])
@@ -592,6 +683,15 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   const [ocForm, setOcForm] = useState<OcorrenciaForm | null>(null)
   const [editingOcId, setEditingOcId] = useState<string | null>(null)
   const [ocSaving, setOcSaving] = useState(false)
+
+  // ── Preenchimento rápido de turno ─────────────────────────────────────────
+  const [horariosPadrao, setHorariosPadrao] = useState<TomadorHorarioPadrao[]>([])
+  const [hpLoading, setHpLoading] = useState(false)
+  const [hpErr, setHpErr] = useState<string | null>(null)
+
+  const [hpForm, setHpForm] = useState<HorarioPadraoForm | null>(null)
+  const [editingHpId, setEditingHpId] = useState<string | null>(null)
+  const [hpSaving, setHpSaving] = useState(false)
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -631,11 +731,23 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     }
   }, [tomador.id])
 
+  const carregarHorariosPadrao = useCallback(async () => {
+    setHpLoading(true)
+    try {
+      setHorariosPadrao(await tomadoresApi.listarHorariosPadrao(tomador.id))
+    } catch (e) {
+      setHpErr(e instanceof Error ? e.message : 'Erro ao carregar preenchimento rápido')
+    } finally {
+      setHpLoading(false)
+    }
+  }, [tomador.id])
+
   useEffect(() => {
     carregarGrupos()
     carregarModalidades()
     carregarOcorrencias()
-  }, [carregarGrupos, carregarModalidades, carregarOcorrencias])
+    carregarHorariosPadrao()
+  }, [carregarGrupos, carregarModalidades, carregarOcorrencias, carregarHorariosPadrao])
 
   // ── Grupos CRUD ───────────────────────────────────────────────────────────
 
@@ -948,6 +1060,78 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     }
   }
 
+  // ── Preenchimento rápido CRUD ────────────────────────────────────────────────
+
+  function abrirNovoHorarioPadrao() {
+    setHpForm(emptyHorarioPadraoForm())
+    setEditingHpId(null)
+    setHpErr(null)
+  }
+
+  function abrirEditarHorarioPadrao(h: TomadorHorarioPadrao) {
+    setHpForm({ turno: h.turno, horasStr: String(h.horas), horario: h.horario, ativo: h.ativo })
+    setEditingHpId(h.id)
+    setHpErr(null)
+  }
+
+  function cancelarHorarioPadrao() {
+    setHpForm(null)
+    setEditingHpId(null)
+    setHpErr(null)
+  }
+
+  async function salvarHorarioPadrao() {
+    if (!hpForm) return
+    const horas = parseFloat(hpForm.horasStr.replace(',', '.'))
+    if (isNaN(horas) || horas <= 0) {
+      setHpErr('Preencha as horas corretamente')
+      return
+    }
+    if (!hpForm.horario.trim()) {
+      setHpErr('Preencha o horário')
+      return
+    }
+
+    const ordem = editingHpId
+      ? (horariosPadrao.find(h => h.id === editingHpId)?.ordem ?? 1)
+      : (horariosPadrao.length > 0 ? Math.max(...horariosPadrao.map(h => h.ordem)) + 1 : 1)
+
+    const req: TomadorHorarioPadraoRequest = {
+      turno: hpForm.turno,
+      horas,
+      horario: hpForm.horario.trim(),
+      ordem,
+      ativo: hpForm.ativo,
+    }
+
+    setHpSaving(true)
+    setHpErr(null)
+    try {
+      if (editingHpId) {
+        await tomadoresApi.atualizarHorarioPadrao(tomador.id, editingHpId, req)
+      } else {
+        await tomadoresApi.criarHorarioPadrao(tomador.id, req)
+      }
+      cancelarHorarioPadrao()
+      await carregarHorariosPadrao()
+    } catch (e) {
+      setHpErr(e instanceof Error ? e.message : 'Erro ao salvar preenchimento rápido')
+    } finally {
+      setHpSaving(false)
+    }
+  }
+
+  async function removerHorarioPadrao(id: string, h: TomadorHorarioPadrao) {
+    if (!window.confirm(`Remover o preset "${formatHorarioPadraoLabel(h)}"?`)) return
+    setHpErr(null)
+    try {
+      await tomadoresApi.removerHorarioPadrao(tomador.id, id)
+      await carregarHorariosPadrao()
+    } catch (e) {
+      setHpErr(e instanceof Error ? e.message : 'Erro ao remover preenchimento rápido')
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -971,6 +1155,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
           ['grupos', 'Grupos & Setores'],
           ['modalidades', 'Modalidades (Tabela de Preços)'],
           ['ocorrencias', 'Ocorrências'],
+          ['horarios', 'Preenchimento Rápido'],
         ] as const).map(([key, label]) => (
           <button
             key={key}
@@ -1318,6 +1503,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                 onCancel={cancelarModalidade}
                 saving={modSaving}
                 isNew={!editingModId}
+                horariosPadrao={horariosPadrao.filter(h => h.ativo)}
               />
             </div>
           )}
@@ -1450,6 +1636,123 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
               className="flex items-center gap-2 justify-center w-full py-2.5 rounded-xl border-2 border-dashed border-ds-border text-ds-light hover:border-primary hover:text-primary text-xs font-semibold transition-all"
             >
               <Plus size={14} /> Nova Ocorrência
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Aba: Preenchimento Rápido ── */}
+      {aba === 'horarios' && (
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-ds-light -mt-1">
+            Configura os botões de "Preencher rápido" exibidos ao cadastrar uma modalidade Por Plantão para este tomador.
+          </p>
+
+          {hpErr && (
+            <Alert variant="error" onClose={() => setHpErr(null)}>{hpErr}</Alert>
+          )}
+
+          {hpLoading ? (
+            <div className="flex justify-center py-10"><Spinner /></div>
+          ) : horariosPadrao.length === 0 && !hpForm ? (
+            <div className="flex flex-col items-center py-10 gap-2 text-ds-light">
+              <Clock size={36} className="opacity-25" />
+              <p className="text-sm font-semibold">Nenhum preenchimento rápido cadastrado</p>
+              <p className="text-xs">Ex: ☀️ Diurno 6h — 07:00 as 13:00</p>
+              {canWrite && (
+                <Button size="sm" className="mt-2" onClick={abrirNovoHorarioPadrao}>
+                  <Plus size={14} /> Adicionar primeiro preset
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-ds-border">
+              <table className="w-full text-xs min-w-[480px]">
+                <thead>
+                  <tr className="bg-ds-surface border-b border-ds-border">
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Turno</th>
+                    <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Horas</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Horário</th>
+                    <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-ds-light">Status</th>
+                    {canWrite && <th className="px-3 py-2.5 w-16" />}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ds-border">
+                  {horariosPadrao.map(h => (
+                    <tr key={h.id} className="hover:bg-ds-surface/50">
+                      <td className="px-3 py-2">
+                        <span className={[
+                          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold',
+                          h.turno === 'DIURNO' ? 'bg-yellow-50 text-yellow-700' : 'bg-indigo-50 text-indigo-700',
+                        ].join(' ')}>
+                          {h.turno === 'DIURNO' ? <Sun size={10} /> : <Moon size={10} />}
+                          {h.turno}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium text-ds-text">{h.horas}h</td>
+                      <td className="px-3 py-2 text-ds-mid">{h.horario}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={[
+                          'px-1.5 py-0.5 rounded text-[10px] font-bold',
+                          h.ativo ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500',
+                        ].join(' ')}>
+                          {h.ativo ? 'ATIVO' : 'INATIVO'}
+                        </span>
+                      </td>
+                      {canWrite && (
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1 justify-end">
+                            <button
+                              type="button"
+                              onClick={() => abrirEditarHorarioPadrao(h)}
+                              className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
+                              title="Editar"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removerHorarioPadrao(h.id, h)}
+                              className="p-1 rounded text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors"
+                              title="Remover"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Form de novo / editar preset */}
+          {canWrite && hpForm && (
+            <div className="rounded-xl border border-primary/30 bg-primary-50/30 p-4">
+              <p className="text-xs font-bold text-ds-mid uppercase mb-3">
+                {editingHpId ? 'Editar preset' : 'Novo preset'}
+              </p>
+              <HorarioPadraoFormInline
+                form={hpForm}
+                onChange={patch => setHpForm(f => f ? { ...f, ...patch } : f)}
+                onSave={salvarHorarioPadrao}
+                onCancel={cancelarHorarioPadrao}
+                saving={hpSaving}
+                isNew={!editingHpId}
+              />
+            </div>
+          )}
+
+          {/* Botão adicionar preset */}
+          {canWrite && !hpForm && horariosPadrao.length > 0 && (
+            <button
+              type="button"
+              onClick={abrirNovoHorarioPadrao}
+              className="flex items-center gap-2 justify-center w-full py-2.5 rounded-xl border-2 border-dashed border-ds-border text-ds-light hover:border-primary hover:text-primary text-xs font-semibold transition-all"
+            >
+              <Plus size={14} /> Novo Preset
             </button>
           )}
         </div>

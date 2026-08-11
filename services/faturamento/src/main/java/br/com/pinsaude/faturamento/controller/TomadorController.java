@@ -13,6 +13,8 @@ import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoResponse;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeRequest;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeResponse;
+import br.com.pinsaude.faturamento.dto.TomadorHorarioPadraoRequest;
+import br.com.pinsaude.faturamento.dto.TomadorHorarioPadraoResponse;
 import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
@@ -344,6 +346,40 @@ public class TomadorController {
             @PathVariable UUID id,
             @PathVariable UUID ocorrenciaId) {
         service.removerOcorrencia(id, ocorrenciaId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Preenchimento rápido de turno ───────────────────────────────────────────
+
+    @GetMapping("/{id}/turnos-padrao")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<TomadorHorarioPadraoResponse>> listarHorariosPadrao(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarHorariosPadrao(id));
+    }
+
+    @PostMapping("/{id}/turnos-padrao")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorHorarioPadraoResponse> criarHorarioPadrao(
+            @PathVariable UUID id,
+            @Valid @RequestBody TomadorHorarioPadraoRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.criarHorarioPadrao(id, req));
+    }
+
+    @PutMapping("/{id}/turnos-padrao/{horarioId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorHorarioPadraoResponse> atualizarHorarioPadrao(
+            @PathVariable UUID id,
+            @PathVariable UUID horarioId,
+            @Valid @RequestBody TomadorHorarioPadraoRequest req) {
+        return ResponseEntity.ok(service.atualizarHorarioPadrao(id, horarioId, req));
+    }
+
+    @DeleteMapping("/{id}/turnos-padrao/{horarioId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerHorarioPadrao(
+            @PathVariable UUID id,
+            @PathVariable UUID horarioId) {
+        service.removerHorarioPadrao(id, horarioId);
         return ResponseEntity.noContent().build();
     }
 }

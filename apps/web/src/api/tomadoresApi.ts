@@ -323,6 +323,39 @@ export const tomadoresApi = {
     return handleResponse<void>(res)
   },
 
+  // ─── Preenchimento rápido de turno ────────────────────────────────────────
+
+  async listarHorariosPadrao(tomadorId: string): Promise<TomadorHorarioPadrao[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/turnos-padrao`, { headers: authHeaders() })
+    return handleResponse<TomadorHorarioPadrao[]>(res)
+  },
+
+  async criarHorarioPadrao(tomadorId: string, req: TomadorHorarioPadraoRequest): Promise<TomadorHorarioPadrao> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/turnos-padrao`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorHorarioPadrao>(res)
+  },
+
+  async atualizarHorarioPadrao(tomadorId: string, horarioId: string, req: TomadorHorarioPadraoRequest): Promise<TomadorHorarioPadrao> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/turnos-padrao/${horarioId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorHorarioPadrao>(res)
+  },
+
+  async removerHorarioPadrao(tomadorId: string, horarioId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/turnos-padrao/${horarioId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
+
   // ─── Serviços operacionais (setores) ─────────────────────────────────────
 
   async criarServicoOperacional(tomadorId: string, req: TomadorServicoOperacionalRequest): Promise<TomadorServicoOperacional> {
@@ -474,6 +507,24 @@ export interface TomadorOcorrenciaRequest {
   tipoValor: 'PERCENTUAL' | 'FIXO' | 'SEM_VALOR'
   valorPercentual: number | null
   valorCentavos: number | null
+  ativo: boolean
+}
+
+export interface TomadorHorarioPadrao {
+  id: string
+  tomadorId: string
+  turno: 'DIURNO' | 'NOTURNO'
+  horas: number
+  horario: string
+  ordem: number
+  ativo: boolean
+}
+
+export interface TomadorHorarioPadraoRequest {
+  turno: 'DIURNO' | 'NOTURNO'
+  horas: number
+  horario: string
+  ordem: number
   ativo: boolean
 }
 
