@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronRight,
@@ -95,8 +95,81 @@ function fmtQtd(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1).replace('.', ',')
 }
 
-// Progresso da meta (read-only) — uma linha por modalidade META usada na frequência.
-function ProgressoMetas({ progressoMetas }: { progressoMetas: FrequenciaModalidadeProgresso[] }) {
+// Quantidade de horas/dias sendo digitada agora no formulário, ainda não salva — usada para
+// atualizar a barrinha de progresso da meta em tempo real, sem esperar o "Adicionar".
+interface DraftMetaEntry {
+  modalidadeId: string
+  modalidadeNome: string
+  unidadeCalculo: 'HORA' | 'DIA'
+  metaHoras: number | null
+  metaDias: number | null
+  deltaHoras: number
+  deltaDias: number
+}
+
+// Espelha a regra de "restante do bloco atual" do backend (FrequenciaService) só para preview:
+// acumulado==0 → falta a meta inteira; múltiplo exato da meta → bloco fechado (nada pendente).
+function computeRestante(acumulado: number, meta: number): number {
+  if (meta <= 0) return 0
+  if (acumulado <= 0) return meta
+  const resto = acumulado % meta
+  return resto < 1e-6 ? 0 : meta - resto
+}
+
+function computeBlocos(acumulado: number, meta: number): number {
+  if (meta <= 0 || acumulado <= 0) return 0
+  return Math.floor((acumulado + 1e-9) / meta)
+}
+
+// Combina o progresso já persistido (freq.progressoMetas) com o que está sendo digitado no
+// formulário mas ainda não foi salvo, pra dar feedback imediato na barrinha sem precisar clicar
+// em "Adicionar".
+function mesclarProgressoComDraft(
+  base: FrequenciaModalidadeProgresso[],
+  draft: DraftMetaEntry[],
+): FrequenciaModalidadeProgresso[] {
+  const draftMap = new Map(draft.filter(d => d.deltaHoras !== 0 || d.deltaDias !== 0).map(d => [d.modalidadeId, d]))
+  if (draftMap.size === 0) return base
+
+  const resultado = base.map(p => {
+    const d = draftMap.get(p.modalidadeId)
+    if (!d) return p
+    draftMap.delete(p.modalidadeId)
+    const acumuladoHoras = p.acumuladoHoras + d.deltaHoras
+    const acumuladoDias  = p.acumuladoDias  + d.deltaDias
+    const acumulado = p.unidadeCalculo === 'HORA' ? acumuladoHoras : acumuladoDias
+    const meta      = (p.unidadeCalculo === 'HORA' ? p.metaHoras : p.metaDias) ?? 0
+    return {
+      ...p,
+      acumuladoHoras, acumuladoDias,
+      blocosCompletos: computeBlocos(acumulado, meta),
+      restanteBlocoAtual: computeRestante(acumulado, meta),
+    }
+  })
+
+  // Modalidade META usada só no rascunho (ainda sem nenhum plantão salvo nesta frequência)
+  for (const d of draftMap.values()) {
+    const acumulado = d.unidadeCalculo === 'HORA' ? d.deltaHoras : d.deltaDias
+    const meta      = (d.unidadeCalculo === 'HORA' ? d.metaHoras : d.metaDias) ?? 0
+    resultado.push({
+      modalidadeId: d.modalidadeId,
+      modalidadeNome: d.modalidadeNome,
+      unidadeCalculo: d.unidadeCalculo,
+      metaHoras: d.metaHoras,
+      metaDias: d.metaDias,
+      acumuladoHoras: d.unidadeCalculo === 'HORA' ? Math.max(0, d.deltaHoras) : 0,
+      acumuladoDias:  d.unidadeCalculo === 'DIA'  ? Math.max(0, d.deltaDias)  : 0,
+      blocosCompletos: computeBlocos(acumulado, meta),
+      restanteBlocoAtual: computeRestante(acumulado, meta),
+    })
+  }
+  return resultado
+}
+
+// Progresso da meta (uma linha por modalidade META usada na frequência). Quando `draftIds`
+// contém o id da modalidade, os números já incluem o que está sendo digitado (ainda não salvo)
+// e a linha ganha um indicador visual de "prévia".
+function ProgressoMetas({ progressoMetas, draftIds }: { progressoMetas: FrequenciaModalidadeProgresso[]; draftIds?: Set<string> }) {
   if (progressoMetas.length === 0) return null
   return (
     <div className="px-4 py-3 border-b border-ds-border bg-teal-50/50 space-y-2">
@@ -105,13 +178,15 @@ function ProgressoMetas({ progressoMetas }: { progressoMetas: FrequenciaModalida
         const acumulado = p.unidadeCalculo === 'HORA' ? p.acumuladoHoras : p.acumuladoDias
         const sufixo    = p.unidadeCalculo === 'HORA' ? 'h' : 'd'
         const pct = meta > 0 ? Math.max(0, Math.min(100, Math.round(((meta - p.restanteBlocoAtual) / meta) * 100))) : 0
+        const emPreview = draftIds?.has(p.modalidadeId) ?? false
         return (
           <div key={p.modalidadeId} className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-ds-text w-full sm:w-auto sm:max-w-[160px] truncate" title={p.modalidadeNome}>
+            <span className="text-xs font-semibold text-ds-text w-full sm:w-auto sm:max-w-[160px] truncate flex items-center gap-1.5" title={p.modalidadeNome}>
               {p.modalidadeNome}
+              {emPreview && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0" title="Prévia — ainda não salvo" />}
             </span>
             <div className="flex-1 min-w-[80px] h-2 bg-white rounded-full overflow-hidden border border-ds-border">
-              <div className="h-full bg-teal-500 transition-all" style={{ width: `${pct}%` }} />
+              <div className={`h-full transition-all ${emPreview ? 'bg-primary' : 'bg-teal-500'}`} style={{ width: `${pct}%` }} />
             </div>
             <span className="text-[11px] text-ds-mid whitespace-nowrap">
               {fmtQtd(acumulado)}{sufixo}/{fmtQtd(meta)}{sufixo}
@@ -383,11 +458,12 @@ function NovaFrequenciaModal({
 // ─── Formulário de plantão — empilhado no mobile ──────────────────────────────
 
 function PlantaoFormPanel({
-  tomadorId, onSave, onCancel,
+  tomadorId, onSave, onCancel, onDraftChange,
 }: {
   tomadorId: string
   onSave: (req: FrequenciaItemRequest) => Promise<void>
   onCancel: () => void
+  onDraftChange?: (draft: DraftMetaEntry[]) => void
 }) {
   const [modalidades, setModalidades] = useState<TomadorModalidade[]>([])
   const [modalidade,  setModalidade]  = useState<TomadorModalidade | null>(null)
@@ -410,6 +486,29 @@ function PlantaoFormPanel({
 
   const precisaHoras = precisaHorasTrabalhadas(modalidade)
   const ocorrenciaSelecionada = ocorrencias.find(o => o.id === ocorrenciaId) ?? null
+
+  // Reporta pro painel pai a quantidade que está sendo digitada (ainda não salva), pra
+  // atualizar a barrinha de progresso da meta em tempo real.
+  useEffect(() => {
+    if (!onDraftChange) return
+    if (!modalidade || modalidade.tipo !== 'META' || !modalidade.unidadeCalculo) {
+      onDraftChange([])
+      return () => onDraftChange([])
+    }
+    const isHora = modalidade.unidadeCalculo === 'HORA'
+    let delta = isHora ? Number(horas) : 1
+    if (isHora && (!horas || !(delta > 0))) delta = 0
+    onDraftChange(delta === 0 ? [] : [{
+      modalidadeId: modalidade.id,
+      modalidadeNome: modalidade.nome,
+      unidadeCalculo: modalidade.unidadeCalculo,
+      metaHoras: modalidade.metaHoras,
+      metaDias: modalidade.metaDias,
+      deltaHoras: isHora ? delta : 0,
+      deltaDias: isHora ? 0 : delta,
+    }])
+    return () => onDraftChange([])
+  }, [modalidade, horas])
 
   async function handleSave() {
     if (!modalidade) return
@@ -550,8 +649,20 @@ function FrequenciaItensPanel({
   const [gerandoPdf,   setGerandoPdf]   = useState(false)
   const [uploadingDoc, setUploadingDoc] = useState(false)
   const [uploadErr,    setUploadErr]    = useState<string | null>(null)
+  const [draftMeta,    setDraftMeta]    = useState<DraftMetaEntry[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isFaturada = freq.status === 'FATURADA'
+
+  // Barrinha de progresso "ao vivo" — combina o que já está salvo com o que está sendo
+  // digitado agora no formulário (ainda sem clicar em "Adicionar").
+  const progressoMetasLive = useMemo(
+    () => mesclarProgressoComDraft(freq.progressoMetas, draftMeta),
+    [freq.progressoMetas, draftMeta],
+  )
+  const draftIds = useMemo(
+    () => new Set(draftMeta.filter(d => d.deltaHoras !== 0 || d.deltaDias !== 0).map(d => d.modalidadeId)),
+    [draftMeta],
+  )
 
   async function handleAdd(req: FrequenciaItemRequest) {
     await frequenciasApi.adicionarItem(freq.id, req)
@@ -645,7 +756,7 @@ function FrequenciaItensPanel({
       </div>
 
       {/* Progresso das metas (modalidade META) */}
-      <ProgressoMetas progressoMetas={freq.progressoMetas} />
+      <ProgressoMetas progressoMetas={progressoMetasLive} draftIds={draftIds} />
 
       {/* Seção de documento assinado — responsiva */}
       {(freq.status === 'AGUARDANDO_ASSINATURA' || freq.documentoAssinado) && (
@@ -697,6 +808,7 @@ function FrequenciaItensPanel({
           tomadorId={freq.tomadorId}
           onSave={handleAdd}
           onCancel={() => setAdicionando(false)}
+          onDraftChange={setDraftMeta}
         />
       )}
 
