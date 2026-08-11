@@ -8,6 +8,7 @@ import br.com.pinsaude.faturamento.domain.TomadorAliquota;
 import br.com.pinsaude.faturamento.domain.TomadorCnae;
 import br.com.pinsaude.faturamento.domain.TomadorGrupoFaturamento;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
+import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServico;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 import br.com.pinsaude.faturamento.domain.MedicoTomador;
@@ -25,6 +26,8 @@ import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoResponse;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeRequest;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeResponse;
+import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaRequest;
+import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
 import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalRequest;
@@ -39,6 +42,7 @@ import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorEmpresaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
+import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoRepository;
@@ -72,6 +76,7 @@ public class TomadorService {
     private final TomadorServicoOperacionalRepository servicoOperacionalRepo;
     private final MedicoTomadorRepository medicoTomadorRepo;
     private final TomadorEmpresaRepository empresaTomadorRepo;
+    private final TomadorOcorrenciaRepository ocorrenciaRepo;
 
     public TomadorService(TomadorRepository repo,
                           CryptoService crypto,
@@ -84,7 +89,8 @@ public class TomadorService {
                           TomadorModalidadeRepository modalidadeRepo,
                           TomadorServicoOperacionalRepository servicoOperacionalRepo,
                           MedicoTomadorRepository medicoTomadorRepo,
-                          TomadorEmpresaRepository empresaTomadorRepo) {
+                          TomadorEmpresaRepository empresaTomadorRepo,
+                          TomadorOcorrenciaRepository ocorrenciaRepo) {
         this.repo = repo;
         this.crypto = crypto;
         this.consultaCnpjPort = consultaCnpjPort;
@@ -97,6 +103,7 @@ public class TomadorService {
         this.servicoOperacionalRepo = servicoOperacionalRepo;
         this.medicoTomadorRepo = medicoTomadorRepo;
         this.empresaTomadorRepo = empresaTomadorRepo;
+        this.ocorrenciaRepo = ocorrenciaRepo;
     }
 
     public List<TomadorResponse> buscar(String q, UUID medicoId) {
@@ -682,5 +689,77 @@ public class TomadorService {
                 "Empresa não está vinculada a este tomador");
         }
         empresaTomadorRepo.deleteByTomadorIdAndEmpresaId(tomadorId, empresaId);
+    }
+
+    // ─── Ocorrências pré-cadastradas com valor (PINSAUDE-13.19.5) ──────────────
+
+    public List<TomadorOcorrenciaResponse> listarOcorrencias(UUID tomadorId) {
+        findOrThrow(tomadorId);
+        return ocorrenciaRepo.findByTomadorIdOrderByNomeAsc(tomadorId).stream()
+            .map(TomadorOcorrenciaResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public TomadorOcorrenciaResponse criarOcorrencia(UUID tomadorId, TomadorOcorrenciaRequest req) {
+        findOrThrow(tomadorId);
+        TomadorOcorrencia o = new TomadorOcorrencia();
+        o.setTomadorId(tomadorId);
+        o.setNome(req.nome());
+        aplicarCamposOcorrencia(o, req);
+        o.setAtivo(req.ativo());
+        return TomadorOcorrenciaResponse.from(ocorrenciaRepo.save(o));
+    }
+
+    @Transactional
+    public TomadorOcorrenciaResponse atualizarOcorrencia(UUID tomadorId, UUID ocorrenciaId,
+                                                          TomadorOcorrenciaRequest req) {
+        findOrThrow(tomadorId);
+        TomadorOcorrencia o = ocorrenciaRepo.findById(ocorrenciaId)
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ocorrência não encontrada"));
+        o.setNome(req.nome());
+        aplicarCamposOcorrencia(o, req);
+        o.setAtivo(req.ativo());
+        return TomadorOcorrenciaResponse.from(ocorrenciaRepo.save(o));
+    }
+
+    // SEM_VALOR: os dois campos ficam vazios (texto/observação, sem impacto financeiro).
+    // PERCENTUAL: exige valorPercentual; valorCentavos é opcional (permite combinar um extra
+    // fixo, ex: "10% + R$ 50,00"). FIXO: exige valorCentavos; valorPercentual é opcional pelo
+    // mesmo motivo. O cálculo real (FrequenciaService) sempre soma os dois campos presentes.
+    private void aplicarCamposOcorrencia(TomadorOcorrencia o, TomadorOcorrenciaRequest req) {
+        if ("SEM_VALOR".equals(req.tipoValor())) {
+            o.setTipoValor("SEM_VALOR");
+            o.setValorPercentual(null);
+            o.setValorCentavos(null);
+            return;
+        }
+        if ("PERCENTUAL".equals(req.tipoValor())) {
+            if (req.valorPercentual() == null) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Valor percentual é obrigatório para ocorrência do tipo Percentual");
+            }
+            o.setTipoValor("PERCENTUAL");
+            o.setValorPercentual(req.valorPercentual());
+            o.setValorCentavos(req.valorCentavos());
+            return;
+        }
+        if (req.valorCentavos() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Valor fixo é obrigatório para ocorrência do tipo Fixo");
+        }
+        o.setTipoValor("FIXO");
+        o.setValorCentavos(req.valorCentavos());
+        o.setValorPercentual(req.valorPercentual());
+    }
+
+    @Transactional
+    public void removerOcorrencia(UUID tomadorId, UUID ocorrenciaId) {
+        findOrThrow(tomadorId);
+        TomadorOcorrencia o = ocorrenciaRepo.findById(ocorrenciaId)
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ocorrência não encontrada"));
+        ocorrenciaRepo.delete(o);
     }
 }

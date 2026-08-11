@@ -13,6 +13,8 @@ import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoResponse;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeRequest;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeResponse;
+import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaRequest;
+import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
 import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalRequest;
@@ -308,6 +310,40 @@ public class TomadorController {
             @PathVariable UUID id,
             @PathVariable UUID empresaId) {
         service.removerEmpresa(id, empresaId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Ocorrências pré-cadastradas com valor ──────────────────────────────────
+
+    @GetMapping("/{id}/ocorrencias")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<TomadorOcorrenciaResponse>> listarOcorrencias(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarOcorrencias(id));
+    }
+
+    @PostMapping("/{id}/ocorrencias")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorOcorrenciaResponse> criarOcorrencia(
+            @PathVariable UUID id,
+            @Valid @RequestBody TomadorOcorrenciaRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.criarOcorrencia(id, req));
+    }
+
+    @PutMapping("/{id}/ocorrencias/{ocorrenciaId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorOcorrenciaResponse> atualizarOcorrencia(
+            @PathVariable UUID id,
+            @PathVariable UUID ocorrenciaId,
+            @Valid @RequestBody TomadorOcorrenciaRequest req) {
+        return ResponseEntity.ok(service.atualizarOcorrencia(id, ocorrenciaId, req));
+    }
+
+    @DeleteMapping("/{id}/ocorrencias/{ocorrenciaId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerOcorrencia(
+            @PathVariable UUID id,
+            @PathVariable UUID ocorrenciaId) {
+        service.removerOcorrencia(id, ocorrenciaId);
         return ResponseEntity.noContent().build();
     }
 }
