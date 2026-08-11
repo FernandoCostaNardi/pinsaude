@@ -13,6 +13,7 @@ import {
   FrequenciaMedicaResp,
   FrequenciaMedicaRequest,
   FrequenciaItemRequest,
+  FrequenciaModalidadeProgresso,
 } from '../api/frequenciasApi'
 import { useAuth } from '../auth/AuthContext'
 import { abrirPdfFrequencia } from '../utils/frequenciaPdf'
@@ -58,6 +59,56 @@ function detalheModalidade(m: TomadorModalidade): string {
   }
   const partes = [m.turno, m.horario].filter(Boolean)
   return partes.length > 0 ? partes.join(' · ') : `${m.horas}h`
+}
+
+// Espelha FrequenciaService.calcularValorItem (backend) só para exibir um preview do valor
+// antes de salvar — o valor real que fica gravado é sempre recalculado no servidor.
+function calcularValorPreview(m: TomadorModalidade, horasStr: string): number | null {
+  if (m.tipo !== 'META') return m.valorCentavos + m.deslocamentoCentavos
+  if (m.unidadeCalculo === 'DIA') {
+    return m.metaDias ? Math.round(m.valorCentavos / m.metaDias) : null
+  }
+  const horas = Number(horasStr)
+  if (!horasStr || !m.metaHoras || horas <= 0) return null
+  return Math.round((horas * m.valorCentavos) / m.metaHoras)
+}
+
+function precisaHorasTrabalhadas(m: TomadorModalidade | null): boolean {
+  return m?.tipo === 'META' && m?.unidadeCalculo === 'HORA'
+}
+
+function fmtQtd(n: number): string {
+  return n % 1 === 0 ? String(n) : n.toFixed(1).replace('.', ',')
+}
+
+// Progresso da meta (read-only) — uma linha por modalidade META usada na frequência.
+function ProgressoMetas({ progressoMetas }: { progressoMetas: FrequenciaModalidadeProgresso[] }) {
+  if (progressoMetas.length === 0) return null
+  return (
+    <div className="px-4 py-3 border-b border-ds-border bg-teal-50/50 space-y-2">
+      {progressoMetas.map(p => {
+        const meta      = (p.unidadeCalculo === 'HORA' ? p.metaHoras : p.metaDias) ?? 0
+        const acumulado = p.unidadeCalculo === 'HORA' ? p.acumuladoHoras : p.acumuladoDias
+        const sufixo    = p.unidadeCalculo === 'HORA' ? 'h' : 'd'
+        const pct = meta > 0 ? Math.max(0, Math.min(100, Math.round(((meta - p.restanteBlocoAtual) / meta) * 100))) : 0
+        return (
+          <div key={p.modalidadeId} className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-ds-text w-full sm:w-auto sm:max-w-[160px] truncate" title={p.modalidadeNome}>
+              {p.modalidadeNome}
+            </span>
+            <div className="flex-1 min-w-[80px] h-2 bg-white rounded-full overflow-hidden border border-ds-border">
+              <div className="h-full bg-teal-500 transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="text-[11px] text-ds-mid whitespace-nowrap">
+              {fmtQtd(acumulado)}{sufixo}/{fmtQtd(meta)}{sufixo}
+              {p.blocosCompletos > 0 && ` · ${p.blocosCompletos} bloco${p.blocosCompletos > 1 ? 's' : ''}`}
+              {meta > 0 && ` · faltam ${fmtQtd(p.restanteBlocoAtual)}${sufixo}`}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -328,6 +379,7 @@ function PlantaoFormPanel({
   const [modalidade,  setModalidade]  = useState<TomadorModalidade | null>(null)
   const [data,        setData]        = useState(new Date().toISOString().slice(0, 10))
   const [ocorrencia,  setOcorrencia]  = useState('')
+  const [horas,       setHoras]       = useState('')
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
 
@@ -337,17 +389,28 @@ function PlantaoFormPanel({
       .catch(() => {})
   }, [tomadorId])
 
+  const precisaHoras = precisaHorasTrabalhadas(modalidade)
+
   async function handleSave() {
     if (!modalidade) return
+    if (precisaHoras && (!horas || Number(horas) <= 0)) {
+      setErr('Informe as horas trabalhadas para esta modalidade')
+      return
+    }
     setSaving(true); setErr(null)
     try {
-      await onSave({ modalidadeId: modalidade.id, dataExecucao: data, ocorrencia: ocorrencia || undefined })
+      await onSave({
+        modalidadeId: modalidade.id,
+        dataExecucao: data,
+        ocorrencia: ocorrencia || undefined,
+        horasTrabalhadas: precisaHoras ? Number(horas) : undefined,
+      })
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erro ao adicionar')
     } finally { setSaving(false) }
   }
 
-  const total = modalidade ? modalidade.valorCentavos + modalidade.deslocamentoCentavos : 0
+  const total = modalidade ? calcularValorPreview(modalidade, horas) : null
 
   return (
     <div className="mx-3 sm:mx-4 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
@@ -379,15 +442,31 @@ function PlantaoFormPanel({
         />
       </div>
 
+      {/* Horas trabalhadas — só para modalidade Meta por hora */}
+      {precisaHoras && (
+        <div className="mb-3">
+          <label className="block text-xs font-bold text-ds-mid mb-1">
+            Horas trabalhadas * <span className="font-normal text-ds-light">(meta: {modalidade?.metaHoras}h)</span>
+          </label>
+          <input type="number" step="0.5" min="0.5" value={horas} onChange={e => setHoras(e.target.value)}
+            placeholder="Ex: 10"
+            className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]" />
+        </div>
+      )}
+
       {/* Preview de valores — quebra linha no mobile */}
       {modalidade && (
         <div className="bg-white rounded-lg px-3 py-2.5 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs border border-ds-border/60">
           <span className="text-ds-light">{detalheModalidade(modalidade)}</span>
-          <span className="text-ds-mid">Valor: <span className="font-bold text-ds-text">{formatBRL(modalidade.valorCentavos)}</span></span>
+          {modalidade.tipo !== 'META' && (
+            <span className="text-ds-mid">Valor: <span className="font-bold text-ds-text">{formatBRL(modalidade.valorCentavos)}</span></span>
+          )}
           {modalidade.deslocamentoCentavos > 0 && (
             <span className="text-ds-mid">Desl.: <span className="font-bold text-ds-text">{formatBRL(modalidade.deslocamentoCentavos)}</span></span>
           )}
-          <span className="text-sm font-black text-primary sm:ml-auto">Total: {formatBRL(total)}</span>
+          <span className="text-sm font-black text-primary sm:ml-auto">
+            {total != null ? `Total: ${formatBRL(total)}` : 'Informe as horas para calcular'}
+          </span>
         </div>
       )}
 
@@ -526,6 +605,9 @@ function FrequenciaItensPanel({
         </div>
       </div>
 
+      {/* Progresso das metas (modalidade META) */}
+      <ProgressoMetas progressoMetas={freq.progressoMetas} />
+
       {/* Seção de documento assinado — responsiva */}
       {(freq.status === 'AGUARDANDO_ASSINATURA' || freq.documentoAssinado) && (
         <div className="px-4 py-3 border-b border-ds-border bg-yellow-50/60 space-y-2">
@@ -609,6 +691,9 @@ function FrequenciaItensPanel({
                         {item.modalidadeTurno} · {item.modalidadeHorario}
                       </p>
                     )}
+                    {item.horasTrabalhadas != null && (
+                      <p className="text-[11px] text-teal-600 font-medium mt-0.5">{fmtQtd(item.horasTrabalhadas)}h lançadas</p>
+                    )}
                     {item.ocorrencia && (
                       <p className="text-[11px] text-ds-mid italic mt-1">"{item.ocorrencia}"</p>
                     )}
@@ -660,6 +745,9 @@ function FrequenciaItensPanel({
                       <p className="text-xs font-semibold text-ds-text">{item.modalidadeNome ?? '—'}</p>
                       {item.modalidadeTurno && (
                         <p className="text-[10px] text-ds-light">{item.modalidadeTurno} · {item.modalidadeHorario}</p>
+                      )}
+                      {item.horasTrabalhadas != null && (
+                        <p className="text-[10px] text-teal-600 font-medium">{fmtQtd(item.horasTrabalhadas)}h lançadas</p>
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-ds-mid">{item.ocorrencia ?? '—'}</td>

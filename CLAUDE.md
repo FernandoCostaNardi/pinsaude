@@ -4966,6 +4966,85 @@ itens). Terminou com 0 registros de teste remanescentes, confirmado por `SELECT 
 
 ---
 
+## Lançamento com horas + progresso da meta no frontend (PINSAUDE-13.19.4)
+
+Consome o motor de valoração da 13.19.3 nas 3 telas de lançamento/relatório: `FrequenciasPage.tsx`
+(admin, grid + form), `PortalFrequenciaPage.tsx` (médico, form) e `FechamentoPage.tsx` (preview
+agregado). Nenhuma mudança de backend — só os 3 campos novos já expostos pela 13.19.3
+(`horasTrabalhadas`, `progressoMetas`) consumidos no frontend.
+
+### `calcularValorPreview` — espelha o backend só para feedback visual antes de salvar
+Duplicado (mesmo padrão de `detalheModalidade`) em `FrequenciasPage.tsx` e `PortalFrequenciaPage.tsx`:
+PLANTAO/MENSAL retorna o valor flat; META/DIA retorna `valorCentavos ÷ metaDias`; META/HORA retorna
+`null` até o usuário digitar horas válidas (`horas > 0`), aí calcula `horas × (valorCentavos ÷
+metaHoras)`. O preview nunca é a fonte da verdade — o back recalcula tudo de novo no POST — mas
+evita a UI mostrar "Total: R$ 4.000,00" (valor do bloco inteiro) quando na verdade o médico só vai
+receber uma fração proporcional.
+
+### Grid (`PlantaoGridPanel`) — coluna Horas com 3 estados por linha, reagindo à modalidade daquela linha
+Diferente do form de 1 plantão (onde `precisaHoras` é um único booleano fixo), o grid tem N linhas
+com modalidades independentes — `precisaHorasRow(modalidadeId)` resolve isso por linha, consultando
+o array `modalidades` já carregado. O input de Horas fica **sempre visível** mas `disabled` (com
+placeholder "—") nas linhas que não precisam; habilita e exige preenchimento (`type=number`) nas
+linhas META/HORA. Mesma UX de destaque em vermelho já usada para "linha sem modalidade" (EPIC-13.15)
+foi replicada para "linha sem horas" (`linhasSemHoras: Set<number>`), incluindo limpar o destaque
+tanto quando o usuário preenche as horas quanto quando troca para uma modalidade que não precisa
+delas (`updateRow` reavalia os dois sets a cada mudança).
+
+### Progresso da meta — `ProgressoMetas`, mesmo componente duplicado nas 2 telas de lançamento
+Renderiza uma linha por modalidade META presente em `freq.progressoMetas` (o backend já filtra só
+as que têm itens lançados — nunca aparece vazio à toa). Barra de progresso calculada a partir de
+`restanteBlocoAtual` já vindo do backend (não recalcula "resto" no frontend, evita duplicar a lógica
+de borda documentada na 13.19.3): `pct = (meta - restante) / meta`. Isso automaticamente cobre os
+casos de borda (0% quando nada lançado, 100% quando o bloco acabou de fechar) porque o backend já
+resolveu a ambiguidade "resto=0 pode significar duas coisas opostas" — o frontend só desenha o que
+recebe.
+
+### `TabelaModalidades` do Fechamento — sem nenhuma mudança de backend, só enriquecimento client-side
+O DTO `ModalidadeDetalhe` do preview (`fechamentosApi.ts`) nunca teve `tipo`/`unidadeCalculo`/meta —
+e não precisou ganhar: como `totalCentavos`/`quantidade` já somam corretamente os valores
+proporcionais (confirmado na 13.19.3), bastou buscar o catálogo de modalidades do tomador em paralelo
+(`tomadoresApi.listarModalidades`, já existente) e fazer um `Map` por `id` no `FechamentoPage.tsx`
+para saber quais linhas são META. Duas correções puramente visuais nessas linhas: badge de meta
+("40h"/"20d") no lugar da coluna "H" (que ficaria vazia, já que META não tem `horas`); e a coluna
+"VALOR" — que antes mostrava `m.valorItemCentavos` (o **valor do bloco inteiro** cadastrado, ex.
+R$4.000, sempre o mesmo não importa quantos itens) — passa a mostrar `totalCentavos ÷ quantidade`
+(o valor médio **realmente apurado** por lançamento) só para as linhas META. Sem essa correção, a
+tabela mostrava um "VALOR" enganoso que nunca batia com QUANT × VALOR = TOTAL para modalidades META.
+
+### ⚠️ Ambiente: onboarding e portal não estavam de pé — 401 mascarado, não óbvio
+Testando manualmente via browser, `/api/medicos` retornava 401 mesmo com um JWT válido (confirmado
+via `fetch` direto no console, mesmo token funcionando em `/api/tomadores`/`/api/frequencias`).
+Causa raiz: **nenhum processo Java do `onboarding` estava rodando** — a porta 8085 estava ocupada
+por um processo totalmente alheio ao monorepo (`java -jar backend/app/target/fullwatches.jar`,
+provavelmente de outro projeto na mesma máquina), então o gateway repassava a chamada só para
+achar... nada relacionado ao Spring Boot esperado, resultando num 401 sem corpo. `curl
+localhost:8085/actuator/health` retornando 404 (em vez de connection refused) mascarou o sintoma —
+parecia "serviço no ar mas rota errada", não "porta ocupada por outro programa". Diagnóstico real
+veio de `Get-CimInstance Win32_Process -Filter "ProcessId=<pid da porta>"` (via `netstat -ano`) —
+sempre que uma porta conhecida do projeto responde algo inesperado (404/401 sem padrão Spring),
+checar `netstat -ano | grep :<porta>` **antes** de assumir bug de código. Como `Promise.all([
+tomadoresApi.listar(), medicosApi.listar()])` falha inteiro se qualquer uma rejeitar, o 401 do
+médicos também zerava silenciosamente a lista de frequências (nunca chegava a buscar) — um único
+serviço fora do ar derruba three telas que dependiam do mesmo `useEffect` combinado.
+`services/portal` (8087) também não estava de pé (connection refused, `000`) — precisou ser
+iniciado à parte para testar o Portal do Médico.
+
+### Teste manual sem depender de screenshot — CDP com aba presa em ambiente com muitas abas antigas
+`Page.captureScreenshot` deu timeout repetidamente (30s) em várias abas diferentes, mesmo com
+`javascript_tool` respondendo normalmente nas mesmas abas — sintoma de sobrecarga do CDP com ~10
+abas remanescentes de sessões anteriores, não de página travada. Em vez de insistir em screenshot,
+o teste inteiro (login via injeção de `sessionStorage`, preenchimento de grid/form, cliques,
+asserts) foi conduzido só com `javascript_tool` lendo `element.textContent`/`className`/`.value` —
+suficiente para validar comportamento sem depender do pipeline visual. Útil registrar: `tr.click()`
+em uma linha de tabela **funciona** para abrir modais controlados por `onClick` do React mesmo
+disparado via DOM puro (a suspeita inicial de que o clique não estava registrando era falsa — o modal
+abria normalmente, só o meu primeiro método de verificação, checar substring em
+`document.body.innerText`, deu falso-negativo por algum motivo de espaçamento; checar
+`element.textContent` do próprio overlay é mais confiável que `document.body.innerText` inteiro).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
