@@ -5171,6 +5171,41 @@ bateu em cada etapa (verificado por soma manual dos itens).
 
 ---
 
+## Preenchimento Rápido de Turno configurável por Tomador (PINSAUDE-13.20)
+
+### `HORARIOS_FIXOS` era um array global — virou 5º child-catalog por tomador (mesmo padrão de Modalidades/Ocorrências/Setores)
+Os 4 botões de "preencher rápido" (Diurno 6h/12h, Noturno 6h/12h) no formulário de Nova Modalidade
+Por Plantão eram uma constante fixa em `TomadorGruposModal.tsx`, compartilhada por **todos** os
+tomadores. Cliente pediu que cada tomador pudesse ter seus próprios presets (turnos/horas diferem
+por local). Nova tabela `faturamento.tomador_horarios_padrao` (migration V30) segue exatamente o
+mesmo shape/CRUD já usado por `tomador_ocorrencias`/`tomador_servicos_operacionais`: `FORCE ROW
+LEVEL SECURITY` obrigatório (mesma armadilha documentada em EPIC-15.1 — app conecta como
+`svc_faturamento`, dono da tabela), `WITH CHECK (true)`, RLS via subquery em `tomadores.cnpj_id_tenant`.
+
+### Backfill no mesmo migration evita regressão de UX no dia do deploy
+A V30 já nasce com um `INSERT ... SELECT` (4 `UNION ALL`) que semeia os 4 presets antigos para
+**todo** tomador já existente — sem isso, todo tomador do ambiente perderia os botões de preenchimento
+rápido até alguém cadastrar manualmente. Mesmo padrão já usado no backfill de `medico_tomadores`
+(EPIC-15.2). Verificado: 12 tomadores × 4 presets = 48 linhas após a migration.
+
+### Nova aba "Preenchimento Rápido" no `TomadorGruposModal.tsx` — CRUD completo, réplica do padrão de Ocorrências
+Tab bar ganhou uma 4ª entrada (`'horarios'`); estado/handlers/`HorarioPadraoFormInline` replicam
+1:1 a estrutura já usada pela aba Ocorrências (13.19.5/13.19.6). A constante `HORARIOS_FIXOS` foi
+**removida por completo** — o array de botões "Preencher rápido" dentro de `ModalidadeFormInline`
+passou a vir de uma prop (`horariosPadrao: TomadorHorarioPadrao[]`, filtrada por `ativo`),
+carregada via `tomadoresApi.listarHorariosPadrao(tomadorId)` no mesmo `useEffect` de mount que já
+carrega grupos/modalidades/ocorrências.
+
+### Teste manual confirmou isolamento por tomador
+Cadastrado um preset customizado ("☀️ Diurno 8h — 07:00 as 15:00") no tomador SESA — o formulário
+de Nova Modalidade → Por Plantão desse tomador passou a mostrar 5 botões (4 padrão + o novo).
+Abrindo o mesmo formulário para outro tomador (CLINICA VIDA SAUDAVEL, sem nenhuma customização),
+os botões mostraram só os 4 defaults do backfill — confirma que a lista é por tomador, não global.
+Preset de teste removido via API (`DELETE .../turnos-padrao/{id}`, evitando o `window.confirm`
+nativo do browser, que trava a automação via CDP) — contagem final voltou a 48 linhas no banco.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

@@ -8,6 +8,7 @@ import br.com.pinsaude.faturamento.domain.TomadorAliquota;
 import br.com.pinsaude.faturamento.domain.TomadorCnae;
 import br.com.pinsaude.faturamento.domain.TomadorGrupoFaturamento;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
+import br.com.pinsaude.faturamento.domain.TomadorHorarioPadrao;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServico;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
@@ -26,6 +27,8 @@ import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoResponse;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeRequest;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeResponse;
+import br.com.pinsaude.faturamento.dto.TomadorHorarioPadraoRequest;
+import br.com.pinsaude.faturamento.dto.TomadorHorarioPadraoResponse;
 import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
@@ -42,6 +45,7 @@ import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorEmpresaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
+import br.com.pinsaude.faturamento.repository.TomadorHorarioPadraoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
@@ -77,6 +81,7 @@ public class TomadorService {
     private final MedicoTomadorRepository medicoTomadorRepo;
     private final TomadorEmpresaRepository empresaTomadorRepo;
     private final TomadorOcorrenciaRepository ocorrenciaRepo;
+    private final TomadorHorarioPadraoRepository horarioPadraoRepo;
 
     public TomadorService(TomadorRepository repo,
                           CryptoService crypto,
@@ -90,7 +95,8 @@ public class TomadorService {
                           TomadorServicoOperacionalRepository servicoOperacionalRepo,
                           MedicoTomadorRepository medicoTomadorRepo,
                           TomadorEmpresaRepository empresaTomadorRepo,
-                          TomadorOcorrenciaRepository ocorrenciaRepo) {
+                          TomadorOcorrenciaRepository ocorrenciaRepo,
+                          TomadorHorarioPadraoRepository horarioPadraoRepo) {
         this.repo = repo;
         this.crypto = crypto;
         this.consultaCnpjPort = consultaCnpjPort;
@@ -103,6 +109,7 @@ public class TomadorService {
         this.servicoOperacionalRepo = servicoOperacionalRepo;
         this.medicoTomadorRepo = medicoTomadorRepo;
         this.empresaTomadorRepo = empresaTomadorRepo;
+        this.horarioPadraoRepo = horarioPadraoRepo;
         this.ocorrenciaRepo = ocorrenciaRepo;
     }
 
@@ -761,5 +768,53 @@ public class TomadorService {
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ocorrência não encontrada"));
         ocorrenciaRepo.delete(o);
+    }
+
+    // ─── Preenchimento rápido de turno (PINSAUDE-13.20) ─────────────────────────
+    // Substitui o array fixo HORARIOS_FIXOS do frontend por um catálogo por tomador —
+    // cada cliente tem seus próprios botões de "Preencher rápido" na modalidade Por Plantão.
+
+    public List<TomadorHorarioPadraoResponse> listarHorariosPadrao(UUID tomadorId) {
+        findOrThrow(tomadorId);
+        return horarioPadraoRepo.findByTomadorIdOrderByOrdemAsc(tomadorId).stream()
+            .map(TomadorHorarioPadraoResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public TomadorHorarioPadraoResponse criarHorarioPadrao(UUID tomadorId, TomadorHorarioPadraoRequest req) {
+        findOrThrow(tomadorId);
+        TomadorHorarioPadrao h = new TomadorHorarioPadrao();
+        h.setTomadorId(tomadorId);
+        h.setTurno(req.turno());
+        h.setHoras(req.horas());
+        h.setHorario(req.horario().trim());
+        h.setOrdem(req.ordem());
+        h.setAtivo(req.ativo());
+        return TomadorHorarioPadraoResponse.from(horarioPadraoRepo.save(h));
+    }
+
+    @Transactional
+    public TomadorHorarioPadraoResponse atualizarHorarioPadrao(UUID tomadorId, UUID horarioId,
+                                                                TomadorHorarioPadraoRequest req) {
+        findOrThrow(tomadorId);
+        TomadorHorarioPadrao h = horarioPadraoRepo.findById(horarioId)
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Preset de horário não encontrado"));
+        h.setTurno(req.turno());
+        h.setHoras(req.horas());
+        h.setHorario(req.horario().trim());
+        h.setOrdem(req.ordem());
+        h.setAtivo(req.ativo());
+        return TomadorHorarioPadraoResponse.from(horarioPadraoRepo.save(h));
+    }
+
+    @Transactional
+    public void removerHorarioPadrao(UUID tomadorId, UUID horarioId) {
+        findOrThrow(tomadorId);
+        TomadorHorarioPadrao h = horarioPadraoRepo.findById(horarioId)
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Preset de horário não encontrado"));
+        horarioPadraoRepo.delete(h);
     }
 }
