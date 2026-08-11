@@ -5045,6 +5045,73 @@ abria normalmente, só o meu primeiro método de verificação, checar substring
 
 ---
 
+## Catálogo de Ocorrências + valor na frequência (PINSAUDE-13.19.5)
+
+Terceiro child-catalog por tomador (junto de grupos/modalidades/setores/médicos/empresas), todo
+dentro do já existente `TomadorController`/`TomadorService` — nenhuma classe nova de
+controller/service, só mais uma seção nesses dois arquivos (mesmo padrão dos demais).
+
+### `tipo_valor` com 3 valores, mas PERCENTUAL e FIXO podem coexistir ("e/ou")
+A regra de negócio do ticket usa "e/ou" e a fórmula `ocorrencia_valor = round(valor × %/100) +
+fixo` soma os dois campos sempre que presentes — mas o CHECK do banco só tem 3 valores
+(`PERCENTUAL`/`FIXO`/`SEM_VALOR`). Resolvido fazendo `tipo_valor` exigir só o campo "principal"
+do tipo, sem proibir o outro: `PERCENTUAL` exige `valor_percentual` (mas aceita um `valor_centavos`
+extra opcional); `FIXO` exige `valor_centavos` (mas aceita um `valor_percentual` extra opcional).
+Isso permite uma ocorrência "10% + R$ 50,00" tanto cadastrada como `PERCENTUAL` quanto como `FIXO`
+— o cálculo real (`FrequenciaService.calcularValorOcorrencia`) nunca olha pra `tipo_valor`, só soma
+os dois campos que estiverem não-nulos. `SEM_VALOR` é o único caso que exige os dois campos vazios.
+
+### % incide sobre o valor CADASTRADO da modalidade, não sobre o valor proporcional do item
+Para modalidade META (13.19.3), o item pode ter um `valorUnitarioCentavos` bem diferente do
+`valorCentavos` cadastrado (proporcional às horas/dias). O plano original já esclarecia isso entre
+parênteses: "o valor_centavos cadastrado da modalidade lançada" — ou seja, `calcularValorOcorrencia`
+usa `modalidade.getValorCentavos()` (o valor do bloco/flat cadastrado), nunca
+`item.getValorUnitarioCentavos()`. Sem essa distinção, o mesmo % geraria valores de ocorrência
+diferentes dependendo de quantas horas o médico lançou naquele dia específico — o que não faz
+sentido para uma ocorrência tipo "adicional de feriado".
+
+### `ocorrenciaId` (catálogo) e `ocorrencia` (texto livre) são independentes, não mutuamente exclusivos
+Um item de frequência pode ter os dois, só um, ou nenhum. `ocorrenciaId` dirige o valor
+(`ocorrenciaValorCentavos`, snapshot calculado no lançamento); `ocorrencia` continua sendo só uma
+nota de texto sem nenhum efeito financeiro, exatamente como antes desta task. Nenhuma validação
+força escolher um ou outro — decisão deliberada para não travar o médico que quer digitar uma nota
+extra além de selecionar uma ocorrência do catálogo.
+
+### Nome da ocorrência resolvido por join no read-time, nunca snapshotted como string
+Mesmo padrão já usado para `modalidadeNome`/`modalidadeTurno` em `FrequenciaItemResponse`: o campo
+`ocorrenciaNome` é resolvido a partir de um `Map<UUID, TomadorOcorrencia>` carregado em batch
+(`listar()`/`toResponse()`), nunca gravado como coluna própria em `frequencia_itens`. Se a ocorrência
+do catálogo for renomeada depois, itens antigos passam a exibir o nome novo — comportamento aceito
+(mesmo já valia pra nome de modalidade, não é regressão desta task).
+
+### `FrequenciaItemResponse.from()` ganhou 3º parâmetro obrigatório — sem overload de compat
+Diferente de outras extensões deste EPIC (que sempre preservaram overloads de 2-3 args pra não
+quebrar chamadas existentes), aqui não havia nenhum caller fora de `FrequenciaService.java` — os 4
+call sites (`listar`, `toResponse`, `adicionarItem`, `atualizarItem`) já estavam sendo editados na
+mesma task, então o record ganhou o `TomadorOcorrencia ocorrencia` direto como 3º parâmetro sem
+overload, evitando um método morto. Vale a lição geral: antes de criar um overload "de
+compatibilidade", `grep` os call sites reais — às vezes não existe nenhum consumidor externo a
+preservar.
+
+### `FechamentoService` — zero mudança na lógica de agregação, só uma linha somando o snapshot
+Confirma de novo o insight-chave do EPIC-13.19 (já validado nas 13.19.3/13.19.4): a agregação em
+`computeAggregation` só precisou de `+ (item.getOcorrenciaValorCentavos() != null ?
+item.getOcorrenciaValorCentavos() : 0L)` na linha que já calculava `itemTotal`. Testado manualmente
+via API real: frequência com 4 itens (ocorrência %+fixo combinados, só fixo, SEM_VALOR, texto livre
+sem catálogo) somou R$ 3.356,07, e o preview de Fechamento retornou exatamente o mesmo total sem
+nenhum código novo em `FechamentoPreviewResponse`/`ModalidadeDetalhe`.
+
+### `@InjectMocks` com novo repositório — zero mock extra necessário nos testes não relacionados
+Adicionar `TomadorOcorrenciaRepository` ao construtor de `TomadorService` e `FrequenciaService` não
+exigiu tocar em `TomadorGruposModalidadesServiceTest`/`FechamentoServiceTest` (46+15+25 testes
+inalterados, todos verdes sem nenhum `@Mock` novo) — só as duas classes que efetivamente exercitam
+os novos caminhos (`TomadorServiceTest` para o CRUD, `FrequenciaServiceTest` para a valoração)
+precisaram do `@Mock TomadorOcorrenciaRepository`. Confirma pela enésima vez o padrão já documentado
+no projeto: o Mockito injeta `null` nos parâmetros de construtor sem mock correspondente, e isso só
+quebra o teste que efetivamente toca aquele campo.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

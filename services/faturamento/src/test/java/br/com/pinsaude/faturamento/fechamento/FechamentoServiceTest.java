@@ -191,6 +191,24 @@ class FechamentoServiceTest {
     }
 
     @Test
+    void preview_comOcorrenciaValorCentavos_somaNoTotal() {
+        FrequenciaMedica freq = frequenciaFixture(medico1Id, setorId, COMPETENCIA, "RASCUNHO");
+        FrequenciaItem item = itemFixture(freq.getId(), 150_000L, 10_000L);
+        item.setOcorrenciaValorCentavos(15_000L); // ex: 10% de uma ocorrência sobre a modalidade
+
+        when(frequenciaRepo.findByTomadorIdAndCompetencia(tomadorId, COMPETENCIA))
+            .thenReturn(List.of(freq));
+        when(itemRepo.findByFrequenciaIdIn(List.of(freq.getId())))
+            .thenReturn(List.of(item));
+
+        FechamentoPreviewResponse resp = service.preview(tomadorId, COMPETENCIA);
+
+        // 150.000 (valor) + 10.000 (deslocamento) + 15.000 (ocorrência) = 175.000
+        assertThat(resp.totalCentavos()).isEqualTo(175_000L);
+        assertThat(resp.grupos().get(0).totalCentavos()).isEqualTo(175_000L);
+    }
+
+    @Test
     void preview_frequenciaFaturadaExcluida() {
         FrequenciaMedica faturada = frequenciaFixture(medico1Id, setorId, COMPETENCIA, "FATURADA");
 

@@ -4,6 +4,7 @@ import br.com.pinsaude.faturamento.config.SecurityUtils;
 import br.com.pinsaude.faturamento.domain.FrequenciaItem;
 import br.com.pinsaude.faturamento.domain.FrequenciaMedica;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
+import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemResponse;
@@ -13,6 +14,7 @@ import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
 import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
+import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -38,19 +40,22 @@ public class FrequenciaService {
     private final TomadorModalidadeRepository modalidadeRepo;
     private final StorageService storageService;
     private final MedicoTomadorRepository medicoTomadorRepo;
+    private final TomadorOcorrenciaRepository ocorrenciaRepo;
 
     public FrequenciaService(FrequenciaMedicaRepository frequenciaRepo,
                              FrequenciaItemRepository itemRepo,
                              TomadorServicoOperacionalRepository setorRepo,
                              TomadorModalidadeRepository modalidadeRepo,
                              StorageService storageService,
-                             MedicoTomadorRepository medicoTomadorRepo) {
+                             MedicoTomadorRepository medicoTomadorRepo,
+                             TomadorOcorrenciaRepository ocorrenciaRepo) {
         this.frequenciaRepo = frequenciaRepo;
         this.itemRepo       = itemRepo;
         this.setorRepo      = setorRepo;
         this.modalidadeRepo = modalidadeRepo;
         this.storageService = storageService;
         this.medicoTomadorRepo = medicoTomadorRepo;
+        this.ocorrenciaRepo = ocorrenciaRepo;
     }
 
     // ── Frequência CRUD ───────────────────────────────────────────────────────
@@ -129,11 +134,17 @@ public class FrequenciaService {
         Map<UUID, TomadorModalidade> modalidadesMap = modalidadeRepo.findAllById(modalidadeIds).stream()
             .collect(Collectors.toMap(TomadorModalidade::getId, Function.identity()));
 
+        List<UUID> ocorrenciaIds = itensPorFrequencia.values().stream()
+            .flatMap(List::stream).map(FrequenciaItem::getOcorrenciaId).filter(i -> i != null).distinct().toList();
+        Map<UUID, TomadorOcorrencia> ocorrenciasMap = ocorrenciaRepo.findAllById(ocorrenciaIds).stream()
+            .collect(Collectors.toMap(TomadorOcorrencia::getId, Function.identity()));
+
         return filtered.stream().map(f -> {
             List<FrequenciaItemResponse> itemResponses = itensPorFrequencia
                 .getOrDefault(f.getId(), List.of()).stream()
                 .sorted((a, b) -> a.getDataExecucao().compareTo(b.getDataExecucao()))
-                .map(i -> FrequenciaItemResponse.from(i, modalidadesMap.get(i.getModalidadeId())))
+                .map(i -> FrequenciaItemResponse.from(i, modalidadesMap.get(i.getModalidadeId()),
+                    ocorrenciasMap.get(i.getOcorrenciaId())))
                 .toList();
             return FrequenciaMedicaResponse.from(f, setoresMap.get(f.getServicoOperacionalId()), itemResponses, modalidadesMap);
         }).toList();
@@ -158,19 +169,22 @@ public class FrequenciaService {
         TomadorModalidade modalidade = modalidadeRepo.findById(req.modalidadeId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Modalidade não encontrada: " + req.modalidadeId()));
+        TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
 
         FrequenciaItem item = new FrequenciaItem();
         item.setFrequenciaId(frequenciaId);
         item.setModalidadeId(req.modalidadeId());
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
+        item.setOcorrenciaId(req.ocorrenciaId());
         item.setHorasTrabalhadas(req.horasTrabalhadas());
         // Snapshot de preço no momento do lançamento — proporcional para modalidade META
         item.setValorUnitarioCentavos(calcularValorItem(modalidade, req.horasTrabalhadas()));
         item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
+        item.setOcorrenciaValorCentavos(calcularValorOcorrencia(ocorrencia, modalidade.getValorCentavos()));
         itemRepo.save(item);
 
-        return FrequenciaItemResponse.from(item, modalidade);
+        return FrequenciaItemResponse.from(item, modalidade, ocorrencia);
     }
 
     @Transactional
@@ -189,16 +203,19 @@ public class FrequenciaService {
         TomadorModalidade modalidade = modalidadeRepo.findById(req.modalidadeId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Modalidade não encontrada: " + req.modalidadeId()));
+        TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
 
         item.setModalidadeId(req.modalidadeId());
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
+        item.setOcorrenciaId(req.ocorrenciaId());
         item.setHorasTrabalhadas(req.horasTrabalhadas());
         item.setValorUnitarioCentavos(calcularValorItem(modalidade, req.horasTrabalhadas()));
         item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
+        item.setOcorrenciaValorCentavos(calcularValorOcorrencia(ocorrencia, modalidade.getValorCentavos()));
         itemRepo.save(item);
 
-        return FrequenciaItemResponse.from(item, modalidade);
+        return FrequenciaItemResponse.from(item, modalidade, ocorrencia);
     }
 
     @Transactional
@@ -320,6 +337,32 @@ public class FrequenciaService {
             .longValueExact();
     }
 
+    private TomadorOcorrencia resolverOcorrencia(UUID ocorrenciaId) {
+        if (ocorrenciaId == null) return null;
+        return ocorrenciaRepo.findById(ocorrenciaId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Ocorrência não encontrada: " + ocorrenciaId));
+    }
+
+    // ocorrencia_valor = round(valorModalidadeCentavos × %/100) + valorFixo — soma os dois campos
+    // quando ambos estão preenchidos (ex: "10% + R$ 50,00"). SEM_VALOR ou nenhuma ocorrência = 0.
+    // % incide sobre o valor CADASTRADO da modalidade (valorCentavos), não sobre o valor
+    // proporcional já calculado do item — mesma leitura usada desde o plano original do EPIC-13.19.
+    private Long calcularValorOcorrencia(TomadorOcorrencia ocorrencia, long valorModalidadeCentavos) {
+        if (ocorrencia == null) return null;
+        long total = 0L;
+        if (ocorrencia.getValorPercentual() != null) {
+            total += BigDecimal.valueOf(valorModalidadeCentavos)
+                .multiply(ocorrencia.getValorPercentual())
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP)
+                .longValueExact();
+        }
+        if (ocorrencia.getValorCentavos() != null) {
+            total += ocorrencia.getValorCentavos();
+        }
+        return total;
+    }
+
     private FrequenciaMedica findOrThrow(UUID id) {
         return frequenciaRepo.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -338,8 +381,14 @@ public class FrequenciaService {
         Map<UUID, TomadorModalidade> modalidadesMap = modalidadeRepo.findAllById(modalidadeIds).stream()
             .collect(Collectors.toMap(TomadorModalidade::getId, Function.identity()));
 
+        List<UUID> ocorrenciaIds = itens.stream()
+            .map(FrequenciaItem::getOcorrenciaId).filter(i -> i != null).distinct().toList();
+        Map<UUID, TomadorOcorrencia> ocorrenciasMap = ocorrenciaRepo.findAllById(ocorrenciaIds).stream()
+            .collect(Collectors.toMap(TomadorOcorrencia::getId, Function.identity()));
+
         List<FrequenciaItemResponse> itemResponses = itens.stream()
-            .map(i -> FrequenciaItemResponse.from(i, modalidadesMap.get(i.getModalidadeId())))
+            .map(i -> FrequenciaItemResponse.from(i, modalidadesMap.get(i.getModalidadeId()),
+                ocorrenciasMap.get(i.getOcorrenciaId())))
             .toList();
 
         return FrequenciaMedicaResponse.from(f, setor, itemResponses, modalidadesMap);

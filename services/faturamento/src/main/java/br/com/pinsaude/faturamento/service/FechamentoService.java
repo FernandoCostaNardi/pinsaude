@@ -313,7 +313,8 @@ public class FechamentoService {
             if (setor == null) continue;
             UUID grupoId = setor.getGrupoId();
 
-            long itemTotal = item.getValorUnitarioCentavos() + item.getDeslocamentoCentavos();
+            long ocorrenciaValor = item.getOcorrenciaValorCentavos() != null ? item.getOcorrenciaValorCentavos() : 0L;
+            long itemTotal = item.getValorUnitarioCentavos() + item.getDeslocamentoCentavos() + ocorrenciaValor;
 
             // Global modalidade aggregation
             modalidadeAgg.computeIfAbsent(item.getModalidadeId(), k -> new long[]{0L, 0L});

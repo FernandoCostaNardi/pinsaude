@@ -3,6 +3,7 @@ package br.com.pinsaude.faturamento.frequencia;
 import br.com.pinsaude.faturamento.domain.FrequenciaItem;
 import br.com.pinsaude.faturamento.domain.FrequenciaMedica;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
+import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemResponse;
@@ -12,6 +13,7 @@ import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
 import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
+import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
 import br.com.pinsaude.faturamento.service.FrequenciaService;
 import br.com.pinsaude.faturamento.service.StorageService;
@@ -50,6 +52,7 @@ class FrequenciaServiceTest {
     @Mock TomadorModalidadeRepository modalidadeRepo;
     @Mock StorageService storageService;
     @Mock MedicoTomadorRepository medicoTomadorRepo;
+    @Mock TomadorOcorrenciaRepository ocorrenciaRepo;
 
     @InjectMocks FrequenciaService service;
 
@@ -89,6 +92,7 @@ class FrequenciaServiceTest {
         when(itemRepo.findAll()).thenReturn(Collections.emptyList());
         when(setorRepo.findAllById(any())).thenReturn(List.of(setor));
         when(modalidadeRepo.findAllById(any())).thenReturn(List.of(modalidade));
+        when(ocorrenciaRepo.findAllById(any())).thenReturn(List.of());
         when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(true);
     }
 
@@ -219,7 +223,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), "Normal", null);
+            modalidadeId, LocalDate.of(2026, 7, 5), "Normal", null, null);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -239,7 +243,7 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), null, null);
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null);
 
         assertThatThrownBy(() -> service.adicionarItem(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -256,7 +260,7 @@ class FrequenciaServiceTest {
         when(modalidadeRepo.findById(modalInexistente)).thenReturn(Optional.empty());
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalInexistente, LocalDate.of(2026, 7, 5), null, null);
+            modalInexistente, LocalDate.of(2026, 7, 5), null, null, null);
 
         assertThatThrownBy(() -> service.adicionarItem(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -282,7 +286,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            metaId, LocalDate.of(2026, 7, 5), null, new BigDecimal("10"));
+            metaId, LocalDate.of(2026, 7, 5), null, new BigDecimal("10"), null);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -309,7 +313,7 @@ class FrequenciaServiceTest {
         // 45h em um único lançamento — excede a meta de 40h, mas o pagamento continua
         // proporcional/linear (o "bloco" é conceito de acompanhamento, não muda o cálculo)
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            metaId, LocalDate.of(2026, 7, 5), null, new BigDecimal("45"));
+            metaId, LocalDate.of(2026, 7, 5), null, new BigDecimal("45"), null);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -327,7 +331,7 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            metaId, LocalDate.of(2026, 7, 5), null, null);
+            metaId, LocalDate.of(2026, 7, 5), null, null, null);
 
         assertThatThrownBy(() -> service.adicionarItem(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -353,7 +357,7 @@ class FrequenciaServiceTest {
 
         // META/DIA não exige horasTrabalhadas — cada item lançado equivale a 1 dia
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            metaId, LocalDate.of(2026, 7, 5), null, null);
+            metaId, LocalDate.of(2026, 7, 5), null, null, null);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -375,7 +379,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), null, null);
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -403,12 +407,181 @@ class FrequenciaServiceTest {
         when(itemRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            metaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("20"));
+            metaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("20"), null);
 
         FrequenciaItemResponse resp = service.atualizarItem(freqId, itemId, req);
 
         // 20h de 40h do bloco de R$4.000 => R$2.000 (200000 centavos)
         assertThat(resp.valorUnitarioCentavos()).isEqualTo(200000L);
+    }
+
+    // ─── Valoração da Ocorrência do catálogo (PINSAUDE-13.19.5) ───────────────
+
+    @Test
+    void adicionarItem_ocorrenciaPercentual_calculaSobreValorCadastradoDaModalidade() {
+        UUID ocorrenciaId = UUID.randomUUID();
+        TomadorOcorrencia ocorrencia = ocorrenciaFixture(ocorrenciaId, "PERCENTUAL", new BigDecimal("10"), null);
+        when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.of(ocorrencia));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        // modalidade (fixture do setUp): valorCentavos=150000, deslocamento=10000 -> 10% de 150000 = 15000
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, ocorrenciaId);
+
+        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
+
+        assertThat(resp.ocorrenciaValorCentavos()).isEqualTo(15000L);
+        assertThat(resp.ocorrenciaId()).isEqualTo(ocorrenciaId);
+        assertThat(resp.totalItemCentavos()).isEqualTo(150000L + 10000L + 15000L);
+    }
+
+    @Test
+    void adicionarItem_ocorrenciaFixa_somaValorFixo() {
+        UUID ocorrenciaId = UUID.randomUUID();
+        TomadorOcorrencia ocorrencia = ocorrenciaFixture(ocorrenciaId, "FIXO", null, 5000L);
+        when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.of(ocorrencia));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, ocorrenciaId);
+
+        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
+
+        assertThat(resp.ocorrenciaValorCentavos()).isEqualTo(5000L);
+        assertThat(resp.totalItemCentavos()).isEqualTo(150000L + 10000L + 5000L);
+    }
+
+    @Test
+    void adicionarItem_ocorrenciaPercentualComFixoExtra_somaAmbos() {
+        UUID ocorrenciaId = UUID.randomUUID();
+        TomadorOcorrencia ocorrencia = ocorrenciaFixture(ocorrenciaId, "PERCENTUAL", new BigDecimal("10"), 2000L);
+        when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.of(ocorrencia));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, ocorrenciaId);
+
+        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
+
+        // 10% de 150000 = 15000, + 2000 fixo extra = 17000
+        assertThat(resp.ocorrenciaValorCentavos()).isEqualTo(17000L);
+    }
+
+    @Test
+    void adicionarItem_ocorrenciaSemValor_valorZeroSemQuebrarTotal() {
+        UUID ocorrenciaId = UUID.randomUUID();
+        TomadorOcorrencia ocorrencia = ocorrenciaFixture(ocorrenciaId, "SEM_VALOR", null, null);
+        when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.of(ocorrencia));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, ocorrenciaId);
+
+        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
+
+        assertThat(resp.ocorrenciaValorCentavos()).isEqualTo(0L);
+        assertThat(resp.totalItemCentavos()).isEqualTo(160000L);
+    }
+
+    @Test
+    void adicionarItem_ocorrenciaInexistente_lanca404() {
+        UUID ocorrenciaId = UUID.randomUUID();
+        when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.empty());
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, ocorrenciaId);
+
+        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void adicionarItem_textoLivreSemCatalogo_naoAfetaValor_semRegressao() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 5), "Chegou atrasado", null, null);
+
+        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
+
+        assertThat(resp.ocorrencia()).isEqualTo("Chegou atrasado");
+        assertThat(resp.ocorrenciaId()).isNull();
+        assertThat(resp.ocorrenciaValorCentavos()).isNull();
+        assertThat(resp.totalItemCentavos()).isEqualTo(160000L);
+    }
+
+    @Test
+    void atualizarItem_trocaParaOcorrenciaComValor_recalculaTotal() {
+        UUID ocorrenciaId = UUID.randomUUID();
+        TomadorOcorrencia ocorrencia = ocorrenciaFixture(ocorrenciaId, "FIXO", null, 3000L);
+        when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.of(ocorrencia));
+
+        UUID freqId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        FrequenciaItem item = new FrequenciaItem();
+        setId(item, itemId);
+        item.setFrequenciaId(freqId);
+        item.setModalidadeId(modalidadeId);
+        item.setValorUnitarioCentavos(150000L);
+        item.setDeslocamentoCentavos(10000L);
+
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findById(itemId)).thenReturn(Optional.of(item));
+        when(itemRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 6), null, null, ocorrenciaId);
+
+        FrequenciaItemResponse resp = service.atualizarItem(freqId, itemId, req);
+
+        assertThat(resp.ocorrenciaValorCentavos()).isEqualTo(3000L);
+        assertThat(resp.totalItemCentavos()).isEqualTo(150000L + 10000L + 3000L);
     }
 
     // ─── Progresso da meta (read-only) ────────────────────────────────────────
@@ -753,6 +926,18 @@ class FrequenciaServiceTest {
         item.setValorUnitarioCentavos(valorUnitarioCentavos);
         item.setDeslocamentoCentavos(0L);
         return item;
+    }
+
+    private TomadorOcorrencia ocorrenciaFixture(UUID id, String tipoValor, BigDecimal valorPercentual, Long valorCentavos) {
+        TomadorOcorrencia o = new TomadorOcorrencia();
+        setId(o, id);
+        o.setTomadorId(tomadorId);
+        o.setNome("Feriado");
+        o.setTipoValor(tipoValor);
+        o.setValorPercentual(valorPercentual);
+        o.setValorCentavos(valorCentavos);
+        o.setAtivo(true);
+        return o;
     }
 
     private <T> void setId(T obj, UUID id) {

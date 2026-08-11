@@ -27,6 +27,15 @@ public class FrequenciaItem {
     @Column(name = "ocorrencia", length = 120)
     private String ocorrencia;
 
+    // Ocorrência escolhida do catálogo (opcional — pode coexistir com o texto livre acima,
+    // ou nenhum dos dois). ocorrenciaValorCentavos é o snapshot do valor calculado no momento
+    // do lançamento (ver FrequenciaService.calcularValorOcorrencia).
+    @Column(name = "ocorrencia_id")
+    private UUID ocorrenciaId;
+
+    @Column(name = "ocorrencia_valor_centavos")
+    private Long ocorrenciaValorCentavos;
+
     // Horas trabalhadas neste lançamento — só participa do cálculo quando a modalidade é
     // META com unidade_calculo=HORA (ver FrequenciaService.calcularValorItem). Para as demais
     // combinações (PLANTAO/MENSAL/META-DIA) fica NULL.
@@ -57,6 +66,10 @@ public class FrequenciaItem {
     public void setDataExecucao(LocalDate v)    { this.dataExecucao = v; }
     public String getOcorrencia()                { return ocorrencia; }
     public void setOcorrencia(String v)         { this.ocorrencia = v; }
+    public UUID getOcorrenciaId()                { return ocorrenciaId; }
+    public void setOcorrenciaId(UUID v)         { this.ocorrenciaId = v; }
+    public Long getOcorrenciaValorCentavos()     { return ocorrenciaValorCentavos; }
+    public void setOcorrenciaValorCentavos(Long v) { this.ocorrenciaValorCentavos = v; }
     public BigDecimal getHorasTrabalhadas()      { return horasTrabalhadas; }
     public void setHorasTrabalhadas(BigDecimal v) { this.horasTrabalhadas = v; }
     public long getValorUnitarioCentavos()       { return valorUnitarioCentavos; }

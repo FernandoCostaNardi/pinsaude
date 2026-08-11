@@ -12,5 +12,6 @@ public record FrequenciaItemRequest(
     @NotNull UUID modalidadeId,
     @NotNull LocalDate dataExecucao,
     @Size(max = 120) String ocorrencia,
-    @DecimalMin(value = "0.01", message = "horas trabalhadas deve ser maior que zero") BigDecimal horasTrabalhadas
+    @DecimalMin(value = "0.01", message = "horas trabalhadas deve ser maior que zero") BigDecimal horasTrabalhadas,
+    UUID ocorrenciaId
 ) {}
