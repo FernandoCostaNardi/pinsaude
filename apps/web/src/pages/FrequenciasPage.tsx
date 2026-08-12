@@ -490,9 +490,6 @@ function PlantaoFormPanel({
   }, [tomadorId, tipoMedico, item?.modalidadeId])
 
   const precisaHoras = precisaHorasTrabalhadas(modalidade)
-  // Ocorrências do catálogo incidem sobre o valor da modalidade — não fazem sentido para
-  // Diarista (valor mensal fixo, backend rejeita com 422) — ocultadas na UI (PINSAUDE-13.25).
-  const isDiarista = modalidade?.tipo === 'DIARISTA'
 
   // Se a ocorrência selecionada foi desativada depois do lançamento, ainda precisa aparecer
   // como opção (senão o <select> mostra em branco) — igual ao tratamento de modalidade inativa.
@@ -501,10 +498,6 @@ function PlantaoFormPanel({
   const ocorrenciaOptions = ocorrenciaSelecionada && !ocorrenciaSelecionada.ativo
     ? [ocorrenciaSelecionada, ...ocorrenciasAtivas]
     : ocorrenciasAtivas
-
-  useEffect(() => {
-    if (isDiarista && ocorrenciaId) setOcorrenciaId('')
-  }, [isDiarista, ocorrenciaId])
 
   async function handleSave() {
     if (!modalidade) return
@@ -612,21 +605,19 @@ function PlantaoFormPanel({
         </div>
       )}
 
-      {/* Ocorrência do catálogo (com valor) — oculta para Diarista, ver isDiarista acima */}
-      {!isDiarista && (
-        <div className="mb-3">
-          <label className="block text-xs font-bold text-ds-mid mb-1">
-            Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
-          </label>
-          <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
-            className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
-            <option value="">Nenhuma</option>
-            {ocorrenciaOptions.map(o => (
-              <option key={o.id} value={o.id}>{o.nome}{!o.ativo ? ' (inativa)' : ''}</option>
-            ))}
-          </select>
-        </div>
-      )}
+      {/* Ocorrência do catálogo (com valor) — disponível para qualquer Tipo de Escala */}
+      <div className="mb-3">
+        <label className="block text-xs font-bold text-ds-mid mb-1">
+          Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
+        </label>
+        <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
+          className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+          <option value="">Nenhuma</option>
+          {ocorrenciaOptions.map(o => (
+            <option key={o.id} value={o.id}>{o.nome}{!o.ativo ? ' (inativa)' : ''}</option>
+          ))}
+        </select>
+      </div>
 
       {/* Observação livre */}
       <div className="mb-3">
@@ -702,10 +693,6 @@ function PlantaoGridPanel({
     return precisaHorasTrabalhadas(modalidades.find(m => m.id === modalidadeId) ?? null)
   }
 
-  // Ocorrências do catálogo não fazem sentido para Diarista (valor mensal fixo, backend rejeita
-  // com 422) — mesma condição de precisaHorasRow, já que só Diarista exige horas (PINSAUDE-13.25).
-  const isDiaristaRow = precisaHorasRow
-
   useEffect(() => {
     // PINSAUDE-13.25: só oferece modalidades do mesmo Tipo de Escala da frequência aberta.
     tomadoresApi.listarModalidades(tomadorId)
@@ -730,11 +717,6 @@ function PlantaoGridPanel({
   }, [rows])
 
   function updateRow(key: number, patch: Partial<PlantaoRow>) {
-    // Troca para uma modalidade Diarista limpa a ocorrência da linha — o backend rejeita
-    // ocorrência do catálogo em item Diarista (PINSAUDE-13.25).
-    if (patch.modalidadeId && isDiaristaRow(patch.modalidadeId)) {
-      patch = { ...patch, ocorrenciaId: '' }
-    }
     setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r))
     setErr(null)
     if (patch.modalidadeId) {
@@ -925,12 +907,9 @@ function PlantaoGridPanel({
                 <td className="px-2 py-1.5">
                   <select value={r.ocorrenciaId}
                     onChange={e => updateRow(r.key, { ocorrenciaId: e.target.value })}
-                    disabled={ocorrencias.length === 0 || isDiaristaRow(r.modalidadeId)}
-                    title={isDiaristaRow(r.modalidadeId) ? 'Ocorrências do catálogo não se aplicam à modalidade Diarista' : undefined}
+                    disabled={ocorrencias.length === 0}
                     className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50">
-                    <option value="">
-                      {isDiaristaRow(r.modalidadeId) ? 'N/A (Diarista)' : ocorrencias.length === 0 ? 'Sem ocorrências' : 'Nenhuma'}
-                    </option>
+                    <option value="">{ocorrencias.length === 0 ? 'Sem ocorrências' : 'Nenhuma'}</option>
                     {ocorrencias.map(o => (
                       <option key={o.id} value={o.id}>{o.nome}</option>
                     ))}

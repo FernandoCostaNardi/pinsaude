@@ -171,7 +171,6 @@ public class FrequenciaService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Modalidade não encontrada: " + req.modalidadeId()));
         validarCouplingTipoEscala(f, modalidade);
-        validarOcorrenciaNaoSeAplicaADiarista(modalidade, req.ocorrenciaId());
         TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
@@ -212,7 +211,6 @@ public class FrequenciaService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Modalidade não encontrada: " + req.modalidadeId()));
         validarCouplingTipoEscala(f, modalidade);
-        validarOcorrenciaNaoSeAplicaADiarista(modalidade, req.ocorrenciaId());
         TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
@@ -354,17 +352,6 @@ public class FrequenciaService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "Modalidade do tipo " + modalidade.getTipo() + " não pode ser lançada numa "
                     + "frequência com Tipo de Escala " + f.getTipoMedico());
-        }
-    }
-
-    // PINSAUDE-13.23: ocorrências do catálogo (% e/ou valor fixo) incidem sobre o valor
-    // CADASTRADO da modalidade — que pro Diarista é o valor do MÊS inteiro. Aplicar uma
-    // ocorrência percentual a um único dia lançado produziria um bônus sem sentido, então fica
-    // fora de escopo por enquanto: bloqueado no backend, não só escondido na UI.
-    private void validarOcorrenciaNaoSeAplicaADiarista(TomadorModalidade modalidade, UUID ocorrenciaId) {
-        if (ocorrenciaId != null && "DIARISTA".equals(modalidade.getTipo())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Ocorrências do catálogo não se aplicam a modalidade do tipo Diarista");
         }
     }
 

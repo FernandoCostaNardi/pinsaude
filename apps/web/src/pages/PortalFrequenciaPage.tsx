@@ -423,14 +423,7 @@ function PlantaoFormPanel({
   }, [tomadorId, tipoMedico])
 
   const precisaHoras = precisaHorasTrabalhadas(modalidade)
-  // Ocorrências do catálogo incidem sobre o valor da modalidade — não fazem sentido para
-  // Diarista (valor mensal fixo, backend rejeita com 422) — ocultadas na UI (PINSAUDE-13.25).
-  const isDiarista = modalidade?.tipo === 'DIARISTA'
   const ocorrenciaSelecionada = ocorrencias.find(o => o.id === ocorrenciaId) ?? null
-
-  useEffect(() => {
-    if (isDiarista && ocorrenciaId) setOcorrenciaId('')
-  }, [isDiarista, ocorrenciaId])
 
   async function handleSave() {
     if (!modalidade) return
@@ -537,20 +530,18 @@ function PlantaoFormPanel({
         </div>
       )}
 
-      {!isDiarista && (
-        <div className="mb-3">
-          <label className="block text-xs font-bold text-ds-mid mb-1">
-            Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
-          </label>
-          <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
-            className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
-            <option value="">Nenhuma</option>
-            {ocorrencias.map(o => (
-              <option key={o.id} value={o.id}>{o.nome}</option>
-            ))}
-          </select>
-        </div>
-      )}
+      <div className="mb-3">
+        <label className="block text-xs font-bold text-ds-mid mb-1">
+          Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
+        </label>
+        <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
+          className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
+          <option value="">Nenhuma</option>
+          {ocorrencias.map(o => (
+            <option key={o.id} value={o.id}>{o.nome}</option>
+          ))}
+        </select>
+      </div>
 
       <div className="mb-3">
         <label className="block text-xs font-bold text-ds-mid mb-1">

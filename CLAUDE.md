@@ -5353,13 +5353,15 @@ de coupling (`modalidade.getTipo().equals(frequencia.getTipoMedico())`) só é a
 `tipoMedico != null`; frequências legadas sem esse campo continuam aceitando qualquer modalidade,
 exatamente como sempre aceitaram.
 
-### Ocorrências do catálogo bloqueadas no backend pra Diarista, não só escondidas na UI
-O % de uma ocorrência incide sobre `modalidade.valorCentavos` — que pro Diarista é o valor do MÊS
-inteiro, não de um dia. Aplicar uma ocorrência "Feriado +50%" a um lançamento de 1 dia produziria
-um bônus de 50% de um salário mensal inteiro. Bloqueado com 422 direto em
-`adicionarItem`/`atualizarItem` (`ocorrenciaId != null && tipo == DIARISTA`), não só omitido do
-formulário no frontend (que ainda não foi atualizado — 13.25) — garante que nem uma chamada direta
-à API consiga criar esse cenário sem sentido.
+### ⚠️ Ocorrências do catálogo pra Diarista — bloqueio removido depois (ver seção pós-13.25 "Revertido logo em seguida")
+Esta task bloqueava ocorrência do catálogo pra modalidade Diarista com 422 (`ocorrenciaId != null
+&& tipo == DIARISTA`), porque o % incide sobre `modalidade.valorCentavos` (o valor do MÊS inteiro
+pro Diarista, não de um dia) — uma ocorrência "Feriado +50%" produziria um bônus de 50% de um
+salário mensal inteiro. **O cliente pediu a remoção dessa trava logo depois** (mesmo dia,
+documentado na seção "Horário de Entrada/Saída... — Revertido logo em seguida" mais abaixo neste
+arquivo): `validarOcorrenciaNaoSeAplicaADiarista` não existe mais no `FrequenciaService`. A
+ressalva matemática acima continua válida como conhecimento de domínio, só deixou de ser imposta
+pelo sistema.
 
 ### Testes: `FrequenciaServiceTest` ganhou fixture de data configurável
 `itemFixture` tinha `dataExecucao` hardcoded (`2026-07-05`) — inútil pros testes de progresso
@@ -5458,23 +5460,22 @@ modalidades do tomador: `ms.filter(m => m.tipo === tipoMedico)` antes do `.filte
 de sempre. `tipoMedico` vem sempre de `freq.tipoMedico` (nunca recalculado) — nenhuma modalidade
 "errada" pode ser mostrada mesmo que o catálogo do tomador tenha os dois tipos misturados.
 
-### Ocultar Ocorrência para Diarista reaproveita a mesma condição de `precisaHorasTrabalhadas`
-Como só o tipo DIARISTA exige horas trabalhadas (`precisaHorasTrabalhadas` já retornava `m?.tipo
-=== 'DIARISTA'` desde a 13.24), a mesma condição serve para decidir "esconder Ocorrência do
-catálogo" — não foi preciso introduzir uma segunda função `isDiarista` redundante no form de 1
-plantão. No grid (`PlantaoGridPanel`, que testa por `modalidadeId` cru em vez de um objeto já
-resolvido), `precisaHorasRow` foi apelidado localmente de `isDiaristaRow` só por clareza de leitura
-no JSX — é literalmente a mesma função. `updateRow` também limpa `ocorrenciaId` da linha
-automaticamente ao trocar para uma modalidade Diarista (evita enviar um `ocorrenciaId` órfão que o
-backend rejeitaria com 422 caso o usuário tivesse escolhido uma ocorrência antes de trocar de
-modalidade).
-
-### `<select>` nativo desabilitado ainda precisa de UX explicando o "porquê" — não só `disabled`
-No grid, desabilitar o `<select>` de Ocorrência sem nenhuma pista visual deixaria a UI confusa (por
-que o campo simplesmente não responde?). Resolvido com `title="Ocorrências do catálogo não se
-aplicam à modalidade Diarista"` (tooltip nativo do browser) + a primeira `<option>` mostrando "N/A
-(Diarista)" em vez do "Nenhuma"/"Sem ocorrências" padrão — o texto already comunica o motivo sem
-precisar de um componente de tooltip customizado.
+### ⚠️ Revertido logo em seguida: Ocorrência do catálogo passou a ser permitida em qualquer Tipo de Escala
+A restrição original desta task (Ocorrência oculta/desabilitada — "N/A (Diarista)" — pra modalidade
+Diarista, com `validarOcorrenciaNaoSeAplicaADiarista` bloqueando com 422 no backend) foi **revertida
+no mesmo dia**, a pedido do cliente: ele quer poder selecionar qualquer ocorrência do catálogo
+independente do Tipo de Escala. `validarOcorrenciaNaoSeAplicaADiarista` foi removida do
+`FrequenciaService` (backend não bloqueia mais); no frontend, `isDiarista`/`isDiaristaRow` deixaram
+de existir como aliases pra essa checagem — `precisaHorasTrabalhadas`/`precisaHorasRow` continuam
+existindo (ainda controlam só o campo de horário, que segue exclusivo do Diarista), mas não têm mais
+nenhuma relação com a visibilidade da Ocorrência. O `<select>` de Ocorrência (form de 1 plantão e
+grid, admin e portal) voltou a ficar sempre habilitado com "Nenhuma"/"Sem ocorrências" padrão — sem
+nenhuma pista visual de tipo. **A ressalva de design documentada originalmente continua válida
+como conhecimento de domínio** (o % de uma ocorrência incide sobre `modalidade.valorCentavos`, que
+pro Diarista é o valor do MÊS inteiro — um percentual gera um valor proporcionalmente maior que
+numa modalidade Plantonista), só que agora é uma escolha consciente do cliente, não mais bloqueada
+pelo sistema. Testado via API real: 10% de ocorrência sobre uma modalidade Diarista de R$11.153,10
+soma R$1.115,31 ao item — matemática correta, sem nenhum tratamento especial por tipo.
 
 ### `frequenciaPdf.ts` — achado incidental confirmado: rótulo mentia sobre o conteúdo há várias EPICs
 O campo "Especialidade Médica:" no PDF sempre imprimiu `freq.tipoMedico` (PLANTONISTA/DIARISTA) —

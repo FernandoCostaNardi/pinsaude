@@ -393,7 +393,10 @@ class FrequenciaServiceTest {
     }
 
     @Test
-    void adicionarItem_diaristaComOcorrencia_lanca422() {
+    void adicionarItem_diaristaComOcorrencia_permiteESomaSobreValorCadastrado() {
+        // Ajuste pós-PINSAUDE-13.25: ocorrências do catálogo passaram a ser permitidas em
+        // qualquer Tipo de Escala — o % incide sobre o valor CADASTRADO da modalidade
+        // (valorCentavos), igual ao comportamento já existente pra Plantonista.
         UUID diaristaId = UUID.randomUUID();
         TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
         when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
@@ -406,15 +409,20 @@ class FrequenciaServiceTest {
         FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
         f.setTipoMedico("DIARISTA");
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
             diaristaId, LocalDate.of(2026, 7, 6), null, LocalTime.of(7, 0), LocalTime.of(15, 0), ocorrenciaId);
 
-        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
-            .isInstanceOf(ResponseStatusException.class)
-            .hasMessageContaining("Ocorrências do catálogo não se aplicam a modalidade do tipo Diarista")
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
+
+        // 10% de 1.500.000 (valor mensal cadastrado da modalidade) = 150.000
+        assertThat(resp.ocorrenciaValorCentavos()).isEqualTo(150_000L);
+        assertThat(resp.valorUnitarioCentavos()).isZero(); // continua 0 — só a ocorrência soma
     }
 
     @Test
