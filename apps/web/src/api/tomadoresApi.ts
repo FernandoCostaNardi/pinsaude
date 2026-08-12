@@ -455,35 +455,33 @@ export interface TomadorGrupoFaturamentoRequest {
   ativo: boolean
 }
 
+// PINSAUDE-13.22/13.23: tipo colapsado de 3 valores (PLANTAO/MENSAL/META) para 2
+// (PLANTONISTA/DIARISTA), unificando o vocabulário com o Tipo de Escala da Frequência.
 export interface TomadorModalidade {
   id: string
   tomadorId: string
   nome: string
-  tipo: 'PLANTAO' | 'MENSAL' | 'META'
+  tipo: 'PLANTONISTA' | 'DIARISTA'
   turno: 'DIURNO' | 'NOTURNO' | null
   horario: string | null
   horas: number | null
   valorCentavos: number
   deslocamentoCentavos: number
   ativo: boolean
-  // Campos do tipo META (pagamento proporcional por hora/dia)
-  unidadeCalculo: 'HORA' | 'DIA' | null
-  metaHoras: number | null
-  metaDias: number | null
+  // Campo do tipo Diarista — carga horária semanal obrigatória
+  horasSemanais: number | null
 }
 
 export interface TomadorModalidadeRequest {
   nome: string
-  tipo: 'PLANTAO' | 'MENSAL' | 'META'
+  tipo: 'PLANTONISTA' | 'DIARISTA'
   turno: 'DIURNO' | 'NOTURNO' | null
   horario: string | null
   horas: number | null
   valorCentavos: number
   deslocamentoCentavos: number
   ativo: boolean
-  unidadeCalculo: 'HORA' | 'DIA' | null
-  metaHoras: number | null
-  metaDias: number | null
+  horasSemanais: number | null
 }
 
 export interface TomadorServicoOperacionalRequest {
