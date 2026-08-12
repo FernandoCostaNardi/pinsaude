@@ -348,7 +348,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
       <td class="field-value-cell field-value-center" colspan="2">${mesExt} / ${anoComp}</td>
     </tr>
     <tr>
-      <td class="field-label-cell">Especialidade Médica:</td>
+      <td class="field-label-cell">Tipo de Escala:</td>
       <td class="field-value-cell field-value-normal">${freq.tipoMedico ?? ''}</td>
       <td class="field-setor-cell">${freq.servicoOperacionalNome ?? ''}</td>
     </tr>

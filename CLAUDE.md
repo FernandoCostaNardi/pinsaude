@@ -5431,6 +5431,83 @@ CDP (mesma armadilha já documentada em sessões anteriores).
 
 ---
 
+## Lançamento de Plantões com Filtro por Tipo de Escala + Progresso Semanal do Diarista (PINSAUDE-13.25)
+
+Fecha o EPIC de simplificação de modalidades (13.22-13.25): as telas de lançamento de plantão
+(`FrequenciasPage.tsx`, `PortalFrequenciaPage.tsx`) passam a filtrar o dropdown de modalidade pelo
+`tipoMedico` da frequência aberta, e ganham o bloco "Progresso Semanal" consumindo o campo
+`progressoSemanal` do backend (PINSAUDE-13.23).
+
+### A máquina de "progresso da meta" (dead code desde a 13.24) foi finalmente removida, não só neutralizada
+`DraftMetaEntry`, `computeRestante`/`computeBlocos`, `mesclarProgressoComDraft` e o componente
+`ProgressoMetas` (EPIC-13.19.4, baseados no extinto tipo META) nunca mais recebiam dado desde a
+13.24 (`freq.progressoMetas` sempre `[]`) — só continuavam compilando. Esta task finalmente os
+removeu por completo (junto com o prop `onDraftChange` de `PlantaoFormPanel`/`PlantaoGridPanel` e o
+estado `draftMeta`/`draftIds` em `PainelFrequencia`/`FrequenciaItensPanel`), substituindo por
+`ProgressoSemanal` — um componente novo e mais simples, sem prévia em tempo real (ao contrário da
+barrinha antiga, que atualizava enquanto o usuário digitava): o bloco só reflete o que já foi
+persistido, porque cada `handleAdd`/`handleAddGrid`/`handleEdit`/`handleRemove` já recarrega a
+frequência inteira via `frequenciasApi.buscarPorId` logo em seguida — não há necessidade de
+duplicar no frontend a lógica de agrupamento por semana ISO que o backend já faz.
+
+### Filtro de modalidade por Tipo de Escala — prop `tipoMedico` passado explicitamente, não inferido
+`PlantaoFormPanel`/`PlantaoGridPanel` ganharam uma prop obrigatória `tipoMedico: 'PLANTONISTA' |
+'DIARISTA' | null` (o `null` cobre frequências legadas sem esse campo — nesse caso não filtra,
+mantém o comportamento anterior). O filtro é aplicado no mesmo `.then()` que já busca as
+modalidades do tomador: `ms.filter(m => m.tipo === tipoMedico)` antes do `.filter(m => m.ativo)`
+de sempre. `tipoMedico` vem sempre de `freq.tipoMedico` (nunca recalculado) — nenhuma modalidade
+"errada" pode ser mostrada mesmo que o catálogo do tomador tenha os dois tipos misturados.
+
+### Ocultar Ocorrência para Diarista reaproveita a mesma condição de `precisaHorasTrabalhadas`
+Como só o tipo DIARISTA exige horas trabalhadas (`precisaHorasTrabalhadas` já retornava `m?.tipo
+=== 'DIARISTA'` desde a 13.24), a mesma condição serve para decidir "esconder Ocorrência do
+catálogo" — não foi preciso introduzir uma segunda função `isDiarista` redundante no form de 1
+plantão. No grid (`PlantaoGridPanel`, que testa por `modalidadeId` cru em vez de um objeto já
+resolvido), `precisaHorasRow` foi apelidado localmente de `isDiaristaRow` só por clareza de leitura
+no JSX — é literalmente a mesma função. `updateRow` também limpa `ocorrenciaId` da linha
+automaticamente ao trocar para uma modalidade Diarista (evita enviar um `ocorrenciaId` órfão que o
+backend rejeitaria com 422 caso o usuário tivesse escolhido uma ocorrência antes de trocar de
+modalidade).
+
+### `<select>` nativo desabilitado ainda precisa de UX explicando o "porquê" — não só `disabled`
+No grid, desabilitar o `<select>` de Ocorrência sem nenhuma pista visual deixaria a UI confusa (por
+que o campo simplesmente não responde?). Resolvido com `title="Ocorrências do catálogo não se
+aplicam à modalidade Diarista"` (tooltip nativo do browser) + a primeira `<option>` mostrando "N/A
+(Diarista)" em vez do "Nenhuma"/"Sem ocorrências" padrão — o texto already comunica o motivo sem
+precisar de um componente de tooltip customizado.
+
+### `frequenciaPdf.ts` — achado incidental confirmado: rótulo mentia sobre o conteúdo há várias EPICs
+O campo "Especialidade Médica:" no PDF sempre imprimiu `freq.tipoMedico` (PLANTONISTA/DIARISTA) —
+nunca existiu uma especialidade médica de verdade nesse campo (o campo real `especialidade` da
+`FrequenciaMedica` nem é usado no PDF). Corrigido só o rótulo (`"Tipo de Escala:"`), sem nenhuma
+mudança de dado — o `freq.tipoMedico` já vem certo desde sempre.
+
+### Teste manual com múltiplas abas — sessionStorage não é compartilhado entre abas, mesmo mesma origem
+Confirmado de novo nesta sessão (já suspeitado antes): abrir uma nova aba do Chrome via
+`tabs_create_mcp` e navegar para `localhost:3000` **não** herda o `sessionStorage` da aba anterior,
+mesmo sendo a mesma origem — `sessionStorage` é escopado por *browsing context* (aba), não por
+origem. Cada aba nova precisa de sua própria injeção de token via `javascript_tool` antes de
+navegar para uma rota protegida (senão cai em `/login`).
+
+### CDP trava após `window.open()` real (não só após muitas navegações) — usar `Gerar PDF` derruba a aba
+Clicar em "Gerar PDF" (que chama `window.open('', '_blank', ...)`, ver `frequenciaPdf.ts`) travou o
+`Page.captureScreenshot`/`Runtime.evaluate` da aba de origem com timeout de 30-45s, mesmo a
+requisição HTTP subjacente (`PUT /gerar-pdf`) tendo sido concluída com sucesso no backend antes do
+travamento (confirmado depois: o status da frequência avançou para `AGUARDANDO_ASSINATURA`
+normalmente). Reforça a orientação já documentada (EPIC-14.7/15.9): abrir uma aba nova é o
+workaround, não tentar recuperar a aba travada — mas agora com um gatilho adicional identificado
+(popup real via `window.open`, não só sessão longa).
+
+### Teste manual do preview de Fechamento confirmou a agregação "uma vez por modalidade Diarista"
+`GET /api/fechamentos/preview` para a competência de teste retornou `quantidade: 3` (os 3
+lançamentos) mas `totalCentavos` igual ao valor mensal cadastrado da modalidade — nunca 3× esse
+valor — confirmando que a agregação implementada na 13.23 (`FechamentoService.computeAggregation`,
+soma o `valorCentavos` da modalidade Diarista uma única vez por frequência) segue correta e não
+precisou de nenhuma mudança nesta task, apesar do lançamento ter sido feito via UI/grid (não só
+via chamadas diretas de teste automatizado).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
