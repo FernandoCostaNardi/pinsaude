@@ -930,9 +930,9 @@ function PlantaoGridPanel({
         </button>
       </div>
 
-      <div ref={gridRef} className="bg-white rounded-lg border border-ds-border overflow-hidden mb-3">
+      <div ref={gridRef} className="bg-white rounded-lg border border-ds-border overflow-y-auto max-h-96 mb-3">
         <table className="w-full">
-          <thead className="bg-ds-surface/60 border-b border-ds-border">
+          <thead className="bg-ds-surface border-b border-ds-border sticky top-0 z-10">
             <tr>
               <th className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Dia</th>
               <th className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Modalidade</th>
