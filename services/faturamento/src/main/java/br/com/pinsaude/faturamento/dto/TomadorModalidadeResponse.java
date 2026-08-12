@@ -16,9 +16,7 @@ public record TomadorModalidadeResponse(
     long valorCentavos,
     long deslocamentoCentavos,
     boolean ativo,
-    String unidadeCalculo,
-    BigDecimal metaHoras,
-    Integer metaDias
+    BigDecimal horasSemanais
 ) {
     public static TomadorModalidadeResponse from(TomadorModalidade m) {
         return new TomadorModalidadeResponse(
@@ -32,9 +30,7 @@ public record TomadorModalidadeResponse(
             m.getValorCentavos(),
             m.getDeslocamentoCentavos(),
             m.isAtivo(),
-            m.getUnidadeCalculo(),
-            m.getMetaHoras(),
-            m.getMetaDias()
+            m.getHorasSemanais()
         );
     }
 }

@@ -298,43 +298,14 @@ public class FrequenciaService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    // PLANTAO/MENSAL: valor flat da modalidade (comportamento inalterado desde antes do EPIC-13.19).
-    // META/HORA: proporcional às horas lançadas — round(horasTrabalhadas × (valorCentavos ÷ metaHoras)).
-    // META/DIA: cada item lançado equivale a 1 dia — round(valorCentavos ÷ metaDias).
-    // A soma dos itens continua correta automaticamente (Fechamento só soma o snapshot já calculado
-    // aqui) porque a valoração proporcional é linear — não há necessidade de redesenhar a agregação.
+    // PINSAUDE-13.22: tipos de modalidade colapsados para PLANTONISTA/DIARISTA (a modalidade
+    // META que existia antes foi removida — ver TomadorService.aplicarCamposPorTipo). O motor de
+    // cálculo específico do Diarista (valor mensal único somado uma vez por frequência, item
+    // individual valendo R$ 0) é implementado em PINSAUDE-13.23 — até lá, qualquer tipo de
+    // modalidade paga o valor flat cadastrado por lançamento (comportamento idêntico ao que
+    // PLANTAO/MENSAL já tinham antes do motor proporcional do extinto tipo META).
     private long calcularValorItem(TomadorModalidade modalidade, BigDecimal horasTrabalhadas) {
-        if (!"META".equals(modalidade.getTipo())) {
-            return modalidade.getValorCentavos();
-        }
-        String unidade = modalidade.getUnidadeCalculo();
-        if (unidade == null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Modalidade do tipo Meta está sem unidade de cálculo configurada");
-        }
-        if ("HORA".equals(unidade)) {
-            if (horasTrabalhadas == null || horasTrabalhadas.signum() <= 0) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Informe as horas trabalhadas para lançar um item desta modalidade (meta por hora)");
-            }
-            BigDecimal metaHoras = modalidade.getMetaHoras();
-            if (metaHoras == null || metaHoras.signum() <= 0) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Modalidade do tipo Meta por hora está sem meta de horas configurada");
-            }
-            BigDecimal valorPorHora = BigDecimal.valueOf(modalidade.getValorCentavos())
-                .divide(metaHoras, 8, RoundingMode.HALF_UP);
-            return horasTrabalhadas.multiply(valorPorHora).setScale(0, RoundingMode.HALF_UP).longValueExact();
-        }
-        // unidade == DIA — cada item lançado equivale a 1 dia dentro do bloco da meta
-        Integer metaDias = modalidade.getMetaDias();
-        if (metaDias == null || metaDias <= 0) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Modalidade do tipo Meta por dia está sem meta de dias configurada");
-        }
-        return BigDecimal.valueOf(modalidade.getValorCentavos())
-            .divide(BigDecimal.valueOf(metaDias), 0, RoundingMode.HALF_UP)
-            .longValueExact();
+        return modalidade.getValorCentavos();
     }
 
     private TomadorOcorrencia resolverOcorrencia(UUID ocorrenciaId) {

@@ -20,8 +20,8 @@ public class TomadorModalidade {
     @Column(name = "nome", nullable = false, length = 120)
     private String nome;
 
-    @Column(name = "tipo", nullable = false, length = 10)
-    private String tipo = "PLANTAO";
+    @Column(name = "tipo", nullable = false, length = 12)
+    private String tipo = "PLANTONISTA";
 
     @Column(name = "turno", length = 10)
     private String turno;
@@ -32,15 +32,9 @@ public class TomadorModalidade {
     @Column(name = "horas", precision = 6, scale = 2)
     private BigDecimal horas;
 
-    // ─── Campos do tipo META (pagamento proporcional por unidade) ───────────────
-    @Column(name = "unidade_calculo", length = 4)
-    private String unidadeCalculo;   // HORA | DIA
-
-    @Column(name = "meta_horas", precision = 6, scale = 2)
-    private BigDecimal metaHoras;
-
-    @Column(name = "meta_dias")
-    private Integer metaDias;
+    // ─── Campo do tipo DIARISTA (carga horária semanal obrigatória) ─────────────
+    @Column(name = "horas_semanais", precision = 6, scale = 2)
+    private BigDecimal horasSemanais;
 
     @Column(name = "valor_centavos", nullable = false)
     private long valorCentavos;
@@ -72,12 +66,8 @@ public class TomadorModalidade {
     public void setHorario(String v)              { this.horario = v; }
     public BigDecimal getHoras()                  { return horas; }
     public void setHoras(BigDecimal v)            { this.horas = v; }
-    public String getUnidadeCalculo()             { return unidadeCalculo; }
-    public void setUnidadeCalculo(String v)       { this.unidadeCalculo = v; }
-    public BigDecimal getMetaHoras()              { return metaHoras; }
-    public void setMetaHoras(BigDecimal v)        { this.metaHoras = v; }
-    public Integer getMetaDias()                  { return metaDias; }
-    public void setMetaDias(Integer v)            { this.metaDias = v; }
+    public BigDecimal getHorasSemanais()          { return horasSemanais; }
+    public void setHorasSemanais(BigDecimal v)    { this.horasSemanais = v; }
     public long getValorCentavos()                { return valorCentavos; }
     public void setValorCentavos(long v)          { this.valorCentavos = v; }
     public long getDeslocamentoCentavos()         { return deslocamentoCentavos; }
