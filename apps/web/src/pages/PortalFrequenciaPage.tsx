@@ -89,6 +89,20 @@ function fmtQtd(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1).replace('.', ',')
 }
 
+// PINSAUDE-13.25: modalidade Diarista pede a hora de entrada e saída do dia (em vez da
+// quantidade de horas direto) — este helper espelha FrequenciaService.calcularHorasTrabalhadas
+// (backend) só para exibir um preview antes de salvar; o valor real é sempre recalculado no
+// servidor. Turnos que atravessam a meia-noite (ex: 19:00 às 07:00) são detectados quando o
+// horário de saída é menor ou igual ao de entrada, somando 24h à duração.
+function calcularHorasEntrePeriodo(horaInicio: string, horaFim: string): number | null {
+  if (!horaInicio || !horaFim || horaInicio === horaFim) return null
+  const [hi, mi] = horaInicio.split(':').map(Number)
+  const [hf, mf] = horaFim.split(':').map(Number)
+  let minutos = (hf * 60 + mf) - (hi * 60 + mi)
+  if (minutos <= 0) minutos += 24 * 60
+  return Math.round((minutos / 60) * 100) / 100
+}
+
 function formatSemanaRange(inicio: string, fim: string): string {
   return `${formatDate(inicio)}–${formatDate(fim)}`
 }
@@ -390,7 +404,8 @@ function PlantaoFormPanel({
   const [ocorrencia,  setOcorrencia]  = useState('')
   const [ocorrencias, setOcorrencias] = useState<TomadorOcorrencia[]>([])
   const [ocorrenciaId, setOcorrenciaId] = useState('')
-  const [horas,       setHoras]       = useState('')
+  const [horaInicio,  setHoraInicio]  = useState('')
+  const [horaFim,     setHoraFim]     = useState('')
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
 
@@ -419,9 +434,15 @@ function PlantaoFormPanel({
 
   async function handleSave() {
     if (!modalidade) return
-    if (precisaHoras && (!horas || Number(horas) <= 0)) {
-      setErr('Informe as horas trabalhadas para esta modalidade')
-      return
+    if (precisaHoras) {
+      if (!horaInicio || !horaFim) {
+        setErr('Informe o horário de entrada e saída para esta modalidade')
+        return
+      }
+      if (horaInicio === horaFim) {
+        setErr('Horário de saída deve ser diferente do horário de entrada')
+        return
+      }
     }
     setSaving(true); setErr(null)
     try {
@@ -430,13 +451,15 @@ function PlantaoFormPanel({
         dataExecucao: data,
         ocorrencia: ocorrencia || undefined,
         ocorrenciaId: ocorrenciaId || undefined,
-        horasTrabalhadas: precisaHoras ? Number(horas) : undefined,
+        horaInicio: precisaHoras ? horaInicio : undefined,
+        horaFim: precisaHoras ? horaFim : undefined,
       })
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erro ao adicionar')
     } finally { setSaving(false) }
   }
 
+  const horasPreview = precisaHoras ? calcularHorasEntrePeriodo(horaInicio, horaFim) : null
   const totalModalidade = modalidade ? calcularValorPreview(modalidade) : null
   const ocorrenciaValor = modalidade ? calcularValorOcorrenciaPreview(ocorrenciaSelecionada, modalidade.valorCentavos) : 0
   const total = totalModalidade != null ? totalModalidade + ocorrenciaValor : null
@@ -471,15 +494,25 @@ function PlantaoFormPanel({
         />
       </div>
 
-      {/* Horas trabalhadas — só para modalidade Diarista */}
+      {/* Horário trabalhado — só para modalidade Diarista. O médico digita entrada/saída, não a
+          quantidade de horas — o backend deriva a duração (também impressa no PDF, ver frequenciaPdf.ts) */}
       {precisaHoras && (
-        <div className="mb-3">
-          <label className="block text-xs font-bold text-ds-mid mb-1">
-            Horas trabalhadas * <span className="font-normal text-ds-light">(meta semanal: {modalidade?.horasSemanais}h)</span>
-          </label>
-          <input type="number" step="0.5" min="0.5" value={horas} onChange={e => setHoras(e.target.value)}
-            placeholder="Ex: 10"
-            className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]" />
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-bold text-ds-mid mb-1">Entrada *</label>
+            <input type="time" value={horaInicio} onChange={e => setHoraInicio(e.target.value)}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-ds-mid mb-1">
+              Saída * <span className="font-normal text-ds-light">(meta: {modalidade?.horasSemanais}h/sem)</span>
+            </label>
+            <input type="time" value={horaFim} onChange={e => setHoraFim(e.target.value)}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]" />
+          </div>
+          {horasPreview != null && (
+            <p className="col-span-2 text-[11px] text-ds-light">{fmtQtd(horasPreview)}h trabalhadas neste dia</p>
+          )}
         </div>
       )}
 
@@ -742,7 +775,10 @@ function FrequenciaItensPanel({
                       </p>
                     )}
                     {item.horasTrabalhadas != null && (
-                      <p className="text-[11px] text-teal-600 font-medium mt-0.5">{fmtQtd(item.horasTrabalhadas)}h lançadas</p>
+                      <p className="text-[11px] text-teal-600 font-medium mt-0.5">
+                        {fmtQtd(item.horasTrabalhadas)}h lançadas
+                        {item.horaInicio && item.horaFim && ` (${item.horaInicio.slice(0, 5)} às ${item.horaFim.slice(0, 5)})`}
+                      </p>
                     )}
                     {item.ocorrenciaNome && (
                       <p className="text-[11px] text-teal-600 font-medium mt-0.5">
@@ -803,7 +839,10 @@ function FrequenciaItensPanel({
                         <p className="text-[10px] text-ds-light">{item.modalidadeTurno} · {item.modalidadeHorario}</p>
                       )}
                       {item.horasTrabalhadas != null && (
-                        <p className="text-[10px] text-teal-600 font-medium">{fmtQtd(item.horasTrabalhadas)}h lançadas</p>
+                        <p className="text-[10px] text-teal-600 font-medium">
+                          {fmtQtd(item.horasTrabalhadas)}h lançadas
+                          {item.horaInicio && item.horaFim && ` (${item.horaInicio.slice(0, 5)} às ${item.horaFim.slice(0, 5)})`}
+                        </p>
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-ds-mid">

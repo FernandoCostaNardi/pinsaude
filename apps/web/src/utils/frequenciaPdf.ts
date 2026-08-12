@@ -47,6 +47,15 @@ function gerarDataHoraAtual(): string {
   })
 }
 
+// PINSAUDE-13.25: modalidade Diarista não tem turno/horário cadastrados (paga valor mensal
+// fixo) — o horário impresso no PDF é o que o médico digitou naquele lançamento específico
+// (horaInicio/horaFim), nunca um valor da modalidade. Plantonista continua usando
+// modalidadeTurno/modalidadeHorario, cadastrados uma única vez na modalidade.
+function formatHorarioItem(item: FrequenciaItemResp): string | null {
+  if (!item.horaInicio || !item.horaFim) return null
+  return `${item.horaInicio.slice(0, 5)} às ${item.horaFim.slice(0, 5)}`
+}
+
 function gerarOcorrencia(item: FrequenciaItemResp): string {
   if (item.ocorrencia) return item.ocorrencia  // preserva valor informado manualmente
 
@@ -57,8 +66,8 @@ function gerarOcorrencia(item: FrequenciaItemResp): string {
     ? item.modalidadeTurno.charAt(0) + item.modalidadeTurno.slice(1).toLowerCase()
     : ''
 
-  let horasStr = ''
-  if (item.modalidadeHoras != null) {
+  let horasStr = formatHorarioItem(item) ?? ''
+  if (!horasStr && item.modalidadeHoras != null) {
     const h = item.modalidadeHoras
     const hFmt = h % 1 === 0 ? String(h) : h.toFixed(1).replace('.', ',')
     horasStr = `${hFmt} hora${h !== 1 ? 's' : ''}`
@@ -86,7 +95,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
       <tr>
         <td style="text-align:center">${formatDataCurta(item.dataExecucao)}</td>
         <td style="text-align:center">${item.modalidadeTurno ?? ''}</td>
-        <td style="text-align:center">${item.modalidadeHorario ?? ''}</td>
+        <td style="text-align:center">${formatHorarioItem(item) ?? item.modalidadeHorario ?? ''}</td>
         <td></td>
         <td>${gerarOcorrencia(item)}</td>
       </tr>

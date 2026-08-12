@@ -6,6 +6,7 @@ import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -23,6 +24,8 @@ public record FrequenciaItemResponse(
     String ocorrenciaNome,
     Long ocorrenciaValorCentavos,
     BigDecimal horasTrabalhadas,
+    LocalTime horaInicio,
+    LocalTime horaFim,
     long valorUnitarioCentavos,
     long deslocamentoCentavos,
     long totalItemCentavos,
@@ -45,6 +48,8 @@ public record FrequenciaItemResponse(
             ocorrencia != null ? ocorrencia.getNome() : null,
             item.getOcorrenciaValorCentavos(),
             item.getHorasTrabalhadas(),
+            item.getHoraInicio(),
+            item.getHoraFim(),
             item.getValorUnitarioCentavos(),
             item.getDeslocamentoCentavos(),
             item.getValorUnitarioCentavos() + item.getDeslocamentoCentavos() + ocorrenciaValor,

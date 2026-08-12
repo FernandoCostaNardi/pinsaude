@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -36,11 +37,19 @@ public class FrequenciaItem {
     @Column(name = "ocorrencia_valor_centavos")
     private Long ocorrenciaValorCentavos;
 
-    // Horas trabalhadas neste lançamento — só participa do cálculo quando a modalidade é
-    // META com unidade_calculo=HORA (ver FrequenciaService.calcularValorItem). Para as demais
-    // combinações (PLANTAO/MENSAL/META-DIA) fica NULL.
+    // Horas trabalhadas neste lançamento — calculado a partir de horaInicio/horaFim para
+    // modalidade DIARISTA (ver FrequenciaService.calcularHorasTrabalhadas). NULL para PLANTONISTA.
     @Column(name = "horas_trabalhadas", precision = 6, scale = 2)
     private BigDecimal horasTrabalhadas;
+
+    // Horário de entrada/saída digitado pelo médico no lançamento (só modalidade DIARISTA —
+    // PLANTONISTA usa o turno/horário já cadastrados na modalidade). horasTrabalhadas acima é
+    // sempre derivado destes dois campos, nunca informado diretamente pelo cliente.
+    @Column(name = "hora_inicio")
+    private LocalTime horaInicio;
+
+    @Column(name = "hora_fim")
+    private LocalTime horaFim;
 
     // Snapshot dos preços da modalidade no momento do lançamento
     @Column(name = "valor_unitario_centavos", nullable = false)
@@ -72,6 +81,10 @@ public class FrequenciaItem {
     public void setOcorrenciaValorCentavos(Long v) { this.ocorrenciaValorCentavos = v; }
     public BigDecimal getHorasTrabalhadas()      { return horasTrabalhadas; }
     public void setHorasTrabalhadas(BigDecimal v) { this.horasTrabalhadas = v; }
+    public LocalTime getHoraInicio()             { return horaInicio; }
+    public void setHoraInicio(LocalTime v)      { this.horaInicio = v; }
+    public LocalTime getHoraFim()                { return horaFim; }
+    public void setHoraFim(LocalTime v)         { this.horaFim = v; }
     public long getValorUnitarioCentavos()       { return valorUnitarioCentavos; }
     public void setValorUnitarioCentavos(long v){ this.valorUnitarioCentavos = v; }
     public long getDeslocamentoCentavos()        { return deslocamentoCentavos; }

@@ -40,6 +40,8 @@ export interface FrequenciaItemResp {
   ocorrenciaNome: string | null
   ocorrenciaValorCentavos: number | null
   horasTrabalhadas: number | null
+  horaInicio: string | null
+  horaFim: string | null
   valorUnitarioCentavos: number
   deslocamentoCentavos: number
   totalItemCentavos: number
@@ -100,11 +102,15 @@ export interface FrequenciaMedicaRequest {
   tipoMedico: 'PLANTONISTA' | 'DIARISTA'
 }
 
+// PINSAUDE-13.25 (ajuste pós-implantação): horasTrabalhadas não é mais informado direto pelo
+// cliente — para modalidade Diarista o médico digita horaInicio/horaFim ("HH:mm") e o backend
+// deriva a quantidade de horas (ver FrequenciaService.calcularHorasTrabalhadas).
 export interface FrequenciaItemRequest {
   modalidadeId: string
   dataExecucao: string
   ocorrencia?: string
-  horasTrabalhadas?: number
+  horaInicio?: string
+  horaFim?: string
   ocorrenciaId?: string
 }
 
