@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronRight,
@@ -13,7 +13,7 @@ import {
   FrequenciaMedicaResp,
   FrequenciaMedicaRequest,
   FrequenciaItemRequest,
-  FrequenciaModalidadeProgresso,
+  FrequenciaSemanaProgresso,
 } from '../api/frequenciasApi'
 import { useAuth } from '../auth/AuthContext'
 import { abrirPdfFrequencia } from '../utils/frequenciaPdf'
@@ -89,107 +89,32 @@ function fmtQtd(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1).replace('.', ',')
 }
 
-// Quantidade de horas/dias sendo digitada agora no formulário, ainda não salva — usada para
-// atualizar a barrinha de progresso da meta em tempo real, sem esperar o "Adicionar".
-interface DraftMetaEntry {
-  modalidadeId: string
-  modalidadeNome: string
-  unidadeCalculo: 'HORA' | 'DIA'
-  metaHoras: number | null
-  metaDias: number | null
-  deltaHoras: number
-  deltaDias: number
+function formatSemanaRange(inicio: string, fim: string): string {
+  return `${formatDate(inicio)}–${formatDate(fim)}`
 }
 
-// Espelha a regra de "restante do bloco atual" do backend (FrequenciaService) só para preview:
-// acumulado==0 → falta a meta inteira; múltiplo exato da meta → bloco fechado (nada pendente).
-function computeRestante(acumulado: number, meta: number): number {
-  if (meta <= 0) return 0
-  if (acumulado <= 0) return meta
-  const resto = acumulado % meta
-  return resto < 1e-6 ? 0 : meta - resto
-}
-
-function computeBlocos(acumulado: number, meta: number): number {
-  if (meta <= 0 || acumulado <= 0) return 0
-  return Math.floor((acumulado + 1e-9) / meta)
-}
-
-// Combina o progresso já persistido (freq.progressoMetas) com o que está sendo digitado no
-// formulário mas ainda não foi salvo, pra dar feedback imediato na barrinha sem precisar clicar
-// em "Adicionar".
-function mesclarProgressoComDraft(
-  base: FrequenciaModalidadeProgresso[],
-  draft: DraftMetaEntry[],
-): FrequenciaModalidadeProgresso[] {
-  const draftMap = new Map(draft.filter(d => d.deltaHoras !== 0 || d.deltaDias !== 0).map(d => [d.modalidadeId, d]))
-  if (draftMap.size === 0) return base
-
-  const resultado = base.map(p => {
-    const d = draftMap.get(p.modalidadeId)
-    if (!d) return p
-    draftMap.delete(p.modalidadeId)
-    const acumuladoHoras = p.acumuladoHoras + d.deltaHoras
-    const acumuladoDias  = p.acumuladoDias  + d.deltaDias
-    const acumulado = p.unidadeCalculo === 'HORA' ? acumuladoHoras : acumuladoDias
-    const meta      = (p.unidadeCalculo === 'HORA' ? p.metaHoras : p.metaDias) ?? 0
-    return {
-      ...p,
-      acumuladoHoras, acumuladoDias,
-      blocosCompletos: computeBlocos(acumulado, meta),
-      restanteBlocoAtual: computeRestante(acumulado, meta),
-    }
-  })
-
-  // Modalidade META usada só no rascunho (ainda sem nenhum plantão salvo nesta frequência)
-  for (const d of draftMap.values()) {
-    const acumulado = d.unidadeCalculo === 'HORA' ? d.deltaHoras : d.deltaDias
-    const meta      = (d.unidadeCalculo === 'HORA' ? d.metaHoras : d.metaDias) ?? 0
-    resultado.push({
-      modalidadeId: d.modalidadeId,
-      modalidadeNome: d.modalidadeNome,
-      unidadeCalculo: d.unidadeCalculo,
-      metaHoras: d.metaHoras,
-      metaDias: d.metaDias,
-      acumuladoHoras: d.unidadeCalculo === 'HORA' ? Math.max(0, d.deltaHoras) : 0,
-      acumuladoDias:  d.unidadeCalculo === 'DIA'  ? Math.max(0, d.deltaDias)  : 0,
-      blocosCompletos: computeBlocos(acumulado, meta),
-      restanteBlocoAtual: computeRestante(acumulado, meta),
-    })
-  }
-  return resultado
-}
-
-// Progresso da meta (uma linha por modalidade META usada na frequência). Quando `draftIds`
-// contém o id da modalidade, os números já incluem o que está sendo digitado (ainda não salvo)
-// e a linha ganha um indicador visual de "prévia".
-function ProgressoMetas({ progressoMetas, draftIds }: { progressoMetas: FrequenciaModalidadeProgresso[]; draftIds?: Set<string> }) {
-  if (progressoMetas.length === 0) return null
+// PINSAUDE-13.25: substitui a antiga barrinha "progresso da meta" (EPIC-13.19.4, baseada no
+// extinto tipo META) por um badge por semana ISO, consumindo o campo `progressoSemanal` do
+// backend (PINSAUDE-13.23) — puramente informativo, nunca altera o valor pago (a frequência
+// sempre paga o valor mensal fixo da modalidade Diarista, ver freq.totalValorCentavos). Sem
+// nenhuma ação automática quando a meta não é cumprida — só o indicador visual (⚠️/✓).
+function ProgressoSemanal({ semanas }: { semanas: FrequenciaSemanaProgresso[] }) {
+  if (semanas.length === 0) return null
   return (
-    <div className="px-4 py-3 border-b border-ds-border bg-teal-50/50 space-y-2">
-      {progressoMetas.map(p => {
-        const meta      = (p.unidadeCalculo === 'HORA' ? p.metaHoras : p.metaDias) ?? 0
-        const acumulado = p.unidadeCalculo === 'HORA' ? p.acumuladoHoras : p.acumuladoDias
-        const sufixo    = p.unidadeCalculo === 'HORA' ? 'h' : 'd'
-        const pct = meta > 0 ? Math.max(0, Math.min(100, Math.round(((meta - p.restanteBlocoAtual) / meta) * 100))) : 0
-        const emPreview = draftIds?.has(p.modalidadeId) ?? false
-        return (
-          <div key={p.modalidadeId} className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-ds-text w-full sm:w-auto sm:max-w-[160px] truncate flex items-center gap-1.5" title={p.modalidadeNome}>
-              {p.modalidadeNome}
-              {emPreview && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0" title="Prévia — ainda não salvo" />}
-            </span>
-            <div className="flex-1 min-w-[80px] h-2 bg-white rounded-full overflow-hidden border border-ds-border">
-              <div className={`h-full transition-all ${emPreview ? 'bg-primary' : 'bg-teal-500'}`} style={{ width: `${pct}%` }} />
-            </div>
-            <span className="text-[11px] text-ds-mid whitespace-nowrap">
-              {fmtQtd(acumulado)}{sufixo}/{fmtQtd(meta)}{sufixo}
-              {p.blocosCompletos > 0 && ` · ${p.blocosCompletos} bloco${p.blocosCompletos > 1 ? 's' : ''}`}
-              {meta > 0 && ` · faltam ${fmtQtd(p.restanteBlocoAtual)}${sufixo}`}
-            </span>
-          </div>
-        )
-      })}
+    <div className="px-4 py-3 border-b border-ds-border bg-purple-50/50">
+      <p className="text-[10px] font-bold text-purple-700 uppercase tracking-wider mb-2">Progresso Semanal (Diarista)</p>
+      <div className="flex flex-wrap gap-2">
+        {semanas.map((s, i) => (
+          <span key={`${s.semanaInicio}-${i}`}
+            title={formatSemanaRange(s.semanaInicio, s.semanaFim)}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
+              s.cumprida ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+            }`}>
+            Sem {i + 1}: {fmtQtd(s.horasLancadas)}h{s.metaHoras != null ? `/${fmtQtd(s.metaHoras)}h` : ''}
+            {s.cumprida ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -452,12 +377,12 @@ function NovaFrequenciaModal({
 // ─── Formulário de plantão — empilhado no mobile ──────────────────────────────
 
 function PlantaoFormPanel({
-  tomadorId, onSave, onCancel, onDraftChange,
+  tomadorId, tipoMedico, onSave, onCancel,
 }: {
   tomadorId: string
+  tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null   // filtra a lista de modalidades (PINSAUDE-13.25)
   onSave: (req: FrequenciaItemRequest) => Promise<void>
   onCancel: () => void
-  onDraftChange?: (draft: DraftMetaEntry[]) => void
 }) {
   const [modalidades, setModalidades] = useState<TomadorModalidade[]>([])
   const [modalidade,  setModalidade]  = useState<TomadorModalidade | null>(null)
@@ -470,26 +395,27 @@ function PlantaoFormPanel({
   const [err,         setErr]         = useState<string | null>(null)
 
   useEffect(() => {
+    // PINSAUDE-13.25: só oferece modalidades do mesmo Tipo de Escala da frequência aberta.
     tomadoresApi.listarModalidades(tomadorId)
-      .then(ms => setModalidades(ms.filter(m => m.ativo)))
+      .then(ms => {
+        const doTipo = tipoMedico ? ms.filter(m => m.tipo === tipoMedico) : ms
+        setModalidades(doTipo.filter(m => m.ativo))
+      })
       .catch(() => {})
     tomadoresApi.listarOcorrencias(tomadorId)
       .then(os => setOcorrencias(os.filter(o => o.ativo)))
       .catch(() => {})
-  }, [tomadorId])
+  }, [tomadorId, tipoMedico])
 
   const precisaHoras = precisaHorasTrabalhadas(modalidade)
+  // Ocorrências do catálogo incidem sobre o valor da modalidade — não fazem sentido para
+  // Diarista (valor mensal fixo, backend rejeita com 422) — ocultadas na UI (PINSAUDE-13.25).
+  const isDiarista = modalidade?.tipo === 'DIARISTA'
   const ocorrenciaSelecionada = ocorrencias.find(o => o.id === ocorrenciaId) ?? null
 
-  // PINSAUDE-13.24: a modalidade META (única que alimentava a prévia em tempo real da barrinha
-  // de progresso) foi removida — ver TomadorGruposModal.tsx. O acompanhamento semanal do tipo
-  // DIARISTA (que substitui esse conceito) ganha sua própria prévia em tempo real na PINSAUDE-13.25;
-  // até lá, o efeito só garante que nenhum draft "fantasma" fique pendurado.
   useEffect(() => {
-    if (!onDraftChange) return
-    onDraftChange([])
-    return () => onDraftChange([])
-  }, [onDraftChange])
+    if (isDiarista && ocorrenciaId) setOcorrenciaId('')
+  }, [isDiarista, ocorrenciaId])
 
   async function handleSave() {
     if (!modalidade) return
@@ -578,18 +504,20 @@ function PlantaoFormPanel({
         </div>
       )}
 
-      <div className="mb-3">
-        <label className="block text-xs font-bold text-ds-mid mb-1">
-          Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
-        </label>
-        <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
-          className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
-          <option value="">Nenhuma</option>
-          {ocorrencias.map(o => (
-            <option key={o.id} value={o.id}>{o.nome}</option>
-          ))}
-        </select>
-      </div>
+      {!isDiarista && (
+        <div className="mb-3">
+          <label className="block text-xs font-bold text-ds-mid mb-1">
+            Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
+          </label>
+          <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
+            className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
+            <option value="">Nenhuma</option>
+            {ocorrencias.map(o => (
+              <option key={o.id} value={o.id}>{o.nome}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="mb-3">
         <label className="block text-xs font-bold text-ds-mid mb-1">
@@ -632,20 +560,8 @@ function FrequenciaItensPanel({
   const [gerandoPdf,   setGerandoPdf]   = useState(false)
   const [uploadingDoc, setUploadingDoc] = useState(false)
   const [uploadErr,    setUploadErr]    = useState<string | null>(null)
-  const [draftMeta,    setDraftMeta]    = useState<DraftMetaEntry[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isFaturada = freq.status === 'FATURADA'
-
-  // Barrinha de progresso "ao vivo" — combina o que já está salvo com o que está sendo
-  // digitado agora no formulário (ainda sem clicar em "Adicionar").
-  const progressoMetasLive = useMemo(
-    () => mesclarProgressoComDraft(freq.progressoMetas, draftMeta),
-    [freq.progressoMetas, draftMeta],
-  )
-  const draftIds = useMemo(
-    () => new Set(draftMeta.filter(d => d.deltaHoras !== 0 || d.deltaDias !== 0).map(d => d.modalidadeId)),
-    [draftMeta],
-  )
 
   async function handleAdd(req: FrequenciaItemRequest) {
     await frequenciasApi.adicionarItem(freq.id, req)
@@ -738,8 +654,8 @@ function FrequenciaItensPanel({
         </div>
       </div>
 
-      {/* Progresso das metas (modalidade META) */}
-      <ProgressoMetas progressoMetas={progressoMetasLive} draftIds={draftIds} />
+      {/* Progresso semanal (modalidade Diarista) */}
+      <ProgressoSemanal semanas={freq.progressoSemanal} />
 
       {/* Seção de documento assinado — responsiva */}
       {(freq.status === 'AGUARDANDO_ASSINATURA' || freq.documentoAssinado) && (
@@ -789,9 +705,9 @@ function FrequenciaItensPanel({
       {adicionando && (
         <PlantaoFormPanel
           tomadorId={freq.tomadorId}
+          tipoMedico={freq.tipoMedico}
           onSave={handleAdd}
           onCancel={() => setAdicionando(false)}
-          onDraftChange={setDraftMeta}
         />
       )}
 

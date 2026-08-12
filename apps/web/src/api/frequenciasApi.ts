@@ -60,6 +60,17 @@ export interface FrequenciaModalidadeProgresso {
   restanteBlocoAtual: number
 }
 
+// Acompanhamento (read-only) da carga horária semanal de uma modalidade DIARISTA usada na
+// frequência: horas lançadas na semana ISO (segunda a domingo) vs. a meta semanal cadastrada.
+// Puramente informativo — nunca altera o valor pago (PINSAUDE-13.23).
+export interface FrequenciaSemanaProgresso {
+  semanaInicio: string
+  semanaFim: string
+  horasLancadas: number
+  metaHoras: number | null
+  cumprida: boolean
+}
+
 export interface FrequenciaMedicaResp {
   id: string
   tomadorId: string
@@ -78,6 +89,7 @@ export interface FrequenciaMedicaResp {
   itens: FrequenciaItemResp[]
   totalValorCentavos: number
   progressoMetas: FrequenciaModalidadeProgresso[]
+  progressoSemanal: FrequenciaSemanaProgresso[]
 }
 
 export interface FrequenciaMedicaRequest {
