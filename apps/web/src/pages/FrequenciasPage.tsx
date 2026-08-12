@@ -930,16 +930,20 @@ function PlantaoGridPanel({
         </button>
       </div>
 
-      <div ref={gridRef} className="bg-white rounded-lg border border-ds-border overflow-y-auto max-h-96 mb-3">
+      {/* max-h calibrado para mostrar exatamente 5 linhas (cabeçalho ~32px + 5 × linha ~50px); o resto rola.
+          `sticky` vai em cada <th>, não no <thead> — com `border-collapse: collapse` (Tailwind preflight),
+          um <thead> sticky não pinta fundo sólido sobre as linhas rolando por baixo (bug conhecido de tabelas
+          HTML), fazendo o texto das linhas "vazar" por cima do cabeçalho. Sticky por célula não tem esse problema. */}
+      <div ref={gridRef} className="bg-white rounded-lg border border-ds-border overflow-y-auto max-h-[282px] mb-3">
         <table className="w-full">
-          <thead className="bg-ds-surface border-b border-ds-border sticky top-0 z-10">
+          <thead>
             <tr>
-              <th className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Dia</th>
-              <th className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Modalidade</th>
-              <th className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-24">Horas</th>
-              <th className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Ocorrência</th>
-              <th className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Nota</th>
-              <th className="w-9"></th>
+              <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Dia</th>
+              <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Modalidade</th>
+              <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-24">Horas</th>
+              <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Ocorrência</th>
+              <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Nota</th>
+              <th className="sticky top-0 z-10 bg-white border-b border-ds-border w-9"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ds-border">
