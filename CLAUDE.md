@@ -5371,6 +5371,66 @@ assumir de cabeça em que dia da semana uma data cai.
 
 ---
 
+## Frontend: Cadastro de Modalidade Simplificado — Plantonista/Diarista (PINSAUDE-13.24)
+
+### Mudar um `interface` exportado quebra a compilação em arquivos fora do escopo da task — mesmo padrão do backend, agora em TypeScript
+Trocar `TomadorModalidade`/`TomadorModalidadeRequest` (`tomadoresApi.ts`) de 3 tipos
+(PLANTAO/MENSAL/META) pra 2 (PLANTONISTA/DIARISTA) quebrou a compilação em **3 arquivos** que a
+task não menciona: `FrequenciasPage.tsx`, `PortalFrequenciaPage.tsx` (cópia quase idêntica —
+duplicação já documentada) e `FechamentoPage.tsx`. O TypeScript, assim como o Java, força um
+"minimal compile-safe touch" nesses arquivos: ajustar só o necessário pra compilar sem quebrar o
+comportamento, sem implementar a lógica completa das tasks seguintes (13.25 — lançamento com
+acompanhamento semanal). `tsc --noEmit -p tsconfig.json` (de dentro de `apps/web`) é o jeito mais
+rápido de enumerar exatamente quais arquivos/linhas quebram antes de sair editando.
+
+### Máquina de "progresso da meta" (EPIC-13.19.4) virou código morto — neutralizada, não removida
+`FrequenciasPage.tsx`/`PortalFrequenciaPage.tsx` tinham um sistema inteiro de prévia em tempo real
+da barrinha de progresso (tipo `DraftMetaEntry`, `computeRestante`/`computeBlocos`,
+`mesclarProgressoComDraft`, componente `ProgressoMetas`) construído em cima do extinto tipo META.
+Como o backend (`progressoMetas`) sempre retorna `[]` agora, esse sistema nunca recebe dado — mas
+continua compilando porque opera sobre `FrequenciaModalidadeProgresso` (tipo próprio, não derivado
+de `TomadorModalidade`). Em vez de arrancar tudo (escopo da 13.25, que substitui por acompanhamento
+semanal), o `useEffect` que alimentava o draft foi só neutralizado pra sempre chamar
+`onDraftChange([])` — minimiza o diff, mantém os contratos de prop intactos.
+
+### `precisaHorasTrabalhadas` foi além do compile-safe — julgamento de risco, não escopo creep
+Deixar essa função retornando `false` pra DIARISTA (só pra compilar) faria o campo "Horas
+trabalhadas" nunca aparecer nesse tipo — e o backend (13.23) exige `horasTrabalhadas` pra item
+Diarista, rejeitando com 422 sem nenhum jeito de corrigir pela UI. Corrigido pra `m?.tipo ===
+'DIARISTA'` de verdade (comportamento correto, não só compilável) — julgado baixo risco/alto valor
+o suficiente pra incluir nesta task em vez de esperar a 13.25.
+
+### Deslocamento passa a aparecer nos 2 tipos — antes só existia visualmente pra Plantão
+O campo `deslocamentoCentavos` sempre foi salvo pelo backend independente do tipo
+(`TomadorService.criarModalidade`/`atualizarModalidade` nunca zeram esse campo em
+`aplicarCamposPorTipo`), mas o formulário anterior (`TomadorGruposModal.tsx`) só renderizava o
+input de Deslocamento quando `isPlantao` — modalidades MENSAL/META nunca tinham como cadastrar
+deslocamento pela UI (só via API direta). Corrigido: Diarista agora mostra o campo Deslocamento
+lado a lado com o Valor Mensal, refletindo que reembolso de transporte por lançamento é ortogonal
+ao salário mensal fixo (decisão já confirmada no plano da 13.20-13.25).
+
+### Turno passa de opcional pra obrigatório (Plantonista) — sem migration retroativa
+Turno/horário eram opcionais desde as migrations V25/V26 (EPIC-13.17). A 13.22 (backend) reverteu
+isso: `TomadorService.aplicarCamposPorTipo` agora lança 422 se `turno`/`horario`/`horas` vierem
+nulos pra PLANTONISTA — mas só nos cadastros/edições **novos**, sem migration forçando um valor nos
+registros legados que ficaram sem turno. O form (`ModalidadeFormInline`) reflete isso: `<select>`
+de Turno perdeu a opção "Não especificar", virou `*` obrigatório, e `salvarModalidade` valida os 3
+campos antes de montar o request — mensagens de erro espelham 1:1 as do backend ("Turno é
+obrigatório para modalidade Plantonista", etc.), então o teste manual de bloqueio bate exatamente
+com a mensagem que a API devolveria numa tentativa direta.
+
+### Teste manual via API real confirmou dado já migrado da 13.22/13.23 — sem massa fake
+O tomador SESA (`5ccaf956-e9d2-46ba-a1a9-f375d1386d73`, mesmo usado em sessões anteriores) já tinha
+5 modalidades reclassificadas em produção local (3 PLANTONISTA + 2 DIARISTA, migradas pela V31 da
+13.22) — a aba "Modalidades" renderizou a tabela inteira corretamente (badges PLANTONISTA/DIARISTA,
+coluna "Horas/Semana") sem precisar criar nenhum dado de teste só pra validar a leitura. Os 2
+registros de teste criados para validar bloqueio de submit (Plantonista sem turno, Diarista sem
+horas semanais) foram removidos via `DELETE /api/tomadores/{id}/modalidades/{modId}` direto pela
+API ao final — evita o `window.confirm` nativo do botão de lixeira da UI, que trava a automação via
+CDP (mesma armadilha já documentada em sessões anteriores).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

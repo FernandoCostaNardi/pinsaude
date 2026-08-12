@@ -41,23 +41,11 @@ function maskValor(e: React.ChangeEvent<HTMLInputElement>): string {
   return centavosParaBrl(parseInt(raw || '0', 10))
 }
 
-// Badge do tipo na tabela de modalidades. META é exibida pela unidade de cálculo (hora/dia).
+// PINSAUDE-13.24: Tipo de Escala colapsado de 3 tipos (PLANTAO/MENSAL/META) para 2
+// (PLANTONISTA/DIARISTA) — mesmo vocabulário já usado no campo "Tipo de Escala" da Frequência.
 function tipoBadgeInfo(m: TomadorModalidade): { label: string; cls: string } {
-  if (m.tipo === 'MENSAL') return { label: 'MENSAL', cls: 'bg-purple-50 text-purple-700' }
-  if (m.tipo === 'META') {
-    return m.unidadeCalculo === 'DIA'
-      ? { label: 'POR DIA', cls: 'bg-teal-50 text-teal-700' }
-      : { label: 'POR HORA', cls: 'bg-teal-50 text-teal-700' }
-  }
-  return { label: 'PLANTÃO', cls: 'bg-blue-50 text-blue-700' }
-}
-
-// Resumo da meta (coluna "Horas/Meta"): horas e/ou dias configurados na modalidade META.
-function metaResumo(m: TomadorModalidade): string {
-  const parts: string[] = []
-  if (m.metaHoras != null) parts.push(`${m.metaHoras}h`)
-  if (m.metaDias != null) parts.push(`${m.metaDias}d`)
-  return parts.join(' + ')
+  if (m.tipo === 'DIARISTA') return { label: 'DIARISTA', cls: 'bg-purple-50 text-purple-700' }
+  return { label: 'PLANTONISTA', cls: 'bg-blue-50 text-blue-700' }
 }
 
 // Badge do tipo de valor na tabela de ocorrências.
@@ -83,9 +71,10 @@ interface GrupoForm {
   ativo: boolean
 }
 
-// Modo do formulário (UI). PLANTAO/MENSAL mapeiam 1:1 no backend; HORAS e MES são apresentações
-// do tipo META do backend (HORAS = unidade HORA; MES = unidade escolhida + metas horas/dias).
-type ModalidadeModo = 'PLANTAO' | 'MENSAL' | 'HORAS' | 'MES'
+// PINSAUDE-13.24: modo do formulário (UI) mapeia 1:1 no tipo do backend — sem mais a heurística
+// com perda que existia entre os 4 modos antigos (Por Plantão/Valor Fixo Mensal/Por Horas/Por Mês)
+// e os 3 tipos do backend (PLANTAO/MENSAL/META).
+type ModalidadeModo = 'PLANTONISTA' | 'DIARISTA'
 
 interface ModalidadeForm {
   nome: string
@@ -96,10 +85,8 @@ interface ModalidadeForm {
   valorStr: string
   deslocamentoStr: string
   ativo: boolean
-  // Campos do tipo META (modos HORAS / MES)
-  unidadeCalculo: 'HORA' | 'DIA'
-  metaHorasStr: string
-  metaDiasStr: string
+  // Campo do tipo Diarista — carga horária semanal obrigatória
+  horasSemanaisStr: string
 }
 
 function emptyGrupoForm(): GrupoForm {
@@ -108,9 +95,9 @@ function emptyGrupoForm(): GrupoForm {
 
 function emptyModalidadeForm(): ModalidadeForm {
   return {
-    nome: '', tipo: 'PLANTAO', turno: '', horario: '',
+    nome: '', tipo: 'PLANTONISTA', turno: '', horario: '',
     horasStr: '', valorStr: '', deslocamentoStr: '', ativo: true,
-    unidadeCalculo: 'HORA', metaHorasStr: '', metaDiasStr: '',
+    horasSemanaisStr: '',
   }
 }
 
@@ -140,10 +127,8 @@ function emptyHorarioPadraoForm(): HorarioPadraoForm {
 }
 
 const MODALIDADE_TIPOS: { modo: ModalidadeModo; titulo: string; sub: string }[] = [
-  { modo: 'PLANTAO', titulo: 'Por Plantão',        sub: 'valor por dia; horas (turno/horário opcionais)' },
-  { modo: 'HORAS',   titulo: 'Por Horas',          sub: 'proporcional; meta de horas (ex: Diária 40h)' },
-  { modo: 'MES',     titulo: 'Por Mês',            sub: 'proporcional; meta de horas e/ou dias' },
-  { modo: 'MENSAL',  titulo: 'Valor Fixo Mensal',  sub: 'valor fixo, ex: Coordenação de UTI' },
+  { modo: 'PLANTONISTA', titulo: 'Plantonista', sub: 'valor por plantão; turno, horário e horas obrigatórios' },
+  { modo: 'DIARISTA',    titulo: 'Diarista',    sub: 'valor mensal fixo; carga horária semanal obrigatória' },
 ]
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -223,14 +208,9 @@ function ModalidadeFormInline({
   horariosPadrao: TomadorHorarioPadrao[]
 }) {
   const SELECT_CLS = 'w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white'
-  const isPlantao = form.tipo === 'PLANTAO'
-  const isMensal  = form.tipo === 'MENSAL'
-  const isHoras   = form.tipo === 'HORAS'
-  const isMes     = form.tipo === 'MES'
-  const valorLabel = isMensal ? 'Valor Mensal *'
-    : isHoras ? 'Valor do bloco (meta completa) *'
-    : isMes ? 'Valor do pacote (meta completa) *'
-    : 'Valor *'
+  const isPlantao = form.tipo === 'PLANTONISTA'
+  const isDiarista = form.tipo === 'DIARISTA'
+  const valorLabel = isDiarista ? 'Valor Mensal *' : 'Valor *'
 
   return (
     <div className="space-y-3">
@@ -240,19 +220,19 @@ function ModalidadeFormInline({
             label="Nome da modalidade *"
             value={form.nome}
             onChange={e => onChange({ nome: e.target.value })}
-            placeholder="ex: Plantão 12h Noturno, Diária 40h, Evolucionista, Coordenação de UTI"
+            placeholder="ex: Plantão 12h Noturno, Diarista 40h Semanais"
           />
         </div>
 
-        {/* Tipo de modalidade — decide quais campos aparecem abaixo */}
+        {/* Tipo de Escala — decide quais campos aparecem abaixo (mesmo vocabulário da Frequência) */}
         <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de modalidade *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Escala *</label>
           <div className="grid grid-cols-2 gap-2">
             {MODALIDADE_TIPOS.map(t => (
               <button
                 key={t.modo}
                 type="button"
-                onClick={() => onChange(t.modo === 'HORAS' ? { tipo: 'HORAS', unidadeCalculo: 'HORA' } : { tipo: t.modo })}
+                onClick={() => onChange({ tipo: t.modo })}
                 className={[
                   'px-3 py-2 rounded-lg border text-xs font-semibold text-left transition-colors',
                   form.tipo === t.modo ? 'border-primary bg-primary-50 text-primary' : 'border-gray-300 text-gray-600 hover:border-primary/40',
@@ -265,7 +245,7 @@ function ModalidadeFormInline({
           </div>
         </div>
 
-        {/* ── PLANTÃO: turno/horas/horário ── */}
+        {/* ── PLANTONISTA: turno/horas/horário, todos obrigatórios ── */}
         {isPlantao && (
           <>
             {/* Presets rápidos — preenchem turno + horas + horário de uma vez, mas os 3 campos abaixo continuam livres para edição.
@@ -293,13 +273,13 @@ function ModalidadeFormInline({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Turno</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Turno *</label>
               <select
                 value={form.turno}
                 onChange={e => onChange({ turno: e.target.value as 'DIURNO' | 'NOTURNO' | '' })}
                 className={SELECT_CLS}
               >
-                <option value="">Não especificar</option>
+                <option value="">Selecione...</option>
                 <option value="DIURNO">☀️ DIURNO</option>
                 <option value="NOTURNO">🌙 NOTURNO</option>
               </select>
@@ -319,94 +299,38 @@ function ModalidadeFormInline({
             </div>
 
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Horário</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Horário *</label>
               <input
                 value={form.horario}
                 onChange={e => onChange({ horario: e.target.value })}
-                placeholder="ex: 07:00 as 17:00 (opcional)"
+                placeholder="ex: 07:00 as 17:00"
                 className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
               />
             </div>
           </>
         )}
 
-        {/* ── POR HORAS: meta de horas ── */}
-        {isHoras && (
+        {/* ── DIARISTA: carga horária semanal obrigatória, paga valor mensal fixo ── */}
+        {isDiarista && (
           <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Meta de horas *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Horas semanais obrigatórias *</label>
             <input
               type="number"
               step="0.5"
               min="0.5"
-              value={form.metaHorasStr}
-              onChange={e => onChange({ metaHorasStr: e.target.value })}
+              value={form.horasSemanaisStr}
+              onChange={e => onChange({ horasSemanaisStr: e.target.value })}
               placeholder="ex: 40"
               className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
             />
             <p className="text-[11px] text-ds-light mt-1">
-              O pagamento é proporcional às horas lançadas: valor do bloco ÷ meta de horas. Ao passar da meta, inicia um novo bloco.
+              O valor mensal é pago uma única vez por frequência, independente de quantos dias forem lançados. O acompanhamento
+              semanal de horas trabalhadas aparece no lançamento da frequência.
             </p>
           </div>
         )}
 
-        {/* ── POR MÊS: unidade + meta de horas e/ou dias ── */}
-        {isMes && (
-          <>
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Unidade de cálculo *</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['HORA', 'DIA'] as const).map(u => (
-                  <button
-                    key={u}
-                    type="button"
-                    onClick={() => onChange({ unidadeCalculo: u })}
-                    className={[
-                      'px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors',
-                      form.unidadeCalculo === u ? 'border-primary bg-primary-50 text-primary' : 'border-gray-300 text-gray-600 hover:border-primary/40',
-                    ].join(' ')}
-                  >
-                    {u === 'HORA' ? 'Por hora' : 'Por dia'}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] text-ds-light mt-1">
-                Base do rateio do valor. A outra meta abaixo é opcional (validação secundária).
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Meta de horas {form.unidadeCalculo === 'HORA' ? '*' : '(opcional)'}
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0.5"
-                value={form.metaHorasStr}
-                onChange={e => onChange({ metaHorasStr: e.target.value })}
-                placeholder="ex: 160"
-                className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Meta de dias {form.unidadeCalculo === 'DIA' ? '*' : '(opcional)'}
-              </label>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                value={form.metaDiasStr}
-                onChange={e => onChange({ metaDiasStr: e.target.value })}
-                placeholder="ex: 20"
-                className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
-              />
-            </div>
-          </>
-        )}
-
-        <div className={isPlantao ? '' : 'col-span-2'}>
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">{valorLabel}</label>
           <div className="relative">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-ds-mid pointer-events-none">R$</span>
@@ -418,20 +342,19 @@ function ModalidadeFormInline({
             />
           </div>
         </div>
-        {isPlantao && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Deslocamento</label>
-            <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-ds-mid pointer-events-none">R$</span>
-              <input
-                value={form.deslocamentoStr}
-                onChange={e => onChange({ deslocamentoStr: maskValor(e) })}
-                placeholder="0,00"
-                className="block w-full pl-7 pr-3 py-2 rounded-lg border border-gray-300 text-sm text-right text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
-              />
-            </div>
+        {/* Deslocamento é reembolso por lançamento — ortogonal ao valor do plantão/mês, existe nos 2 tipos */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Deslocamento</label>
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-ds-mid pointer-events-none">R$</span>
+            <input
+              value={form.deslocamentoStr}
+              onChange={e => onChange({ deslocamentoStr: maskValor(e) })}
+              placeholder="0,00"
+              className="block w-full pl-7 pr-3 py-2 rounded-lg border border-gray-300 text-sm text-right text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
+            />
           </div>
-        )}
+        </div>
         <div className="col-span-2">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -863,23 +786,17 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   }
 
   function abrirEditarModalidade(m: TomadorModalidade) {
-    // Backend tem 3 tipos (PLANTAO/MENSAL/META); o form tem 4 modos (META vira HORAS ou MES).
-    // META unidade HORA sem meta de dias = "Por Horas"; o resto de META = "Por Mês".
-    const modo: ModalidadeModo = m.tipo === 'META'
-      ? (m.unidadeCalculo === 'HORA' && m.metaDias == null ? 'HORAS' : 'MES')
-      : m.tipo
+    // PINSAUDE-13.24: tipo do backend mapeia 1:1 no modo do form — sem mais heurística de conversão.
     setModForm({
       nome: m.nome,
-      tipo: modo,
+      tipo: m.tipo,
       turno: m.turno ?? '',
       horario: m.horario ?? '',
       horasStr: m.horas != null ? String(m.horas) : '',
       valorStr: centavosParaBrl(m.valorCentavos),
       deslocamentoStr: m.deslocamentoCentavos > 0 ? centavosParaBrl(m.deslocamentoCentavos) : '',
       ativo: m.ativo,
-      unidadeCalculo: m.unidadeCalculo ?? 'HORA',
-      metaHorasStr: m.metaHoras != null ? String(m.metaHoras) : '',
-      metaDiasStr: m.metaDias != null ? String(m.metaDias) : '',
+      horasSemanaisStr: m.horasSemanais != null ? String(m.horasSemanais) : '',
     })
     setEditingModId(m.id)
     setModErr(null)
@@ -894,7 +811,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   async function salvarModalidade() {
     if (!modForm) return
     const modo = modForm.tipo
-    const isPlantao = modo === 'PLANTAO'
+    const isPlantao = modo === 'PLANTONISTA'
     const valorCentavos = parseCentavos(modForm.valorStr)
 
     if (!modForm.nome.trim() || valorCentavos <= 0) {
@@ -902,49 +819,46 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       return
     }
 
-    // Monta o request no contrato do backend (tipo PLANTAO/MENSAL/META).
+    // Monta o request no contrato do backend (tipo PLANTONISTA/DIARISTA — mapeamento 1:1, sem
+    // heurística de conversão). Validação espelha TomadorService.aplicarCamposPorTipo (backend).
     let req: TomadorModalidadeRequest
     const base = {
       nome: modForm.nome.trim(),
       valorCentavos,
-      deslocamentoCentavos: 0,
+      deslocamentoCentavos: parseCentavos(modForm.deslocamentoStr),
       ativo: modForm.ativo,
       turno: null as 'DIURNO' | 'NOTURNO' | null,
       horario: null as string | null,
       horas: null as number | null,
-      unidadeCalculo: null as 'HORA' | 'DIA' | null,
-      metaHoras: null as number | null,
-      metaDias: null as number | null,
+      horasSemanais: null as number | null,
     }
 
     if (isPlantao) {
       const horas = parseFloat(modForm.horasStr.replace(',', '.'))
+      if (!modForm.turno) {
+        setModErr('Turno é obrigatório para modalidade Plantonista')
+        return
+      }
+      if (!modForm.horario.trim()) {
+        setModErr('Horário é obrigatório para modalidade Plantonista')
+        return
+      }
       if (isNaN(horas) || horas <= 0) {
         setModErr('Preencha a quantidade de horas corretamente')
         return
       }
       req = {
-        ...base, tipo: 'PLANTAO', horas,
-        turno: modForm.turno || null,
-        horario: modForm.horario.trim() || null,
-        deslocamentoCentavos: parseCentavos(modForm.deslocamentoStr),
+        ...base, tipo: 'PLANTONISTA', horas,
+        turno: modForm.turno,
+        horario: modForm.horario.trim(),
       }
-    } else if (modo === 'MENSAL') {
-      req = { ...base, tipo: 'MENSAL' }
     } else {
-      // HORAS ou MES → tipo META
-      const unidade = modo === 'HORAS' ? 'HORA' : modForm.unidadeCalculo
-      const metaHoras = modForm.metaHorasStr.trim() ? parseFloat(modForm.metaHorasStr.replace(',', '.')) : null
-      const metaDias  = modForm.metaDiasStr.trim() ? parseInt(modForm.metaDiasStr, 10) : null
-      if (unidade === 'HORA' && (metaHoras == null || isNaN(metaHoras) || metaHoras <= 0)) {
-        setModErr('Preencha a meta de horas corretamente')
+      const horasSemanais = modForm.horasSemanaisStr.trim() ? parseFloat(modForm.horasSemanaisStr.replace(',', '.')) : null
+      if (horasSemanais == null || isNaN(horasSemanais) || horasSemanais <= 0) {
+        setModErr('Preencha as horas semanais corretamente')
         return
       }
-      if (unidade === 'DIA' && (metaDias == null || isNaN(metaDias) || metaDias <= 0)) {
-        setModErr('Preencha a meta de dias corretamente')
-        return
-      }
-      req = { ...base, tipo: 'META', unidadeCalculo: unidade, metaHoras, metaDias }
+      req = { ...base, tipo: 'DIARISTA', horasSemanais }
     }
 
     setModSaving(true)
@@ -1409,7 +1323,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                     <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Tipo</th>
                     <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Turno</th>
                     <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Horário</th>
-                    <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Horas/Meta</th>
+                    <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Horas/Semana</th>
                     <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Valor</th>
                     <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Deslocamento</th>
                     <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-ds-light">Status</th>
@@ -1445,7 +1359,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                       </td>
                       <td className="px-3 py-2 text-ds-mid">{m.horario ?? '—'}</td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {m.tipo === 'META' ? (metaResumo(m) || '—') : (m.horas != null ? `${m.horas}h` : '—')}
+                        {m.tipo === 'DIARISTA' ? (m.horasSemanais != null ? `${m.horasSemanais}h/sem` : '—') : (m.horas != null ? `${m.horas}h` : '—')}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-ds-text">
                         {formatBRL(m.valorCentavos)}

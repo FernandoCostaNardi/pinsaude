@@ -36,35 +36,29 @@ function formatDate(iso: string): string {
   return `${d}/${m}/${y}`
 }
 
-// Turno/horário são ambos opcionais numa modalidade Por Plantão — monta o texto de detalhe
-// com o que estiver preenchido, caindo para "Nh" quando nenhum dos dois foi informado.
+// PINSAUDE-13.22: turno/horário são ambos obrigatórios numa modalidade Plantonista — sempre
+// mostra os dois. Diarista não usa turno/horário/horas, mostra a carga horária semanal cadastrada.
 function detalheModalidade(m: TomadorModalidade): string {
-  if (m.tipo === 'MENSAL') return 'Mensal'
-  if (m.tipo === 'META') {
-    const partes: string[] = []
-    if (m.metaHoras != null) partes.push(`${m.metaHoras}h`)
-    if (m.metaDias != null) partes.push(`${m.metaDias}d`)
-    const meta = partes.join(' + ')
-    return meta ? `Meta ${meta}` : 'Meta'
+  if (m.tipo === 'DIARISTA') {
+    return m.horasSemanais != null ? `Diarista — ${m.horasSemanais}h/semana` : 'Diarista'
   }
   const partes = [m.turno, m.horario].filter(Boolean)
   return partes.length > 0 ? partes.join(' · ') : `${m.horas}h`
 }
 
 // Espelha FrequenciaService.calcularValorItem (backend) só para exibir um preview do valor
-// antes de salvar — o valor real que fica gravado é sempre recalculado no servidor.
-function calcularValorPreview(m: TomadorModalidade, horasStr: string): number | null {
-  if (m.tipo !== 'META') return m.valorCentavos + m.deslocamentoCentavos
-  if (m.unidadeCalculo === 'DIA') {
-    return m.metaDias ? Math.round(m.valorCentavos / m.metaDias) : null
-  }
-  const horas = Number(horasStr)
-  if (!horasStr || !m.metaHoras || horas <= 0) return null
-  return Math.round((horas * m.valorCentavos) / m.metaHoras)
+// antes de salvar — o valor real que fica gravado é sempre recalculado no servidor. Diarista
+// paga um valor mensal fixo somado uma única vez pela frequência (não por lançamento) — cada
+// item individual vale R$0, então não há um "valor deste lançamento" pra mostrar aqui.
+function calcularValorPreview(m: TomadorModalidade): number | null {
+  if (m.tipo === 'DIARISTA') return 0
+  return m.valorCentavos + m.deslocamentoCentavos
 }
 
+// Diarista também exige horas trabalhadas por lançamento (usadas no acompanhamento semanal,
+// PINSAUDE-13.23) — mesma exigência que Plantonista nunca teve.
 function precisaHorasTrabalhadas(m: TomadorModalidade | null): boolean {
-  return m?.tipo === 'META' && m?.unidadeCalculo === 'HORA'
+  return m?.tipo === 'DIARISTA'
 }
 
 // Espelha FrequenciaService.calcularValorOcorrencia (backend) só para preview — o % sempre
@@ -562,33 +556,15 @@ function PlantaoFormPanel({
     ? [ocorrenciaSelecionada, ...ocorrenciasAtivas]
     : ocorrenciasAtivas
 
-  // Reporta pro painel pai a quantidade que está sendo digitada (ainda não salva), pra
-  // atualizar a barrinha de progresso da meta em tempo real. No modo edição, o item atual já
-  // está contado no acumulado do servidor — só reporta a DIFERENÇA em relação ao valor original.
+  // PINSAUDE-13.24: a modalidade META (única que alimentava a prévia em tempo real da barrinha
+  // de progresso) foi removida — ver TomadorGruposModal.tsx. O acompanhamento semanal do tipo
+  // DIARISTA (que substitui esse conceito) ganha sua própria prévia em tempo real na PINSAUDE-13.25;
+  // até lá, o efeito só garante que nenhum draft "fantasma" fique pendurado.
   useEffect(() => {
     if (!onDraftChange) return
-    if (!modalidade || modalidade.tipo !== 'META' || !modalidade.unidadeCalculo) {
-      onDraftChange([])
-      return () => onDraftChange([])
-    }
-    const isHora = modalidade.unidadeCalculo === 'HORA'
-    let delta = isHora ? Number(horas) : 1
-    if (isHora && (!horas || !(delta > 0))) delta = 0
-    if (isEdit && item) {
-      const original = isHora ? (item.horasTrabalhadas ?? 0) : 1
-      delta -= original
-    }
-    onDraftChange(delta === 0 ? [] : [{
-      modalidadeId: modalidade.id,
-      modalidadeNome: modalidade.nome,
-      unidadeCalculo: modalidade.unidadeCalculo,
-      metaHoras: modalidade.metaHoras,
-      metaDias: modalidade.metaDias,
-      deltaHoras: isHora ? delta : 0,
-      deltaDias: isHora ? 0 : delta,
-    }])
+    onDraftChange([])
     return () => onDraftChange([])
-  }, [modalidade, horas, isEdit])
+  }, [onDraftChange])
 
   async function handleSave() {
     if (!modalidade) return
@@ -610,7 +586,7 @@ function PlantaoFormPanel({
     } finally { setSaving(false) }
   }
 
-  const totalModalidade = modalidade ? calcularValorPreview(modalidade, horas) : null
+  const totalModalidade = modalidade ? calcularValorPreview(modalidade) : null
   const ocorrenciaValor = modalidade ? calcularValorOcorrenciaPreview(ocorrenciaSelecionada, modalidade.valorCentavos) : 0
   const total = totalModalidade != null ? totalModalidade + ocorrenciaValor : null
 
@@ -645,11 +621,11 @@ function PlantaoFormPanel({
         />
       </div>
 
-      {/* Horas trabalhadas — só para modalidade Meta por hora */}
+      {/* Horas trabalhadas — só para modalidade Diarista */}
       {precisaHoras && (
         <div className="mb-3">
           <label className="block text-xs font-bold text-ds-mid mb-1">
-            Horas trabalhadas * <span className="font-normal text-ds-light">(meta: {modalidade?.metaHoras}h)</span>
+            Horas trabalhadas * <span className="font-normal text-ds-light">(meta semanal: {modalidade?.horasSemanais}h)</span>
           </label>
           <input type="number" step="0.5" min="0.5" value={horas} onChange={e => setHoras(e.target.value)}
             placeholder="Ex: 10"
@@ -661,7 +637,7 @@ function PlantaoFormPanel({
       {modalidade && (
         <div className="bg-white rounded-lg px-4 py-2.5 mb-3 flex items-center gap-5 text-xs border border-ds-border/60">
           <span className="text-ds-light">{detalheModalidade(modalidade)}</span>
-          {modalidade.tipo !== 'META' && (
+          {modalidade.tipo !== 'DIARISTA' && (
             <span className="text-ds-mid">Valor: <span className="font-bold text-ds-text">{formatBRL(modalidade.valorCentavos)}</span></span>
           )}
           {modalidade.deslocamentoCentavos > 0 && (
@@ -671,7 +647,9 @@ function PlantaoFormPanel({
             <span className="text-ds-mid">Ocorrência: <span className="font-bold text-ds-text">{formatBRL(ocorrenciaValor)}</span></span>
           )}
           <span className="ml-auto text-sm font-black text-primary">
-            {total != null ? `Total: ${formatBRL(total)}` : 'Informe as horas para calcular'}
+            {modalidade.tipo === 'DIARISTA'
+              ? 'Contabilizado no valor mensal'
+              : total != null ? `Total: ${formatBRL(total)}` : 'Informe as horas para calcular'}
           </span>
         </div>
       )}
@@ -772,29 +750,15 @@ function PlantaoGridPanel({
       .catch(() => {})
   }, [tomadorId])
 
-  // Soma, por modalidade META, o que já foi digitado nas linhas do grid (ainda não salvo) —
-  // atualiza a barrinha de progresso da meta em tempo real conforme o usuário preenche.
+  // PINSAUDE-13.24: a modalidade META (única que alimentava a prévia em tempo real da barrinha
+  // de progresso) foi removida — ver TomadorGruposModal.tsx. O acompanhamento semanal do tipo
+  // DIARISTA (que substitui esse conceito) ganha sua própria prévia em tempo real na PINSAUDE-13.25;
+  // até lá, o efeito só garante que nenhum draft "fantasma" fique pendurado.
   useEffect(() => {
     if (!onDraftChange) return
-    const somaPorModalidade = new Map<string, DraftMetaEntry>()
-    for (const r of rows) {
-      if (!r.modalidadeId) continue
-      const m = modalidades.find(x => x.id === r.modalidadeId)
-      if (!m || m.tipo !== 'META' || !m.unidadeCalculo) continue
-      const isHora = m.unidadeCalculo === 'HORA'
-      const delta = isHora ? Number(r.horasTrabalhadas) : 1
-      if (isHora && (!r.horasTrabalhadas || !(delta > 0))) continue
-      const atual = somaPorModalidade.get(m.id) ?? {
-        modalidadeId: m.id, modalidadeNome: m.nome, unidadeCalculo: m.unidadeCalculo,
-        metaHoras: m.metaHoras, metaDias: m.metaDias, deltaHoras: 0, deltaDias: 0,
-      }
-      if (isHora) atual.deltaHoras += delta
-      else atual.deltaDias += delta
-      somaPorModalidade.set(m.id, atual)
-    }
-    onDraftChange(Array.from(somaPorModalidade.values()))
+    onDraftChange([])
     return () => onDraftChange([])
-  }, [rows, modalidades])
+  }, [onDraftChange])
 
   // Foca o campo "Dia" da linha recém-adicionada (via botão ou Tab na última linha)
   useEffect(() => {

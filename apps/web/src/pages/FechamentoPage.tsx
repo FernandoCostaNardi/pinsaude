@@ -63,14 +63,6 @@ function fmtHoras(h: number | null): string {
 
 // ─── Tabela de Modalidades ────────────────────────────────────────────────────
 
-// Modalidade META paga proporcional (por hora/dia) — o "valor do bloco" cadastrado não é o
-// valor real por lançamento. Mostra a meta como badge e o valor MÉDIO apurado (totalCentavos ÷
-// quantidade), calculado só a partir de dados já corretos do preview — sem precisar de nenhuma
-// mudança no backend, já que totalCentavos/quantidade somam corretamente os itens proporcionais.
-function metaBadge(cat: TomadorModalidade): string {
-  return cat.unidadeCalculo === 'HORA' ? `${cat.metaHoras}h` : `${cat.metaDias}d`
-}
-
 function TabelaModalidades({ modalidades, catalogo }: { modalidades: ModalidadeDetalhe[]; catalogo: TomadorModalidade[] }) {
   const catalogoMap = useMemo(() => {
     const map: Record<string, TomadorModalidade> = {}
@@ -102,14 +94,17 @@ function TabelaModalidades({ modalidades, catalogo }: { modalidades: ModalidadeD
               : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
             const hasDesl = m.deslocamentoCentavos > 0
             const cat = catalogoMap[m.modalidadeId]
-            const isMeta = cat?.tipo === 'META'
+            // PINSAUDE-13.24: Diarista paga um valor mensal fixo somado uma única vez (ver
+            // FechamentoService, PINSAUDE-13.23) — cada item individual vale R$0, então o "valor
+            // médio apurado" (totalCentavos ÷ quantidade) representa o custo diário amortizado.
+            const isDiarista = cat?.tipo === 'DIARISTA'
             const valorMedioApurado = m.quantidade > 0 ? Math.round(m.totalCentavos / m.quantidade) : 0
             return (
               <tr key={m.modalidadeId} className={`border-b border-gray-200 ${rowCls}`}>
                 <td className="px-3 py-1.5 font-medium">{m.nome}</td>
                 <td className="px-2 py-1.5 text-center tabular-nums">
-                  {isMeta
-                    ? <span className="inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-teal-100 text-teal-700">{metaBadge(cat)}</span>
+                  {isDiarista
+                    ? <span className="inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700">DIARISTA</span>
                     : fmtHoras(m.horas)}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">
@@ -119,8 +114,8 @@ function TabelaModalidades({ modalidades, catalogo }: { modalidades: ModalidadeD
                   {hasDesl ? fmtNum(m.deslocamentoCentavos) : ''}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums font-medium">
-                  {isMeta
-                    ? <span title="Valor médio apurado (proporcional à meta)">{fmtNum(valorMedioApurado)}</span>
+                  {isDiarista
+                    ? <span title="Valor médio apurado (mensal amortizado nos lançamentos)">{fmtNum(valorMedioApurado)}</span>
                     : fmtNum(m.valorItemCentavos)}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums">
