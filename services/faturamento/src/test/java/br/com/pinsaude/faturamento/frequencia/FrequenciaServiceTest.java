@@ -291,6 +291,264 @@ class FrequenciaServiceTest {
         assertThat(resp.horasTrabalhadas()).isNull();
     }
 
+    // ─── Valoração e coupling da modalidade Diarista (PINSAUDE-13.23) ─────────
+
+    @Test
+    void adicionarItem_diarista_valorUnitarioSempreZero() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            diaristaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("8"), null);
+
+        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
+
+        // cada lançamento de Diarista vale R$0 — o valor mensal é somado uma única vez no total
+        // da frequência (ver testes de buscarPorId abaixo)
+        assertThat(resp.valorUnitarioCentavos()).isZero();
+        assertThat(resp.horasTrabalhadas()).isEqualByComparingTo("8");
+    }
+
+    @Test
+    void adicionarItem_diarista_semHorasTrabalhadas_lanca422() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            diaristaId, LocalDate.of(2026, 7, 6), null, null, null);
+
+        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("horas trabalhadas")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void adicionarItem_diaristaComOcorrencia_lanca422() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID ocorrenciaId = UUID.randomUUID();
+        TomadorOcorrencia ocorrencia = ocorrenciaFixture(ocorrenciaId, "PERCENTUAL", new BigDecimal("10"), null);
+        when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.of(ocorrencia));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            diaristaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("8"), ocorrenciaId);
+
+        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Ocorrências do catálogo não se aplicam a modalidade do tipo Diarista")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void adicionarItem_diaristaEmFrequenciaPlantonista_lanca422() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("PLANTONISTA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            diaristaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("8"), null);
+
+        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não pode ser lançada numa frequência com Tipo de Escala PLANTONISTA")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void adicionarItem_plantonistaEmFrequenciaDiarista_lanca422() {
+        // modalidade PLANTONISTA (fixture padrão do setUp) numa frequência marcada Diarista
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 6), null, null, null);
+
+        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não pode ser lançada numa frequência com Tipo de Escala DIARISTA")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void adicionarItem_frequenciaSemTipoMedico_bypassaCoupling() {
+        // frequência legada (tipoMedico nulo, anterior ao EPIC-13.11) — sem restrição de coupling
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07"); // tipoMedico fica null
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            diaristaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("8"), null);
+
+        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
+
+        assertThat(resp.valorUnitarioCentavos()).isZero();
+    }
+
+    @Test
+    void buscarPorId_diarista_totalContaValorMensalUmaUnicaVez() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        setId(f, freqId);
+
+        // 3 dias trabalhados no mês, cada item já persistido com valorUnitarioCentavos=0
+        FrequenciaItem item1 = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 6), new BigDecimal("8"), 0L);
+        FrequenciaItem item2 = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 8), new BigDecimal("8"), 0L);
+        FrequenciaItem item3 = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 13), new BigDecimal("8"), 0L);
+
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId))
+            .thenReturn(List.of(item1, item2, item3));
+        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(diarista));
+
+        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
+
+        // valor mensal fixo (R$15.000) uma única vez, não 3x
+        assertThat(resp.totalValorCentavos()).isEqualTo(1_500_000L);
+        assertThat(resp.itens()).hasSize(3);
+    }
+
+    @Test
+    void buscarPorId_diarista_progressoSemanalAbaixoDaMeta() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        setId(f, freqId);
+
+        // segunda-feira 2026-07-06: semana ISO de 06/07 (seg) a 12/07 (dom) — só 12h lançadas de 20h de meta
+        FrequenciaItem item1 = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 6), new BigDecimal("6"), 0L);
+        FrequenciaItem item2 = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 8), new BigDecimal("6"), 0L);
+
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId))
+            .thenReturn(List.of(item1, item2));
+        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(diarista));
+
+        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
+
+        assertThat(resp.progressoSemanal()).hasSize(1);
+        var semana = resp.progressoSemanal().get(0);
+        assertThat(semana.semanaInicio()).isEqualTo(LocalDate.of(2026, 7, 6));   // segunda
+        assertThat(semana.semanaFim()).isEqualTo(LocalDate.of(2026, 7, 12));     // domingo
+        assertThat(semana.horasLancadas()).isEqualByComparingTo("12");
+        assertThat(semana.metaHoras()).isEqualByComparingTo("20");
+        assertThat(semana.cumprida()).isFalse();
+    }
+
+    @Test
+    void buscarPorId_diarista_progressoSemanalCumprida() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        setId(f, freqId);
+
+        FrequenciaItem item1 = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 6), new BigDecimal("10"), 0L);
+        FrequenciaItem item2 = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 8), new BigDecimal("10"), 0L);
+
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId))
+            .thenReturn(List.of(item1, item2));
+        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(diarista));
+
+        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
+
+        var semana = resp.progressoSemanal().get(0);
+        assertThat(semana.horasLancadas()).isEqualByComparingTo("20");
+        assertThat(semana.cumprida()).isTrue();
+    }
+
+    @Test
+    void buscarPorId_diarista_progressoSemanalAgrupaPorSemanasDiferentesEmOrdemCronologica() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        setId(f, freqId);
+
+        // semana de 06/07 (seg) a 12/07 (dom) e semana de 13/07 (seg) a 19/07 (dom)
+        FrequenciaItem item1 = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 13), new BigDecimal("5"), 0L);
+        FrequenciaItem item2 = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 6), new BigDecimal("5"), 0L);
+
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId))
+            .thenReturn(List.of(item1, item2));
+        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(diarista));
+
+        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
+
+        assertThat(resp.progressoSemanal()).hasSize(2);
+        assertThat(resp.progressoSemanal().get(0).semanaInicio()).isEqualTo(LocalDate.of(2026, 7, 6));
+        assertThat(resp.progressoSemanal().get(1).semanaInicio()).isEqualTo(LocalDate.of(2026, 7, 13));
+    }
+
+    @Test
+    void buscarPorId_plantonista_naoApareceNoProgressoSemanal() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        setId(f, freqId);
+        FrequenciaItem item = itemFixture(freqId, modalidadeId, LocalDate.of(2026, 7, 6), null, 150000L);
+
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId))
+            .thenReturn(List.of(item));
+
+        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
+
+        assertThat(resp.progressoSemanal()).isEmpty();
+    }
+
     // ─── Valoração da Ocorrência do catálogo (PINSAUDE-13.19.5) ───────────────
 
     @Test
@@ -674,16 +932,30 @@ class FrequenciaServiceTest {
         return f;
     }
 
-    private FrequenciaItem itemFixture(UUID freqId, UUID modalidadeId, BigDecimal horasTrabalhadas, long valorUnitarioCentavos) {
+    private FrequenciaItem itemFixture(UUID freqId, UUID modalidadeId, LocalDate dataExecucao,
+                                       BigDecimal horasTrabalhadas, long valorUnitarioCentavos) {
         FrequenciaItem item = new FrequenciaItem();
         setId(item, UUID.randomUUID());
         item.setFrequenciaId(freqId);
         item.setModalidadeId(modalidadeId);
-        item.setDataExecucao(LocalDate.of(2026, 7, 5));
+        item.setDataExecucao(dataExecucao);
         item.setHorasTrabalhadas(horasTrabalhadas);
         item.setValorUnitarioCentavos(valorUnitarioCentavos);
         item.setDeslocamentoCentavos(0L);
         return item;
+    }
+
+    private TomadorModalidade modalidadeDiaristaFixture(UUID id, long valorCentavos, String horasSemanais) {
+        TomadorModalidade m = new TomadorModalidade();
+        setId(m, id);
+        m.setTomadorId(tomadorId);
+        m.setNome("Diarista 20h/semana");
+        m.setTipo("DIARISTA");
+        m.setHorasSemanais(new BigDecimal(horasSemanais));
+        m.setValorCentavos(valorCentavos);
+        m.setDeslocamentoCentavos(0L);
+        m.setAtivo(true);
+        return m;
     }
 
     private TomadorOcorrencia ocorrenciaFixture(UUID id, String tipoValor, BigDecimal valorPercentual, Long valorCentavos) {
