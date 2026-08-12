@@ -24,6 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -173,15 +174,20 @@ public class FrequenciaService {
         validarOcorrenciaNaoSeAplicaADiarista(modalidade, req.ocorrenciaId());
         TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
 
+        BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
+        boolean diarista = "DIARISTA".equals(modalidade.getTipo());
+
         FrequenciaItem item = new FrequenciaItem();
         item.setFrequenciaId(frequenciaId);
         item.setModalidadeId(req.modalidadeId());
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
         item.setOcorrenciaId(req.ocorrenciaId());
-        item.setHorasTrabalhadas(req.horasTrabalhadas());
-        // Snapshot de preço no momento do lançamento — proporcional para modalidade META
-        item.setValorUnitarioCentavos(calcularValorItem(modalidade, req.horasTrabalhadas()));
+        item.setHorasTrabalhadas(horasTrabalhadas);
+        item.setHoraInicio(diarista ? req.horaInicio() : null);
+        item.setHoraFim(diarista ? req.horaFim() : null);
+        // Snapshot de preço no momento do lançamento
+        item.setValorUnitarioCentavos(calcularValorItem(modalidade));
         item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
         item.setOcorrenciaValorCentavos(calcularValorOcorrencia(ocorrencia, modalidade.getValorCentavos()));
         itemRepo.save(item);
@@ -209,12 +215,17 @@ public class FrequenciaService {
         validarOcorrenciaNaoSeAplicaADiarista(modalidade, req.ocorrenciaId());
         TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
 
+        BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
+        boolean diarista = "DIARISTA".equals(modalidade.getTipo());
+
         item.setModalidadeId(req.modalidadeId());
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
         item.setOcorrenciaId(req.ocorrenciaId());
-        item.setHorasTrabalhadas(req.horasTrabalhadas());
-        item.setValorUnitarioCentavos(calcularValorItem(modalidade, req.horasTrabalhadas()));
+        item.setHorasTrabalhadas(horasTrabalhadas);
+        item.setHoraInicio(diarista ? req.horaInicio() : null);
+        item.setHoraFim(diarista ? req.horaFim() : null);
+        item.setValorUnitarioCentavos(calcularValorItem(modalidade));
         item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
         item.setOcorrenciaValorCentavos(calcularValorOcorrencia(ocorrencia, modalidade.getValorCentavos()));
         itemRepo.save(item);
@@ -307,15 +318,30 @@ public class FrequenciaService {
     // frequência (ver FrequenciaMedicaResponse.valorMensalDiaristaUnico) — cada item individual
     // vale R$0 e serve só pra registrar presença/horas trabalhadas naquele dia, usadas no
     // acompanhamento semanal (FrequenciaMedicaResponse.calcularProgressoSemanal).
-    private long calcularValorItem(TomadorModalidade modalidade, BigDecimal horasTrabalhadas) {
-        if ("DIARISTA".equals(modalidade.getTipo())) {
-            if (horasTrabalhadas == null || horasTrabalhadas.signum() <= 0) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Informe as horas trabalhadas para lançar um item desta modalidade (Diarista)");
-            }
-            return 0L;
-        }
+    private long calcularValorItem(TomadorModalidade modalidade) {
+        if ("DIARISTA".equals(modalidade.getTipo())) return 0L;
         return modalidade.getValorCentavos();
+    }
+
+    // PINSAUDE-13.25: modalidade DIARISTA não aceita mais horasTrabalhadas direto do cliente —
+    // o médico digita a hora de entrada e saída daquele dia (também impressas no PDF, ver
+    // frequenciaPdf.ts), e horasTrabalhadas é sempre derivado daqui, nunca do request. Turnos que
+    // atravessam a meia-noite (ex: 19:00 às 07:00) são detectados quando horaFim <= horaInicio,
+    // somando 24h à duração. PLANTONISTA nunca chama este método (retorna null).
+    private BigDecimal calcularHorasTrabalhadas(TomadorModalidade modalidade, FrequenciaItemRequest req) {
+        if (!"DIARISTA".equals(modalidade.getTipo())) return null;
+        if (req.horaInicio() == null || req.horaFim() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Informe o horário de entrada e saída para lançar um item desta modalidade (Diarista)");
+        }
+        if (req.horaInicio().equals(req.horaFim())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Horário de saída deve ser diferente do horário de entrada");
+        }
+        Duration duracao = Duration.between(req.horaInicio(), req.horaFim());
+        if (duracao.isNegative()) duracao = duracao.plusHours(24);
+        return BigDecimal.valueOf(duracao.toMinutes())
+            .divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
     }
 
     // PINSAUDE-13.23: uma frequência só pode lançar itens de modalidades cujo tipo bata com o

@@ -31,6 +31,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -224,7 +225,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), "Normal", null, null);
+            modalidadeId, LocalDate.of(2026, 7, 5), "Normal", null, null, null);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -244,7 +245,7 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null);
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, null);
 
         assertThatThrownBy(() -> service.adicionarItem(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -261,7 +262,7 @@ class FrequenciaServiceTest {
         when(modalidadeRepo.findById(modalInexistente)).thenReturn(Optional.empty());
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalInexistente, LocalDate.of(2026, 7, 5), null, null, null);
+            modalInexistente, LocalDate.of(2026, 7, 5), null, null, null, null);
 
         assertThatThrownBy(() -> service.adicionarItem(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -283,12 +284,14 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null);
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, null);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
         assertThat(resp.valorUnitarioCentavos()).isEqualTo(150000L);
         assertThat(resp.horasTrabalhadas()).isNull();
+        assertThat(resp.horaInicio()).isNull();
+        assertThat(resp.horaFim()).isNull();
     }
 
     // ─── Valoração e coupling da modalidade Diarista (PINSAUDE-13.23) ─────────
@@ -310,7 +313,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            diaristaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("8"), null);
+            diaristaId, LocalDate.of(2026, 7, 6), null, LocalTime.of(7, 0), LocalTime.of(15, 0), null);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -318,10 +321,37 @@ class FrequenciaServiceTest {
         // da frequência (ver testes de buscarPorId abaixo)
         assertThat(resp.valorUnitarioCentavos()).isZero();
         assertThat(resp.horasTrabalhadas()).isEqualByComparingTo("8");
+        assertThat(resp.horaInicio()).isEqualTo(LocalTime.of(7, 0));
+        assertThat(resp.horaFim()).isEqualTo(LocalTime.of(15, 0));
     }
 
     @Test
-    void adicionarItem_diarista_semHorasTrabalhadas_lanca422() {
+    void adicionarItem_diarista_horarioAtravessaMeiaNoite_calculaCorretamente() {
+        // turno noturno 19:00 às 07:00 do dia seguinte — 12h, mesmo com horaFim < horaInicio
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            diaristaId, LocalDate.of(2026, 7, 6), null, LocalTime.of(19, 0), LocalTime.of(7, 0), null);
+
+        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
+
+        assertThat(resp.horasTrabalhadas()).isEqualByComparingTo("12");
+    }
+
+    @Test
+    void adicionarItem_diarista_horarioEntradaIgualSaida_lanca422() {
         UUID diaristaId = UUID.randomUUID();
         TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
         when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
@@ -332,11 +362,32 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            diaristaId, LocalDate.of(2026, 7, 6), null, null, null);
+            diaristaId, LocalDate.of(2026, 7, 6), null, LocalTime.of(7, 0), LocalTime.of(7, 0), null);
 
         assertThatThrownBy(() -> service.adicionarItem(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
-            .hasMessageContaining("horas trabalhadas")
+            .hasMessageContaining("diferente do horário de entrada")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void adicionarItem_diarista_semHorario_lanca422() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            diaristaId, LocalDate.of(2026, 7, 6), null, null, null, null);
+
+        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("horário de entrada e saída")
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
     }
@@ -357,7 +408,7 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            diaristaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("8"), ocorrenciaId);
+            diaristaId, LocalDate.of(2026, 7, 6), null, LocalTime.of(7, 0), LocalTime.of(15, 0), ocorrenciaId);
 
         assertThatThrownBy(() -> service.adicionarItem(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -378,7 +429,7 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            diaristaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("8"), null);
+            diaristaId, LocalDate.of(2026, 7, 6), null, LocalTime.of(7, 0), LocalTime.of(15, 0), null);
 
         assertThatThrownBy(() -> service.adicionarItem(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -396,7 +447,7 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 6), null, null, null);
+            modalidadeId, LocalDate.of(2026, 7, 6), null, null, null, null);
 
         assertThatThrownBy(() -> service.adicionarItem(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -422,7 +473,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            diaristaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("8"), null);
+            diaristaId, LocalDate.of(2026, 7, 6), null, LocalTime.of(7, 0), LocalTime.of(15, 0), null);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -568,7 +619,7 @@ class FrequenciaServiceTest {
 
         // modalidade (fixture do setUp): valorCentavos=150000, deslocamento=10000 -> 10% de 150000 = 15000
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), null, null, ocorrenciaId);
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, ocorrenciaId);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -593,7 +644,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), null, null, ocorrenciaId);
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, ocorrenciaId);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -617,7 +668,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), null, null, ocorrenciaId);
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, ocorrenciaId);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -641,7 +692,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), null, null, ocorrenciaId);
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, ocorrenciaId);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -659,7 +710,7 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), null, null, ocorrenciaId);
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, ocorrenciaId);
 
         assertThatThrownBy(() -> service.adicionarItem(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -679,7 +730,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 5), "Chegou atrasado", null, null);
+            modalidadeId, LocalDate.of(2026, 7, 5), "Chegou atrasado", null, null, null);
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
@@ -710,7 +761,7 @@ class FrequenciaServiceTest {
         when(itemRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
-            modalidadeId, LocalDate.of(2026, 7, 6), null, null, ocorrenciaId);
+            modalidadeId, LocalDate.of(2026, 7, 6), null, null, null, ocorrenciaId);
 
         FrequenciaItemResponse resp = service.atualizarItem(freqId, itemId, req);
 

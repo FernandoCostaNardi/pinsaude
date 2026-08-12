@@ -5508,6 +5508,84 @@ via chamadas diretas de teste automatizado).
 
 ---
 
+## Horário de Entrada/Saída no Lançamento Diarista — Cálculo Automático de Horas (pós-EPIC-13.25)
+
+Pedido do cliente: no lançamento de plantão de modalidade Diarista, em vez do médico digitar a
+quantidade de horas trabalhadas diretamente, ele digita a hora de entrada e a hora de saída
+daquele dia — o sistema calcula a quantidade. O PDF da frequência (Rubrica/Ocorrência) também
+precisa mostrar esse horário digitado, já que a modalidade Diarista nunca teve turno/horário
+cadastrados (só Plantonista tem).
+
+### `horasTrabalhadas` deixou de ser um campo aceito do cliente — vira 100% derivado
+`FrequenciaItemRequest` trocou o campo `horasTrabalhadas` (BigDecimal) por `horaInicio`/`horaFim`
+(`LocalTime`, nullable). `FrequenciaService` ganhou `calcularHorasTrabalhadas(modalidade, req)`,
+chamado antes de `calcularValorItem` em `adicionarItem`/`atualizarItem`: para PLANTONISTA retorna
+`null` (nunca usou esse campo); para DIARISTA exige os dois horários (422 se faltar algum),
+rejeita `horaInicio == horaFim` (422 — mensagem "Horário de saída deve ser diferente do horário
+de entrada") e calcula a duração com `Duration.between(horaInicio, horaFim)`. **Turnos que
+atravessam a meia-noite são detectados automaticamente**: `duracao.isNegative()` (ex.: 19:00 →
+07:00 dá uma duração negativa em `Duration.between`) soma 24h — testado e confirmado via API que
+19:00 às 07:00 calcula corretamente 12h. `FrequenciaItem` (entidade) ganhou as colunas
+`hora_inicio`/`hora_fim` (`TIME`, nullable) — migration `V32__add_hora_inicio_fim_frequencia_itens.sql`,
+com `CHECK (hora_inicio IS NULL OR hora_fim IS NULL OR hora_inicio <> hora_fim)` como backstop do
+banco (a validação de negócio já bloqueia no service, mas segue o padrão do projeto de sempre
+adicionar o CHECK espelhando a regra).
+
+### `FrequenciaItemResponse.horaInicio/horaFim` serializam como "HH:mm:ss", não "HH:mm"
+Diferente do que se poderia esperar de `DateTimeFormatter.ISO_LOCAL_TIME` (que omite segundos
+quando são zero), o Jackson `jackson-datatype-jsr310` do Spring Boot 3.2.5 serializa `LocalTime`
+sempre com segundos — confirmado empiricamente via `curl` (`"horaInicio":"07:00:00"`). O frontend
+sempre usa `.slice(0, 5)` ao ler esses campos (tanto para preencher `<input type="time">` quanto
+para exibir "07:00 às 15:00") — nunca assumir que o valor já vem no formato "HH:mm" pronto para
+uso direto num input nativo.
+
+### Preview de horas no frontend duplica a lógica do backend — mesmo padrão já estabelecido no projeto
+`calcularHorasEntrePeriodo(horaInicio, horaFim)` (duplicada em `FrequenciasPage.tsx` e
+`PortalFrequenciaPage.tsx`, mesmo padrão de `calcularValorPreview`/`calcularValorOcorrenciaPreview`
+já documentado) espelha `FrequenciaService.calcularHorasTrabalhadas` só para feedback visual antes
+de salvar — usa strings "HH:mm" (minutos totais, sem `Duration`), soma 24h quando o resultado é
+`<= 0`. O valor real sempre vem recalculado do servidor na resposta.
+
+### Grid (`PlantaoGridPanel`) trocou 1 coluna "Horas" por 2 inputs de horário na mesma célula
+Em vez de adicionar uma coluna nova à tabela (que exigiria recalcular `colSpan`/larguras em vários
+lugares), a coluna "Horário" (renomeada de "Horas") passou a conter dois `<input type="time">`
+lado a lado com um "às" entre eles, dentro da mesma `<td>` — mesmo padrão de disable/highlight
+vermelho (`linhasSemHoras`) já usado para o antigo input numérico único, só que agora `updateRow`
+verifica `patch.horaInicio || patch.horaFim` (em vez de `patch.horasTrabalhadas`) pra limpar o
+destaque. `PlantaoRow.horasTrabalhadas: string` virou `horaInicio: string` + `horaFim: string`.
+
+### PDF — Horário do item sobrepõe o Horário da modalidade, Turno nunca é preenchido pro Diarista
+`frequenciaPdf.ts` ganhou `formatHorarioItem(item)` (retorna `"HH:mm às HH:mm"` a partir de
+`item.horaInicio`/`item.horaFim`, ou `null` se ausente). A coluna "Horário" da tabela de plantões
+usa `formatHorarioItem(item) ?? item.modalidadeHorario ?? ''` — Diarista sempre tem
+`modalidadeHorario = null` (a modalidade em si não tem esse campo), então o item-level sempre
+vence quando presente; Plantonista nunca tem `horaInicio`/`horaFim`, então cai no
+`modalidadeHorario` de sempre, sem regressão. A coluna "Turno" **não** foi alterada — continua
+`item.modalidadeTurno ?? ''`, que fica vazia pra Diarista por design (não existe conceito de turno
+digitado nesse fluxo, só um intervalo de horário). `gerarOcorrencia()` (texto auto-gerado da coluna
+Ocorrência quando o campo livre está vazio) também prioriza `formatHorarioItem(item)` sobre
+`modalidadeHoras` — confirmado no PDF real: item Diarista gerou "SEGUNDA-FEIRA - 07:00 às 15:00"
+em vez do antigo "SEGUNDA-FEIRA" (sem turno/horas, já que a modalidade não tinha nenhum dos dois).
+
+### Testando `window.open()` sem travar a aba — interceptar antes de clicar em "Gerar PDF"
+Confirmado de novo nesta sessão (mesma armadilha documentada após a 13.25): clicar em "Gerar PDF"
+de verdade trava a aba via CDP (`Page.captureScreenshot`/`Runtime.evaluate` com timeout de
+30-45s). Desta vez, em vez de aceitar a perda da aba e abrir uma nova, um `javascript_tool`
+rodado **antes** do clique substituiu `window.open` por um stub que só captura o HTML gerado
+(`window.__capturedHtml`) sem criar uma janela de verdade — permite inspecionar o conteúdo exato
+do PDF (`window.__capturedHtml`) via `javascript_tool` depois, sem nunca travar a aba. Padrão
+reutilizável para qualquer teste manual futuro que precise inspecionar o HTML de
+`abrirPdfFrequencia`/`window.open` sem esse risco.
+
+### `sessionStorage` não é compartilhado entre abas — confirmado outra vez, agora com token expirado no meio do teste
+O token injetado numa aba fica preso àquela aba (mesma origem, mas `sessionStorage` é por
+*browsing context*). Como o realm Keycloak deste ambiente expira o access token em ~30 minutos,
+uma sessão de teste manual longa (várias telas: admin grid, admin edição, PDF, portal) frequentemente
+precisa de um novo `POST /realms/pinsaude/protocol/openid-connect/token` a cada nova aba aberta —
+não vale reaproveitar um token de sessões anteriores da mesma conversa sem checar a idade.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
