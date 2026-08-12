@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -374,6 +375,72 @@ class FechamentoServiceTest {
         verify(producaoRepo, never()).save(any());
     }
 
+    // ─── Agregação da modalidade Diarista — valor mensal único (PINSAUDE-13.23) ─
+
+    @Test
+    void preview_diaristaMultiplosDiasNoMes_contaValorMensalUmaUnicaVez() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L);
+        FrequenciaMedica freq = frequenciaFixture(medico1Id, setorId, COMPETENCIA, "RASCUNHO");
+
+        // 15 dias trabalhados no mês, cada item com valorUnitarioCentavos=0 (snapshot real do
+        // Diarista — ver FrequenciaService.calcularValorItem) e sem deslocamento
+        List<FrequenciaItem> itens = new ArrayList<>();
+        for (int dia = 1; dia <= 15; dia++) {
+            FrequenciaItem item = itemFixtureComModalidade(freq.getId(), diaristaId, 0L, 0L);
+            item.setDataExecucao(LocalDate.of(2026, 7, dia));
+            item.setHorasTrabalhadas(new BigDecimal("8"));
+            itens.add(item);
+        }
+
+        when(frequenciaRepo.findByTomadorIdAndCompetencia(tomadorId, COMPETENCIA))
+            .thenReturn(List.of(freq));
+        when(itemRepo.findByFrequenciaIdIn(List.of(freq.getId()))).thenReturn(itens);
+        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(diarista));
+
+        FechamentoPreviewResponse resp = service.preview(tomadorId, COMPETENCIA);
+
+        // valor mensal fixo (R$15.000) uma única vez, não 15x
+        assertThat(resp.totalCentavos()).isEqualTo(1_500_000L);
+        assertThat(resp.grupos().get(0).totalCentavos()).isEqualTo(1_500_000L);
+
+        // a "quantidade" da modalidade no preview continua refletindo os 15 dias trabalhados
+        FechamentoPreviewResponse.ModalidadeDetalhe detalhe = resp.modalidades().stream()
+            .filter(m -> m.modalidadeId().equals(diaristaId)).findFirst().orElseThrow();
+        assertThat(detalhe.quantidade()).isEqualTo(15);
+        assertThat(detalhe.totalCentavos()).isEqualTo(1_500_000L);
+    }
+
+    @Test
+    void executar_diaristaMultiplosDias_criaProducaoComValorMensalUnico() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L);
+        FrequenciaMedica freq = frequenciaFixture(medico1Id, setorId, COMPETENCIA, "ASSINADA_RECEBIDA");
+
+        FrequenciaItem item1 = itemFixtureComModalidade(freq.getId(), diaristaId, 0L, 0L);
+        item1.setDataExecucao(LocalDate.of(2026, 7, 6));
+        FrequenciaItem item2 = itemFixtureComModalidade(freq.getId(), diaristaId, 0L, 0L);
+        item2.setDataExecucao(LocalDate.of(2026, 7, 8));
+        FrequenciaItem item3 = itemFixtureComModalidade(freq.getId(), diaristaId, 0L, 0L);
+        item3.setDataExecucao(LocalDate.of(2026, 7, 10));
+
+        when(frequenciaRepo.findByTomadorIdAndCompetencia(tomadorId, COMPETENCIA))
+            .thenReturn(List.of(freq));
+        when(itemRepo.findByFrequenciaIdIn(any())).thenReturn(List.of(item1, item2, item3));
+        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(diarista));
+
+        FechamentoResponse resp = service.executar(new FechamentoRequest(tomadorId, COMPETENCIA));
+
+        assertThat(resp.totalCentavos()).isEqualTo(1_500_000L);
+        assertThat(resp.producoes()).hasSize(1);
+        assertThat(resp.producoes().get(0).totalCentavos()).isEqualTo(1_500_000L);
+
+        ArgumentCaptor<List<ParticipacaoProducao>> captor = ArgumentCaptor.forClass(List.class);
+        verify(participacaoRepo).saveAll(captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+        assertThat(captor.getValue().get(0).getValorBruto()).isEqualTo(1_500_000L);
+    }
+
     // ─── Fixtures ─────────────────────────────────────────────────────────────
 
     private FrequenciaMedica frequenciaFixture(UUID medicoId, UUID setorId,
@@ -399,6 +466,30 @@ class FechamentoServiceTest {
         item.setValorUnitarioCentavos(valor);
         item.setDeslocamentoCentavos(deslocamento);
         return item;
+    }
+
+    private FrequenciaItem itemFixtureComModalidade(UUID frequenciaId, UUID modalidadeId, long valor, long deslocamento) {
+        FrequenciaItem item = new FrequenciaItem();
+        setId(item, UUID.randomUUID());
+        item.setFrequenciaId(frequenciaId);
+        item.setModalidadeId(modalidadeId);
+        item.setDataExecucao(LocalDate.of(2026, 7, 10));
+        item.setValorUnitarioCentavos(valor);
+        item.setDeslocamentoCentavos(deslocamento);
+        return item;
+    }
+
+    private TomadorModalidade modalidadeDiaristaFixture(UUID id, long valorCentavos) {
+        TomadorModalidade m = new TomadorModalidade();
+        setId(m, id);
+        m.setTomadorId(tomadorId);
+        m.setNome("Diarista 20h/semana");
+        m.setTipo("DIARISTA");
+        m.setHorasSemanais(new BigDecimal("20"));
+        m.setValorCentavos(valorCentavos);
+        m.setDeslocamentoCentavos(0L);
+        m.setAtivo(true);
+        return m;
     }
 
     private <T> void setId(T obj, UUID id) {

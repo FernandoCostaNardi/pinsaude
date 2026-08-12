@@ -331,6 +331,43 @@ public class FechamentoService {
                 .merge(freq.getMedicoId(), itemTotal, Long::sum);
         }
 
+        // PINSAUDE-13.23: Diarista não paga por item (cada item vale R$0 — ver
+        // FrequenciaService.calcularValorItem), então o loop acima nunca soma o valor mensal
+        // fixo dele. Soma-se aqui, UMA ÚNICA VEZ por frequência/modalidade Diarista distinta,
+        // independente de quantos itens/dias foram lançados no mês. O count (ct[0]) de cada
+        // modalidade já foi corretamente incrementado por item no loop acima (reflete dias
+        // trabalhados) — aqui só o TOTAL em dinheiro é ajustado.
+        Map<UUID, Set<UUID>> modalidadesDiaristaPorFrequencia = todosItens.stream()
+            .filter(item -> {
+                TomadorModalidade m = modalidadesMap.get(item.getModalidadeId());
+                return m != null && "DIARISTA".equals(m.getTipo());
+            })
+            .collect(Collectors.groupingBy(FrequenciaItem::getFrequenciaId,
+                Collectors.mapping(FrequenciaItem::getModalidadeId, Collectors.toSet())));
+
+        for (Map.Entry<UUID, Set<UUID>> entry : modalidadesDiaristaPorFrequencia.entrySet()) {
+            FrequenciaMedica freq = freqMap.get(entry.getKey());
+            if (freq == null) continue;
+            TomadorServicoOperacional setor = setoresMap.get(freq.getServicoOperacionalId());
+            if (setor == null) continue;
+            UUID grupoId = setor.getGrupoId();
+
+            for (UUID modalidadeId : entry.getValue()) {
+                TomadorModalidade modalidade = modalidadesMap.get(modalidadeId);
+                if (modalidade == null) continue;
+                long valorMensal = modalidade.getValorCentavos();
+
+                modalidadeAgg.computeIfAbsent(modalidadeId, k -> new long[]{0L, 0L});
+                modalidadeAgg.get(modalidadeId)[1] += valorMensal;
+
+                grupoSetorTotal.computeIfAbsent(grupoId, k -> new LinkedHashMap<>())
+                    .merge(freq.getServicoOperacionalId(), valorMensal, Long::sum);
+
+                agrupado.computeIfAbsent(grupoId, k -> new LinkedHashMap<>())
+                    .merge(freq.getMedicoId(), valorMensal, Long::sum);
+            }
+        }
+
         Set<UUID> grupoIds = agrupado.keySet();
         Map<UUID, TomadorGrupoFaturamento> gruposMap = grupoRepo.findAllById(grupoIds).stream()
             .collect(Collectors.toMap(TomadorGrupoFaturamento::getId, Function.identity()));

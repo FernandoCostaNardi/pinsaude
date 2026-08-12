@@ -5312,6 +5312,65 @@ antes de rodar qualquer `curl` de verificação.
 
 ---
 
+## Motor de Cálculo do Diarista — valor mensal único + coupling + progresso semanal (PINSAUDE-13.23)
+
+Segunda de 4 tasks (13.22-13.25) da simplificação de tipos de modalidade. Esta implementa a
+mecânica de pagamento do Diarista: N lançamentos por mês (1 por dia trabalhado, cada um com
+`valorUnitarioCentavos=0`), mas o valor total da frequência é o `valorCentavos` mensal fixo da
+modalidade, somado **uma única vez**, independente de quantos dias foram lançados.
+
+### Novo campo `progressoSemanal` ADICIONADO, não substituindo `progressoMetas`
+O plano original cogitava renomear `progressoMetas` (usado até a 13.22 pro extinto acompanhamento
+por bloco do META) para `progressoSemanal`. Na prática isso quebraria o frontend **já em produção**
+(shippado no EPIC-13.21): `FrequenciasPage.tsx`/`PortalFrequenciaPage.tsx` fazem
+`mesclarProgressoComDraft(freq.progressoMetas, draftMeta)`, que chama `.map()` sobre esse array — se
+o campo simplesmente sumisse do JSON (virasse `undefined`), essas duas telas quebrariam com
+`TypeError: Cannot read properties of undefined` ao abrir QUALQUER frequência, não só as Diarista.
+Solução: `progressoMetas` continua existindo no response (sempre `[]`, já era assim desde a 13.22)
+e `progressoSemanal` foi **adicionado como campo novo**, com seu próprio DTO
+(`FrequenciaSemanaProgressoResponse`). Isso mantém compatibilidade retroativa total com telas que
+ainda não foram atualizadas — lição geral: ao evoluir um contrato de API já consumido por um
+frontend shippado, prefira ADITIVO a RENOMEAR/REMOVER, mesmo que o campo antigo fique
+permanentemente vazio/morto até a próxima limpeza (que aqui é a 13.24/13.25).
+
+### Agregação "uma vez por frequência" no Fechamento — padrão de 2 passadas
+`FechamentoService.computeAggregation` somava tudo num único loop `for (FrequenciaItem item :
+todosItens)`. Como cada item Diarista vale R$0, esse loop sozinho nunca capturaria o valor mensal
+fixo. A solução foi uma **segunda passada**, depois do loop principal: agrupar `todosItens` por
+`(frequenciaId, modalidadeId)` filtrando só modalidades DIARISTA, e para cada combinação distinta
+somar `modalidade.valorCentavos` uma única vez nos 3 acumuladores (`modalidadeAgg`,
+`grupoSetorTotal`, `agrupado`) — sem tocar no `count` (`ct[0]`) da modalidade, que já é
+corretamente incrementado por item no loop principal (reflete "quantos dias trabalhados", uma
+métrica útil mesmo não afetando o total em dinheiro). Validado manualmente via API real: uma
+frequência Diarista com 4 dias lançados no mês gerou `quantidade: 4` mas `totalCentavos: 1500000`
+(não 4×) no preview do Fechamento — a `Producao`/`ParticipacaoProducao` criada em `executar()`
+herda esse total correto automaticamente, sem nenhuma mudança adicional no método `executar()`.
+
+### Coupling Frequência↔Modalidade — `tipoMedico` nulo faz bypass (compat com dado legado)
+`FrequenciaMedica.tipoMedico` é nullable no banco (coluna criada em V20, EPIC-13.11, antes de ser
+obrigatória na request) — o ambiente de dev tem 1 frequência real com esse campo nulo. A validação
+de coupling (`modalidade.getTipo().equals(frequencia.getTipoMedico())`) só é aplicada quando
+`tipoMedico != null`; frequências legadas sem esse campo continuam aceitando qualquer modalidade,
+exatamente como sempre aceitaram.
+
+### Ocorrências do catálogo bloqueadas no backend pra Diarista, não só escondidas na UI
+O % de uma ocorrência incide sobre `modalidade.valorCentavos` — que pro Diarista é o valor do MÊS
+inteiro, não de um dia. Aplicar uma ocorrência "Feriado +50%" a um lançamento de 1 dia produziria
+um bônus de 50% de um salário mensal inteiro. Bloqueado com 422 direto em
+`adicionarItem`/`atualizarItem` (`ocorrenciaId != null && tipo == DIARISTA`), não só omitido do
+formulário no frontend (que ainda não foi atualizado — 13.25) — garante que nem uma chamada direta
+à API consiga criar esse cenário sem sentido.
+
+### Testes: `FrequenciaServiceTest` ganhou fixture de data configurável
+`itemFixture` tinha `dataExecucao` hardcoded (`2026-07-05`) — inútil pros testes de progresso
+semanal, que precisam de datas em semanas ISO diferentes de propósito. Adicionado parâmetro
+`LocalDate dataExecucao` à assinatura (sem outros callers pra quebrar, já que a 13.22 tinha deixado
+esse fixture temporariamente sem uso). Datas de teste verificadas com `node -e "new
+Date(...).toLocaleDateString('en-US',{weekday:'long'})"` antes de escrever as asserções, pra não
+assumir de cabeça em que dia da semana uma data cai.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

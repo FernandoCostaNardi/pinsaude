@@ -169,6 +169,8 @@ public class FrequenciaService {
         TomadorModalidade modalidade = modalidadeRepo.findById(req.modalidadeId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Modalidade não encontrada: " + req.modalidadeId()));
+        validarCouplingTipoEscala(f, modalidade);
+        validarOcorrenciaNaoSeAplicaADiarista(modalidade, req.ocorrenciaId());
         TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
 
         FrequenciaItem item = new FrequenciaItem();
@@ -203,6 +205,8 @@ public class FrequenciaService {
         TomadorModalidade modalidade = modalidadeRepo.findById(req.modalidadeId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Modalidade não encontrada: " + req.modalidadeId()));
+        validarCouplingTipoEscala(f, modalidade);
+        validarOcorrenciaNaoSeAplicaADiarista(modalidade, req.ocorrenciaId());
         TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
 
         item.setModalidadeId(req.modalidadeId());
@@ -298,14 +302,44 @@ public class FrequenciaService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    // PINSAUDE-13.22: tipos de modalidade colapsados para PLANTONISTA/DIARISTA (a modalidade
-    // META que existia antes foi removida — ver TomadorService.aplicarCamposPorTipo). O motor de
-    // cálculo específico do Diarista (valor mensal único somado uma vez por frequência, item
-    // individual valendo R$ 0) é implementado em PINSAUDE-13.23 — até lá, qualquer tipo de
-    // modalidade paga o valor flat cadastrado por lançamento (comportamento idêntico ao que
-    // PLANTAO/MENSAL já tinham antes do motor proporcional do extinto tipo META).
+    // PINSAUDE-13.23: Plantonista paga valor flat por lançamento (comportamento inalterado desde
+    // antes do EPIC-13.19). Diarista paga um valor mensal fixo somado uma única vez pela
+    // frequência (ver FrequenciaMedicaResponse.valorMensalDiaristaUnico) — cada item individual
+    // vale R$0 e serve só pra registrar presença/horas trabalhadas naquele dia, usadas no
+    // acompanhamento semanal (FrequenciaMedicaResponse.calcularProgressoSemanal).
     private long calcularValorItem(TomadorModalidade modalidade, BigDecimal horasTrabalhadas) {
+        if ("DIARISTA".equals(modalidade.getTipo())) {
+            if (horasTrabalhadas == null || horasTrabalhadas.signum() <= 0) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Informe as horas trabalhadas para lançar um item desta modalidade (Diarista)");
+            }
+            return 0L;
+        }
         return modalidade.getValorCentavos();
+    }
+
+    // PINSAUDE-13.23: uma frequência só pode lançar itens de modalidades cujo tipo bata com o
+    // Tipo de Escala dela (Plantonista só Plantonista, Diarista só Diarista). tipoMedico nulo
+    // (registro legado anterior ao EPIC-13.11) faz bypass — sem essa restrição pra não quebrar
+    // dados antigos que nunca tiveram esse campo preenchido.
+    private void validarCouplingTipoEscala(FrequenciaMedica f, TomadorModalidade modalidade) {
+        if (f.getTipoMedico() == null) return;
+        if (!f.getTipoMedico().equals(modalidade.getTipo())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Modalidade do tipo " + modalidade.getTipo() + " não pode ser lançada numa "
+                    + "frequência com Tipo de Escala " + f.getTipoMedico());
+        }
+    }
+
+    // PINSAUDE-13.23: ocorrências do catálogo (% e/ou valor fixo) incidem sobre o valor
+    // CADASTRADO da modalidade — que pro Diarista é o valor do MÊS inteiro. Aplicar uma
+    // ocorrência percentual a um único dia lançado produziria um bônus sem sentido, então fica
+    // fora de escopo por enquanto: bloqueado no backend, não só escondido na UI.
+    private void validarOcorrenciaNaoSeAplicaADiarista(TomadorModalidade modalidade, UUID ocorrenciaId) {
+        if (ocorrenciaId != null && "DIARISTA".equals(modalidade.getTipo())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ocorrências do catálogo não se aplicam a modalidade do tipo Diarista");
+        }
     }
 
     private TomadorOcorrencia resolverOcorrencia(UUID ocorrenciaId) {
