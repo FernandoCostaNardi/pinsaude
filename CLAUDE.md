@@ -5206,6 +5206,52 @@ nativo do browser, que trava a automação via CDP) — contagem final voltou a 
 
 ---
 
+## Bug: scroll no grid de plantões sobrepondo o cabeçalho da tabela (pós-13.21)
+
+### Cabeçalho sticky em `<table>` — precisa ir no `<th>`, não no `<thead>`, com `border-collapse`
+`PlantaoGridPanel` (`FrequenciasPage.tsx`) ganhou `max-h-[282px] overflow-y-auto` pra limitar a
+grade de lançamento de plantões a exatamente 5 linhas visíveis (o resto rola) — mas a primeira
+tentativa de fixar o cabeçalho durante o scroll (`sticky top-0` no `<thead>`) não funcionou: o
+texto das linhas rolando por baixo "vazava" visualmente por cima do cabeçalho. Causa: o preflight
+do Tailwind aplica `border-collapse: collapse` em todo `<table>` por padrão, e sob esse modelo um
+`<thead>` com `position: sticky` não pinta um fundo sólido sobre as linhas que passam por baixo
+(comportamento conhecido de tabelas HTML) — **o `sticky` (e o `background-color`) precisam ir em
+cada `<th>` individualmente**, não no `<thead>`. Padrão corrigido:
+```tsx
+<thead>
+  <tr>
+    <th className="sticky top-0 z-10 bg-white border-b border-ds-border ...">Dia</th>
+    ...
+```
+
+### ⚠️ `bg-ds-surface` (sem opacidade) é uma classe morta — não existe no `tailwind.config.js`
+Ao aplicar a correção acima, copiei `bg-ds-surface` do padrão já usado em várias telas do projeto
+(`ConciliacaoAssistidaPage.tsx`, `TomadorGruposModal.tsx`, etc. — **~100 ocorrências em ~20
+arquivos**) — mas testando o resultado real no navegador (`getComputedStyle(...).backgroundColor`
+num elemento de prova), a classe resolve para `rgba(0,0,0,0)` (transparente) em qualquer lugar da
+aplicação. Causa raiz: a paleta `ds` no `tailwind.config.js` define `bg/border/card/input/hover/
+text/mid/light/nav`, mas **não define `surface`** — `bg-ds-surface` referencia uma cor que não
+existe no config, então o Tailwind JIT nunca gera nenhuma regra CSS para essa classe; ela é
+puramente decorativa no JSX e nunca teve efeito visual algum. Isso só ficou aparente aqui porque
+era a ÚNICA coisa impedindo o cabeçalho de ficar opaco — nos outros ~100 usos existentes, o
+elemento já tinha outro fundo por trás (branco da página) tornando a ausência de cor invisível.
+**Corrigido apenas nos `<th>` desta tela** (trocado por `bg-white`, mesmo padrão já usado no
+cabeçalho sticky da tabela de itens da própria `PainelFrequencia`) — os ~100 usos pré-existentes
+de `bg-ds-surface` em outras telas **não foram tocados** (fora do escopo deste bug, achado
+incidentalmente; provavelmente todos são no-ops inofensivos, mas caso alguma tela dependa de um
+contraste visual que não está aparecendo, essa é a causa mais provável).
+
+### Verificação de scroll/overlap sem depender de screenshot (CDP instável no ambiente)
+Como `Page.captureScreenshot` frequentemente trava (~30s timeout) neste ambiente de automação, a
+correção foi validada 100% via `javascript_tool`, comparando o necessário programaticamente:
+`grid.scrollHeight > grid.clientHeight` (scroll ativo), contagem de linhas com
+`getBoundingClientRect()` totalmente dentro do container (exatamente 5 linhas visíveis),
+`document.elementFromPoint(x, y)` dentro da área do cabeçalho após rolar (deve retornar o `<TH>`,
+nunca uma célula de linha) e `document.elementsFromPoint(x, y)` pra conferir a pilha de
+empilhamento inteira naquele ponto (o `<TH>` deve ser sempre o primeiro/mais no topo).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
