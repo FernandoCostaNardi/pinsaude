@@ -80,6 +80,7 @@ class FrequenciaServiceTest {
         setId(modalidade, modalidadeId);
         modalidade.setTomadorId(tomadorId);
         modalidade.setNome("Plantão 12h Noturno");
+        modalidade.setTipo("PLANTONISTA");
         modalidade.setTurno("NOTURNO");
         modalidade.setHorario("19:00 as 07:00");
         modalidade.setHoras(new BigDecimal("12"));
@@ -268,107 +269,10 @@ class FrequenciaServiceTest {
                 .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
-    // ─── Valoração proporcional (modalidade META) ────────────────────────────────
-
-    @Test
-    void adicionarItem_metaPorHora_calculaValorProporcional() {
-        UUID metaId = UUID.randomUUID();
-        TomadorModalidade metaHora = modalidadeMetaHora(metaId, 400000L, "40");
-        when(modalidadeRepo.findById(metaId)).thenReturn(Optional.of(metaHora));
-
-        UUID freqId = UUID.randomUUID();
-        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
-        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-        when(itemRepo.save(any())).thenAnswer(inv -> {
-            FrequenciaItem item = inv.getArgument(0);
-            setId(item, UUID.randomUUID());
-            return item;
-        });
-
-        FrequenciaItemRequest req = new FrequenciaItemRequest(
-            metaId, LocalDate.of(2026, 7, 5), null, new BigDecimal("10"), null);
-
-        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
-
-        // valor do bloco (R$4.000 / 40h) x 10h lançadas = R$1.000 (100000 centavos)
-        assertThat(resp.valorUnitarioCentavos()).isEqualTo(100000L);
-        assertThat(resp.horasTrabalhadas()).isEqualByComparingTo("10");
-    }
-
-    @Test
-    void adicionarItem_metaPorHora_excedeMeta_pagaProporcionalLinear() {
-        UUID metaId = UUID.randomUUID();
-        TomadorModalidade metaHora = modalidadeMetaHora(metaId, 400000L, "40");
-        when(modalidadeRepo.findById(metaId)).thenReturn(Optional.of(metaHora));
-
-        UUID freqId = UUID.randomUUID();
-        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
-        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-        when(itemRepo.save(any())).thenAnswer(inv -> {
-            FrequenciaItem item = inv.getArgument(0);
-            setId(item, UUID.randomUUID());
-            return item;
-        });
-
-        // 45h em um único lançamento — excede a meta de 40h, mas o pagamento continua
-        // proporcional/linear (o "bloco" é conceito de acompanhamento, não muda o cálculo)
-        FrequenciaItemRequest req = new FrequenciaItemRequest(
-            metaId, LocalDate.of(2026, 7, 5), null, new BigDecimal("45"), null);
-
-        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
-
-        assertThat(resp.valorUnitarioCentavos()).isEqualTo(450000L);
-    }
-
-    @Test
-    void adicionarItem_metaPorHora_semHorasTrabalhadas_lanca422() {
-        UUID metaId = UUID.randomUUID();
-        TomadorModalidade metaHora = modalidadeMetaHora(metaId, 400000L, "40");
-        when(modalidadeRepo.findById(metaId)).thenReturn(Optional.of(metaHora));
-
-        UUID freqId = UUID.randomUUID();
-        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
-        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-
-        FrequenciaItemRequest req = new FrequenciaItemRequest(
-            metaId, LocalDate.of(2026, 7, 5), null, null, null);
-
-        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
-            .isInstanceOf(ResponseStatusException.class)
-            .hasMessageContaining("horas trabalhadas")
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
-    }
-
-    @Test
-    void adicionarItem_metaPorDia_calculaValorProporcionalIgnorandoHoras() {
-        UUID metaId = UUID.randomUUID();
-        TomadorModalidade metaDia = modalidadeMetaDia(metaId, 800000L, 20);
-        when(modalidadeRepo.findById(metaId)).thenReturn(Optional.of(metaDia));
-
-        UUID freqId = UUID.randomUUID();
-        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
-        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-        when(itemRepo.save(any())).thenAnswer(inv -> {
-            FrequenciaItem item = inv.getArgument(0);
-            setId(item, UUID.randomUUID());
-            return item;
-        });
-
-        // META/DIA não exige horasTrabalhadas — cada item lançado equivale a 1 dia
-        FrequenciaItemRequest req = new FrequenciaItemRequest(
-            metaId, LocalDate.of(2026, 7, 5), null, null, null);
-
-        FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
-
-        // R$8.000 / 20 dias = R$400 por dia (40000 centavos)
-        assertThat(resp.valorUnitarioCentavos()).isEqualTo(40000L);
-    }
-
     @Test
     void adicionarItem_plantao_valorPermaneceFlat_semRegressao() {
-        // modalidade PLANTAO (fixture padrão do setUp) — comportamento anterior ao EPIC-13.19
-        // deve continuar idêntico: valor flat, sem depender de horasTrabalhadas
+        // modalidade PLANTONISTA (fixture padrão do setUp) — comportamento flat por lançamento
+        // deve continuar idêntico, sem depender de horasTrabalhadas
         UUID freqId = UUID.randomUUID();
         FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
@@ -385,34 +289,6 @@ class FrequenciaServiceTest {
 
         assertThat(resp.valorUnitarioCentavos()).isEqualTo(150000L);
         assertThat(resp.horasTrabalhadas()).isNull();
-    }
-
-    @Test
-    void atualizarItem_trocaParaMetaPorHora_recalculaValor() {
-        UUID metaId = UUID.randomUUID();
-        TomadorModalidade metaHora = modalidadeMetaHora(metaId, 400000L, "40");
-        when(modalidadeRepo.findById(metaId)).thenReturn(Optional.of(metaHora));
-
-        UUID freqId = UUID.randomUUID();
-        UUID itemId = UUID.randomUUID();
-        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
-        FrequenciaItem item = new FrequenciaItem();
-        setId(item, itemId);
-        item.setFrequenciaId(freqId);
-        item.setModalidadeId(modalidadeId);
-        item.setValorUnitarioCentavos(150000L);
-
-        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-        when(itemRepo.findById(itemId)).thenReturn(Optional.of(item));
-        when(itemRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-        FrequenciaItemRequest req = new FrequenciaItemRequest(
-            metaId, LocalDate.of(2026, 7, 6), null, new BigDecimal("20"), null);
-
-        FrequenciaItemResponse resp = service.atualizarItem(freqId, itemId, req);
-
-        // 20h de 40h do bloco de R$4.000 => R$2.000 (200000 centavos)
-        assertThat(resp.valorUnitarioCentavos()).isEqualTo(200000L);
     }
 
     // ─── Valoração da Ocorrência do catálogo (PINSAUDE-13.19.5) ───────────────
@@ -584,99 +460,9 @@ class FrequenciaServiceTest {
         assertThat(resp.totalItemCentavos()).isEqualTo(150000L + 10000L + 3000L);
     }
 
-    // ─── Progresso da meta (read-only) ────────────────────────────────────────
-
-    @Test
-    void buscarPorId_metaPorHora_calculaProgressoAbaixoDaMeta() {
-        UUID metaId = UUID.randomUUID();
-        TomadorModalidade metaHora = modalidadeMetaHora(metaId, 400000L, "40");
-        UUID freqId = UUID.randomUUID();
-        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
-        setId(f, freqId);
-
-        FrequenciaItem item1 = itemFixture(freqId, metaId, new BigDecimal("15"), 150000L);
-        FrequenciaItem item2 = itemFixture(freqId, metaId, new BigDecimal("10"), 100000L);
-
-        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId))
-            .thenReturn(List.of(item1, item2));
-        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(metaHora));
-
-        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
-
-        assertThat(resp.progressoMetas()).hasSize(1);
-        var progresso = resp.progressoMetas().get(0);
-        assertThat(progresso.modalidadeId()).isEqualTo(metaId);
-        assertThat(progresso.acumuladoHoras()).isEqualByComparingTo("25");
-        assertThat(progresso.blocosCompletos()).isZero();
-        assertThat(progresso.restanteBlocoAtual()).isEqualByComparingTo("15");
-    }
-
-    @Test
-    void buscarPorId_metaPorHora_excedeMeta_fechaBlocoEIniciaProximo() {
-        UUID metaId = UUID.randomUUID();
-        TomadorModalidade metaHora = modalidadeMetaHora(metaId, 400000L, "40");
-        UUID freqId = UUID.randomUUID();
-        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
-        setId(f, freqId);
-
-        FrequenciaItem item1 = itemFixture(freqId, metaId, new BigDecimal("30"), 300000L);
-        FrequenciaItem item2 = itemFixture(freqId, metaId, new BigDecimal("15"), 150000L);
-
-        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId))
-            .thenReturn(List.of(item1, item2));
-        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(metaHora));
-
-        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
-
-        var progresso = resp.progressoMetas().get(0);
-        // acumulado 45h, meta 40h: 1 bloco completo, faltam 35h pro segundo bloco
-        assertThat(progresso.acumuladoHoras()).isEqualByComparingTo("45");
-        assertThat(progresso.blocosCompletos()).isEqualTo(1);
-        assertThat(progresso.restanteBlocoAtual()).isEqualByComparingTo("35");
-    }
-
-    @Test
-    void buscarPorId_metaPorDia_contaItensComoDias() {
-        UUID metaId = UUID.randomUUID();
-        TomadorModalidade metaDia = modalidadeMetaDia(metaId, 800000L, 20);
-        UUID freqId = UUID.randomUUID();
-        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
-        setId(f, freqId);
-
-        FrequenciaItem item1 = itemFixture(freqId, metaId, null, 40000L);
-        FrequenciaItem item2 = itemFixture(freqId, metaId, null, 40000L);
-        FrequenciaItem item3 = itemFixture(freqId, metaId, null, 40000L);
-
-        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId))
-            .thenReturn(List.of(item1, item2, item3));
-        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(metaDia));
-
-        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
-
-        var progresso = resp.progressoMetas().get(0);
-        assertThat(progresso.acumuladoDias()).isEqualTo(3);
-        assertThat(progresso.blocosCompletos()).isZero();
-        assertThat(progresso.restanteBlocoAtual()).isEqualByComparingTo("17");
-    }
-
-    @Test
-    void buscarPorId_modalidadePlantao_naoApareceNoProgressoMetas() {
-        UUID freqId = UUID.randomUUID();
-        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
-        setId(f, freqId);
-        FrequenciaItem item = itemFixture(freqId, modalidadeId, null, 150000L);
-
-        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId))
-            .thenReturn(List.of(item));
-
-        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
-
-        assertThat(resp.progressoMetas()).isEmpty();
-    }
+    // PINSAUDE-13.22: a modalidade META e o acompanhamento por "bloco" foram removidos —
+    // o acompanhamento semanal do tipo Diarista é implementado em PINSAUDE-13.23, junto com
+    // os testes correspondentes de progressoSemanal.
 
     // ─── Remover item ─────────────────────────────────────────────────────────
 
@@ -886,34 +672,6 @@ class FrequenciaServiceTest {
         f.setStatus("RASCUNHO");
         f.setCnpjIdTenant("12345678000199");
         return f;
-    }
-
-    private TomadorModalidade modalidadeMetaHora(UUID id, long valorCentavos, String metaHoras) {
-        TomadorModalidade m = new TomadorModalidade();
-        setId(m, id);
-        m.setTomadorId(tomadorId);
-        m.setNome("Diaria 40h");
-        m.setTipo("META");
-        m.setUnidadeCalculo("HORA");
-        m.setMetaHoras(new BigDecimal(metaHoras));
-        m.setValorCentavos(valorCentavos);
-        m.setDeslocamentoCentavos(0L);
-        m.setAtivo(true);
-        return m;
-    }
-
-    private TomadorModalidade modalidadeMetaDia(UUID id, long valorCentavos, int metaDias) {
-        TomadorModalidade m = new TomadorModalidade();
-        setId(m, id);
-        m.setTomadorId(tomadorId);
-        m.setNome("Evolucionista");
-        m.setTipo("META");
-        m.setUnidadeCalculo("DIA");
-        m.setMetaDias(metaDias);
-        m.setValorCentavos(valorCentavos);
-        m.setDeslocamentoCentavos(0L);
-        m.setAtivo(true);
-        return m;
     }
 
     private FrequenciaItem itemFixture(UUID freqId, UUID modalidadeId, BigDecimal horasTrabalhadas, long valorUnitarioCentavos) {

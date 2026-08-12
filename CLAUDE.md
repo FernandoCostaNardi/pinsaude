@@ -5252,6 +5252,66 @@ empilhamento inteira naquele ponto (o `<TH>` deve ser sempre o primeiro/mais no 
 
 ---
 
+## Simplificação de Tipos de Modalidade → Plantonista/Diarista (PINSAUDE-13.22)
+
+Primeira de 4 tasks (13.22-13.25) que colapsam os 3 tipos de modalidade (PLANTAO/MENSAL/META)
+em apenas 2 (PLANTONISTA/DIARISTA), unificando o vocabulário com o `tipo_medico` que já existia
+em `frequencias_medicas`. Esta task cobre só a migration + entity/DTO + `TomadorService`; o motor
+de cálculo do Diarista (valor mensal único, progresso semanal, coupling com a frequência) é
+13.23.
+
+### ⚠️ `docker exec` sem `-i` engole um heredoc silenciosamente — sem erro, sem efeito
+Ao tentar rodar um bloco de SQL multi-statement via `docker exec pinsaude-postgres psql -U ... <<'EOF' ... EOF`,
+o comando retornou sem nenhum erro e sem nenhuma mudança no banco — `docker exec` **precisa da
+flag `-i`** para anexar o stdin do host ao processo dentro do container; sem ela, o heredoc nunca
+chega ao `psql`, que simplesmente recebe EOF imediato e sai limpo (exit 0, sem output). Isso é
+perigosamente silencioso — pareceu que o comando "não fez nada" em vez de sinalizar erro. Sempre
+usar `docker exec -i ...` ao piping de heredoc/stdin para dentro de um container.
+
+### Renomear/remover campo de entidade compartilhado entre 2 tasks "sequenciais" força um touch mínimo na task de trás
+O plano original previa `TomadorModalidade.metaHoras`→`horasSemanais` (+ remover `unidadeCalculo`/
+`metaDias`) só na 13.22, deixando o motor de cálculo (`FrequenciaService.calcularValorItem`) e o
+progresso por bloco (`FrequenciaMedicaResponse.calcularProgressoMetas`) pra 13.23. Na prática,
+como Java é estaticamente tipado, renomear/remover esses getters na entidade quebra a compilação
+de QUALQUER arquivo que os referencie, mesmo que a lógica de negócio desses arquivos esteja fora
+do escopo desta task. Resolvido com um **stub mínimo, sem implementar lógica nova**: `calcularValorItem`
+virou `return modalidade.getValorCentavos();` incondicional (equivalente ao comportamento antigo
+de PLANTAO/MENSAL — a proporcionalidade do extinto META fica pra 13.23 reimplementar do zero pro
+Diarista) e `calcularProgressoMetas` virou `return List.of();`. Lição geral: ao quebrar uma
+mudança de modelo de dados em tasks sequenciais, o campo/entidade só pode ser fisicamente
+renomeado/removido na PRIMEIRA task se todo consumidor for tocado com um stub de compilação — não
+dá pra "reservar" a remoção pra uma task futura sem quebrar o build imediatamente.
+
+### `ADD CONSTRAINT ... CHECK (...) NOT VALID` — o padrão certo pra "regra nova só vale daqui pra frente"
+Requisito de negócio: turno passa a ser obrigatório pra Plantonista, mas sem forçar retroativamente
+as modalidades já cadastradas sem turno (1 registro real no ambiente). Um `CHECK` normal do Postgres
+**valida todas as linhas existentes no momento em que é criado** — tentaria falhar a própria
+migration por causa do registro legado. A saída limpa e nativa do Postgres é criar o constraint com
+`NOT VALID`: não revalida as linhas já existentes na hora de criar, mas passa a ser aplicado
+normalmente em todo INSERT/UPDATE daí em diante — inclusive se alguém editar a linha legada sem
+corrigir o campo, a edição falha (confirmado manualmente via `PUT` na modalidade sem turno). Esse é
+o primeiro uso de `NOT VALID` no projeto (V24-V27 sempre validavam o CHECK inteiro); vale reutilizar
+esse padrão sempre que uma regra nova não puder ser aplicada retroativamente aos dados existentes.
+
+### Backfill de `horas_semanais` pro extinto META/DIA é um placeholder, não um valor real
+Das 2 modalidades META reclassificadas para DIARISTA: a que era META/HORA (`meta_horas=30`) migrou
+naturalmente pra `horas_semanais=30` (o número já existia e fazia sentido como meta semanal). A que
+era META/DIA (`meta_dias=3`, sem nenhuma métrica de horas registrada) **não tem conversão direta
+possível** — a migration aplicou um valor placeholder (`20.00`) só pra satisfazer o novo `NOT NULL`
+funcional. Esse valor precisa ser revisado/corrigido pela operação junto ao tomador real antes de
+qualquer novo lançamento nessa modalidade específica — não é um dado confiável herdado do cadastro
+anterior, é só o mínimo pra não deixar a linha inconsistente.
+
+### Testando validação de regra de negócio sem reiniciar o serviço primeiro = testar código antigo
+Confirmado de novo (mesma armadilha já documentada em EPIC-13.17/13.19.3): o processo Java do
+faturamento em execução local tinha sido iniciado ANTES desta sessão de edição — os primeiros
+testes manuais teriam validado o código desatualizado se o processo não tivesse sido identificado
+e reiniciado (`Get-CimInstance Win32_Process -Filter "Name='java.exe'"` filtrando por
+`CommandLine -like "*faturamento*"`, depois `Stop-Process` + `mvn spring-boot:run` em background)
+antes de rodar qualquer `curl` de verificação.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

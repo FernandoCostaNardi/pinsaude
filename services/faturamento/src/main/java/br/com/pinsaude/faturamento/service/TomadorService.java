@@ -423,61 +423,42 @@ public class TomadorService {
         return TomadorModalidadeResponse.from(modalidadeRepo.save(m));
     }
 
-    // Modalidade PLANTAO exige só horas (turno e horário são opcionais — ex: "Diária 15h" pode
-    // não ter turno nem horário definidos, só a quantidade de horas); MENSAL (valor fixo, ex:
-    // "Coordenação de UTI") ignora turno/horário/horas; META (pagamento proporcional por hora/dia,
-    // ex: "Diária 40h"/"Evolucionista") ver aplicarCamposMeta. Campos que não pertencem ao tipo
-    // são sempre zerados para manter a tabela consistente com o CHECK do banco.
+    // Modalidade PLANTONISTA exige turno + horário + horas (todos obrigatórios — o preenchimento
+    // rápido por tomador, EPIC-13.20, existe justamente para agilizar o preenchimento dos 3
+    // juntos). DIARISTA exige horas semanais e ignora turno/horário/horas (paga um valor mensal
+    // fixo — o motor de cálculo em si é implementado em PINSAUDE-13.23). Campos que não
+    // pertencem ao tipo são sempre zerados para manter a tabela consistente com o CHECK do banco.
     private void aplicarCamposPorTipo(TomadorModalidade m, TomadorModalidadeRequest req) {
-        if ("META".equals(req.tipo())) {
-            aplicarCamposMeta(m, req);
-            return;
-        }
-        // PLANTAO / MENSAL: campos de META sempre vazios
-        m.setUnidadeCalculo(null);
-        m.setMetaHoras(null);
-        m.setMetaDias(null);
-        if ("MENSAL".equals(req.tipo())) {
-            m.setTipo("MENSAL");
+        if ("DIARISTA".equals(req.tipo())) {
+            if (req.horasSemanais() == null) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Horas semanais são obrigatórias para modalidade do tipo Diarista");
+            }
+            m.setTipo("DIARISTA");
             m.setTurno(null);
             m.setHorario(null);
             m.setHoras(null);
+            m.setHorasSemanais(req.horasSemanais());
             return;
+        }
+        // PLANTONISTA
+        if (req.turno() == null || req.turno().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Turno é obrigatório para modalidade do tipo Plantonista");
+        }
+        if (req.horario() == null || req.horario().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Horário é obrigatório para modalidade do tipo Plantonista");
         }
         if (req.horas() == null) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Horas são obrigatórias para modalidade do tipo Plantão");
+                "Horas são obrigatórias para modalidade do tipo Plantonista");
         }
-        m.setTipo("PLANTAO");
-        m.setTurno(req.turno() != null && !req.turno().isBlank() ? req.turno() : null);
-        m.setHorario(req.horario() != null && !req.horario().isBlank() ? req.horario() : null);
+        m.setTipo("PLANTONISTA");
+        m.setTurno(req.turno());
+        m.setHorario(req.horario());
         m.setHoras(req.horas());
-    }
-
-    // META: valor pago é proporcional à unidade escolhida (HORA ou DIA). valor_centavos = valor de
-    // um bloco completo da meta (ex: R$ 4.000 = valor de 40h). Exige unidade_calculo e a meta da
-    // unidade; a outra meta é opcional (validação secundária). turno/horário/horas não se aplicam.
-    private void aplicarCamposMeta(TomadorModalidade m, TomadorModalidadeRequest req) {
-        String unidade = req.unidadeCalculo();
-        if (unidade == null || unidade.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Unidade de cálculo (HORA ou DIA) é obrigatória para modalidade do tipo Meta");
-        }
-        if ("HORA".equals(unidade) && req.metaHoras() == null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Meta de horas é obrigatória para modalidade Meta por hora");
-        }
-        if ("DIA".equals(unidade) && req.metaDias() == null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Meta de dias é obrigatória para modalidade Meta por dia");
-        }
-        m.setTipo("META");
-        m.setTurno(null);
-        m.setHorario(null);
-        m.setHoras(null);
-        m.setUnidadeCalculo(unidade);
-        m.setMetaHoras(req.metaHoras());
-        m.setMetaDias(req.metaDias());
+        m.setHorasSemanais(null);
     }
 
     @Transactional
