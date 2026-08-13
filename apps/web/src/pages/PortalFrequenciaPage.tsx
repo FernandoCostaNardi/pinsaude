@@ -762,7 +762,7 @@ function FrequenciaItensPanel({
       {/* Toolbar — flex-wrap para caber no mobile */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 bg-white border-b border-ds-border">
         <p className="text-xs font-bold text-ds-mid">
-          {freq.itens.length} plantão{freq.itens.length !== 1 ? 'ões' : ''} lançado{freq.itens.length !== 1 ? 's' : ''}
+          {freq.itens.length} {freq.itens.length !== 1 ? 'plantões' : 'plantão'} lançado{freq.itens.length !== 1 ? 's' : ''}
         </p>
         <div className="flex items-center gap-2 ml-auto">
           {/* PINSAUDE-13.26: modalidade/ocorrência não são editáveis depois de criada a
@@ -805,7 +805,7 @@ function FrequenciaItensPanel({
                 <p className="text-sm font-bold text-ds-text">Excluir esta frequência?</p>
                 <p className="mt-1 text-xs text-ds-light">
                   {freq.itens.length > 0
-                    ? `${freq.itens.length !== 1 ? 'Os' : 'O'} ${freq.itens.length} plantão${freq.itens.length !== 1 ? 'ões lançados serão apagados' : ' lançado será apagado'} junto. Esta ação não pode ser desfeita.`
+                    ? `${freq.itens.length !== 1 ? 'Os' : 'O'} ${freq.itens.length} ${freq.itens.length !== 1 ? 'plantões lançados serão apagados' : 'plantão lançado será apagado'} junto. Esta ação não pode ser desfeita.`
                     : 'Esta ação não pode ser desfeita.'}
                 </p>
               </div>
@@ -1072,7 +1072,7 @@ function FrequenciaCard({
           </div>
         </div>
         <div className="text-right shrink-0 ml-1">
-          <p className="text-sm font-bold text-ds-text tabular-nums">{freq.itens.length} plantão{freq.itens.length !== 1 ? 'ões' : ''}</p>
+          <p className="text-sm font-bold text-ds-text tabular-nums">{freq.itens.length} {freq.itens.length !== 1 ? 'plantões' : 'plantão'}</p>
         </div>
         <ChevronRight size={16} className={`shrink-0 text-ds-light transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>

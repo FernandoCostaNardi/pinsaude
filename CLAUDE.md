@@ -5973,6 +5973,17 @@ com 02/08→03/08/2025 (3 itens, continuando a ordem decrescente), botão "Próx
 fim, "Anterior" desabilitado no início. Frequência com 1 único plantão (Maio/2026) confirmada sem
 nenhum controle de paginação exibido (`totalItemPages > 1` corretamente `false`).
 
+### Bug de pluralização introduzido pela concatenação `plantão{cond ? 'ões' : ''}`
+`"plantão" + "ões"` concatenado produz `"plantãoões"` (o `ão` do singular não é removido antes de
+acrescentar o sufixo do plural) — só aparece com 0 ou 2+ plantões, por isso passou despercebido em
+sessões anteriores até o cliente notar. Corrigido nos 3 pontos do Portal que tinham esse padrão
+(toolbar do painel expandido, mensagem de confirmação de exclusão, contador no card da lista)
+trocando a concatenação de sufixo por uma ternária da palavra inteira:
+`{freq.itens.length !== 1 ? 'plantões' : 'plantão'}`. O mesmo padrão quebrado existe também em
+`FrequenciasPage.tsx` (linha do contador no card, visão do gestor) — não corrigido nesta task por
+não ter sido pedido e por manter a restrição de escopo já estabelecida nesta sessão (só mexer no
+Portal) — sinalizado aqui para quem for corrigir.
+
 ---
 
 ## Convenções de Commit e Branch
