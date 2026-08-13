@@ -45,6 +45,7 @@ class FechamentoServiceTest {
     @Mock ServicoRepository servicoRepo;
     @Mock ProducaoRepository producaoRepo;
     @Mock ParticipacaoRepository participacaoRepo;
+    @Mock TomadorOcorrenciaRepository ocorrenciaRepo;
 
     @InjectMocks FechamentoService service;
 
@@ -116,6 +117,9 @@ class FechamentoServiceTest {
         });
         when(participacaoRepo.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
         when(frequenciaRepo.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+        // PINSAUDE-13.26 (ajuste pós-implantação): batch load de ocorrências fixas por
+        // frequência — vazio por padrão, testes específicos de ocorrência única sobrescrevem.
+        when(ocorrenciaRepo.findAllById(any())).thenReturn(List.of());
     }
 
     // ─── interpolarDescricao ─────────────────────────────────────────────────
@@ -373,6 +377,82 @@ class FechamentoServiceTest {
         assertThat(resp.producoes()).isEmpty();
         assertThat(resp.totalCentavos()).isZero();
         verify(producaoRepo, never()).save(any());
+    }
+
+    // ─── Ocorrência fixa na frequência — valor único (PINSAUDE-13.26 ajuste pós-implantação) ──
+
+    @Test
+    void preview_ocorrenciaFixaComMultiplosItens_somaValorUmaUnicaVezSobreModalidade() {
+        UUID modalidadeIdLocal = UUID.randomUUID();
+        TomadorModalidade modalidade = new TomadorModalidade();
+        setId(modalidade, modalidadeIdLocal);
+        modalidade.setTomadorId(tomadorId);
+        modalidade.setTipo("PLANTONISTA");
+        modalidade.setValorCentavos(150_000L);
+        modalidade.setDeslocamentoCentavos(0L);
+
+        UUID ocorrenciaIdLocal = UUID.randomUUID();
+        TomadorOcorrencia ocorrencia = new TomadorOcorrencia();
+        setId(ocorrencia, ocorrenciaIdLocal);
+        ocorrencia.setTomadorId(tomadorId);
+        ocorrencia.setNome("Bonificação");
+        ocorrencia.setTipoValor("FIXO");
+        ocorrencia.setValorCentavos(20_000L);
+
+        FrequenciaMedica freq = frequenciaFixture(medico1Id, setorId, COMPETENCIA, "RASCUNHO");
+        freq.setModalidadeId(modalidadeIdLocal);
+        freq.setOcorrenciaId(ocorrenciaIdLocal);
+
+        // 4 plantões lançados — sem ocorrência por item (resolvida null desde adicionarItem)
+        List<FrequenciaItem> itens = new ArrayList<>();
+        for (int dia = 1; dia <= 4; dia++) {
+            FrequenciaItem item = itemFixtureComModalidade(freq.getId(), modalidadeIdLocal, 150_000L, 0L);
+            item.setDataExecucao(LocalDate.of(2026, 7, dia));
+            itens.add(item);
+        }
+
+        when(frequenciaRepo.findByTomadorIdAndCompetencia(tomadorId, COMPETENCIA))
+            .thenReturn(List.of(freq));
+        when(itemRepo.findByFrequenciaIdIn(List.of(freq.getId()))).thenReturn(itens);
+        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(modalidade));
+        when(ocorrenciaRepo.findAllById(any())).thenReturn(List.of(ocorrencia));
+
+        FechamentoPreviewResponse resp = service.preview(tomadorId, COMPETENCIA);
+
+        // 4 × R$1.500 (valor da modalidade) + R$200 da ocorrência UMA ÚNICA VEZ (não 4×)
+        assertThat(resp.totalCentavos()).isEqualTo(4 * 150_000L + 20_000L);
+        assertThat(resp.grupos().get(0).totalCentavos()).isEqualTo(4 * 150_000L + 20_000L);
+    }
+
+    @Test
+    void preview_ocorrenciaFixaSemNenhumItemLancado_naoEntraNaAgregacao() {
+        UUID modalidadeIdLocal = UUID.randomUUID();
+        TomadorModalidade modalidade = new TomadorModalidade();
+        setId(modalidade, modalidadeIdLocal);
+        modalidade.setTomadorId(tomadorId);
+        modalidade.setTipo("PLANTONISTA");
+        modalidade.setValorCentavos(150_000L);
+
+        UUID ocorrenciaIdLocal = UUID.randomUUID();
+        TomadorOcorrencia ocorrencia = new TomadorOcorrencia();
+        setId(ocorrencia, ocorrenciaIdLocal);
+        ocorrencia.setTomadorId(tomadorId);
+        ocorrencia.setTipoValor("FIXO");
+        ocorrencia.setValorCentavos(20_000L);
+
+        FrequenciaMedica freq = frequenciaFixture(medico1Id, setorId, COMPETENCIA, "RASCUNHO");
+        freq.setModalidadeId(modalidadeIdLocal);
+        freq.setOcorrenciaId(ocorrenciaIdLocal);
+
+        when(frequenciaRepo.findByTomadorIdAndCompetencia(tomadorId, COMPETENCIA))
+            .thenReturn(List.of(freq));
+        when(itemRepo.findByFrequenciaIdIn(List.of(freq.getId()))).thenReturn(List.of());
+        when(ocorrenciaRepo.findAllById(any())).thenReturn(List.of(ocorrencia));
+
+        FechamentoPreviewResponse resp = service.preview(tomadorId, COMPETENCIA);
+
+        assertThat(resp.grupos()).isEmpty();
+        assertThat(resp.totalCentavos()).isZero();
     }
 
     // ─── Agregação da modalidade Diarista — valor mensal único (PINSAUDE-13.23) ─

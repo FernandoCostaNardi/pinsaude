@@ -201,12 +201,15 @@ public class FrequenciaService {
         }
 
         UUID modalidadeId = resolverModalidadeIdParaItem(f, req.modalidadeId());
-        UUID ocorrenciaId = f.getModalidadeId() != null ? f.getOcorrenciaId() : req.ocorrenciaId();
         TomadorModalidade modalidade = modalidadeRepo.findById(modalidadeId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Modalidade não encontrada: " + modalidadeId));
         validarCouplingTipoEscala(f, modalidade);
-        TomadorOcorrencia ocorrencia = resolverOcorrencia(ocorrenciaId);
+        // PINSAUDE-13.26 (ajuste): quando a frequência tem modalidade fixa, a ocorrência também é
+        // fixa e seu valor é aplicado UMA ÚNICA VEZ sobre o valor da modalidade — não mais por
+        // item (ver FrequenciaMedicaResponse.calcularValorOcorrenciaUnico). Só frequências
+        // legadas (sem modalidade fixa) continuam com ocorrência escolhida por lançamento.
+        TomadorOcorrencia ocorrencia = f.getModalidadeId() == null ? resolverOcorrencia(req.ocorrenciaId()) : null;
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
         boolean diarista = "DIARISTA".equals(modalidade.getTipo());
@@ -216,7 +219,7 @@ public class FrequenciaService {
         item.setModalidadeId(modalidadeId);
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
-        item.setOcorrenciaId(ocorrenciaId);
+        item.setOcorrenciaId(ocorrencia != null ? ocorrencia.getId() : null);
         item.setHorasTrabalhadas(horasTrabalhadas);
         item.setHoraInicio(diarista ? req.horaInicio() : null);
         item.setHoraFim(diarista ? req.horaFim() : null);
@@ -243,12 +246,13 @@ public class FrequenciaService {
                 "Item não encontrado: " + itemId));
 
         UUID modalidadeId = resolverModalidadeIdParaItem(f, req.modalidadeId());
-        UUID ocorrenciaId = f.getModalidadeId() != null ? f.getOcorrenciaId() : req.ocorrenciaId();
         TomadorModalidade modalidade = modalidadeRepo.findById(modalidadeId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Modalidade não encontrada: " + modalidadeId));
         validarCouplingTipoEscala(f, modalidade);
-        TomadorOcorrencia ocorrencia = resolverOcorrencia(ocorrenciaId);
+        // PINSAUDE-13.26 (ajuste): ver comentário equivalente em adicionarItem — ocorrência fixa
+        // não é mais resolvida/valorada por item.
+        TomadorOcorrencia ocorrencia = f.getModalidadeId() == null ? resolverOcorrencia(req.ocorrenciaId()) : null;
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
         boolean diarista = "DIARISTA".equals(modalidade.getTipo());
@@ -256,7 +260,7 @@ public class FrequenciaService {
         item.setModalidadeId(modalidadeId);
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
-        item.setOcorrenciaId(ocorrenciaId);
+        item.setOcorrenciaId(ocorrencia != null ? ocorrencia.getId() : null);
         item.setHorasTrabalhadas(horasTrabalhadas);
         item.setHoraInicio(diarista ? req.horaInicio() : null);
         item.setHoraFim(diarista ? req.horaFim() : null);

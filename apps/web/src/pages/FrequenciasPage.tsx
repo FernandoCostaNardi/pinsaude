@@ -510,7 +510,7 @@ function NovaFrequenciaModal({
 // ─── Panel de adicionar / editar plantão ──────────────────────────────────────
 
 function PlantaoFormPanel({
-  tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, item, onSave, onCancel,
+  tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, ocorrenciaFixaValorCentavos, item, onSave, onCancel,
 }: {
   tomadorId: string
   tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null   // filtra a lista de modalidades (PINSAUDE-13.25)
@@ -519,6 +519,9 @@ function PlantaoFormPanel({
   // null = frequência legada sem modalidade fixa, mantém o seletor por lançamento de sempre.
   modalidadeFixa: TomadorModalidade | null
   ocorrenciaFixaNome: string | null
+  // Ajuste pós-implantação: valor aplicado UMA ÚNICA VEZ pela frequência, não por lançamento —
+  // só para exibição informativa aqui (o cálculo real acontece no backend, ver CLAUDE.md).
+  ocorrenciaFixaValorCentavos: number | null
   item?: FrequenciaItemResp          // se presente, modo edição
   onSave: (req: FrequenciaItemRequest) => Promise<void>
   onCancel: () => void
@@ -690,7 +693,8 @@ function PlantaoFormPanel({
       {modalidadeFixa ? (
         ocorrenciaFixaNome && (
           <p className="mb-3 text-xs text-ds-mid">
-            Ocorrência aplicada a todos os plantões desta frequência: <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
+            Ocorrência aplicada uma única vez nesta frequência (não por plantão): <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
+            {!!ocorrenciaFixaValorCentavos && <span className="text-green-600 font-bold"> +{formatBRL(ocorrenciaFixaValorCentavos)}</span>}
           </p>
         )
       ) : (
@@ -760,7 +764,7 @@ function criarLinhasVazias(qtd: number): PlantaoRow[] {
 }
 
 function PlantaoGridPanel({
-  freqId, tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, onSaved, onCancel,
+  freqId, tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, ocorrenciaFixaValorCentavos, onSaved, onCancel,
 }: {
   freqId: string
   tomadorId: string
@@ -769,6 +773,8 @@ function PlantaoGridPanel({
   // somem do grid inteiro — não faz mais sentido escolher por linha. null = frequência legada.
   modalidadeFixa: TomadorModalidade | null
   ocorrenciaFixaNome: string | null
+  // Ajuste pós-implantação: valor aplicado UMA ÚNICA VEZ pela frequência (exibição informativa).
+  ocorrenciaFixaValorCentavos: number | null
   onSaved: () => void | Promise<void>
   onCancel: () => void
 }) {
@@ -952,7 +958,9 @@ function PlantaoGridPanel({
         <div className="mb-3 px-3 py-2 rounded-lg bg-white border border-ds-border/60 text-xs text-ds-mid">
           Modalidade: <span className="font-semibold text-ds-text">{modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa)}</span>
           {ocorrenciaFixaNome && (
-            <> · Ocorrência: <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span></>
+            <> · Ocorrência (aplicada uma única vez, não por plantão): <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
+              {!!ocorrenciaFixaValorCentavos && <span className="text-green-600 font-bold"> +{formatBRL(ocorrenciaFixaValorCentavos)}</span>}
+            </>
           )}
         </div>
       )}
@@ -1132,6 +1140,8 @@ function PainelFrequencia({
     horasSemanais: freq.modalidadeHorasSemanais,
   } : null
   const ocorrenciaFixaNome = freq.ocorrenciaId ? freq.ocorrenciaNome : null
+  // Ajuste pós-implantação: valor aplicado uma única vez pela frequência (não por lançamento).
+  const ocorrenciaFixaValorCentavos = freq.ocorrenciaId ? freq.ocorrenciaValorCentavos : null
 
   async function handleExcluir() {
     setExcluindo(true); setExcluirErr(null)
@@ -1389,6 +1399,7 @@ function PainelFrequencia({
                 tipoMedico={freq.tipoMedico}
                 modalidadeFixa={modalidadeFixa}
                 ocorrenciaFixaNome={ocorrenciaFixaNome}
+                ocorrenciaFixaValorCentavos={ocorrenciaFixaValorCentavos}
                 onSaved={handleAddGrid}
                 onCancel={() => setAdicionando(false)}
               />
@@ -1399,6 +1410,7 @@ function PainelFrequencia({
                 tipoMedico={freq.tipoMedico}
                 modalidadeFixa={modalidadeFixa}
                 ocorrenciaFixaNome={ocorrenciaFixaNome}
+                ocorrenciaFixaValorCentavos={ocorrenciaFixaValorCentavos}
                 onSave={handleAdd}
                 onCancel={() => setAdicionando(false)}
               />
@@ -1414,6 +1426,7 @@ function PainelFrequencia({
               tipoMedico={freq.tipoMedico}
               modalidadeFixa={modalidadeFixa}
               ocorrenciaFixaNome={ocorrenciaFixaNome}
+              ocorrenciaFixaValorCentavos={ocorrenciaFixaValorCentavos}
               item={freq.itens.find(i => i.id === editandoId)}
               onSave={req => handleEdit(editandoId, req)}
               onCancel={() => setEditandoId(null)}
