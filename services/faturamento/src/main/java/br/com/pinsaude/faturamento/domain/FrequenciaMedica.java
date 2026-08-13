@@ -34,6 +34,16 @@ public class FrequenciaMedica {
     @Column(name = "tipo_medico", length = 20)
     private String tipoMedico;
 
+    // Escolhidas uma única vez na criação da frequência (PINSAUDE-13.26) — nullable pra dado
+    // legado (frequências criadas antes dessa mudança, algumas com modalidades variadas entre
+    // os itens já lançados). Quando não nulo, todo item lançado usa sempre este valor, ignorando
+    // qualquer modalidade/ocorrência vinda do request do item (ver FrequenciaService).
+    @Column(name = "modalidade_id")
+    private UUID modalidadeId;
+
+    @Column(name = "ocorrencia_id")
+    private UUID ocorrenciaId;
+
     @Column(name = "status", nullable = false, length = 30)
     private String status = "RASCUNHO";
 
@@ -72,6 +82,10 @@ public class FrequenciaMedica {
     public void setEspecialidade(String v)        { this.especialidade = v; }
     public String getTipoMedico()                  { return tipoMedico; }
     public void setTipoMedico(String v)           { this.tipoMedico = v; }
+    public UUID getModalidadeId()                  { return modalidadeId; }
+    public void setModalidadeId(UUID v)           { this.modalidadeId = v; }
+    public UUID getOcorrenciaId()                  { return ocorrenciaId; }
+    public void setOcorrenciaId(UUID v)           { this.ocorrenciaId = v; }
     public String getStatus()                      { return status; }
     public void setStatus(String v)               { this.status = v; }
     public String getDocumentoAssinadoKey()        { return documentoAssinadoKey; }
