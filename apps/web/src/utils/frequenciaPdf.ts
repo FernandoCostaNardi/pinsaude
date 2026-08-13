@@ -202,7 +202,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
       padding: 3px 6px !important;
       font-size: 8pt;
       font-style: italic;
-      color: #c25a00;
+      color: #000;
       white-space: nowrap;
       text-align: right;
     }
@@ -210,15 +210,16 @@ function buildHtml(p: FrequenciaPdfParams): string {
       padding: 3px 8px !important;
       font-size: 9pt;
       font-weight: bold;
+      color: #000;
     }
-    .field-value-empresa { color: #c25a00; }
-    .field-value-medico  { color: #0047ab; }
+    .field-value-empresa { color: #000; }
+    .field-value-medico  { color: #000; }
     .field-value-normal  { color: #000; }
     .field-value-center  { text-align: center; color: #000; }
 
-    /* Célula do setor na linha Especialidade Médica */
+    /* Célula do setor na linha Tipo de Escala — sem borda separando de field-value-cell
+       (evita a "barra" visual entre Tipo de Escala e Setor) */
     .field-setor-cell {
-      border-left: 1px solid #000 !important;
       padding: 3px 8px !important;
       font-size: 9pt;
       font-weight: bold;
@@ -250,7 +251,6 @@ function buildHtml(p: FrequenciaPdfParams): string {
       vertical-align: middle;
     }
     table.plantoes tbody tr:nth-child(even) { background: #fafafa; }
-    /* DATA+TURNO+HORÁRIO somam ≈33% da largura total — alinha com as 3 colunas de assinatura */
     .col-data    { width: 55px; }
     .col-turno   { width: 70px; }
     .col-horario { width: 105px; }
@@ -296,7 +296,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
     .footer {
       margin-top: 14px;
       font-size: 7pt;
-      color: #888;
+      color: #000;
       text-align: center;
       border-top: 1px solid #ccc;
       padding-top: 4px;
@@ -387,7 +387,8 @@ function buildHtml(p: FrequenciaPdfParams): string {
     </tbody>
   </table>
 
-  <!-- Assinaturas — colgroup replica as colunas da tabela de plantões para alinhar divisores -->
+  <!-- Assinaturas — colgroup replica as colunas da tabela de plantões para alinhar divisores.
+       Prestador = Data+Turno (2 col) · Direção Médica = Horário+Rubrica (2 col) · Diretor Adm. = Ocorrência (1 col) -->
   <table class="sig-table">
     <colgroup>
       <col class="col-data">
@@ -397,13 +398,13 @@ function buildHtml(p: FrequenciaPdfParams): string {
       <col>
     </colgroup>
     <tr class="sig-space-row">
-      <td colspan="3"><div class="sig-line-inner"></div></td>
-      <td><div class="sig-line-inner"></div></td>
+      <td colspan="2"><div class="sig-line-inner"></div></td>
+      <td colspan="2"><div class="sig-line-inner"></div></td>
       <td><div class="sig-line-inner"></div></td>
     </tr>
     <tr class="sig-label-row">
-      <td colspan="3">Assinatura do Prestador(a)</td>
-      <td>Assinatura da Direção Médica</td>
+      <td colspan="2">Assinatura do Prestador(a)</td>
+      <td colspan="2">Assinatura da Direção Médica</td>
       <td>Assinatura do Diretor Administrativo Financeiro da unidade</td>
     </tr>
   </table>
