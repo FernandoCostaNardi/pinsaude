@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronRight,
@@ -1061,6 +1061,8 @@ export function PortalFrequenciaPage() {
   const [filtroComp,   setFiltroComp]   = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
   const [sucesso,      setSucesso]      = useState(false)
+  const [page,         setPage]         = useState(0)
+  const PAGE_SIZE = 5
 
   const carregar = useCallback(async (medicoId: string) => {
     const data = await frequenciasApi.listar({ medicoId })
@@ -1095,6 +1097,7 @@ export function PortalFrequenciaPage() {
     setFrequencias(prev => [f, ...prev])
     setShowNova(false)
     setSucesso(true)
+    setPage(0) // volta pra primeira página pra garantir que a nova frequência fique visível
     setTimeout(() => setSucesso(false), 4000)
   }
 
@@ -1108,11 +1111,24 @@ export function PortalFrequenciaPage() {
     setFrequencias(prev => prev.filter(f => f.id !== id))
   }
 
-  const filtradas = frequencias.filter(f => {
-    const compOk   = !filtroComp   || f.competencia === filtroComp
-    const statusOk = !filtroStatus || f.status === filtroStatus
-    return compOk && statusOk
-  })
+  // PINSAUDE-13.26 (refinamento): ordenado da competência mais atual para a mais antiga
+  // (competencia no formato YYYY-MM já é comparável lexicograficamente) — createdAt desc como
+  // desempate para frequências da mesma competência.
+  const filtradas = useMemo(() => {
+    return frequencias
+      .filter(f => {
+        const compOk   = !filtroComp   || f.competencia === filtroComp
+        const statusOk = !filtroStatus || f.status === filtroStatus
+        return compOk && statusOk
+      })
+      .sort((a, b) => b.competencia.localeCompare(a.competencia) || b.createdAt.localeCompare(a.createdAt))
+  }, [frequencias, filtroComp, filtroStatus])
+
+  // Paginação — 5 frequências por página
+  useEffect(() => { setPage(0) }, [filtroComp, filtroStatus])
+  const totalPages = Math.max(1, Math.ceil(filtradas.length / PAGE_SIZE))
+  const pageAtual  = Math.min(page, totalPages - 1)
+  const paginadas  = filtradas.slice(pageAtual * PAGE_SIZE, (pageAtual + 1) * PAGE_SIZE)
 
   const tomadoresSorted = [...tomadores].sort((a, b) => a.razaoSocialNome.localeCompare(b.razaoSocialNome))
   const tomadoresAlocadosSorted = [...tomadoresAlocados].sort((a, b) => a.razaoSocialNome.localeCompare(b.razaoSocialNome))
@@ -1187,7 +1203,7 @@ export function PortalFrequenciaPage() {
         </div>
       </div>
 
-      {/* Lista */}
+      {/* Lista — paginada em 5, mais atual para mais antiga */}
       {filtradas.length === 0 ? (
         <div className="flex flex-col items-center py-16 text-ds-light">
           <CalendarDays size={40} className="mb-3 opacity-20" />
@@ -1197,11 +1213,32 @@ export function PortalFrequenciaPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
-          {filtradas.map(f => (
-            <FrequenciaCard key={f.id} freq={f} tomadores={tomadoresSorted} perfil={perfil!} onAtualizar={handleAtualizar} onExcluida={handleExcluida} />
-          ))}
-        </div>
+        <>
+          <div className="space-y-3">
+            {paginadas.map(f => (
+              <FrequenciaCard key={f.id} freq={f} tomadores={tomadoresSorted} perfil={perfil!} onAtualizar={handleAtualizar} onExcluida={handleExcluida} />
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-1 pt-1 text-xs text-ds-light">
+              <span>
+                Página <strong className="text-ds-mid">{pageAtual + 1}</strong> de{' '}
+                <strong className="text-ds-mid">{totalPages}</strong>
+              </span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setPage(p => p - 1)} disabled={pageAtual === 0}
+                  className="px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs font-semibold hover:bg-ds-input transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[40px]">
+                  Anterior
+                </button>
+                <button onClick={() => setPage(p => p + 1)} disabled={pageAtual >= totalPages - 1}
+                  className="px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs font-semibold hover:bg-ds-input transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[40px]">
+                  Próximo
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Modal nova frequência */}
