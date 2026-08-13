@@ -5773,6 +5773,16 @@ script inline do PDF (`window.onload → setTimeout(print, 300)`) já está no H
 sobrescrever `iframe.contentWindow.print = function(){}` logo depois do `write()`/`close()` (antes
 dos 300ms) evita que a auto-impressão dispare dentro do iframe.
 
+### Refinamento pós-ajuste visual: coluna Turno mais larga + rodapé do sistema removido
+Dois pedidos de acompanhamento no mesmo dia: (1) `.col-turno` de `70px` para `95px` — como
+`table.plantoes`/`sig-table` usam `table-layout: fixed` com as mesmas classes de `<col>` via
+`colgroup`, um único ajuste de CSS já propaga a largura pras duas tabelas (plantões e assinaturas)
+sem tocar em nenhum HTML. (2) Removido o `<div class="footer">` ("Gerado pelo Sistema Pin Saúde ·
+...") — o cliente não queria nenhuma marca do sistema no rodapé do formulário oficial. Junto com o
+`<div>`, removidos os agora-mortos: `.footer` (CSS), `gerarDataHoraAtual()`, `competenciaPorExtenso()`
+e a variável `competenciaExt` (única consumidora dessa função) — `MESES_EXT` continua em uso pelo
+campo "Competência" do cabeçalho, não foi removida.
+
 ---
 
 ## Convenções de Commit e Branch

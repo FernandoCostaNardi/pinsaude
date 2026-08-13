@@ -22,11 +22,6 @@ const DIAS_SEMANA = [
   'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO',
 ]
 
-function competenciaPorExtenso(competencia: string): string {
-  const [ano, mes] = competencia.split('-')
-  return `${MESES_EXT[parseInt(mes, 10) - 1]} DE ${ano}`
-}
-
 function formatDataCurta(iso: string): string {
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y.slice(2)}`
@@ -38,13 +33,6 @@ function formatCnpj(cnpj: string): string {
     return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
   }
   return cnpj
-}
-
-function gerarDataHoraAtual(): string {
-  return new Date().toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
 }
 
 // PINSAUDE-13.25: modalidade Diarista não tem turno/horário cadastrados (paga valor mensal
@@ -80,7 +68,6 @@ function gerarOcorrencia(item: FrequenciaItemResp): string {
 
 function buildHtml(p: FrequenciaPdfParams): string {
   const { freq, medicoNome, medicoCrm, medicoCrmUf, tomadorNome, empresaNome, empresaCnpj } = p
-  const competenciaExt = competenciaPorExtenso(freq.competencia)
   const cnpjFormatado  = formatCnpj(empresaCnpj)
   const logoUrl        = `${window.location.origin}/logo-formulario.png`
 
@@ -252,7 +239,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
     }
     table.plantoes tbody tr:nth-child(even) { background: #fafafa; }
     .col-data    { width: 55px; }
-    .col-turno   { width: 70px; }
+    .col-turno   { width: 95px; }
     .col-horario { width: 105px; }
     /* RUBRICA e OCORRÊNCIA dividem igualmente o restante (~33% cada) — sem largura fixa */
 
@@ -290,16 +277,6 @@ function buildHtml(p: FrequenciaPdfParams): string {
       line-height: 1.3;
       word-wrap: break-word;
       overflow-wrap: break-word;
-    }
-
-    /* === Rodapé === */
-    .footer {
-      margin-top: 14px;
-      font-size: 7pt;
-      color: #000;
-      text-align: center;
-      border-top: 1px solid #ccc;
-      padding-top: 4px;
     }
 
     @media print {
@@ -408,12 +385,6 @@ function buildHtml(p: FrequenciaPdfParams): string {
       <td>Assinatura do Diretor Administrativo Financeiro da unidade</td>
     </tr>
   </table>
-
-  <!-- Rodapé -->
-  <div class="footer">
-    Gerado pelo Sistema Pin Saúde · ${gerarDataHoraAtual()} ·
-    Competência: ${competenciaExt} · ${freq.itens.length} plantão(ões)
-  </div>
 
 </div>
 <script>
