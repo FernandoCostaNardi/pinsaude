@@ -61,6 +61,29 @@ function precisaHorasTrabalhadas(m: TomadorModalidade | null): boolean {
   return m?.tipo === 'DIARISTA'
 }
 
+// Pedido do cliente: o lançamento individual dentro de uma frequência é chamado de "plantão"
+// para Tipo de Escala Plantonista, mas de "frequência" para Diarista — vocabulário mais próximo
+// do dia a dia de cada tipo de médico. `tipoMedico === null` (frequência legada, sem Tipo de
+// Escala definido) mantém o rótulo antigo ("plantão"). Réplica de PortalFrequenciaPage.tsx.
+function itemLabel(tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null, count: number): string {
+  const singular = tipoMedico === 'DIARISTA' ? 'frequência' : 'plantão'
+  const plural = tipoMedico === 'DIARISTA' ? 'frequências' : 'plantões'
+  return count === 1 ? singular : plural
+}
+
+// "plantão" é masculino, "frequência" é feminino — qualquer adjetivo/particípio que acompanhe
+// o rótulo (lançado/apagado etc.) precisa concordar em gênero e número.
+function itemAgree(tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null, count: number, stem: string): string {
+  const fem = tipoMedico === 'DIARISTA'
+  return stem + (fem ? (count === 1 ? 'a' : 'as') : (count === 1 ? 'o' : 'os'))
+}
+
+function itemArtigo(tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null, count: number): string {
+  const fem = tipoMedico === 'DIARISTA'
+  if (count === 1) return fem ? 'A' : 'O'
+  return fem ? 'As' : 'Os'
+}
+
 // Espelha FrequenciaService.calcularValorOcorrencia (backend) só para preview — o % sempre
 // incide sobre o valor CADASTRADO da modalidade (m.valorCentavos), nunca sobre o valor
 // proporcional já calculado do item (META). SEM_VALOR ou nenhuma ocorrência selecionada = 0.
@@ -475,7 +498,9 @@ function NovaFrequenciaModal({
               disabled={!tomador || modalidades.length === 0}
             />
             <p className="mt-1 text-[11px] text-ds-light">
-              Todo plantão lançado nesta frequência usará esta modalidade — não será mais necessário escolher a cada lançamento.
+              {tipoMedico === 'DIARISTA'
+                ? 'Toda frequência lançada aqui usará esta modalidade — não será mais necessário escolher a cada lançamento.'
+                : 'Todo plantão lançado nesta frequência usará esta modalidade — não será mais necessário escolher a cada lançamento.'}
             </p>
           </div>
 
@@ -610,7 +635,9 @@ function PlantaoFormPanel({
       <div className="flex items-center justify-between mb-3">
         <p className={`text-xs font-bold flex items-center gap-1.5 ${isEdit ? 'text-yellow-700' : 'text-primary'}`}>
           {isEdit ? <Pencil size={12} /> : <Plus size={12} />}
-          {isEdit ? 'Editar Plantão' : 'Novo Plantão'}
+          {isEdit
+            ? (tipoMedico === 'DIARISTA' ? 'Editar Frequência' : 'Editar Plantão')
+            : (tipoMedico === 'DIARISTA' ? 'Nova Frequência' : 'Novo Plantão')}
         </p>
         <button type="button" onClick={onCancel}
           className="p-1 rounded-lg text-ds-light hover:bg-white/70 transition-colors">
@@ -693,7 +720,7 @@ function PlantaoFormPanel({
       {modalidadeFixa ? (
         ocorrenciaFixaNome && (
           <p className="mb-3 text-xs text-ds-mid">
-            Ocorrência aplicada uma única vez nesta frequência (não por plantão): <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
+            Ocorrência aplicada uma única vez nesta frequência (não por lançamento): <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
             {!!ocorrenciaFixaValorCentavos && <span className="text-green-600 font-bold"> +{formatBRL(ocorrenciaFixaValorCentavos)}</span>}
           </p>
         )
@@ -718,7 +745,7 @@ function PlantaoFormPanel({
           Observação <span className="font-normal text-ds-light">(opcional, texto livre sem valor)</span>
         </label>
         <input type="text" value={ocorrencia} onChange={e => setOcorrencia(e.target.value)}
-          placeholder="Descreva alguma ocorrência especial neste plantão..."
+          placeholder={`Descreva alguma ocorrência especial ${tipoMedico === 'DIARISTA' ? 'nesta frequência' : 'neste plantão'}...`}
           className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white" />
       </div>
 
@@ -735,7 +762,7 @@ function PlantaoFormPanel({
           }`}>
           {saving
             ? <><Loader2 size={12} className="animate-spin" />{isEdit ? 'Salvando...' : 'Adicionando...'}</>
-            : isEdit ? 'Salvar Alterações' : 'Adicionar Plantão'
+            : isEdit ? 'Salvar Alterações' : (tipoMedico === 'DIARISTA' ? 'Adicionar Frequência' : 'Adicionar Plantão')
           }
         </button>
       </div>
@@ -927,7 +954,7 @@ function PlantaoGridPanel({
     } catch (e) {
       // mantém no grid só as linhas ainda não salvas (inclusive a que falhou), pra não duplicar no retry
       setRows(restantes)
-      setErr(e instanceof Error ? e.message : 'Erro ao salvar um dos plantões')
+      setErr(e instanceof Error ? e.message : `Erro ao salvar um${tipoMedico === 'DIARISTA' ? 'a das frequências' : ' dos plantões'}`)
     } finally {
       setSaving(false)
     }
@@ -944,7 +971,7 @@ function PlantaoGridPanel({
     <div className="mx-5 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-bold text-primary flex items-center gap-1.5">
-          <Plus size={12} /> Novo(s) Plantão(ões)
+          <Plus size={12} /> {tipoMedico === 'DIARISTA' ? 'Nova(s) Frequência(s)' : 'Novo(s) Plantão(ões)'}
         </p>
         <button type="button" onClick={onCancel}
           className="p-1 rounded-lg text-ds-light hover:bg-white/70 transition-colors">
@@ -958,7 +985,7 @@ function PlantaoGridPanel({
         <div className="mb-3 px-3 py-2 rounded-lg bg-white border border-ds-border/60 text-xs text-ds-mid">
           Modalidade: <span className="font-semibold text-ds-text">{modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa)}</span>
           {ocorrenciaFixaNome && (
-            <> · Ocorrência (aplicada uma única vez, não por plantão): <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
+            <> · Ocorrência (aplicada uma única vez, não por lançamento): <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
               {!!ocorrenciaFixaValorCentavos && <span className="text-green-600 font-bold"> +{formatBRL(ocorrenciaFixaValorCentavos)}</span>}
             </>
           )}
@@ -1085,8 +1112,10 @@ function PlantaoGridPanel({
           {saving
             ? <><Loader2 size={12} className="animate-spin" />Adicionando...</>
             : qtdPreenchidas === 0
-              ? 'Adicionar Plantões'
-              : `Adicionar ${qtdPreenchidas} Plantão${qtdPreenchidas === 1 ? '' : 'ões'}`
+              ? (tipoMedico === 'DIARISTA' ? 'Adicionar Frequências' : 'Adicionar Plantões')
+              : `Adicionar ${qtdPreenchidas} ${tipoMedico === 'DIARISTA'
+                  ? (qtdPreenchidas === 1 ? 'Frequência' : 'Frequências')
+                  : (qtdPreenchidas === 1 ? 'Plantão' : 'Plantões')}`
           }
         </button>
       </div>
@@ -1299,7 +1328,7 @@ function PainelFrequencia({
                   <p className="text-sm font-bold text-ds-text">Excluir esta frequência?</p>
                   <p className="mt-1 text-xs text-ds-light">
                     {freq.itens.length > 0
-                      ? `${freq.itens.length !== 1 ? 'Os' : 'O'} ${freq.itens.length} plantão${freq.itens.length !== 1 ? 'ões lançados serão apagados' : ' lançado será apagado'} junto. Esta ação não pode ser desfeita.`
+                      ? `${itemArtigo(freq.tipoMedico, freq.itens.length)} ${freq.itens.length} ${itemLabel(freq.tipoMedico, freq.itens.length)} ${itemAgree(freq.tipoMedico, freq.itens.length, 'lançad')} ${freq.itens.length !== 1 ? 'serão' : 'será'} ${itemAgree(freq.tipoMedico, freq.itens.length, 'apagad')} junto. Esta ação não pode ser desfeita.`
                       : 'Esta ação não pode ser desfeita.'}
                   </p>
                 </div>
@@ -1337,7 +1366,7 @@ function PainelFrequencia({
           <div className="px-6 py-3">
             <p className="text-[10px] font-bold text-ds-light uppercase tracking-wider mb-0.5">Total Apurado</p>
             <p className="text-xl font-black text-primary tabular-nums">{formatBRL(freq.totalValorCentavos)}</p>
-            <p className="text-xs text-ds-light">{freq.itens.length} plantão{freq.itens.length !== 1 ? 'ões' : ''}</p>
+            <p className="text-xs text-ds-light">{freq.itens.length} {itemLabel(freq.tipoMedico, freq.itens.length)}</p>
           </div>
         </div>
 
@@ -1378,12 +1407,14 @@ function PainelFrequencia({
 
         {/* ── Barra de ação ──────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-ds-border shrink-0 bg-white">
-          <p className="text-xs font-semibold text-ds-mid">Plantões lançados</p>
+          <p className="text-xs font-semibold text-ds-mid capitalize">
+            {itemLabel(freq.tipoMedico, 2)} {itemAgree(freq.tipoMedico, 2, 'lançad')}
+          </p>
           {!isFaturada && !adicionando && editandoId === null && (
             <button
               onClick={() => setAdicionando(true)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-700 transition-colors">
-              <Plus size={13} /> Adicionar Plantão
+              <Plus size={13} /> {freq.tipoMedico === 'DIARISTA' ? 'Adicionar Frequência' : 'Adicionar Plantão'}
             </button>
           )}
         </div>
@@ -1485,14 +1516,14 @@ function PainelFrequencia({
                           <button
                             onClick={() => { setEditandoId(item.id); setAdicionando(false) }}
                             disabled={adicionando}
-                            title="Editar plantão"
+                            title={freq.tipoMedico === 'DIARISTA' ? 'Editar frequência' : 'Editar plantão'}
                             className="p-1.5 rounded-lg text-ds-light hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-30">
                             <Pencil size={14} />
                           </button>
                           <button
                             onClick={() => handleRemove(item.id)}
                             disabled={removendo === item.id}
-                            title="Remover plantão"
+                            title={freq.tipoMedico === 'DIARISTA' ? 'Remover frequência' : 'Remover plantão'}
                             className="p-1.5 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors">
                             {removendo === item.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                           </button>
@@ -1506,8 +1537,14 @@ function PainelFrequencia({
                   <tr>
                     <td colSpan={7} className="px-5 py-16 text-center">
                       <FileText size={32} className="mx-auto mb-3 text-ds-light opacity-30" />
-                      <p className="text-sm text-ds-light">Nenhum plantão lançado ainda.</p>
-                      {!isFaturada && <p className="text-xs text-ds-light mt-1">Clique em "Adicionar Plantão" para começar.</p>}
+                      <p className="text-sm text-ds-light">
+                        Nenhum{freq.tipoMedico === 'DIARISTA' ? 'a' : ''} {itemLabel(freq.tipoMedico, 1)} {itemAgree(freq.tipoMedico, 1, 'lançad')} ainda.
+                      </p>
+                      {!isFaturada && (
+                        <p className="text-xs text-ds-light mt-1">
+                          Clique em "{freq.tipoMedico === 'DIARISTA' ? 'Adicionar Frequência' : 'Adicionar Plantão'}" para começar.
+                        </p>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -1522,7 +1559,7 @@ function PainelFrequencia({
             <span>
               Exibindo <strong className="text-ds-mid">{Math.min(itemPageAtual * ITENS_POR_PAGINA + 1, freq.itens.length)}
               –{Math.min((itemPageAtual + 1) * ITENS_POR_PAGINA, freq.itens.length)}</strong> de{' '}
-              <strong className="text-ds-mid">{freq.itens.length}</strong> plantõe{freq.itens.length !== 1 ? 's' : ''}
+              <strong className="text-ds-mid">{freq.itens.length}</strong> {itemLabel(freq.tipoMedico, freq.itens.length)}
             </span>
             {totalItemPages > 1 && (
               <div className="flex items-center gap-2">

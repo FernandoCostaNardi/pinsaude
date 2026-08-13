@@ -16,7 +16,6 @@ import {
   SlidersHorizontal,
   Layers,
   HeartPulse,
-  Receipt,
   TrendingUp,
   PlusCircle,
   Upload,
@@ -31,7 +30,6 @@ const BACKOFFICE = ['operacao', 'gestao', 'financeiro', 'contabil']
 const navItems = [
   // ── Portal do Médico ─────────────────────────────────────────────────────────
   { to: '/portal/dashboard',     label: 'Meu Portal',        icon: HeartPulse,       roles: ['medico'], end: true  },
-  { to: '/portal/notas',         label: 'Minhas Notas',      icon: Receipt,          roles: ['medico'], end: true  },
   { to: '/portal/extrato',       label: 'Extrato',           icon: TrendingUp,       roles: ['medico'], end: true  },
   { to: '/portal/producao/nova', label: 'Informar Produção', icon: PlusCircle,       roles: ['medico'], end: true  },
   { to: '/portal/frequencias',   label: 'Frequências',       icon: CalendarDays,     roles: ['medico'], end: true  },

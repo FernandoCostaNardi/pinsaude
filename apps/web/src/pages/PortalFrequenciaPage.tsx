@@ -62,6 +62,29 @@ function fmtQtd(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1).replace('.', ',')
 }
 
+// Pedido do cliente: o lançamento individual dentro de "Minhas Frequências" é chamado de
+// "plantão" para Tipo de Escala Plantonista, mas de "frequência" para Diarista — vocabulário
+// mais próximo do dia a dia de cada tipo de médico. `tipoMedico === null` (frequência legada,
+// sem Tipo de Escala definido) mantém o rótulo antigo ("plantão").
+function itemLabel(tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null, count: number): string {
+  const singular = tipoMedico === 'DIARISTA' ? 'frequência' : 'plantão'
+  const plural = tipoMedico === 'DIARISTA' ? 'frequências' : 'plantões'
+  return count === 1 ? singular : plural
+}
+
+// "plantão" é masculino, "frequência" é feminino — qualquer adjetivo/particípio que acompanhe
+// o rótulo (lançado/apagado etc.) precisa concordar em gênero e número.
+function itemAgree(tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null, count: number, stem: string): string {
+  const fem = tipoMedico === 'DIARISTA'
+  return stem + (fem ? (count === 1 ? 'a' : 'as') : (count === 1 ? 'o' : 'os'))
+}
+
+function itemArtigo(tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null, count: number): string {
+  const fem = tipoMedico === 'DIARISTA'
+  if (count === 1) return fem ? 'A' : 'O'
+  return fem ? 'As' : 'Os'
+}
+
 // PINSAUDE-13.25: modalidade Diarista pede a hora de entrada e saída do dia (em vez da
 // quantidade de horas direto) — este helper espelha FrequenciaService.calcularHorasTrabalhadas
 // (backend) só para exibir um preview antes de salvar; o valor real é sempre recalculado no
@@ -381,7 +404,9 @@ function NovaFrequenciaModal({
                 disabled={!form.tomador || modalidades.length === 0}
               />
               <p className="mt-1 text-[11px] text-ds-light">
-                Todo plantão lançado nesta frequência usará esta modalidade.
+                {form.tipoMedico === 'DIARISTA'
+                  ? 'Toda frequência lançada aqui usará esta modalidade.'
+                  : 'Todo plantão lançado nesta frequência usará esta modalidade.'}
               </p>
             </div>
 
@@ -515,7 +540,7 @@ function PlantaoFormPanel({
     <div className="mx-3 sm:mx-4 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-bold text-primary flex items-center gap-1.5">
-          <Plus size={12} /> Novo Plantão
+          <Plus size={12} /> {tipoMedico === 'DIARISTA' ? 'Nova Frequência' : 'Novo Plantão'}
         </p>
         <button type="button" onClick={onCancel}
           className="p-2 rounded-lg text-ds-light hover:bg-white/70 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">
@@ -621,7 +646,9 @@ function PlantaoFormPanel({
         </button>
         <button type="button" onClick={handleSave} disabled={!modalidade || saving}
           className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-white text-xs font-bold disabled:opacity-50 hover:bg-primary-700 transition-colors flex items-center justify-center gap-1.5 min-h-[44px]">
-          {saving ? <><Loader2 size={12} className="animate-spin" />Adicionando...</> : <><Plus size={12} />Adicionar Plantão</>}
+          {saving
+            ? <><Loader2 size={12} className="animate-spin" />Adicionando...</>
+            : <><Plus size={12} />{tipoMedico === 'DIARISTA' ? 'Adicionar Frequência' : 'Adicionar Plantão'}</>}
         </button>
       </div>
     </div>
@@ -762,7 +789,7 @@ function FrequenciaItensPanel({
       {/* Toolbar — flex-wrap para caber no mobile */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 bg-white border-b border-ds-border">
         <p className="text-xs font-bold text-ds-mid">
-          {freq.itens.length} {freq.itens.length !== 1 ? 'plantões' : 'plantão'} lançado{freq.itens.length !== 1 ? 's' : ''}
+          {freq.itens.length} {itemLabel(freq.tipoMedico, freq.itens.length)} {itemAgree(freq.tipoMedico, freq.itens.length, 'lançad')}
         </p>
         <div className="flex items-center gap-2 ml-auto">
           {/* PINSAUDE-13.26: modalidade/ocorrência não são editáveis depois de criada a
@@ -787,7 +814,9 @@ function FrequenciaItensPanel({
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-700 transition-colors min-h-[40px]">
               <Plus size={12} />
               <span className="sm:hidden">Adicionar</span>
-              <span className="hidden sm:inline">Adicionar Plantão</span>
+              <span className="hidden sm:inline">
+                {freq.tipoMedico === 'DIARISTA' ? 'Adicionar Frequência' : 'Adicionar Plantão'}
+              </span>
             </button>
           )}
         </div>
@@ -805,7 +834,7 @@ function FrequenciaItensPanel({
                 <p className="text-sm font-bold text-ds-text">Excluir esta frequência?</p>
                 <p className="mt-1 text-xs text-ds-light">
                   {freq.itens.length > 0
-                    ? `${freq.itens.length !== 1 ? 'Os' : 'O'} ${freq.itens.length} ${freq.itens.length !== 1 ? 'plantões lançados serão apagados' : 'plantão lançado será apagado'} junto. Esta ação não pode ser desfeita.`
+                    ? `${itemArtigo(freq.tipoMedico, freq.itens.length)} ${freq.itens.length} ${itemLabel(freq.tipoMedico, freq.itens.length)} ${itemAgree(freq.tipoMedico, freq.itens.length, 'lançad')} ${freq.itens.length !== 1 ? 'serão' : 'será'} ${itemAgree(freq.tipoMedico, freq.itens.length, 'apagad')} junto. Esta ação não pode ser desfeita.`
                     : 'Esta ação não pode ser desfeita.'}
                 </p>
               </div>
@@ -888,7 +917,7 @@ function FrequenciaItensPanel({
       {freq.itens.length === 0 && !adicionando && (
         <div className="px-4 py-10 text-center text-xs text-ds-light">
           <FileText size={28} className="mx-auto mb-2 opacity-20" />
-          <p>Nenhum plantão lançado ainda.</p>
+          <p>Nenhum{freq.tipoMedico === 'DIARISTA' ? 'a' : ''} {itemLabel(freq.tipoMedico, 1)} {itemAgree(freq.tipoMedico, 1, 'lançad')} ainda.</p>
           {!isFaturada && <p className="mt-1">Toque em "Adicionar" para começar.</p>}
         </div>
       )}
@@ -1072,7 +1101,7 @@ function FrequenciaCard({
           </div>
         </div>
         <div className="text-right shrink-0 ml-1">
-          <p className="text-sm font-bold text-ds-text tabular-nums">{freq.itens.length} {freq.itens.length !== 1 ? 'plantões' : 'plantão'}</p>
+          <p className="text-sm font-bold text-ds-text tabular-nums">{freq.itens.length} {itemLabel(freq.tipoMedico, freq.itens.length)}</p>
         </div>
         <ChevronRight size={16} className={`shrink-0 text-ds-light transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>

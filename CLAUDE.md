@@ -5986,6 +5986,112 @@ Portal) — sinalizado aqui para quem for corrigir.
 
 ---
 
+## Vocabulário "plantão" vs "frequência" por Tipo de Escala (pós-13.26)
+
+### Pedido do cliente: o item lançado é "plantão" para Plantonista, "frequência" para Diarista
+Diferente de todas as tasks anteriores desta sessão (restritas ao Portal), este pedido foi
+explicitamente "tanto para o Médico como para a visão do Gestor" — `FrequenciasPage.tsx` também
+foi alterado. Cada lançamento individual dentro de uma Frequência Médica (o card/modal por
+competência) passa a se chamar "plantão"/"plantões" quando `tipoMedico === 'PLANTONISTA'`, mas
+"frequência"/"frequências" quando `tipoMedico === 'DIARISTA'` — vocabulário mais alinhado ao dia a
+dia de cada tipo de médico. `tipoMedico === null` (frequência legada, criada antes do Tipo de
+Escala existir) mantém o rótulo antigo ("plantão"), sem quebrar nada.
+
+### Três helpers puros, duplicados nos dois arquivos (mesmo padrão de `detalheModalidade` etc.)
+```typescript
+function itemLabel(tipoMedico, count) { /* "plantão"/"plantões"/"frequência"/"frequências" */ }
+function itemAgree(tipoMedico, count, stem) { /* stem + 'o'/'os'/'a'/'as' — concordância de gênero */ }
+function itemArtigo(tipoMedico, count) { /* "O"/"Os"/"A"/"As" */ }
+```
+"plantão" é masculino, "frequência" é feminino — qualquer particípio/adjetivo que acompanhe o
+rótulo (lançado/apagado/etc.) precisa concordar em gênero **e** número, não só pluralizar. Textos
+como "N plantões lançados" viram `itemLabel(tipo, n) + ' ' + itemAgree(tipo, n, 'lançad')`.
+Duplicado nos dois arquivos igual a todos os outros helpers deste módulo (nenhum lib
+compartilhada entre Portal/gestor até hoje).
+
+### Ambiguidade: "frequência" já é o nome da entidade pai — evitada com "lançamento" em 2 lugares
+Como a Frequência Médica (o documento mensal inteiro) e agora também o item Diarista individual
+se chamam "frequência", uma frase como "Ocorrência aplicada uma única vez nesta frequência (não
+por frequência)" ficaria sem sentido. Nesses 2 pontos específicos (aviso de ocorrência fixa, no
+form de 1 item e no grid) o parêntese usa a palavra neutra "lançamento" em vez do rótulo
+tipo-dependente — `(não por lançamento)`, funciona igual para os dois tipos sem ambiguidade.
+Todo o resto do texto (contadores, botões, títulos, empty states) não tem esse conflito porque só
+aparece um "frequência"/"plantão" por frase.
+
+### Achados de bugs de pluralização pré-existentes, corrigidos de brinde nesta mesma varredura
+Ao percorrer `FrequenciasPage.tsx` linha por linha atrás de "plantão", achei 2 bugs de
+pluralização quebrada que nunca tinham sido notados (mesma classe do bug de `PortalFrequenciaPage.tsx`
+já corrigido na sessão anterior, "plantão"+"ões" = "plantãoões"):
+- `Adicionar ${qtd} Plantão${qtd === 1 ? '' : 'ões'}` (grid, botão de submit) → "Plantãoões" com 2+.
+- `${qtd} plantõe{qtd !== 1 ? 's' : ''}` (rodapé de paginação dos itens) → pior ainda: **"plantõe"
+  no singular** (nem palavra é) e só "plantões" corretamente no plural. Provavelmente um
+  typo de digitação (“plantõe” em vez de "plantão") que nunca apareceu porque poucas frequências
+  têm exatamente 1 item nessa tela.
+Ambos substituídos por `itemLabel(tipoMedico, count)`, que resolve os dois de uma vez.
+
+### Coluna "Plantões" da lista de topo (`<TH>`) não foi alterada — heterogênea por linha
+A tabela principal de `FrequenciasPage.tsx` (lista de todas as frequências, antes de abrir uma)
+tem uma única coluna `<TH>Plantões</TH>` cobrindo linhas de tipos diferentes (Plantonista e
+Diarista misturados) — não dá pra ter um cabeçalho de coluna condicional por linha sem duas
+colunas separadas. Deixado como está (termo genérico o suficiente para uma coluna de contagem);
+o pedido do cliente era sobre a tela "Minhas Frequências"/o item individual, já coberto em todos
+os outros lugares.
+
+### Teste manual — item de teste temporário via API, removido ao final
+Criado 1 item de teste (`POST /api/frequencias/{id}/itens`) numa frequência PLANTONISTA real com
+0 itens até então (a única desse tipo do médico de teste com itens=0, útil pra exercitar o
+singular "1 plantão" sem tocar em dado real de produção) — removido via `DELETE` ao final,
+confirmado 0 itens novamente. Testado nos dois papéis (médico via Portal, `operacao` via
+`/frequencias`), incluindo o grid de adicionar em lote (`PlantaoGridPanel`) exibindo "Adicionar 1
+Frequência" corretamente ao preencher uma linha numa frequência Diarista.
+
+---
+
+## PDF de Frequência — Turno Não Fica Mais em Branco para Diarista
+
+### Inferência de Turno a partir da hora de entrada, quando a modalidade não tem turno cadastrado
+Modalidade Diarista nunca teve `turno` cadastrado (paga valor mensal fixo, sem turno fixo — ver
+seção "Simplificação de Tipos de Modalidade", PINSAUDE-13.22) — a coluna "Turno" do PDF sempre
+ficava em branco para esses itens, mesmo o item tendo `horaInicio`/`horaFim` digitados pelo
+médico. Pedido do cliente: "você tem as horas, preencha o turno automaticamente". Novo helper em
+`frequenciaPdf.ts`:
+```typescript
+function inferirTurno(item: FrequenciaItemResp): string {
+  if (item.modalidadeTurno) return item.modalidadeTurno   // Plantonista: sempre cadastrado, usa direto
+  if (item.horaInicio) {
+    const hora = parseInt(item.horaInicio.slice(0, 2), 10)
+    return (hora >= 6 && hora < 18) ? 'DIURNO' : 'NOTURNO'  // 06:00–17:59 = Diurno, resto = Noturno
+  }
+  return ''
+}
+```
+Convenção 06:00–18:00 é a mesma já usada nos presets de "Preenchimento Rápido de Turno"
+(PINSAUDE-13.20). Usado tanto na coluna "Turno" da tabela de plantões quanto em `gerarOcorrencia`
+(texto auto-gerado da coluna Ocorrência quando o campo livre está vazio) — antes só usava
+`item.modalidadeTurno` puro, agora usa o mesmo `inferirTurno` para ficar consistente com a coluna.
+
+### Limite conhecido: itens legados sem `horaInicio` continuam com Turno em branco
+Descoberto testando com dado real: 3 dos 8 itens de uma frequência Diarista de teste tinham
+`horaInicio: null, horaFim: null` mas `horasTrabalhadas: 5` — registros de antes da feature de
+horário de entrada/saída (que substituiu o campo antigo `horasTrabalhadas` digitado direto por
+`horaInicio`/`horaFim`, calculando as horas). Sem um horário de relógio (só a duração em horas),
+não há como inferir Diurno/Noturno — esses 3 itens continuam com a coluna Turno vazia, comportamento
+correto e esperado (não é regressão, é ausência genuína do dado necessário).
+
+---
+
+## Remoção do Menu "Minhas Notas" do Portal do Médico
+
+### Só o item de menu foi removido — rota e página continuam existindo
+Pedido do cliente: "médico não tem que ver nota". Removida a entrada `{ to: '/portal/notas', label:
+'Minhas Notas', ... roles: ['medico'] }` de `navItems` em `layouts/Sidebar.tsx` (+ o import agora
+não usado do ícone `Receipt`). A rota `/portal/notas` (`MinhasNotasPage.tsx`) e o link "Ver todas →"
+dentro do card "Últimas Notas Fiscais" do Dashboard do médico (`DashboardMedicoPage.tsx`) **não**
+foram tocados — o pedido foi especificamente sobre "o menu", interpretado como o item da barra
+lateral; se o card de notas do dashboard também precisar sumir, é um pedido separado.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
