@@ -5932,6 +5932,49 @@ frequências de teste foram excluídas em seguida, voltando ao estado original (
 
 ---
 
+## Portal do Médico — Paginação dos Plantões DENTRO de uma Frequência (refinamento da paginação anterior)
+
+### Pedido do usuário era outra paginação, não a que eu tinha entendido primeiro
+A paginação anterior (seção acima) pagina o **nível de cima**: a lista de cards "Agosto/2026",
+"Julho/2026" etc. O pedido seguinte do usuário ("não expliquei direito, mas deu certo também
+kkk") era sobre o **nível de baixo**: dentro de um card já expandido de uma competência
+específica, a lista de plantões individuais lançados naquele mês também precisa paginar em 5,
+mais recente primeiro. As duas paginações coexistem — a de cima não substitui a de baixo.
+
+### Mesmo padrão já usado no admin (`PainelFrequencia`, EPIC-13.16), mas com sort explícito
+`FrequenciaItensPanel` (componente que renderiza a lista de itens dentro do card expandido)
+ganhou `itemPage`/`ITENS_POR_PAGINA=5`/`totalItemPages`/`itemPageAtual` (clampado com
+`Math.min`, mesmo padrão de sempre) e `useEffect(() => setItemPage(0), [freq.id])` pra resetar
+ao trocar de frequência. Diferente do admin (que confia na ordem ascendente que já vem do
+backend, já que lá não pediram "mais recente primeiro"), aqui foi adicionado um
+`.sort((a,b) => b.dataExecucao.localeCompare(a.dataExecucao) || b.createdAt.localeCompare(a.createdAt))`
+explícito sobre `freq.itens` antes de paginar — o backend
+(`findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc`) sempre retorna em ordem crescente.
+
+### Contadores de "existe algum item" continuam usando `freq.itens.length`, nunca o array paginado
+O empty-state (`freq.itens.length === 0`) e o wrapper `{freq.itens.length > 0 && (...)}` que
+envolve as duas renderizações (mobile/desktop) continuam checando o **total**, não
+`itensPaginados.length` — senão a paginação ficaria presa numa página vazia sempre que a página
+atual não fosse a primeira. Só os dois `.map()` (mobile cards e desktop `<tbody>`) trocaram de
+`freq.itens` para `itensPaginados`.
+
+### `handleAdd` volta pra página 1 depois de lançar um plantão novo
+Sem isso, lançar um plantão numa frequência que já está na página 2 faria o item novo (sempre o
+mais recente, então sempre cai na página 1 pela ordenação) ficar invisível até o usuário navegar
+manualmente — `setItemPage(0)` foi adicionado ao final de `handleAdd`, mesmo padrão já usado por
+`handleCriada` na paginação de nível superior.
+
+### Teste manual reaproveitou dado real já existente — sem precisar criar massa de teste
+Ao contrário da paginação de nível superior (que precisou de 3 frequências descartáveis porque só
+havia 4 reais), o médico de teste já tinha uma frequência real de Agosto/2026 com 8 plantões
+lançados — suficiente por si só pra exercitar 2 páginas (5 + 3) sem nenhum dado fake. Confirmado
+via inspeção de DOM: "Página 1 de 2" com datas 28/08→10/08 (5 itens, decrescente), "Página 2 de 2"
+com 02/08→03/08/2025 (3 itens, continuando a ordem decrescente), botão "Próximo" desabilitado no
+fim, "Anterior" desabilitado no início. Frequência com 1 único plantão (Maio/2026) confirmada sem
+nenhum controle de paginação exibido (`totalItemPages > 1` corretamente `false`).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

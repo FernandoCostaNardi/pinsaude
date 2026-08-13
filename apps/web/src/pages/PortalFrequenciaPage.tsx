@@ -648,9 +648,22 @@ function FrequenciaItensPanel({
   const [confirmExcluir, setConfirmExcluir] = useState(false)
   const [excluindo,    setExcluindo]    = useState(false)
   const [excluirErr,   setExcluirErr]   = useState<string | null>(null)
+  const [itemPage,     setItemPage]     = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isFaturada = freq.status === 'FATURADA'
   const isRascunho = freq.status === 'RASCUNHO'
+
+  // Plantões lançados — paginados em 5, do mais atual (data) para o mais antigo. O backend
+  // retorna em ordem crescente de data (ver FrequenciaService.toResponse), então a ordenação
+  // "mais recente primeiro" é feita aqui, só para exibição no Portal.
+  const itensOrdenados = [...freq.itens].sort((a, b) =>
+    b.dataExecucao.localeCompare(a.dataExecucao) || b.createdAt.localeCompare(a.createdAt))
+  const ITENS_POR_PAGINA = 5
+  const totalItemPages = Math.max(1, Math.ceil(itensOrdenados.length / ITENS_POR_PAGINA))
+  const itemPageAtual  = Math.min(itemPage, totalItemPages - 1)
+  const itensPaginados = itensOrdenados.slice(itemPageAtual * ITENS_POR_PAGINA, (itemPageAtual + 1) * ITENS_POR_PAGINA)
+
+  useEffect(() => { setItemPage(0) }, [freq.id])
 
   // PINSAUDE-13.26: modalidade/ocorrência fixas na criação da frequência — quando presentes, o
   // formulário de lançamento de plantão não pergunta mais nenhuma das duas.
@@ -685,6 +698,7 @@ function FrequenciaItensPanel({
     const atualizada = await frequenciasApi.buscarPorId(freq.id)
     onAtualizar(atualizada)
     setAdicionando(false)
+    setItemPage(0) // volta pra primeira página pra garantir que o plantão recém-lançado fique visível
   }
 
   async function handleRemove(itemId: string) {
@@ -881,9 +895,9 @@ function FrequenciaItensPanel({
 
       {freq.itens.length > 0 && (
         <>
-          {/* ── Mobile: cards de plantão (telas < sm) ── */}
+          {/* ── Mobile: cards de plantão (telas < sm) — paginados, mais atual primeiro ── */}
           <div className="sm:hidden divide-y divide-ds-border">
-            {freq.itens.map(item => (
+            {itensPaginados.map(item => (
               <div key={item.id} className="p-4">
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
@@ -943,7 +957,7 @@ function FrequenciaItensPanel({
                 </tr>
               </thead>
               <tbody className="divide-y divide-ds-border">
-                {freq.itens.map(item => (
+                {itensPaginados.map(item => (
                   <tr key={item.id} className="hover:bg-white/60 transition-colors">
                     <td className="px-3 py-2.5 text-xs font-medium text-ds-text whitespace-nowrap">
                       {formatDate(item.dataExecucao)}
@@ -983,6 +997,32 @@ function FrequenciaItensPanel({
               </tbody>
             </table>
           </div>
+
+          {/* Paginação dos plantões lançados — 5 por página, mais atual primeiro */}
+          {totalItemPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 text-xs text-ds-light border-t border-ds-border">
+              <span>
+                Página <strong className="text-ds-mid">{itemPageAtual + 1}</strong> de{' '}
+                <strong className="text-ds-mid">{totalItemPages}</strong>
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setItemPage(p => p - 1)}
+                  disabled={itemPageAtual === 0}
+                  className="px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs font-semibold hover:bg-ds-input transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[40px]"
+                >
+                  Anterior
+                </button>
+                <button
+                  onClick={() => setItemPage(p => p + 1)}
+                  disabled={itemPageAtual >= totalItemPages - 1}
+                  className="px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs font-semibold hover:bg-ds-input transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[40px]"
+                >
+                  Próximo
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
