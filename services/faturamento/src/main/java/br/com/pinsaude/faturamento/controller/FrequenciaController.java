@@ -2,6 +2,7 @@ package br.com.pinsaude.faturamento.controller;
 
 import br.com.pinsaude.faturamento.dto.FrequenciaItemRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemResponse;
+import br.com.pinsaude.faturamento.dto.FrequenciaMedicaEditRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaMedicaRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.service.FrequenciaService;
@@ -51,9 +52,17 @@ public class FrequenciaController {
         return ResponseEntity.ok(service.buscarPorId(id));
     }
 
-    // PINSAUDE-13.26: só permite excluir enquanto a frequência está em Rascunho — dá pra
-    // corrigir uma escolha errada de modalidade/ocorrência (que não é editável depois de
-    // criada) apagando e criando de novo, sem risco de apagar algo já compartilhado/assinado.
+    // Permite editar Competência e Setor Operacional de uma frequência já criada (Tomador, Tipo
+    // de Escala, Modalidade e Ocorrência permanecem fixos). Bloqueado apenas quando FATURADA.
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    public ResponseEntity<FrequenciaMedicaResponse> atualizar(
+            @PathVariable UUID id,
+            @Valid @RequestBody FrequenciaMedicaEditRequest req) {
+        return ResponseEntity.ok(service.atualizar(id, req));
+    }
+
+    // Exclusão permitida em qualquer status exceto FATURADA (já entrou no Fechamento/NFS-e).
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
     public ResponseEntity<Void> excluir(@PathVariable UUID id) {

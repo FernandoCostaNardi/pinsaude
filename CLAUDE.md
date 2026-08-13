@@ -6092,6 +6092,79 @@ lateral; se o card de notas do dashboard também precisar sumir, é um pedido se
 
 ---
 
+## Editar/Excluir Competência de Frequência (Médico + Gestor)
+
+Pedido do cliente: dar um jeito de corrigir ou remover uma Frequência Médica já criada, nas duas
+telas (Portal do Médico e visão do Gestor). Antes desta task, `excluir()` só funcionava com
+status `RASCUNHO` — mas gerar o PDF (passo quase imediato depois de criar, pra dar ao médico
+assinar) já tira a frequência do Rascunho, então **quase nenhuma frequência real ficava
+excluível** na prática. Não havia edição nenhuma.
+
+### Escopo decidido com o cliente (via pergunta direta, não assumido)
+1. **Campos editáveis: só Competência e Setor Operacional.** Tomador, Tipo de Escala, Modalidade
+   e Ocorrência continuam fixos — se algum desses estiver errado, o caminho continua sendo
+   excluir e criar de novo (mesma resposta que já valia só pra exclusão antes desta task).
+2. **Limite de status: qualquer um exceto FATURADA.** Mesmo limite já usado para editar/remover
+   um item individual (`adicionarItem`/`atualizarItem`/`removerItem`) — escolhido pelo cliente
+   como "Recomendado" entre as opções, em vez de manter só-Rascunho ou liberar até em Faturada.
+
+### Backend — `PUT /api/frequencias/{id}` novo, `DELETE` com regra trocada
+`FrequenciaMedicaEditRequest` (novo DTO, só `competencia` + `servicoOperacionalId`).
+`FrequenciaService.atualizar()`: valida que o novo setor pertence ao MESMO tomador da frequência
+(tomador não pode mudar aqui), e reusa `findByMedicoIdAndServicoOperacionalIdAndCompetencia`
+(já existia para `criar()`) pra checar conflito com outra frequência existente — filtrando a
+própria frequência sendo editada (`filter(outra -> !outra.getId().equals(id))`), senão uma edição
+que não muda a chave (ou muda só um dos dois campos) sempre "colidiria consigo mesma".
+
+`excluir()`: trocado de `!"RASCUNHO".equals(status)` para `"FATURADA".equals(status)` — inverte a
+lógica de allowlist pra blocklist. Ganhou de brinde a limpeza do documento assinado no MinIO antes
+de deletar (`storageService.delete(f.getDocumentoAssinadoKey())` quando não-nulo) — antes,
+excluir uma frequência com PDF assinado já upado deixaria o arquivo órfão no bucket (não era
+possível na prática, já que só Rascunho podia ser excluída e Rascunho nunca tem documento
+assinado — mas agora que qualquer status não-Faturada pode, virou um caso real).
+
+### `PUT` roles idênticas ao resto do CRUD — `operacao`, `gestao`, `medico`
+Mesmo padrão de `criar`/`excluir`/itens: o médico edita a própria frequência pelo Portal sem
+depender de operação. `@Valid` roda antes do `@PreAuthorize` (documentado em outras seções) —
+testes de RBAC do `PUT` sempre mandam um corpo válido, senão testariam 400 em vez de 403.
+
+### Frontend — modal pequeno duplicado nos 2 arquivos, mesmo padrão dos outros modais menores
+`EditarFrequenciaModal` (Competência `<select>` + Setor `<select>`, sem Dropdown customizado —
+não precisa de busca) duplicado em `FrequenciasPage.tsx` (modal centralizado) e
+`PortalFrequenciaPage.tsx` (bottom-sheet no mobile, `items-end sm:items-center`). Botão "Editar"
+(ícone `Pencil`) ao lado de "Excluir" no cabeçalho/toolbar de cada frequência aberta — os dois
+agora usam a mesma condição `!isFaturada` (antes "Excluir" usava `isRascunho`, que foi removida
+por ficar sem uso).
+
+`generateCompetencias()` só gera os últimos 12 meses a partir de "agora" — uma frequência mais
+antiga que isso (13+ meses atrás) teria sua competência sumindo do `<select>` de edição. Guard:
+`competenciaOptions = COMPETENCIAS.includes(freq.competencia) ? COMPETENCIAS : [freq.competencia, ...COMPETENCIAS]`.
+Mesmo raciocínio pro setor: se o setor atual da frequência foi desativado depois da criação,
+injeta ele na lista de opções (`ativo: false`, sufixo " (inativo)") — mesmo padrão já usado pra
+modalidade/ocorrência inativa em outros formulários deste projeto.
+
+### Armadilha ao testar manualmente: `document.querySelectorAll('select')[0]` pega o filtro errado
+Ao testar a edição via `javascript_tool`, pegar "o primeiro `<select>` da página" pra mudar a
+Competência silenciosamente alterou o **filtro de competência do topo da lista** (também um
+`<select>`, que aparece ANTES do modal na ordem do DOM) em vez do campo do modal — o modal
+"salvou" sem erro nenhum, mas a mudança real nunca aconteceu, e a lista sumiu (0 resultados) por
+causa do filtro now aplicado. Sempre escopar a busca a partir de um elemento âncora dentro do
+modal (`title.closest('div.bg-white')`) antes de `querySelectorAll('select')`.
+
+### Teste manual — 3 frequências descartáveis via API, cobrindo os 3 cenários
+1. Editar Competência de uma frequência `AGUARDANDO_ASSINATURA` (Abril→Março) pelo Portal — êxito
+   confirmado via API antes/depois.
+2. Excluir essa mesma frequência (`AGUARDANDO_ASSINATURA`, não Rascunho) pelo Portal — 204,
+   confirmado 404 depois.
+3. Forçar uma frequência para `FATURADA` via SQL direto (não existe fluxo de teste rápido pra
+   fechar de verdade) e confirmar: `PUT`/`DELETE` retornam 422 via `curl`; nem "Editar" nem
+   "Excluir" aparecem na UI (Portal e Gestor) — só "PDF"/"Gerar PDF" continuam visíveis.
+Todas as 3 frequências de teste (mais uma 4ª usada só pra testar "Editar" no Gestor) foram
+removidas ao final — confirmado que a lista do médico voltou ao estado original (6 frequências
+reais pré-existentes).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
