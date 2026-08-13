@@ -412,20 +412,37 @@ function NovaFrequenciaModal({
               </p>
             </div>
 
-            {/* Ocorrência (opcional, PINSAUDE-13.26) — idem, aplicada a todos os lançamentos. */}
-            <div>
-              <label className="block text-xs font-bold text-ds-mid mb-1">
-                Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
+            {/* Ocorrência (opcional, PINSAUDE-13.26) — idem, aplicada a todos os lançamentos.
+                Com uma única ocorrência cadastrada para o tomador, um checkbox simples substitui
+                o select (menos fricção que abrir um dropdown pra escolher a única opção
+                disponível); com 2+ opções, mantém o select de sempre. */}
+            {ocorrencias.length === 1 ? (
+              <label className="flex items-center gap-2.5 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={ocorrenciaId === ocorrencias[0].id}
+                  onChange={e => setOcorrenciaId(e.target.checked ? ocorrencias[0].id : '')}
+                  className="w-4 h-4 rounded border-ds-border text-primary focus:ring-primary/30 cursor-pointer"
+                />
+                <span className="text-sm text-ds-text group-hover:text-primary transition-colors">
+                  Ocorrência: <span className="font-semibold">{ocorrencias[0].nome}</span>
+                </span>
               </label>
-              <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
-                disabled={!form.tomador || ocorrencias.length === 0}
-                className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px] disabled:opacity-50">
-                <option value="">Nenhuma</option>
-                {ocorrencias.map(o => (
-                  <option key={o.id} value={o.id}>{o.nome}</option>
-                ))}
-              </select>
-            </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-bold text-ds-mid mb-1">
+                  Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
+                </label>
+                <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
+                  disabled={!form.tomador || ocorrencias.length === 0}
+                  className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px] disabled:opacity-50">
+                  <option value="">Nenhuma</option>
+                  {ocorrencias.map(o => (
+                    <option key={o.id} value={o.id}>{o.nome}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Rodapé fixo */}
