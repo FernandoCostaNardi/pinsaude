@@ -5731,6 +5731,50 @@ Ocorrência.
 
 ---
 
+## PDF de Frequência — Ajuste Visual para Igualar ao Formulário Original (pós-EPIC-13)
+
+Cliente pediu 3 correções pontuais em `frequenciaPdf.ts` (`buildHtml`) para o PDF ficar fiel ao
+formulário oficial impresso (preto e branco, sem elementos de identidade visual do sistema).
+
+### 1. Remoção de toda cor de destaque — só preto
+`.field-label-cell` (laranja `#c25a00`), `.field-value-empresa` (laranja), `.field-value-medico`
+(azul `#0047ab`) e `.footer` (cinza `#888`) usavam cores para diferenciar visualmente os campos —
+eram decisões de design do sistema, não do formulário oficial. Todas trocadas para `#000` (preto).
+Backgrounds em escala de cinza (`thead` `#e0e0e0`, zebra striping `#fafafa`) foram mantidos — não
+são "cor" no sentido que o cliente pediu (são tons de cinza estruturais, o próprio formulário
+impresso em P&B já tem esse tipo de sombreamento).
+
+### 2. "Barra" entre Tipo de Escala e Setor era um `border-left` de CSS, não um caractere literal
+O cliente descreveu "Diarista | Emergência Clínica" como se houvesse um pipe (`|`) separando os
+dois valores — na real não existe nenhum caractere `|` no HTML gerado, o efeito visual vinha de
+`.field-setor-cell { border-left: 1px solid #000 !important; }`, a borda entre a célula de
+`freq.tipoMedico` e a célula de `freq.servicoOperacionalNome` (mesma linha da tabela de campos,
+via `colspan`). Removido o `border-left` — as duas células continuam sendo `<td>` separados no
+HTML/DOM (nenhuma mudança estrutural), só sem a linha visual entre elas.
+
+### 3. Assinaturas: Horário passa a fazer parte da coluna "Direção Médica", não do "Prestador"
+Layout anterior: `colspan="3"` (Data+Turno+Horário) = Prestador, 1 col (Rubrica) = Direção Médica,
+1 col (Ocorrência) = Diretor Administrativo. Cliente pediu 2+2+1: Prestador = Data+Turno,
+Direção Médica = Horário+Rubrica, Diretor Administrativo = Ocorrência (inalterado). Só o `colspan`
+das duas primeiras células de `sig-space-row`/`sig-label-row` mudou (`3`→`2`, `1`→`2`); a tabela de
+plantões acima (`table.plantoes`) e suas 5 colunas (`col-data`/`col-turno`/`col-horario`/
+`col-rubrica`/última) não mudaram — o `colgroup` do `sig-table` já replicava essas mesmas 5
+colunas antes da mudança, só a forma de agrupá-las via `colspan` mudou.
+
+### Verificação sem depender de screenshot (CDP instável neste ambiente, ver seções anteriores)
+Mesmo padrão já documentado (interceptar `window.open` para capturar o HTML sem abrir janela real)
+— mas desta vez, em vez de só inspecionar a string do HTML capturado, o HTML foi injetado num
+`<iframe>` na própria página (`iframe.contentDocument.write(html)`) e os estilos foram checados via
+`getComputedStyle` dentro do iframe (`color` de `.field-label-cell`/`.field-value-empresa`/
+`.field-value-medico`/`.footer` → todos `rgb(0, 0, 0)`; `borderLeftWidth` de `.field-setor-cell` →
+`0px`) — validação mais forte que grep na string, porque confirma o valor **computado** depois do
+CSS aplicado (pega heranças/cascata), não só a ausência do texto do hex code no HTML bruto. Como o
+script inline do PDF (`window.onload → setTimeout(print, 300)`) já está no HTML capturado,
+sobrescrever `iframe.contentWindow.print = function(){}` logo depois do `write()`/`close()` (antes
+dos 300ms) evita que a auto-impressão dispare dentro do iframe.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
