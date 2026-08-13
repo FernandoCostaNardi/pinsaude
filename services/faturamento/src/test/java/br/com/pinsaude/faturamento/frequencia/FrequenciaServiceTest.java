@@ -471,13 +471,15 @@ class FrequenciaServiceTest {
     }
 
     @Test
-    void adicionarItem_frequenciaComOcorrenciaFixa_ignoraOcorrenciaIdDoRequest() {
+    void adicionarItem_frequenciaComOcorrenciaFixa_naoValoraNemResolveOcorrenciaPorItem() {
+        // PINSAUDE-13.26 (ajuste pós-implantação): com modalidade/ocorrência fixas na
+        // frequência, o valor da ocorrência deixa de ser aplicado por item (evita inflar o
+        // total quando N plantões são lançados) — passa a ser somado uma única vez sobre o
+        // valor da modalidade, no nível da frequência (ver FrequenciaMedicaResponseTest /
+        // toResponse_comOcorrenciaFixa_...). O item nem resolve mais a ocorrência.
         UUID freqId = UUID.randomUUID();
         UUID ocorrenciaFixaId = UUID.randomUUID();
         UUID outraOcorrenciaId = UUID.randomUUID();
-        TomadorOcorrencia ocorrenciaFixa = ocorrenciaFixture(ocorrenciaFixaId, "FIXO", null, 5000L);
-        TomadorOcorrencia outraOcorrencia = ocorrenciaFixture(outraOcorrenciaId, "FIXO", null, 9999L);
-        when(ocorrenciaRepo.findById(ocorrenciaFixaId)).thenReturn(Optional.of(ocorrenciaFixa));
 
         FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
         f.setModalidadeId(modalidadeId);
@@ -494,9 +496,10 @@ class FrequenciaServiceTest {
 
         FrequenciaItemResponse resp = service.adicionarItem(freqId, req);
 
-        assertThat(resp.ocorrenciaId()).isEqualTo(ocorrenciaFixaId);
-        assertThat(resp.ocorrenciaValorCentavos()).isEqualTo(5000L);
-        verify(ocorrenciaRepo, never()).findById(outraOcorrenciaId);
+        assertThat(resp.ocorrenciaId()).isNull();
+        assertThat(resp.ocorrenciaValorCentavos()).isNull();
+        assertThat(resp.totalItemCentavos()).isEqualTo(resp.valorUnitarioCentavos() + resp.deslocamentoCentavos());
+        verify(ocorrenciaRepo, never()).findById(any());
     }
 
     @Test
@@ -925,6 +928,63 @@ class FrequenciaServiceTest {
         FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
 
         assertThat(resp.progressoSemanal()).isEmpty();
+    }
+
+    // ─── PINSAUDE-13.26 (ajuste pós-implantação): ocorrência fixa aplicada uma única vez ───────
+
+    @Test
+    void buscarPorId_ocorrenciaFixaComItens_aplicaValorUmaUnicaVezSobreModalidade_naoPorItem() {
+        UUID freqId = UUID.randomUUID();
+        UUID ocorrenciaFixaId = UUID.randomUUID();
+        // FIXO + percentual combinados: 10% de 150000 = 15000, + 5000 fixo = 20000 (uma vez)
+        TomadorOcorrencia ocorrenciaFixa = ocorrenciaFixture(ocorrenciaFixaId, "PERCENTUAL", new BigDecimal("10"), 5000L);
+
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setModalidadeId(modalidadeId);
+        f.setOcorrenciaId(ocorrenciaFixaId);
+        setId(f, freqId);
+
+        // 3 plantões lançados (sem ocorrência por item — resolvida null desde o adicionarItem)
+        FrequenciaItem item1 = itemFixture(freqId, modalidadeId, LocalDate.of(2026, 7, 6), null, 150000L);
+        FrequenciaItem item2 = itemFixture(freqId, modalidadeId, LocalDate.of(2026, 7, 8), null, 150000L);
+        FrequenciaItem item3 = itemFixture(freqId, modalidadeId, LocalDate.of(2026, 7, 13), null, 150000L);
+
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId))
+            .thenReturn(List.of(item1, item2, item3));
+        when(ocorrenciaRepo.findAllById(any())).thenReturn(List.of(ocorrenciaFixa));
+
+        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
+
+        // 3 × R$1.500 (itemFixture não seta deslocamento) + R$200 da ocorrência UMA ÚNICA VEZ
+        assertThat(resp.totalValorCentavos()).isEqualTo(3 * 150000L + 20000L);
+        assertThat(resp.ocorrenciaValorCentavos()).isEqualTo(20000L);
+        // itens não carregam mais valor/ocorrência individual quando a frequência tem modalidade fixa
+        assertThat(resp.itens()).allSatisfy(i -> {
+            assertThat(i.ocorrenciaId()).isNull();
+            assertThat(i.ocorrenciaValorCentavos()).isNull();
+        });
+    }
+
+    @Test
+    void buscarPorId_ocorrenciaFixaSemItensLancados_naoAplicaNoTotalMasExibeValorCadastrado() {
+        UUID freqId = UUID.randomUUID();
+        UUID ocorrenciaFixaId = UUID.randomUUID();
+        TomadorOcorrencia ocorrenciaFixa = ocorrenciaFixture(ocorrenciaFixaId, "FIXO", null, 5000L);
+
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setModalidadeId(modalidadeId);
+        f.setOcorrenciaId(ocorrenciaFixaId);
+        setId(f, freqId);
+
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(freqId)).thenReturn(List.of());
+        when(ocorrenciaRepo.findAllById(any())).thenReturn(List.of(ocorrenciaFixa));
+
+        FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
+
+        assertThat(resp.totalValorCentavos()).isZero();
+        assertThat(resp.ocorrenciaValorCentavos()).isEqualTo(5000L);
     }
 
     // ─── Valoração da Ocorrência do catálogo (PINSAUDE-13.19.5) ───────────────

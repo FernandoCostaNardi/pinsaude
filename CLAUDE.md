@@ -5665,6 +5665,72 @@ ao testar manualmente esse tomador específico no ambiente de dev.
 
 ---
 
+## Ajuste pós-implantação: Ocorrência fixa aplica valor uma única vez, não por lançamento
+
+### Bug reportado pelo cliente logo após o merge da PINSAUDE-13.26
+A implementação original da PINSAUDE-13.26 (modalidade/ocorrência fixas na criação da
+frequência) continuou aplicando o valor da ocorrência **por item lançado** — mesmo cálculo de
+antes, quando a ocorrência era escolhida por lançamento. Como agora a ocorrência é escolhida
+**uma única vez** para toda a frequência, isso inflava o total: 5 plantões lançados = 5× o valor
+da ocorrência, quando o esperado é que o valor seja somado **uma única vez sobre o valor
+cadastrado da modalidade**, independente de quantos plantões forem lançados. Mesmo espírito já
+usado para o valor mensal do Diarista (`valorMensalDiaristaUnico`, EPIC-13.23) — a ocorrência fixa
+segue exatamente o mesmo padrão "somar uma vez, não por item".
+
+### Backend — item nunca mais resolve/valora ocorrência quando a frequência tem modalidade fixa
+`FrequenciaService.adicionarItem`/`atualizarItem`: `TomadorOcorrencia ocorrencia = f.getModalidadeId()
+== null ? resolverOcorrencia(req.ocorrenciaId()) : null;` — em modo fixo, `ocorrencia` é sempre
+`null`, então `item.setOcorrenciaId(null)` e `item.setOcorrenciaValorCentavos(null)` (via
+`calcularValorOcorrencia(null, ...)`, que já retornava `null` para ocorrência ausente). Só
+frequências legadas (sem modalidade fixa) continuam resolvendo e valorando ocorrência por item,
+exatamente como antes — sem regressão nesse caminho.
+
+### `FrequenciaMedicaResponse` — novo campo `ocorrenciaValorCentavos` + soma condicional
+Novo método estático `calcularValorOcorrenciaUnico(modalidadeFreq, ocorrenciaFreq)` (mesma fórmula
+de `FrequenciaService.calcularValorOcorrencia`, duplicada por ser contexto estático de DTO sem
+acesso a uma instância do service) calcula o valor **sempre** (mesmo com 0 itens — vira o campo
+`ocorrenciaValorCentavos` do response, usado como preview no frontend, análogo a
+`modalidadeValorCentavos`). Mas só entra em `totalValorCentavos` quando `!itens.isEmpty()` — mesmo
+critério de `valorMensalDiaristaUnico`: sem nenhum plantão lançado, não faz sentido aplicar o bônus.
+
+### `FechamentoService` — terceira passada de agregação, ganhou dependência nova
+A agregação de Fechamento (`computeAggregation`) somava o valor de ocorrência por item (dentro do
+loop principal, via `item.getOcorrenciaValorCentavos()`) — com o item agora sempre `null` em modo
+fixo, essa soma simplesmente não acontecia mais, subtraindo silenciosamente o valor do fechamento.
+Corrigido com uma **terceira passada** (depois do loop principal de itens e da passada do valor
+mensal Diarista): para cada frequência com `modalidadeId != null && ocorrenciaId != null` **e** que
+já tenha pelo menos 1 item lançado (`frequenciasComItem`, um `Set<UUID>` derivado de
+`todosItens`), soma o valor da ocorrência uma única vez nos 3 acumuladores
+(`modalidadeAgg`, `grupoSetorTotal`, `agrupado`) — mesmo padrão já usado pelo bloco Diarista.
+`FechamentoService` ganhou `TomadorOcorrenciaRepository` como nova dependência de construtor —
+`FechamentoServiceTest` precisou de `@Mock TomadorOcorrenciaRepository ocorrenciaRepo` com stub
+padrão `findAllById(any()) → List.of()` no `setUp()` (senão todo teste que chama
+`preview`/`executar` quebra com NPE, mesmo os que não têm nenhuma ocorrência envolvida — o método
+`computeAggregation` sempre chama `ocorrenciaRepo.findAllById(...)` incondicionalmente).
+
+### Frontend — coluna "OCORRÊNCIA" da tabela de itens fica vazia por design em modo fixo
+Como o item não carrega mais `ocorrenciaId`/`ocorrenciaValorCentavos` quando a frequência tem
+modalidade fixa, a coluna de ocorrência de cada linha da tabela simplesmente fica vazia (`—`) —
+não é um bug, é o resultado esperado de mover a exibição do valor para o nível da frequência. O
+aviso informativo em `PlantaoGridPanel`/`PlantaoFormPanel` ("Modalidade: X · Ocorrência: Y") ganhou
+o valor com o texto explícito **"aplicada uma única vez, não por plantão"** para deixar claro ao
+usuário que o valor não se repete a cada lançamento — sem essa explicitação, o comportamento novo
+(valor não aparece mais nas linhas da tabela) parecia "o valor sumiu", quando na verdade só mudou
+de lugar (agora é somado uma vez no total apurado da frequência).
+
+### Teste manual via API — confirma o cálculo exato antes de testar a UI
+Testado direto via `fetch` (mais rápido e determinístico que clicar na UI): criada frequência com
+modalidade "plantão 6h" (R$801,48) + ocorrência "Bonificação" (10%, sem valor fixo) → `POST
+/api/frequencias` já retorna `ocorrenciaValorCentavos: 8015` (preview, 10% de 80148 arredondado
+HALF_UP) com `totalValorCentavos: 0` (sem itens ainda). Após 3 `POST .../itens`, cada item retorna
+`ocorrenciaId: null`/`ocorrenciaValorCentavos: null` (não mais valorado por item) e o `GET
+/api/frequencias/{id}` final confirma `totalValorCentavos: 248459` = 3×80148 + 8015 (não 3×8015).
+Confirmado também na UI: banner mostra "Ocorrência (aplicada uma única vez, não por plantão):
+Bonificação +R$ 80,15", "TOTAL APURADO: R$ 2.484,59", e cada linha da tabela mostra "—" na coluna
+Ocorrência.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

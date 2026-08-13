@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.function.Function;
@@ -38,6 +39,7 @@ public class FechamentoService {
     private final ServicoRepository servicoRepo;
     private final ProducaoRepository producaoRepo;
     private final ParticipacaoRepository participacaoRepo;
+    private final TomadorOcorrenciaRepository ocorrenciaRepo;
 
     public FechamentoService(FechamentoRepository fechamentoRepo,
                              FrequenciaMedicaRepository frequenciaRepo,
@@ -48,7 +50,8 @@ public class FechamentoService {
                              TomadorRepository tomadorRepo,
                              ServicoRepository servicoRepo,
                              ProducaoRepository producaoRepo,
-                             ParticipacaoRepository participacaoRepo) {
+                             ParticipacaoRepository participacaoRepo,
+                             TomadorOcorrenciaRepository ocorrenciaRepo) {
         this.fechamentoRepo  = fechamentoRepo;
         this.frequenciaRepo  = frequenciaRepo;
         this.itemRepo        = itemRepo;
@@ -59,6 +62,7 @@ public class FechamentoService {
         this.servicoRepo     = servicoRepo;
         this.producaoRepo    = producaoRepo;
         this.participacaoRepo = participacaoRepo;
+        this.ocorrenciaRepo  = ocorrenciaRepo;
     }
 
     // ── Preview (somente leitura, sem persistir) ─────────────────────────────
@@ -368,6 +372,44 @@ public class FechamentoService {
             }
         }
 
+        // PINSAUDE-13.26 (ajuste pós-implantação): ocorrência fixa na frequência (escolhida na
+        // criação) tem seu valor somado UMA ÚNICA VEZ sobre o valor cadastrado da modalidade — o
+        // loop de itens acima não soma mais ocorrência por item (ver FrequenciaService.
+        // adicionarItem). Só entra na agregação quando a frequência já tem pelo menos 1 item
+        // lançado (mesmo critério do bloco Diarista acima).
+        Set<UUID> ocorrenciaIds = frequencias.stream()
+            .map(FrequenciaMedica::getOcorrenciaId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        Map<UUID, TomadorOcorrencia> ocorrenciasMap = ocorrenciaRepo.findAllById(ocorrenciaIds).stream()
+            .collect(Collectors.toMap(TomadorOcorrencia::getId, Function.identity()));
+        Set<UUID> frequenciasComItem = todosItens.stream()
+            .map(FrequenciaItem::getFrequenciaId)
+            .collect(Collectors.toSet());
+
+        for (FrequenciaMedica freq : frequencias) {
+            if (freq.getModalidadeId() == null || freq.getOcorrenciaId() == null) continue;
+            if (!frequenciasComItem.contains(freq.getId())) continue;
+            TomadorModalidade modalidade = modalidadesMap.get(freq.getModalidadeId());
+            TomadorOcorrencia ocorrencia = ocorrenciasMap.get(freq.getOcorrenciaId());
+            if (modalidade == null || ocorrencia == null) continue;
+            TomadorServicoOperacional setor = setoresMap.get(freq.getServicoOperacionalId());
+            if (setor == null) continue;
+            UUID grupoId = setor.getGrupoId();
+
+            long valorOcorrencia = calcularValorOcorrenciaUnico(modalidade, ocorrencia);
+            if (valorOcorrencia == 0L) continue;
+
+            modalidadeAgg.computeIfAbsent(freq.getModalidadeId(), k -> new long[]{0L, 0L});
+            modalidadeAgg.get(freq.getModalidadeId())[1] += valorOcorrencia;
+
+            grupoSetorTotal.computeIfAbsent(grupoId, k -> new LinkedHashMap<>())
+                .merge(freq.getServicoOperacionalId(), valorOcorrencia, Long::sum);
+
+            agrupado.computeIfAbsent(grupoId, k -> new LinkedHashMap<>())
+                .merge(freq.getMedicoId(), valorOcorrencia, Long::sum);
+        }
+
         Set<UUID> grupoIds = agrupado.keySet();
         Map<UUID, TomadorGrupoFaturamento> gruposMap = grupoRepo.findAllById(grupoIds).stream()
             .collect(Collectors.toMap(TomadorGrupoFaturamento::getId, Function.identity()));
@@ -376,6 +418,24 @@ public class FechamentoService {
             frequencias, setoresMap, gruposMap, modalidadesMap,
             modalidadeAgg, grupoSetorTotal, agrupado
         );
+    }
+
+    // PINSAUDE-13.26 (ajuste pós-implantação): mesma fórmula de FrequenciaMedicaResponse.
+    // calcularValorOcorrenciaUnico — duplicada aqui (contexto diferente: agregação de
+    // Fechamento, não resposta de frequência individual), mesmo padrão de pequenas duplicações
+    // já usado no projeto em vez de extrair uma classe utilitária compartilhada.
+    private static long calcularValorOcorrenciaUnico(TomadorModalidade modalidade, TomadorOcorrencia ocorrencia) {
+        long total = 0L;
+        if (ocorrencia.getValorPercentual() != null) {
+            total += BigDecimal.valueOf(modalidade.getValorCentavos())
+                .multiply(ocorrencia.getValorPercentual())
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP)
+                .longValueExact();
+        }
+        if (ocorrencia.getValorCentavos() != null) {
+            total += ocorrencia.getValorCentavos();
+        }
+        return total;
     }
 
     public static String interpolarDescricao(String template, String competencia) {

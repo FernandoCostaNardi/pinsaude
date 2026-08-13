@@ -6,6 +6,7 @@ import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -51,7 +52,12 @@ public record FrequenciaMedicaResponse(
     long modalidadeValorCentavos,
     long modalidadeDeslocamentoCentavos,
     UUID ocorrenciaId,
-    String ocorrenciaNome
+    String ocorrenciaNome,
+    // PINSAUDE-13.26 (ajuste pós-implantação): valor CADASTRADO da ocorrência fixa, calculado uma
+    // única vez sobre o valor da modalidade — nunca por item. Sempre exibido (mesmo sem nenhum
+    // item lançado ainda), espelhando modalidadeValorCentavos — mas só entra em
+    // totalValorCentavos quando há pelo menos 1 item lançado (ver ocorrenciaAplicadaNoTotal).
+    long ocorrenciaValorCentavos
 ) {
     public static FrequenciaMedicaResponse from(FrequenciaMedica f,
                                                 TomadorServicoOperacional setor,
@@ -70,6 +76,10 @@ public record FrequenciaMedicaResponse(
         long totalMensalDiarista = valorMensalDiaristaUnico(itens, modalidadesMap);
         TomadorModalidade modalidadeFreq = f.getModalidadeId() != null ? modalidadesMap.get(f.getModalidadeId()) : null;
         TomadorOcorrencia ocorrenciaFreq = f.getOcorrenciaId() != null ? ocorrenciasMap.get(f.getOcorrenciaId()) : null;
+        long ocorrenciaValorCadastrado = calcularValorOcorrenciaUnico(modalidadeFreq, ocorrenciaFreq);
+        // só soma no total quando já existe pelo menos 1 plantão lançado — sem lançamento, não
+        // faz sentido aplicar o bônus da ocorrência (mesmo critério de valorMensalDiaristaUnico).
+        long ocorrenciaAplicadaNoTotal = itens.isEmpty() ? 0L : ocorrenciaValorCadastrado;
         return new FrequenciaMedicaResponse(
             f.getId(),
             f.getTomadorId(),
@@ -86,7 +96,7 @@ public record FrequenciaMedicaResponse(
             f.getProducaoId(),
             f.getCreatedAt(),
             itens,
-            totalItens + totalMensalDiarista,
+            totalItens + totalMensalDiarista + ocorrenciaAplicadaNoTotal,
             List.of(),
             calcularProgressoSemanal(itens, modalidadesMap),
             f.getModalidadeId(),
@@ -99,8 +109,29 @@ public record FrequenciaMedicaResponse(
             modalidadeFreq != null ? modalidadeFreq.getValorCentavos() : 0L,
             modalidadeFreq != null ? modalidadeFreq.getDeslocamentoCentavos() : 0L,
             f.getOcorrenciaId(),
-            ocorrenciaFreq != null ? ocorrenciaFreq.getNome() : null
+            ocorrenciaFreq != null ? ocorrenciaFreq.getNome() : null,
+            ocorrenciaValorCadastrado
         );
+    }
+
+    // PINSAUDE-13.26 (ajuste pós-implantação): mesma fórmula de FrequenciaService.
+    // calcularValorOcorrencia (percentual sobre o valor cadastrado da modalidade + valor fixo),
+    // mas aplicada UMA ÚNICA VEZ por frequência — nunca por item lançado. Duplicada aqui (não
+    // compartilhada com o service) porque este é um contexto estático de DTO, sem acesso a uma
+    // instância de FrequenciaService.
+    private static long calcularValorOcorrenciaUnico(TomadorModalidade modalidadeFreq, TomadorOcorrencia ocorrenciaFreq) {
+        if (modalidadeFreq == null || ocorrenciaFreq == null) return 0L;
+        long total = 0L;
+        if (ocorrenciaFreq.getValorPercentual() != null) {
+            total += BigDecimal.valueOf(modalidadeFreq.getValorCentavos())
+                .multiply(ocorrenciaFreq.getValorPercentual())
+                .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP)
+                .longValueExact();
+        }
+        if (ocorrenciaFreq.getValorCentavos() != null) {
+            total += ocorrenciaFreq.getValorCentavos();
+        }
+        return total;
     }
 
     // PINSAUDE-13.23: Diarista não paga por lançamento — cada item vale R$0 (ver

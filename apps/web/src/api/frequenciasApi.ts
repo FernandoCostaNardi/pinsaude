@@ -106,6 +106,11 @@ export interface FrequenciaMedicaResp {
   modalidadeDeslocamentoCentavos: number
   ocorrenciaId: string | null
   ocorrenciaNome: string | null
+  // PINSAUDE-13.26 (ajuste pós-implantação): valor da ocorrência aplicado UMA ÚNICA VEZ sobre o
+  // valor da modalidade — não mais por lançamento (evita inflar o total com N plantões). Sempre
+  // calculado quando modalidade+ocorrência estão fixas, mesmo sem nenhum item lançado ainda
+  // (preview); só entra em totalValorCentavos quando há pelo menos 1 plantão.
+  ocorrenciaValorCentavos: number
 }
 
 export interface FrequenciaMedicaRequest {

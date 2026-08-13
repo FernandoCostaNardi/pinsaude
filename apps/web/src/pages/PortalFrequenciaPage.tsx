@@ -448,7 +448,7 @@ function NovaFrequenciaModal({
 // ─── Formulário de plantão — empilhado no mobile ──────────────────────────────
 
 function PlantaoFormPanel({
-  tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, onSave, onCancel,
+  tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, ocorrenciaFixaValorCentavos, onSave, onCancel,
 }: {
   tomadorId: string
   tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null   // filtra a lista de modalidades (PINSAUDE-13.25)
@@ -456,6 +456,8 @@ function PlantaoFormPanel({
   // criação), o formulário não pergunta mais nenhuma das duas. null = frequência legada.
   modalidadeFixa: TomadorModalidade | null
   ocorrenciaFixaNome: string | null
+  // Ajuste pós-implantação: valor aplicado UMA ÚNICA VEZ pela frequência (exibição informativa).
+  ocorrenciaFixaValorCentavos: number | null
   onSave: (req: FrequenciaItemRequest) => Promise<void>
   onCancel: () => void
 }) {
@@ -612,7 +614,8 @@ function PlantaoFormPanel({
       {modalidadeFixa ? (
         ocorrenciaFixaNome && (
           <p className="mb-3 text-xs text-ds-mid">
-            Ocorrência aplicada a todos os plantões desta frequência: <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
+            Ocorrência aplicada uma única vez nesta frequência (não por plantão): <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
+            {!!ocorrenciaFixaValorCentavos && <span className="text-green-600 font-bold"> +{formatBRL(ocorrenciaFixaValorCentavos)}</span>}
           </p>
         )
       ) : (
@@ -695,6 +698,8 @@ function FrequenciaItensPanel({
     horasSemanais: freq.modalidadeHorasSemanais,
   } : null
   const ocorrenciaFixaNome = freq.ocorrenciaId ? freq.ocorrenciaNome : null
+  // Ajuste pós-implantação: valor aplicado uma única vez pela frequência (não por lançamento).
+  const ocorrenciaFixaValorCentavos = freq.ocorrenciaId ? freq.ocorrenciaValorCentavos : null
 
   async function handleExcluir() {
     setExcluindo(true); setExcluirErr(null)
@@ -895,6 +900,7 @@ function FrequenciaItensPanel({
           tipoMedico={freq.tipoMedico}
           modalidadeFixa={modalidadeFixa}
           ocorrenciaFixaNome={ocorrenciaFixaNome}
+          ocorrenciaFixaValorCentavos={ocorrenciaFixaValorCentavos}
           onSave={handleAdd}
           onCancel={() => setAdicionando(false)}
         />
