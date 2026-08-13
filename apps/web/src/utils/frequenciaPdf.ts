@@ -44,14 +44,30 @@ function formatHorarioItem(item: FrequenciaItemResp): string | null {
   return `${item.horaInicio.slice(0, 5)} às ${item.horaFim.slice(0, 5)}`
 }
 
+// Pedido do cliente: o formulário oficial não pode ter a coluna Turno em branco. Modalidade
+// Diarista nunca tem `modalidadeTurno` cadastrado (paga valor mensal fixo, sem turno fixo),
+// mas cada item registra o horário de entrada/saída digitado naquele dia — infere o turno a
+// partir da hora de entrada: 06:00–17:59 = Diurno, 18:00–05:59 = Noturno (convenção já usada
+// nos presets de "Preenchimento Rápido de Turno", EPIC-13.20). Plantonista sempre tem
+// `modalidadeTurno` cadastrado e continua usando-o diretamente, sem inferência.
+function inferirTurno(item: FrequenciaItemResp): string {
+  if (item.modalidadeTurno) return item.modalidadeTurno
+  if (item.horaInicio) {
+    const hora = parseInt(item.horaInicio.slice(0, 2), 10)
+    return (hora >= 6 && hora < 18) ? 'DIURNO' : 'NOTURNO'
+  }
+  return ''
+}
+
 function gerarOcorrencia(item: FrequenciaItemResp): string {
   if (item.ocorrencia) return item.ocorrencia  // preserva valor informado manualmente
 
   const [y, m, d] = item.dataExecucao.split('-').map(Number)
   const diaSemana = DIAS_SEMANA[new Date(y, m - 1, d).getDay()]
 
-  const turno = item.modalidadeTurno
-    ? item.modalidadeTurno.charAt(0) + item.modalidadeTurno.slice(1).toLowerCase()
+  const turnoInferido = inferirTurno(item)
+  const turno = turnoInferido
+    ? turnoInferido.charAt(0) + turnoInferido.slice(1).toLowerCase()
     : ''
 
   let horasStr = formatHorarioItem(item) ?? ''
@@ -81,7 +97,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
     .map(item => `
       <tr>
         <td style="text-align:center">${formatDataCurta(item.dataExecucao)}</td>
-        <td style="text-align:center">${item.modalidadeTurno ?? ''}</td>
+        <td style="text-align:center">${inferirTurno(item)}</td>
         <td style="text-align:center">${formatHorarioItem(item) ?? item.modalidadeHorario ?? ''}</td>
         <td></td>
         <td>${gerarOcorrencia(item)}</td>
