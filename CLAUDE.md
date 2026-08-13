@@ -5785,6 +5785,50 @@ campo "Competência" do cabeçalho, não foi removida.
 
 ---
 
+## Ocorrência única vira checkbox no Portal do Médico (PINSAUDE-13.26, refinamento)
+
+### Só no modal "Nova Frequência Médica" do Portal — admin continua com select sempre
+Pedido explícito do cliente: no modal de criação de frequência do **médico** (`NovaFrequenciaModal`
+em `PortalFrequenciaPage.tsx`), quando o tomador selecionado tem exatamente **1** ocorrência ativa
+cadastrada, trocar o `<select>` por um checkbox simples com o nome da ocorrência — menos fricção
+que abrir um dropdown pra escolher a única opção existente. Com 0 ou 2+ ocorrências, mantém o
+`<select>` de sempre (0 = disabled com placeholder "Nenhuma"; 2+ = escolha real entre opções). A
+versão do **gestor/operação** (`NovaFrequenciaModal` em `FrequenciasPage.tsx`) **não muda** —
+continua sempre com `<select>`, independente da quantidade de ocorrências.
+
+```tsx
+{ocorrencias.length === 1 ? (
+  <label className="flex items-center gap-2.5 cursor-pointer group">
+    <input type="checkbox" checked={ocorrenciaId === ocorrencias[0].id}
+      onChange={e => setOcorrenciaId(e.target.checked ? ocorrencias[0].id : '')} ... />
+    <span>Ocorrência: <span className="font-semibold">{ocorrencias[0].nome}</span></span>
+  </label>
+) : (
+  <div>{/* <select> de sempre */}</div>
+)}
+```
+
+### Teste manual — toggle temporário de `ativo` num tomador real, sem criar dado novo
+Para testar o caminho "exatamente 1 ocorrência" sem sujar o banco com uma modalidade/ocorrência
+fake nova (o tomador de teste, SESA, já tem 2 ocorrências cadastradas — "Bonificação"/"T-xax"),
+a forma mais simples e 100% reversível foi desativar temporariamente uma delas via
+`PUT /api/tomadores/{id}/ocorrencias/{ocId}` (`ativo: false`), testar o checkbox aparecendo com o
+médico logado, e reativar (`ativo: true`) logo em seguida — sem nenhum registro novo criado/
+removido, só um toggle temporário revertido antes de finalizar.
+
+### Achado incidental: clicar na opção certa de um Dropdown com 2 tomadores duplicados (mesmo texto)
+Mesmo bug de dado já documentado (EPIC-15.11, "tomador duplicado, mesmo CNPJ") tornou a automação
+do clique mais difícil aqui: como as duas opções do dropdown têm o texto **idêntico**
+("SECRETARIA DA SAUDE DO ESTADO DO CEARA — FORTALEZA"), `Array.from(...).find(...)` /
+indexação por posição no array de matches (`opts[0]`, `opts[N-1]`) não é confiável — o botão-
+gatilho (valor já selecionado) e as opções da lista aberta compartilham o mesmo texto quando o
+dropdown reabre com uma seleção prévia, então a ordem no array de matches depende do estado de
+abertura, não é fixa. Resolvido ordenando os elementos encontrados por `getBoundingClientRect().top`
+e pulando o primeiro (gatilho, sempre no topo/fora da lista) — os itens da lista aberta ficam
+agrupados por posição vertical, confiável mesmo com texto duplicado.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
