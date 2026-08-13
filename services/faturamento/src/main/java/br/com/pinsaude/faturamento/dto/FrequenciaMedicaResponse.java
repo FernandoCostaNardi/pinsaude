@@ -2,6 +2,7 @@ package br.com.pinsaude.faturamento.dto;
 
 import br.com.pinsaude.faturamento.domain.FrequenciaMedica;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
+import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 
 import java.math.BigDecimal;
@@ -35,22 +36,40 @@ public record FrequenciaMedicaResponse(
     List<FrequenciaItemResponse> itens,
     long totalValorCentavos,
     List<FrequenciaModalidadeProgressoResponse> progressoMetas,
-    List<FrequenciaSemanaProgressoResponse> progressoSemanal
+    List<FrequenciaSemanaProgressoResponse> progressoSemanal,
+    // PINSAUDE-13.26: modalidade/ocorrência escolhidas na criação da frequência — null pra
+    // frequências legadas sem modalidade fixa (ver FrequenciaService). Quando não-null, o
+    // frontend esconde os seletores de modalidade/ocorrência no formulário de plantão e usa
+    // estes campos diretamente (sem chamada extra).
+    UUID modalidadeId,
+    String modalidadeNome,
+    String modalidadeTipo,
+    String modalidadeTurno,
+    String modalidadeHorario,
+    BigDecimal modalidadeHoras,
+    BigDecimal modalidadeHorasSemanais,
+    long modalidadeValorCentavos,
+    long modalidadeDeslocamentoCentavos,
+    UUID ocorrenciaId,
+    String ocorrenciaNome
 ) {
     public static FrequenciaMedicaResponse from(FrequenciaMedica f,
                                                 TomadorServicoOperacional setor,
                                                 List<FrequenciaItemResponse> itens) {
-        return from(f, setor, itens, Map.of());
+        return from(f, setor, itens, Map.of(), Map.of());
     }
 
     public static FrequenciaMedicaResponse from(FrequenciaMedica f,
                                                 TomadorServicoOperacional setor,
                                                 List<FrequenciaItemResponse> itens,
-                                                Map<UUID, TomadorModalidade> modalidadesMap) {
+                                                Map<UUID, TomadorModalidade> modalidadesMap,
+                                                Map<UUID, TomadorOcorrencia> ocorrenciasMap) {
         long totalItens = itens.stream()
             .mapToLong(FrequenciaItemResponse::totalItemCentavos)
             .sum();
         long totalMensalDiarista = valorMensalDiaristaUnico(itens, modalidadesMap);
+        TomadorModalidade modalidadeFreq = f.getModalidadeId() != null ? modalidadesMap.get(f.getModalidadeId()) : null;
+        TomadorOcorrencia ocorrenciaFreq = f.getOcorrenciaId() != null ? ocorrenciasMap.get(f.getOcorrenciaId()) : null;
         return new FrequenciaMedicaResponse(
             f.getId(),
             f.getTomadorId(),
@@ -69,7 +88,18 @@ public record FrequenciaMedicaResponse(
             itens,
             totalItens + totalMensalDiarista,
             List.of(),
-            calcularProgressoSemanal(itens, modalidadesMap)
+            calcularProgressoSemanal(itens, modalidadesMap),
+            f.getModalidadeId(),
+            modalidadeFreq != null ? modalidadeFreq.getNome() : null,
+            modalidadeFreq != null ? modalidadeFreq.getTipo() : null,
+            modalidadeFreq != null ? modalidadeFreq.getTurno() : null,
+            modalidadeFreq != null ? modalidadeFreq.getHorario() : null,
+            modalidadeFreq != null ? modalidadeFreq.getHoras() : null,
+            modalidadeFreq != null ? modalidadeFreq.getHorasSemanais() : null,
+            modalidadeFreq != null ? modalidadeFreq.getValorCentavos() : 0L,
+            modalidadeFreq != null ? modalidadeFreq.getDeslocamentoCentavos() : 0L,
+            f.getOcorrenciaId(),
+            ocorrenciaFreq != null ? ocorrenciaFreq.getNome() : null
         );
     }
 

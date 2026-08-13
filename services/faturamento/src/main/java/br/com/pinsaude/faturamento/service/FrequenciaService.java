@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class FrequenciaService {
@@ -83,6 +84,26 @@ public class FrequenciaService {
                 "Médico não está alocado a este tomador");
         }
 
+        // PINSAUDE-13.26: modalidade (e opcionalmente ocorrência) escolhidas uma única vez aqui —
+        // nenhum lançamento de plantão pergunta mais isso (ver adicionarItem/atualizarItem).
+        TomadorModalidade modalidade = modalidadeRepo.findById(req.modalidadeId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Modalidade não encontrada: " + req.modalidadeId()));
+        if (!modalidade.getTomadorId().equals(req.tomadorId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Modalidade não pertence ao tomador informado");
+        }
+        if (!modalidade.getTipo().equals(req.tipoMedico())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Modalidade do tipo " + modalidade.getTipo() + " não pode ser usada numa "
+                    + "frequência com Tipo de Escala " + req.tipoMedico());
+        }
+        TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
+        if (ocorrencia != null && !ocorrencia.getTomadorId().equals(req.tomadorId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ocorrência não pertence ao tomador informado");
+        }
+
         String tenant = SecurityUtils.currentCnpjTenant();
 
         FrequenciaMedica f = new FrequenciaMedica();
@@ -92,10 +113,14 @@ public class FrequenciaService {
         f.setServicoOperacionalId(req.servicoOperacionalId());
         f.setCompetencia(req.competencia());
         f.setTipoMedico(req.tipoMedico());
+        f.setModalidadeId(req.modalidadeId());
+        f.setOcorrenciaId(req.ocorrenciaId());
         f.setStatus("RASCUNHO");
         frequenciaRepo.save(f);
 
-        return FrequenciaMedicaResponse.from(f, setor, List.of());
+        Map<UUID, TomadorModalidade> modalidadesMap = Map.of(modalidade.getId(), modalidade);
+        Map<UUID, TomadorOcorrencia> ocorrenciasMap = ocorrencia != null ? Map.of(ocorrencia.getId(), ocorrencia) : Map.of();
+        return FrequenciaMedicaResponse.from(f, setor, List.of(), modalidadesMap, ocorrenciasMap);
     }
 
     @Transactional(readOnly = true)
@@ -130,13 +155,20 @@ public class FrequenciaService {
             .filter(i -> freqIds.contains(i.getFrequenciaId()))
             .collect(Collectors.groupingBy(FrequenciaItem::getFrequenciaId));
 
-        List<UUID> modalidadeIds = itensPorFrequencia.values().stream()
-            .flatMap(List::stream).map(FrequenciaItem::getModalidadeId).distinct().toList();
+        // PINSAUDE-13.26: inclui também o modalidadeId/ocorrenciaId fixo de cada frequência no
+        // batch — não só os referenciados pelos itens — pra resolver modalidadeNome/ocorrenciaNome
+        // no header mesmo quando a frequência ainda não tem nenhum item lançado.
+        List<UUID> modalidadeIds = Stream.concat(
+                itensPorFrequencia.values().stream().flatMap(List::stream).map(FrequenciaItem::getModalidadeId),
+                filtered.stream().map(FrequenciaMedica::getModalidadeId).filter(i -> i != null)
+            ).distinct().toList();
         Map<UUID, TomadorModalidade> modalidadesMap = modalidadeRepo.findAllById(modalidadeIds).stream()
             .collect(Collectors.toMap(TomadorModalidade::getId, Function.identity()));
 
-        List<UUID> ocorrenciaIds = itensPorFrequencia.values().stream()
-            .flatMap(List::stream).map(FrequenciaItem::getOcorrenciaId).filter(i -> i != null).distinct().toList();
+        List<UUID> ocorrenciaIds = Stream.concat(
+                itensPorFrequencia.values().stream().flatMap(List::stream).map(FrequenciaItem::getOcorrenciaId),
+                filtered.stream().map(FrequenciaMedica::getOcorrenciaId)
+            ).filter(i -> i != null).distinct().toList();
         Map<UUID, TomadorOcorrencia> ocorrenciasMap = ocorrenciaRepo.findAllById(ocorrenciaIds).stream()
             .collect(Collectors.toMap(TomadorOcorrencia::getId, Function.identity()));
 
@@ -147,7 +179,8 @@ public class FrequenciaService {
                 .map(i -> FrequenciaItemResponse.from(i, modalidadesMap.get(i.getModalidadeId()),
                     ocorrenciasMap.get(i.getOcorrenciaId())))
                 .toList();
-            return FrequenciaMedicaResponse.from(f, setoresMap.get(f.getServicoOperacionalId()), itemResponses, modalidadesMap);
+            return FrequenciaMedicaResponse.from(f, setoresMap.get(f.getServicoOperacionalId()), itemResponses,
+                modalidadesMap, ocorrenciasMap);
         }).toList();
     }
 
@@ -167,21 +200,23 @@ public class FrequenciaService {
                 "Não é possível adicionar itens em frequência já faturada");
         }
 
-        TomadorModalidade modalidade = modalidadeRepo.findById(req.modalidadeId())
+        UUID modalidadeId = resolverModalidadeIdParaItem(f, req.modalidadeId());
+        UUID ocorrenciaId = f.getModalidadeId() != null ? f.getOcorrenciaId() : req.ocorrenciaId();
+        TomadorModalidade modalidade = modalidadeRepo.findById(modalidadeId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Modalidade não encontrada: " + req.modalidadeId()));
+                "Modalidade não encontrada: " + modalidadeId));
         validarCouplingTipoEscala(f, modalidade);
-        TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
+        TomadorOcorrencia ocorrencia = resolverOcorrencia(ocorrenciaId);
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
         boolean diarista = "DIARISTA".equals(modalidade.getTipo());
 
         FrequenciaItem item = new FrequenciaItem();
         item.setFrequenciaId(frequenciaId);
-        item.setModalidadeId(req.modalidadeId());
+        item.setModalidadeId(modalidadeId);
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
-        item.setOcorrenciaId(req.ocorrenciaId());
+        item.setOcorrenciaId(ocorrenciaId);
         item.setHorasTrabalhadas(horasTrabalhadas);
         item.setHoraInicio(diarista ? req.horaInicio() : null);
         item.setHoraFim(diarista ? req.horaFim() : null);
@@ -207,19 +242,21 @@ public class FrequenciaService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Item não encontrado: " + itemId));
 
-        TomadorModalidade modalidade = modalidadeRepo.findById(req.modalidadeId())
+        UUID modalidadeId = resolverModalidadeIdParaItem(f, req.modalidadeId());
+        UUID ocorrenciaId = f.getModalidadeId() != null ? f.getOcorrenciaId() : req.ocorrenciaId();
+        TomadorModalidade modalidade = modalidadeRepo.findById(modalidadeId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Modalidade não encontrada: " + req.modalidadeId()));
+                "Modalidade não encontrada: " + modalidadeId));
         validarCouplingTipoEscala(f, modalidade);
-        TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
+        TomadorOcorrencia ocorrencia = resolverOcorrencia(ocorrenciaId);
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
         boolean diarista = "DIARISTA".equals(modalidade.getTipo());
 
-        item.setModalidadeId(req.modalidadeId());
+        item.setModalidadeId(modalidadeId);
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
-        item.setOcorrenciaId(req.ocorrenciaId());
+        item.setOcorrenciaId(ocorrenciaId);
         item.setHorasTrabalhadas(horasTrabalhadas);
         item.setHoraInicio(diarista ? req.horaInicio() : null);
         item.setHoraFim(diarista ? req.horaFim() : null);
@@ -355,6 +392,19 @@ public class FrequenciaService {
         }
     }
 
+    // PINSAUDE-13.26: quando a frequência tem modalidade fixa (escolhida na criação), todo item
+    // usa sempre essa modalidade — o valor vindo do request do item é ignorado. Só frequências
+    // legadas (modalidadeId nulo, criadas antes desta mudança) continuam exigindo modalidadeId
+    // no request de cada lançamento, exatamente como antes.
+    private UUID resolverModalidadeIdParaItem(FrequenciaMedica f, UUID reqModalidadeId) {
+        if (f.getModalidadeId() != null) return f.getModalidadeId();
+        if (reqModalidadeId == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Informe a modalidade para este lançamento");
+        }
+        return reqModalidadeId;
+    }
+
     private TomadorOcorrencia resolverOcorrencia(UUID ocorrenciaId) {
         if (ocorrenciaId == null) return null;
         return ocorrenciaRepo.findById(ocorrenciaId)
@@ -391,16 +441,22 @@ public class FrequenciaService {
         TomadorServicoOperacional setor = setorRepo.findById(f.getServicoOperacionalId()).orElse(null);
         List<FrequenciaItem> itens = itemRepo.findByFrequenciaIdOrderByDataExecucaoAscCreatedAtAsc(f.getId());
 
-        if (itens.isEmpty()) {
-            return FrequenciaMedicaResponse.from(f, setor, List.of());
-        }
-
-        List<UUID> modalidadeIds = itens.stream().map(FrequenciaItem::getModalidadeId).distinct().toList();
+        // PINSAUDE-13.26: inclui o modalidadeId/ocorrenciaId fixo da frequência no batch, além
+        // dos referenciados pelos itens — necessário mesmo com 0 itens (frequência recém-criada).
+        List<UUID> modalidadeIds = Stream.concat(
+                itens.stream().map(FrequenciaItem::getModalidadeId),
+                Stream.ofNullable(f.getModalidadeId())
+            ).distinct().toList();
+        // Collectors.toMap produz um HashMap regular (tolera .get(null) retornando null) — nunca
+        // usar Map.of() aqui, cujo .get(null) lança NPE e quebraria itens sem ocorrência (a
+        // maioria) quando o batch de ocorrenciaIds estiver vazio.
         Map<UUID, TomadorModalidade> modalidadesMap = modalidadeRepo.findAllById(modalidadeIds).stream()
             .collect(Collectors.toMap(TomadorModalidade::getId, Function.identity()));
 
-        List<UUID> ocorrenciaIds = itens.stream()
-            .map(FrequenciaItem::getOcorrenciaId).filter(i -> i != null).distinct().toList();
+        List<UUID> ocorrenciaIds = Stream.concat(
+                itens.stream().map(FrequenciaItem::getOcorrenciaId),
+                Stream.ofNullable(f.getOcorrenciaId())
+            ).filter(i -> i != null).distinct().toList();
         Map<UUID, TomadorOcorrencia> ocorrenciasMap = ocorrenciaRepo.findAllById(ocorrenciaIds).stream()
             .collect(Collectors.toMap(TomadorOcorrencia::getId, Function.identity()));
 
@@ -409,6 +465,19 @@ public class FrequenciaService {
                 ocorrenciasMap.get(i.getOcorrenciaId())))
             .toList();
 
-        return FrequenciaMedicaResponse.from(f, setor, itemResponses, modalidadesMap);
+        return FrequenciaMedicaResponse.from(f, setor, itemResponses, modalidadesMap, ocorrenciasMap);
+    }
+
+    // PINSAUDE-13.26: exclusão só permitida em RASCUNHO (antes de gerar PDF) — decisão
+    // conservadora para não arriscar apagar algo já compartilhado/assinado. Itens são apagados
+    // em cascata pela FK (ON DELETE CASCADE em frequencia_itens.frequencia_id).
+    @Transactional
+    public void excluir(UUID id) {
+        FrequenciaMedica f = findOrThrow(id);
+        if (!"RASCUNHO".equals(f.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Só é possível excluir uma frequência em Rascunho — status atual: " + f.getStatus());
+        }
+        frequenciaRepo.delete(f);
     }
 }

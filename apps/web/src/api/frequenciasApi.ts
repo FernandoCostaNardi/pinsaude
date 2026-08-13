@@ -92,6 +92,20 @@ export interface FrequenciaMedicaResp {
   totalValorCentavos: number
   progressoMetas: FrequenciaModalidadeProgresso[]
   progressoSemanal: FrequenciaSemanaProgresso[]
+  // PINSAUDE-13.26: modalidade/ocorrência escolhidas uma única vez na criação da frequência —
+  // null para frequências legadas sem modalidade fixa (ver CLAUDE.md). Quando modalidadeId não é
+  // null, o formulário de lançamento de plantão não pergunta mais modalidade/ocorrência.
+  modalidadeId: string | null
+  modalidadeNome: string | null
+  modalidadeTipo: 'PLANTONISTA' | 'DIARISTA' | null
+  modalidadeTurno: string | null
+  modalidadeHorario: string | null
+  modalidadeHoras: number | null
+  modalidadeHorasSemanais: number | null
+  modalidadeValorCentavos: number
+  modalidadeDeslocamentoCentavos: number
+  ocorrenciaId: string | null
+  ocorrenciaNome: string | null
 }
 
 export interface FrequenciaMedicaRequest {
@@ -100,13 +114,22 @@ export interface FrequenciaMedicaRequest {
   servicoOperacionalId: string
   competencia: string
   tipoMedico: 'PLANTONISTA' | 'DIARISTA'
+  // PINSAUDE-13.26: modalidade (obrigatória) e ocorrência (opcional) escolhidas uma única vez
+  // aqui, na criação da frequência — o formulário de lançamento de plantão nunca mais pergunta.
+  modalidadeId: string
+  ocorrenciaId?: string
 }
 
 // PINSAUDE-13.25 (ajuste pós-implantação): horasTrabalhadas não é mais informado direto pelo
 // cliente — para modalidade Diarista o médico digita horaInicio/horaFim ("HH:mm") e o backend
 // deriva a quantidade de horas (ver FrequenciaService.calcularHorasTrabalhadas).
+//
+// PINSAUDE-13.26: modalidadeId/ocorrenciaId deixaram de ser obrigatórios aqui — quando a
+// frequência já tem modalidade fixa (ver FrequenciaMedicaResp.modalidadeId), o backend ignora
+// qualquer valor enviado nestes dois campos e usa sempre o da frequência. Só frequências
+// legadas sem modalidade fixa ainda exigem modalidadeId aqui.
 export interface FrequenciaItemRequest {
-  modalidadeId: string
+  modalidadeId?: string
   dataExecucao: string
   ocorrencia?: string
   horaInicio?: string
@@ -144,6 +167,17 @@ export const frequenciasApi = {
   async buscarPorId(id: string): Promise<FrequenciaMedicaResp> {
     const res = await fetch(`/api/frequencias/${id}`, { headers: authHeaders() })
     return handleResponse<FrequenciaMedicaResp>(res)
+  },
+
+  // PINSAUDE-13.26: só permitido enquanto a frequência está em RASCUNHO — dá pra corrigir uma
+  // escolha errada de modalidade/ocorrência (não editável depois de criada) apagando e criando
+  // de novo. Itens são apagados em cascata pelo backend.
+  async excluir(id: string): Promise<void> {
+    const res = await fetch(`/api/frequencias/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
   },
 
   async adicionarItem(id: string, req: FrequenciaItemRequest): Promise<FrequenciaItemResp> {

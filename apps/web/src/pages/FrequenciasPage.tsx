@@ -301,6 +301,13 @@ function NovaFrequenciaModal({
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
 
+  // PINSAUDE-13.26: modalidade (obrigatória) e ocorrência (opcional) passam a ser escolhidas
+  // aqui, uma única vez — o formulário de lançamento de plantão não pergunta mais nenhuma das duas.
+  const [modalidades,  setModalidades]  = useState<TomadorModalidade[]>([])
+  const [modalidade,   setModalidade]   = useState<TomadorModalidade | null>(null)
+  const [ocorrencias,  setOcorrencias]  = useState<TomadorOcorrencia[]>([])
+  const [ocorrenciaId, setOcorrenciaId] = useState('')
+
   // Filtro de tomadores pelo médico selecionado (EPIC-15.14): sem médico, mostra todos os
   // tomadores do tenant; com médico selecionado, mostra só os tomadores alocados a ele.
   const [tomadoresFiltrados, setTomadoresFiltrados] = useState<Tomador[] | null>(null)
@@ -323,9 +330,23 @@ function NovaFrequenciaModal({
     tomadoresApi.listarGrupos(tomador.id).then(setGrupos).catch(() => setGrupos([]))
   }, [tomador?.id])
 
+  // PINSAUDE-13.26: modalidades filtradas pelo Tipo de Escala escolhido — troca de tomador ou
+  // de tipo de escala reseta a modalidade/ocorrência já selecionadas (podem não ser mais válidas).
+  useEffect(() => {
+    setModalidade(null)
+    setOcorrenciaId('')
+    if (!tomador) { setModalidades([]); setOcorrencias([]); return }
+    tomadoresApi.listarModalidades(tomador.id)
+      .then(ms => setModalidades(ms.filter(m => m.tipo === tipoMedico && m.ativo)))
+      .catch(() => setModalidades([]))
+    tomadoresApi.listarOcorrencias(tomador.id)
+      .then(os => setOcorrencias(os.filter(o => o.ativo)))
+      .catch(() => setOcorrencias([]))
+  }, [tomador?.id, tipoMedico])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!tomador || !medico || !setor) return
+    if (!tomador || !medico || !setor || !modalidade) return
     setSaving(true); setErr(null)
     try {
       const req: FrequenciaMedicaRequest = {
@@ -334,6 +355,8 @@ function NovaFrequenciaModal({
         servicoOperacionalId: setor.id,
         competencia,
         tipoMedico,
+        modalidadeId: modalidade.id,
+        ocorrenciaId: ocorrenciaId || undefined,
       }
       const criada = await frequenciasApi.criar(req)
       onCriada(criada)
@@ -342,7 +365,7 @@ function NovaFrequenciaModal({
     } finally { setSaving(false) }
   }
 
-  const canSave = !!tomador && !!medico && !!setor
+  const canSave = !!tomador && !!medico && !!setor && !!modalidade
   const medicosFiltrados = medicos.filter(m => m.status === 'ATIVO')
 
   return (
@@ -435,6 +458,42 @@ function NovaFrequenciaModal({
             </div>
           </div>
 
+          {/* Linha 5: Modalidade (PINSAUDE-13.26) — escolhida uma única vez aqui; todo lançamento
+              de plantão desta frequência sempre usará esta modalidade, sem perguntar de novo. */}
+          <div className="mt-4">
+            <Dropdown
+              label="Modalidade *"
+              placeholder={
+                !tomador ? 'Selecione o tomador primeiro...'
+                : modalidades.length === 0 ? `Nenhuma modalidade ${tipoMedico === 'PLANTONISTA' ? 'Plantonista' : 'Diarista'} cadastrada`
+                : 'Selecione a modalidade...'
+              }
+              items={modalidades}
+              value={modalidade}
+              onChange={setModalidade}
+              getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
+              disabled={!tomador || modalidades.length === 0}
+            />
+            <p className="mt-1 text-[11px] text-ds-light">
+              Todo plantão lançado nesta frequência usará esta modalidade — não será mais necessário escolher a cada lançamento.
+            </p>
+          </div>
+
+          {/* Linha 6: Ocorrência (opcional, PINSAUDE-13.26) — idem, aplicada a todos os lançamentos. */}
+          <div className="mt-4">
+            <label className="block text-xs font-bold text-ds-mid mb-1">
+              Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
+            </label>
+            <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
+              disabled={!tomador || ocorrencias.length === 0}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white disabled:opacity-50">
+              <option value="">Nenhuma</option>
+              {ocorrencias.map(o => (
+                <option key={o.id} value={o.id}>{o.nome}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Rodapé com ações */}
           <div className="flex gap-3 mt-6 pt-5 border-t border-ds-border">
             <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Cancelar</Button>
@@ -451,17 +510,22 @@ function NovaFrequenciaModal({
 // ─── Panel de adicionar / editar plantão ──────────────────────────────────────
 
 function PlantaoFormPanel({
-  tomadorId, tipoMedico, item, onSave, onCancel,
+  tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, item, onSave, onCancel,
 }: {
   tomadorId: string
   tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null   // filtra a lista de modalidades (PINSAUDE-13.25)
+  // PINSAUDE-13.26: quando a frequência já tem modalidade/ocorrência fixa (escolhida na
+  // criação), o formulário não pergunta mais nenhuma das duas — usa sempre estes valores.
+  // null = frequência legada sem modalidade fixa, mantém o seletor por lançamento de sempre.
+  modalidadeFixa: TomadorModalidade | null
+  ocorrenciaFixaNome: string | null
   item?: FrequenciaItemResp          // se presente, modo edição
   onSave: (req: FrequenciaItemRequest) => Promise<void>
   onCancel: () => void
 }) {
   const isEdit = !!item
   const [modalidades, setModalidades] = useState<TomadorModalidade[]>([])
-  const [modalidade,  setModalidade]  = useState<TomadorModalidade | null>(null)
+  const [modalidade,  setModalidade]  = useState<TomadorModalidade | null>(modalidadeFixa)
   const [data,        setData]        = useState(item?.dataExecucao ?? new Date().toISOString().slice(0, 10))
   const [ocorrencia,  setOcorrencia]  = useState(item?.ocorrencia ?? '')
   const [ocorrenciasTodas, setOcorrenciasTodas] = useState<TomadorOcorrencia[]>([])
@@ -472,6 +536,7 @@ function PlantaoFormPanel({
   const [err,         setErr]         = useState<string | null>(null)
 
   useEffect(() => {
+    if (modalidadeFixa) { setModalidade(modalidadeFixa); return } // PINSAUDE-13.26: nada pra buscar
     tomadoresApi.listarModalidades(tomadorId)
       .then(ms => {
         // PINSAUDE-13.25: só oferece modalidades do mesmo Tipo de Escala da frequência aberta —
@@ -486,8 +551,12 @@ function PlantaoFormPanel({
         }
       })
       .catch(() => {})
+  }, [tomadorId, tipoMedico, item?.modalidadeId, modalidadeFixa])
+
+  useEffect(() => {
+    if (modalidadeFixa) return // PINSAUDE-13.26: ocorrência também fixa — nada pra buscar
     tomadoresApi.listarOcorrencias(tomadorId).then(setOcorrenciasTodas).catch(() => {})
-  }, [tomadorId, tipoMedico, item?.modalidadeId])
+  }, [tomadorId, modalidadeFixa])
 
   const precisaHoras = precisaHorasTrabalhadas(modalidade)
 
@@ -514,10 +583,12 @@ function PlantaoFormPanel({
     setSaving(true); setErr(null)
     try {
       await onSave({
-        modalidadeId: modalidade.id,
+        // PINSAUDE-13.26: com modalidade/ocorrência fixas na frequência, o backend ignora
+        // qualquer valor enviado aqui e usa sempre o da frequência — omitido de propósito.
+        modalidadeId: modalidadeFixa ? undefined : modalidade.id,
         dataExecucao: data,
         ocorrencia: ocorrencia || undefined,
-        ocorrenciaId: ocorrenciaId || undefined,
+        ocorrenciaId: modalidadeFixa ? undefined : (ocorrenciaId || undefined),
         horaInicio: precisaHoras ? horaInicio : undefined,
         horaFim: precisaHoras ? horaFim : undefined,
       })
@@ -551,15 +622,24 @@ function PlantaoFormPanel({
           <input type="date" value={data} onChange={e => setData(e.target.value)}
             className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white" />
         </div>
-        <Dropdown
-          label="Modalidade *"
-          placeholder={modalidades.length === 0 ? 'Sem modalidades cadastradas' : 'Selecione a modalidade...'}
-          items={modalidades}
-          value={modalidade}
-          onChange={setModalidade}
-          getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
-          disabled={modalidades.length === 0}
-        />
+        {modalidadeFixa ? (
+          <div>
+            <label className="block text-xs font-bold text-ds-mid mb-1">Modalidade</label>
+            <div className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text bg-ds-input/40 truncate">
+              {modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa)}
+            </div>
+          </div>
+        ) : (
+          <Dropdown
+            label="Modalidade *"
+            placeholder={modalidades.length === 0 ? 'Sem modalidades cadastradas' : 'Selecione a modalidade...'}
+            items={modalidades}
+            value={modalidade}
+            onChange={setModalidade}
+            getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
+            disabled={modalidades.length === 0}
+          />
+        )}
       </div>
 
       {/* Horário trabalhado — só para modalidade Diarista. O médico digita entrada/saída, não a
@@ -605,19 +685,28 @@ function PlantaoFormPanel({
         </div>
       )}
 
-      {/* Ocorrência do catálogo (com valor) — disponível para qualquer Tipo de Escala */}
-      <div className="mb-3">
-        <label className="block text-xs font-bold text-ds-mid mb-1">
-          Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
-        </label>
-        <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
-          className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
-          <option value="">Nenhuma</option>
-          {ocorrenciaOptions.map(o => (
-            <option key={o.id} value={o.id}>{o.nome}{!o.ativo ? ' (inativa)' : ''}</option>
-          ))}
-        </select>
-      </div>
+      {/* Ocorrência do catálogo — PINSAUDE-13.26: fixa na frequência (escolhida na criação),
+          nunca mais perguntada por lançamento. Sem seletor aqui; só um aviso informativo. */}
+      {modalidadeFixa ? (
+        ocorrenciaFixaNome && (
+          <p className="mb-3 text-xs text-ds-mid">
+            Ocorrência aplicada a todos os plantões desta frequência: <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
+          </p>
+        )
+      ) : (
+        <div className="mb-3">
+          <label className="block text-xs font-bold text-ds-mid mb-1">
+            Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
+          </label>
+          <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
+            className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+            <option value="">Nenhuma</option>
+            {ocorrenciaOptions.map(o => (
+              <option key={o.id} value={o.id}>{o.nome}{!o.ativo ? ' (inativa)' : ''}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Observação livre */}
       <div className="mb-3">
@@ -671,11 +760,15 @@ function criarLinhasVazias(qtd: number): PlantaoRow[] {
 }
 
 function PlantaoGridPanel({
-  freqId, tomadorId, tipoMedico, onSaved, onCancel,
+  freqId, tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, onSaved, onCancel,
 }: {
   freqId: string
   tomadorId: string
   tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null   // filtra a lista de modalidades (PINSAUDE-13.25)
+  // PINSAUDE-13.26: com modalidade/ocorrência fixas na frequência, as colunas correspondentes
+  // somem do grid inteiro — não faz mais sentido escolher por linha. null = frequência legada.
+  modalidadeFixa: TomadorModalidade | null
+  ocorrenciaFixaNome: string | null
   onSaved: () => void | Promise<void>
   onCancel: () => void
 }) {
@@ -690,10 +783,12 @@ function PlantaoGridPanel({
   const focarProximaLinha = useRef<number | null>(null)
 
   function precisaHorasRow(modalidadeId: string): boolean {
+    if (modalidadeFixa) return precisaHorasTrabalhadas(modalidadeFixa)
     return precisaHorasTrabalhadas(modalidades.find(m => m.id === modalidadeId) ?? null)
   }
 
   useEffect(() => {
+    if (modalidadeFixa) return // PINSAUDE-13.26: nada pra buscar — modalidade/ocorrência já fixas
     // PINSAUDE-13.25: só oferece modalidades do mesmo Tipo de Escala da frequência aberta.
     tomadoresApi.listarModalidades(tomadorId)
       .then(ms => {
@@ -704,7 +799,7 @@ function PlantaoGridPanel({
     tomadoresApi.listarOcorrencias(tomadorId)
       .then(os => setOcorrencias(os.filter(o => o.ativo)))
       .catch(() => {})
-  }, [tomadorId, tipoMedico])
+  }, [tomadorId, tipoMedico, modalidadeFixa])
 
   // Foca o campo "Dia" da linha recém-adicionada (via botão ou Tab na última linha)
   useEffect(() => {
@@ -779,18 +874,24 @@ function PlantaoGridPanel({
   }
 
   async function handleSalvarTodos() {
-    // Linha "em uso" = tem dia ou ocorrência preenchidos — se estiver sem modalidade,
-    // não pode ser silenciosamente ignorada (o usuário claramente começou a preencher essa linha).
-    const emUsoSemModalidade = rows.filter(r => (r.dataExecucao || r.ocorrencia.trim()) && !r.modalidadeId)
-    if (emUsoSemModalidade.length > 0) {
-      setLinhasSemModalidade(new Set(emUsoSemModalidade.map(r => r.key)))
-      setErr(`Selecione a modalidade em ${emUsoSemModalidade.length === 1 ? 'linha' : `${emUsoSemModalidade.length} linhas`} destacada${emUsoSemModalidade.length === 1 ? '' : 's'} antes de continuar`)
-      return
+    // PINSAUDE-13.26: com modalidade fixa não há coluna de modalidade por linha — pula direto
+    // pra validação de dia preenchido.
+    if (!modalidadeFixa) {
+      // Linha "em uso" = tem dia ou ocorrência preenchidos — se estiver sem modalidade,
+      // não pode ser silenciosamente ignorada (o usuário claramente começou a preencher essa linha).
+      const emUsoSemModalidade = rows.filter(r => (r.dataExecucao || r.ocorrencia.trim()) && !r.modalidadeId)
+      if (emUsoSemModalidade.length > 0) {
+        setLinhasSemModalidade(new Set(emUsoSemModalidade.map(r => r.key)))
+        setErr(`Selecione a modalidade em ${emUsoSemModalidade.length === 1 ? 'linha' : `${emUsoSemModalidade.length} linhas`} destacada${emUsoSemModalidade.length === 1 ? '' : 's'} antes de continuar`)
+        return
+      }
+      setLinhasSemModalidade(new Set())
     }
-    setLinhasSemModalidade(new Set())
 
-    const validas = rows.filter(r => r.dataExecucao && r.modalidadeId)
-    if (validas.length === 0) { setErr('Preencha ao menos uma linha com dia e modalidade'); return }
+    const validas = modalidadeFixa
+      ? rows.filter(r => r.dataExecucao)
+      : rows.filter(r => r.dataExecucao && r.modalidadeId)
+    if (validas.length === 0) { setErr('Preencha ao menos uma linha com a data'); return }
 
     // Linhas de modalidade Diarista exigem entrada e saída preenchidas (o backend deriva as horas)
     const semHoras = validas.filter(r => precisaHorasRow(r.modalidadeId) && (!r.horaInicio || !r.horaFim || r.horaInicio === r.horaFim))
@@ -806,10 +907,10 @@ function PlantaoGridPanel({
     try {
       for (const r of validas) {
         await frequenciasApi.adicionarItem(freqId, {
-          modalidadeId: r.modalidadeId,
+          modalidadeId: modalidadeFixa ? undefined : r.modalidadeId,
           dataExecucao: r.dataExecucao,
           ocorrencia: r.ocorrencia || undefined,
-          ocorrenciaId: r.ocorrenciaId || undefined,
+          ocorrenciaId: modalidadeFixa ? undefined : (r.ocorrenciaId || undefined),
           horaInicio: precisaHorasRow(r.modalidadeId) ? r.horaInicio : undefined,
           horaFim: precisaHorasRow(r.modalidadeId) ? r.horaFim : undefined,
         })
@@ -826,8 +927,12 @@ function PlantaoGridPanel({
     }
   }
 
-  const qtdPreenchidas = rows.filter(r => r.dataExecucao && r.modalidadeId).length
-  const linhasEmUso = rows.filter(r => r.dataExecucao || r.modalidadeId || r.ocorrencia.trim()).length
+  const qtdPreenchidas = modalidadeFixa
+    ? rows.filter(r => r.dataExecucao).length
+    : rows.filter(r => r.dataExecucao && r.modalidadeId).length
+  const linhasEmUso = modalidadeFixa
+    ? rows.filter(r => r.dataExecucao || r.ocorrencia.trim()).length
+    : rows.filter(r => r.dataExecucao || r.modalidadeId || r.ocorrencia.trim()).length
 
   return (
     <div className="mx-5 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
@@ -841,6 +946,17 @@ function PlantaoGridPanel({
         </button>
       </div>
 
+      {/* PINSAUDE-13.26: modalidade/ocorrência fixas na frequência — sem coluna por linha,
+          só um aviso informativo com o que será aplicado a todo plantão lançado abaixo. */}
+      {modalidadeFixa && (
+        <div className="mb-3 px-3 py-2 rounded-lg bg-white border border-ds-border/60 text-xs text-ds-mid">
+          Modalidade: <span className="font-semibold text-ds-text">{modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa)}</span>
+          {ocorrenciaFixaNome && (
+            <> · Ocorrência: <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span></>
+          )}
+        </div>
+      )}
+
       {/* max-h calibrado para mostrar exatamente 5 linhas (cabeçalho ~32px + 5 × linha ~50px); o resto rola.
           `sticky` vai em cada <th>, não no <thead> — com `border-collapse: collapse` (Tailwind preflight),
           um <thead> sticky não pinta fundo sólido sobre as linhas rolando por baixo (bug conhecido de tabelas
@@ -850,9 +966,13 @@ function PlantaoGridPanel({
           <thead>
             <tr>
               <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Dia</th>
-              <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Modalidade</th>
+              {!modalidadeFixa && (
+                <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Modalidade</th>
+              )}
               <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Horário</th>
-              <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Ocorrência</th>
+              {!modalidadeFixa && (
+                <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Ocorrência</th>
+              )}
               <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Nota</th>
               <th className="sticky top-0 z-10 bg-white border-b border-ds-border w-9"></th>
             </tr>
@@ -866,21 +986,23 @@ function PlantaoGridPanel({
                     onChange={e => updateRow(r.key, { dataExecucao: e.target.value })}
                     className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30" />
                 </td>
-                <td className="px-2 py-1.5">
-                  <select value={r.modalidadeId}
-                    onChange={e => updateRow(r.key, { modalidadeId: e.target.value })}
-                    disabled={modalidades.length === 0}
-                    className={`w-full border rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 disabled:opacity-50 ${
-                      linhasSemModalidade.has(r.key)
-                        ? 'border-red-400 focus:border-red-500 focus:ring-red-300'
-                        : 'border-transparent hover:border-ds-border focus:border-primary focus:ring-primary/30'
-                    }`}>
-                    <option value="">{modalidades.length === 0 ? 'Sem modalidades' : 'Selecione...'}</option>
-                    {modalidades.map(m => (
-                      <option key={m.id} value={m.id}>{m.nome} — {detalheModalidade(m)}</option>
-                    ))}
-                  </select>
-                </td>
+                {!modalidadeFixa && (
+                  <td className="px-2 py-1.5">
+                    <select value={r.modalidadeId}
+                      onChange={e => updateRow(r.key, { modalidadeId: e.target.value })}
+                      disabled={modalidades.length === 0}
+                      className={`w-full border rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 disabled:opacity-50 ${
+                        linhasSemModalidade.has(r.key)
+                          ? 'border-red-400 focus:border-red-500 focus:ring-red-300'
+                          : 'border-transparent hover:border-ds-border focus:border-primary focus:ring-primary/30'
+                      }`}>
+                      <option value="">{modalidades.length === 0 ? 'Sem modalidades' : 'Selecione...'}</option>
+                      {modalidades.map(m => (
+                        <option key={m.id} value={m.id}>{m.nome} — {detalheModalidade(m)}</option>
+                      ))}
+                    </select>
+                  </td>
+                )}
                 <td className="px-2 py-1.5">
                   <div className="flex items-center gap-1">
                     <input type="time" value={r.horaInicio}
@@ -904,17 +1026,19 @@ function PlantaoGridPanel({
                       }`} />
                   </div>
                 </td>
-                <td className="px-2 py-1.5">
-                  <select value={r.ocorrenciaId}
-                    onChange={e => updateRow(r.key, { ocorrenciaId: e.target.value })}
-                    disabled={ocorrencias.length === 0}
-                    className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50">
-                    <option value="">{ocorrencias.length === 0 ? 'Sem ocorrências' : 'Nenhuma'}</option>
-                    {ocorrencias.map(o => (
-                      <option key={o.id} value={o.id}>{o.nome}</option>
-                    ))}
-                  </select>
-                </td>
+                {!modalidadeFixa && (
+                  <td className="px-2 py-1.5">
+                    <select value={r.ocorrenciaId}
+                      onChange={e => updateRow(r.key, { ocorrenciaId: e.target.value })}
+                      disabled={ocorrencias.length === 0}
+                      className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50">
+                      <option value="">{ocorrencias.length === 0 ? 'Sem ocorrências' : 'Nenhuma'}</option>
+                      {ocorrencias.map(o => (
+                        <option key={o.id} value={o.id}>{o.nome}</option>
+                      ))}
+                    </select>
+                  </td>
+                )}
                 <td className="px-2 py-1.5">
                   <input type="text" value={r.ocorrencia}
                     onChange={e => updateRow(r.key, { ocorrencia: e.target.value })}
@@ -965,13 +1089,14 @@ function PlantaoGridPanel({
 // ─── Modal de detalhe/edição ───────────────────────────────────────────────────
 
 function PainelFrequencia({
-  freq, tomadores, medicos, onClose, onAtualizar,
+  freq, tomadores, medicos, onClose, onAtualizar, onExcluida,
 }: {
   freq: FrequenciaMedicaResp
   tomadores: Tomador[]
   medicos: Medico[]
   onClose: () => void
   onAtualizar: (f: FrequenciaMedicaResp) => void
+  onExcluida: (id: string) => void
 }) {
   const { user } = useAuth()
   const [adicionando,   setAdicionando]   = useState(false)
@@ -981,11 +1106,43 @@ function PainelFrequencia({
   const [uploadingDoc,  setUploadingDoc]  = useState(false)
   const [uploadErr,     setUploadErr]     = useState<string | null>(null)
   const [itemPage,      setItemPage]      = useState(0)
+  const [confirmExcluir, setConfirmExcluir] = useState(false)
+  const [excluindo,     setExcluindo]     = useState(false)
+  const [excluirErr,    setExcluirErr]    = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isFaturada = freq.status === 'FATURADA'
+  const isRascunho = freq.status === 'RASCUNHO'
 
   const tomador = tomadores.find(t => t.id === freq.tomadorId)
   const medico  = medicos.find(m => m.id === freq.medicoId)
+
+  // PINSAUDE-13.26: modalidade/ocorrência fixas na criação da frequência — quando presentes, os
+  // formulários de lançamento de plantão (grid e painel) não perguntam mais nenhuma das duas.
+  const modalidadeFixa: TomadorModalidade | null = freq.modalidadeId ? {
+    id: freq.modalidadeId,
+    tomadorId: freq.tomadorId,
+    nome: freq.modalidadeNome ?? '',
+    tipo: freq.modalidadeTipo ?? 'PLANTONISTA',
+    turno: (freq.modalidadeTurno as 'DIURNO' | 'NOTURNO' | null) ?? null,
+    horario: freq.modalidadeHorario,
+    horas: freq.modalidadeHoras,
+    valorCentavos: freq.modalidadeValorCentavos,
+    deslocamentoCentavos: freq.modalidadeDeslocamentoCentavos,
+    ativo: true,
+    horasSemanais: freq.modalidadeHorasSemanais,
+  } : null
+  const ocorrenciaFixaNome = freq.ocorrenciaId ? freq.ocorrenciaNome : null
+
+  async function handleExcluir() {
+    setExcluindo(true); setExcluirErr(null)
+    try {
+      await frequenciasApi.excluir(freq.id)
+      onExcluida(freq.id)
+    } catch (e) {
+      setExcluirErr(e instanceof Error ? e.message : 'Erro ao excluir')
+      setExcluindo(false)
+    }
+  }
 
   // Reseta a página ao abrir uma frequência diferente
   useEffect(() => { setItemPage(0) }, [freq.id])
@@ -1093,6 +1250,19 @@ function PainelFrequencia({
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0 ml-6">
+            {/* PINSAUDE-13.26: modalidade/ocorrência não são editáveis depois de criada a
+                frequência — se o usuário escolheu errado, o jeito é excluir (só em Rascunho,
+                antes de gerar PDF) e criar de novo. */}
+            {isRascunho && (
+              <button
+                onClick={() => setConfirmExcluir(true)}
+                disabled={excluindo}
+                title="Excluir frequência (só disponível em Rascunho)"
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-bold hover:bg-red-50 transition-colors disabled:opacity-50">
+                <Trash2 size={15} />
+                Excluir
+              </button>
+            )}
             <button
               onClick={handleGerarPdf}
               disabled={gerandoPdf}
@@ -1106,6 +1276,38 @@ function PainelFrequencia({
             </button>
           </div>
         </div>
+
+        {/* ── Confirmação de exclusão (PINSAUDE-13.26) ─────────────────────── */}
+        {confirmExcluir && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                  <Trash2 size={18} className="text-red-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-ds-text">Excluir esta frequência?</p>
+                  <p className="mt-1 text-xs text-ds-light">
+                    {freq.itens.length > 0
+                      ? `${freq.itens.length !== 1 ? 'Os' : 'O'} ${freq.itens.length} plantão${freq.itens.length !== 1 ? 'ões lançados serão apagados' : ' lançado será apagado'} junto. Esta ação não pode ser desfeita.`
+                      : 'Esta ação não pode ser desfeita.'}
+                  </p>
+                </div>
+              </div>
+              {excluirErr && <div className="mb-4"><Alert variant="error" onClose={() => setExcluirErr(null)}>{excluirErr}</Alert></div>}
+              <div className="flex gap-3">
+                <Button type="button" variant="secondary" className="flex-1" disabled={excluindo}
+                  onClick={() => setConfirmExcluir(false)}>
+                  Cancelar
+                </Button>
+                <button type="button" onClick={handleExcluir} disabled={excluindo}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+                  {excluindo ? <><Loader2 size={14} className="animate-spin" />Excluindo...</> : 'Excluir'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Dados do profissional ───────────────────────────────────────── */}
         <div className="grid grid-cols-3 gap-0 border-b border-ds-border shrink-0 bg-ds-surface/40">
@@ -1185,6 +1387,8 @@ function PainelFrequencia({
                 freqId={freq.id}
                 tomadorId={freq.tomadorId}
                 tipoMedico={freq.tipoMedico}
+                modalidadeFixa={modalidadeFixa}
+                ocorrenciaFixaNome={ocorrenciaFixaNome}
                 onSaved={handleAddGrid}
                 onCancel={() => setAdicionando(false)}
               />
@@ -1193,6 +1397,8 @@ function PainelFrequencia({
               <PlantaoFormPanel
                 tomadorId={freq.tomadorId}
                 tipoMedico={freq.tipoMedico}
+                modalidadeFixa={modalidadeFixa}
+                ocorrenciaFixaNome={ocorrenciaFixaNome}
                 onSave={handleAdd}
                 onCancel={() => setAdicionando(false)}
               />
@@ -1206,6 +1412,8 @@ function PainelFrequencia({
             <PlantaoFormPanel
               tomadorId={freq.tomadorId}
               tipoMedico={freq.tipoMedico}
+              modalidadeFixa={modalidadeFixa}
+              ocorrenciaFixaNome={ocorrenciaFixaNome}
               item={freq.itens.find(i => i.id === editandoId)}
               onSave={req => handleEdit(editandoId, req)}
               onCancel={() => setEditandoId(null)}
@@ -1381,6 +1589,13 @@ export function FrequenciasPage() {
   function handleAtualizar(f: FrequenciaMedicaResp) {
     setFrequencias(prev => prev.map(x => x.id === f.id ? f : x))
     setSelecionada(f)
+  }
+
+  // PINSAUDE-13.26: excluir frequência (só disponível em Rascunho) — permite corrigir uma
+  // escolha errada de modalidade/ocorrência (não editável depois de criada) apagando e criando de novo.
+  function handleExcluida(id: string) {
+    setFrequencias(prev => prev.filter(f => f.id !== id))
+    setSelecionada(null)
   }
 
   const tomadoresMap = useMemo(() => Object.fromEntries(tomadores.map(t => [t.id, t])), [tomadores])
@@ -1620,6 +1835,7 @@ export function FrequenciasPage() {
           medicos={medicos}
           onClose={() => setSelecionada(null)}
           onAtualizar={handleAtualizar}
+          onExcluida={handleExcluida}
         />
       )}
 

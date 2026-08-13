@@ -51,6 +51,16 @@ public class FrequenciaController {
         return ResponseEntity.ok(service.buscarPorId(id));
     }
 
+    // PINSAUDE-13.26: só permite excluir enquanto a frequência está em Rascunho — dá pra
+    // corrigir uma escolha errada de modalidade/ocorrência (que não é editável depois de
+    // criada) apagando e criando de novo, sem risco de apagar algo já compartilhado/assinado.
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    public ResponseEntity<Void> excluir(@PathVariable UUID id) {
+        service.excluir(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/{id}/gerar-pdf")
     @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
     public ResponseEntity<FrequenciaMedicaResponse> gerarPdf(@PathVariable UUID id) {

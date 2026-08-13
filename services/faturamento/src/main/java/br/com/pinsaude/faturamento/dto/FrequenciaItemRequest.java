@@ -11,8 +11,13 @@ import java.util.UUID;
 // modalidade DIARISTA o médico digita a hora de entrada e saída do dia, e o backend deriva
 // a quantidade de horas (ver FrequenciaService.calcularHorasTrabalhadas) — nunca aceito
 // diretamente do cliente. PLANTONISTA não usa nenhum dos dois campos.
+//
+// modalidadeId/ocorrenciaId (PINSAUDE-13.26): deixaram de ser obrigatórios aqui — quando a
+// frequência tem modalidade fixa (escolhida na criação), o service ignora estes dois campos e
+// usa sempre os valores da frequência. Só frequências legadas sem modalidade fixa (dado
+// anterior a esta mudança) continuam exigindo modalidadeId aqui, validado no service.
 public record FrequenciaItemRequest(
-    @NotNull UUID modalidadeId,
+    UUID modalidadeId,
     @NotNull LocalDate dataExecucao,
     @Size(max = 120) String ocorrencia,
     LocalTime horaInicio,

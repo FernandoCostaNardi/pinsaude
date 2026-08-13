@@ -5587,6 +5587,84 @@ não vale reaproveitar um token de sessões anteriores da mesma conversa sem che
 
 ---
 
+## Modalidade/Ocorrência Fixas na Criação da Frequência (PINSAUDE-13.26)
+
+Modalidade (obrigatória) e Ocorrência (opcional) passam a ser escolhidas **uma única vez** no
+modal "Nova Frequência" — o formulário de lançamento de plantão (grid e painel de 1 item, admin e
+Portal) não pergunta mais nenhuma das duas; todo item lançado usa sempre o valor fixo da
+frequência.
+
+### Dual-path via coluna nullable — nunca migra dado legado à força
+`frequencias_medicas.modalidade_id`/`ocorrencia_id` (migration V33) são **nullable** de propósito.
+Investigação direta no banco de dev (antes de decidir o design) encontrou frequências reais com
+até 5 modalidades distintas entre os itens já lançados — inviabiliza qualquer "modalidade única"
+retroativa nesses casos. Backfill (`array_agg(DISTINCT modalidade_id))[1] ... HAVING
+COUNT(DISTINCT modalidade_id) = 1`) só preenche `modalidade_id` quando **todos** os itens já
+lançados usam a mesma modalidade; frequências com modalidades variadas ficam com `modalidade_id
+NULL` e continuam para sempre no fluxo antigo (seletor por lançamento, sem regressão). O
+`FrequenciaService` resolve isso com um único helper:
+```java
+private UUID resolverModalidadeIdParaItem(FrequenciaMedica f, UUID reqModalidadeId) {
+    if (f.getModalidadeId() != null) return f.getModalidadeId();  // fixa — ignora o request
+    if (reqModalidadeId == null) throw new ResponseStatusException(UNPROCESSABLE_ENTITY, "...");
+    return reqModalidadeId;  // legado — exige como sempre
+}
+```
+Ocorrência segue o mesmo princípio, mas mais estrito: `f.getOcorrenciaId() != null ?
+f.getOcorrenciaId() : req.ocorrenciaId()` — quando a frequência tem modalidade fixa mas **nenhuma**
+ocorrência foi escolhida na criação, nenhum item dela jamais terá ocorrência (não há fallback por
+item, diferente da modalidade).
+
+### ⚠️ PostgreSQL não tem `MIN(uuid)`/`MAX(uuid)` — usar `array_agg(DISTINCT ...)[1]`
+Migration V33 tentou `SELECT frequencia_id, MIN(modalidade_id) ... GROUP BY frequencia_id HAVING
+COUNT(DISTINCT modalidade_id) = 1` e falhou com `ERROR: function min(uuid) does not exist`. UUID
+não tem operador de ordenação natural no Postgres, então os agregados `MIN`/`MAX` simplesmente não
+existem para esse tipo. Solução: `(array_agg(DISTINCT modalidade_id))[1]` — pega o único valor
+distinto (já garantido pelo `HAVING COUNT(DISTINCT ...) = 1` da mesma query), sem depender de
+ordenação.
+
+### ⚠️ `Map.of()` (imutável) lança NPE em `.get(chaveNula)` — `Collectors.toMap` (HashMap) não
+Um "otimização" `modalidadeIds.isEmpty() ? Map.of() : modalidadeRepo.findAllById(...).stream()
+.collect(Collectors.toMap(...))` quebrou 5 testes com `NullPointerException` em
+`ImmutableCollections$MapN.get()`. Causa: `Map.of()` é uma coleção imutável que **rejeita
+explicitamente chaves `null`** em `.get()` — a maioria dos itens de frequência não tem
+`ocorrenciaId` (campo opcional), então `ocorrenciasMap.get(null)` é uma chamada rotineira, e o
+`Collectors.toMap(...)` original (que sempre produz um `HashMap` normal, tolerante a
+`.get(null) → null`) nunca tinha esse problema. **Nunca** usar `Map.of()` como atalho para o caso
+"lista de IDs vazia" quando o mapa resultante for consultado depois com uma chave potencialmente
+nula — deixar o `Collectors.toMap(...)` rodar incondicionalmente (uma lista vazia já produz um
+`HashMap` vazio, sem custo extra real).
+
+### Exclusão de frequência — só em RASCUNHO, decisão conservadora
+Como modalidade/ocorrência não são editáveis depois de criada a frequência, a única forma de
+corrigir uma escolha errada é excluir e criar de novo. `DELETE /api/frequencias/{id}`
+(`FrequenciaService.excluir`) só permite quando `status == "RASCUNHO"` (antes de gerar PDF) — decisão
+conservadora para nunca arriscar apagar algo já compartilhado/assinado. Itens são apagados em
+cascata pela FK já existente (`frequencia_itens.frequencia_id ON DELETE CASCADE`, desde a V18) —
+nenhum código de limpeza manual necessário no service.
+
+### Frontend — grid/form trocam de layout conforme `freq.modalidadeId`, não um prop booleano solto
+`PainelFrequencia`/`FrequenciaItensPanel` constroem um objeto `modalidadeFixa: TomadorModalidade |
+null` a partir dos campos já embutidos no `FrequenciaMedicaResp` (`modalidadeNome`, `modalidadeTipo`,
+`modalidadeTurno`, etc. — todos já existiam desde EPIC-13.19-13.25, reaproveitados aqui) e passam
+para `PlantaoGridPanel`/`PlantaoFormPanel`. Quando não-nulo: a grade perde as colunas
+Modalidade/Ocorrência por completo (não só desabilitadas) e mostra um aviso fixo
+("Modalidade: X · Ocorrência: Y") acima da tabela; o formulário de 1 item mostra o nome da
+modalidade como texto read-only em vez de um `<select>`. Quando nulo (frequência legada): as duas
+telas continuam pixel-a-pixel idênticas ao comportamento anterior — nenhum branch novo é executado.
+Testado ao vivo abrindo uma das frequências reais com 3 modalidades distintas encontradas na
+investigação: seletor por lançamento intacto, zero regressão.
+
+### Teste manual confirmou o "tomador duplicado (mesmo CNPJ)" já documentado — não é bug desta task
+Ao testar o Portal com o médico `medico@pinsaude.com.br` (mesmo "Medico Teste" usado no admin), o
+tomador "SECRETARIA DA SAUDE DO ESTADO DO CEARA" apareceu duas vezes no dropdown de tomador (dois
+registros com IDs diferentes, mesmo CNPJ — já documentado em EPIC-15.11). Um dos dois não tem
+nenhum grupo/modalidade cadastrado (mostra "Nenhum setor cadastrado"/"Nenhuma modalidade..."); o
+outro tem o catálogo completo. Nenhuma mudança de código necessária — só uma armadilha a lembrar
+ao testar manualmente esse tomador específico no ambiente de dev.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
