@@ -150,6 +150,21 @@ export interface FrequenciaItemRequest {
   ocorrenciaId?: string
 }
 
+// Garante que os campos de lista de FrequenciaMedicaResp sejam sempre arrays. Sem isso, um
+// backend rodando uma versão mais antiga (sem `progressoSemanal`/`progressoMetas`, ou uma
+// versão diferente que não devolve `itens`) faz esses campos chegarem como `undefined` no
+// front — qualquer `.length` direto nesses campos (usado em vários pontos das telas de
+// Frequências) quebra a tela inteira ao abrir uma competência. Normalizar aqui, num único
+// lugar, protege todas as telas sem espalhar `?? []` em cada leitura.
+function normalizeFrequencia(f: FrequenciaMedicaResp): FrequenciaMedicaResp {
+  return {
+    ...f,
+    itens: f.itens ?? [],
+    progressoMetas: f.progressoMetas ?? [],
+    progressoSemanal: f.progressoSemanal ?? [],
+  }
+}
+
 export const frequenciasApi = {
   async listar(params: {
     medicoId?: string
@@ -165,7 +180,8 @@ export const frequenciasApi = {
     if (params.competencia) q.set('competencia', params.competencia)
     if (params.status)      q.set('status',      params.status)
     const res = await fetch(`/api/frequencias?${q}`, { headers: authHeaders() })
-    return handleResponse<FrequenciaMedicaResp[]>(res)
+    const data = await handleResponse<FrequenciaMedicaResp[]>(res)
+    return data.map(normalizeFrequencia)
   },
 
   async criar(req: FrequenciaMedicaRequest): Promise<FrequenciaMedicaResp> {
@@ -174,12 +190,12 @@ export const frequenciasApi = {
       headers: authHeaders(),
       body: JSON.stringify(req),
     })
-    return handleResponse<FrequenciaMedicaResp>(res)
+    return normalizeFrequencia(await handleResponse<FrequenciaMedicaResp>(res))
   },
 
   async buscarPorId(id: string): Promise<FrequenciaMedicaResp> {
     const res = await fetch(`/api/frequencias/${id}`, { headers: authHeaders() })
-    return handleResponse<FrequenciaMedicaResp>(res)
+    return normalizeFrequencia(await handleResponse<FrequenciaMedicaResp>(res))
   },
 
   // Edita Competência e Setor Operacional de uma frequência já criada. Bloqueado só quando
@@ -190,7 +206,7 @@ export const frequenciasApi = {
       headers: authHeaders(),
       body: JSON.stringify(req),
     })
-    return handleResponse<FrequenciaMedicaResp>(res)
+    return normalizeFrequencia(await handleResponse<FrequenciaMedicaResp>(res))
   },
 
   // Permitido em qualquer status exceto FATURADA. Itens são apagados em cascata pelo backend.
@@ -233,7 +249,7 @@ export const frequenciasApi = {
       method: 'PUT',
       headers: authHeaders(),
     })
-    return handleResponse<FrequenciaMedicaResp>(res)
+    return normalizeFrequencia(await handleResponse<FrequenciaMedicaResp>(res))
   },
 
   async uploadDocumentoAssinado(id: string, arquivo: File): Promise<FrequenciaMedicaResp> {
@@ -245,7 +261,7 @@ export const frequenciasApi = {
       headers: { Authorization: `Bearer ${token}` },
       body: form,
     })
-    return handleResponse<FrequenciaMedicaResp>(res)
+    return normalizeFrequencia(await handleResponse<FrequenciaMedicaResp>(res))
   },
 
   async getDocumentoUrl(id: string): Promise<string> {
