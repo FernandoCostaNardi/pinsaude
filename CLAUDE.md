@@ -5902,6 +5902,36 @@ continuar mostrando valores).
 
 ---
 
+## Portal do Médico — Paginação de "Minhas Frequências" (5 por página)
+
+### Só o Portal muda — mesma restrição de escopo das mudanças anteriores desta sessão
+Pedido do cliente: paginar a lista de frequências em páginas de 5 e ordenar da competência mais
+atual para a mais antiga. Restrito a `PortalFrequenciaPage.tsx` — `FrequenciasPage.tsx` (gestor)
+já tinha sua própria paginação (15 por página) desde antes, inalterado.
+
+### Ordenação explícita no cliente, não só confiança na ordem do backend
+`FrequenciaService.listar` já retorna ordenado por `competenciaDescCreatedAtDesc` quando filtrado
+por `medicoId`, mas a página adicionou um `.sort()` explícito em `filtradas` (`competencia` desc,
+`createdAt` desc como desempate) — `competencia` no formato `YYYY-MM` é diretamente comparável
+lexicograficamente, sem precisar converter para `Date`. Deixa o requisito auto-evidente no
+frontend em vez de depender implicitamente da query do backend continuar assim para sempre.
+
+### Página atual sempre "clampada" — mesmo padrão já usado na paginação de itens (EPIC-13.16)
+`pageAtual = Math.min(page, totalPages - 1)` — evita ficar numa página vazia depois que um filtro
+reduz o total de resultados ou uma frequência é excluída (a mesma técnica de "derivar a página
+válida a cada render" já documentada para a paginação de plantões dentro do modal de detalhe).
+`useEffect` reseta `page` para `0` quando `filtroComp`/`filtroStatus` mudam; `handleCriada`
+(nova frequência) também reseta pra `0` para garantir que o registro recém-criado apareça.
+
+### Teste manual — criação temporária de 3 frequências extras pra exercitar 2 páginas
+O médico de teste só tinha 4 frequências reais (menos que o `PAGE_SIZE=5`, insuficiente pra
+testar uma segunda página). Criadas 3 frequências descartáveis com competências mais antigas
+(2026-02/03/04) via API, confirmado "Página 1 de 2" com as 5 mais recentes na ordem certa e
+"Página 2 de 2" com as 2 mais antigas, botão "Próximo" corretamente desabilitado no fim — as 3
+frequências de teste foram excluídas em seguida, voltando ao estado original (4 frequências).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
