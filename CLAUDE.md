@@ -6165,6 +6165,76 @@ reais pré-existentes).
 
 ---
 
+## Bug de Produção: `Cannot read properties of undefined (reading 'length')` ao abrir uma competência
+
+### Sintoma reportado
+Em produção, clicar numa linha da tabela de Frequências (Gestor) pra abrir o modal de detalhe
+lançava `TypeError: Cannot read properties of undefined (reading 'length')` num bundle minificado
+— sem stack trace útil (nomes de função ofuscados tipo `cb`, `_u`, `KA`). Reproduzido localmente
+apenas indiretamente (ver abaixo), já que o ambiente de dev não tinha o mesmo problema com o
+backend/frontend sincronizados.
+
+### Causa raiz: nenhum "bug de lógica" — falta de defesa contra campos ausentes na resposta
+`FrequenciaMedicaResp.itens`/`progressoMetas`/`progressoSemanal` são lidos com `.length` direto
+em várias dezenas de pontos das duas telas (`FrequenciasPage.tsx`, `PortalFrequenciaPage.tsx`),
+sempre assumindo que o backend garante esses campos como array (nunca `undefined`). O backend
+*de fato* sempre devolve arrays (confirmado lendo `FrequenciaMedicaResponse.from()` —
+`calcularProgressoSemanal` sempre retorna `new ArrayList<>()`, nunca `null`) — mas o frontend não
+tinha nenhuma defesa caso a resposta realmente viesse sem esses campos, por qualquer motivo
+(versão do backend rodando em produção desatualizada em relação ao frontend já implantado,
+resposta cacheada por um proxy/CDN de uma versão anterior da API, etc.). Sem essa defesa, um
+skew de versão vira uma tela inteira quebrada, não uma degradação suave.
+
+`progressoSemanal` só é lido dentro do modal (`<ProgressoSemanal semanas={freq.progressoSemanal} />`),
+nunca na linha da tabela — por isso o sintoma batia exatamente com "a lista abre normal, só quebra
+ao abrir uma competência específica": qualquer campo ausente que só é consumido dentro do modal
+teria o mesmo efeito.
+
+### Correção: normalização num único ponto de entrada (`frequenciasApi.ts`), não nos componentes
+Em vez de espalhar `?? []` em cada um dos ~30 pontos que leem `.length` nesses 3 campos (frágil —
+fácil esquecer um novo ponto de leitura no futuro), criado um único helper aplicado em toda
+função de `frequenciasApi` que retorna `FrequenciaMedicaResp` (`listar`, `criar`, `buscarPorId`,
+`atualizar`, `gerarPdf`, `uploadDocumentoAssinado`):
+```typescript
+function normalizeFrequencia(f: FrequenciaMedicaResp): FrequenciaMedicaResp {
+  return {
+    ...f,
+    itens: f.itens ?? [],
+    progressoMetas: f.progressoMetas ?? [],
+    progressoSemanal: f.progressoSemanal ?? [],
+  }
+}
+```
+Isso protege as duas telas contra qualquer skew de versão backend/frontend (passado, presente ou
+futuro) sem precisar tocar em nenhum dos pontos de leitura existentes — o contrato "esses 3 campos
+são sempre array" passa a ser garantido na borda (camada de API), não espalhado pela UI.
+
+### Teste da correção — `window.fetch` interceptado pra simular um backend antigo
+Sem acesso à produção nem forma fácil de rodar uma versão antiga do backend localmente, a
+correção foi validada interceptando `window.fetch` no navegador (via `javascript_tool`) pra
+remover `itens`/`progressoSemanal`/`progressoMetas` de toda resposta de `/api/frequencias`,
+simulando exatamente o formato de resposta de um backend desatualizado. Confirmado: com o
+patch de `frequenciasApi.ts`, a lista carrega normalmente (13 frequências) e abrir qualquer linha
+mostra o modal com estado vazio ("Nenhum plantão/frequência lançada ainda"), sem crash — zero
+erros de console. Repetido em seguida com o `fetch` real (sem interceptação) pra confirmar que o
+comportamento com dado completo continua idêntico ao de antes (nenhuma regressão).
+
+**Armadilha do teste**: o patch de `window.fetch` só sobrevive a navegações client-side (React
+Router), não a um `navigate()` de página inteira (que recarrega o JS do zero e perde qualquer
+monkey-patch) — a sequência de teste precisou navegar primeiro pra uma rota qualquer, aplicar o
+patch, e só então clicar no link "Frequências" da sidebar (navegação client-side) pra garantir que
+a chamada à API acontecesse depois do patch estar ativo.
+
+### Não corrigido nesta task: por que a produção pode estar com backend desatualizado
+Esta correção resolve o **sintoma** (tela quebrando) de forma robusta contra qualquer skew futuro,
+mas não investiga nem corrige uma eventual causa de fundo (ex.: o serviço `faturamento` em
+produção não ter sido reimplantado junto com o último deploy do frontend). Vale conferir a versão
+do backend em produção separadamente — se o backend estiver mesmo desatualizado, os campos novos
+desta e de tasks anteriores (`modalidadeId`/`ocorrenciaId` fixos, PINSAUDE-13.26 em diante) também
+estariam ausentes nas respostas, mesmo com esta correção evitando o crash.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
