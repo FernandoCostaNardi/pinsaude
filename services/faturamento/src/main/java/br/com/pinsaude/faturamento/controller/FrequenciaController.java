@@ -99,7 +99,7 @@ public class FrequenciaController {
     }
 
     @DeleteMapping("/{id}/itens/{itemId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
     public ResponseEntity<Void> removerItem(
             @PathVariable UUID id,
             @PathVariable UUID itemId) {

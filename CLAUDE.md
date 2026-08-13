@@ -5829,6 +5829,36 @@ agrupados por posição vertical, confiável mesmo com texto duplicado.
 
 ---
 
+## Bug: médico não conseguia excluir o próprio plantão no Portal (403 Forbidden)
+
+### `DELETE /{id}/itens/{itemId}` era o único endpoint de item sem a role `medico`
+Reportado pelo cliente ao tentar excluir um plantão pelo Portal: `DELETE
+/api/frequencias/{id}/itens/{itemId}` retornava 403 mesmo com o botão de excluir existindo na tela
+(`FrequenciaItensPanel`, Portal do Médico). Causa: `FrequenciaController.removerItem` tinha
+`@PreAuthorize("hasAnyRole('operacao','gestao')")` — **sem** `'medico'`, diferente de **todos** os
+outros endpoints de item (`POST .../itens`, `PUT .../itens/{itemId}`, `POST .../documento`, etc.,
+todos já liberavam `medico`). Bug pré-existente, não introduzido pela PINSAUDE-13.26 — só apareceu
+porque o cliente testou o fluxo de exclusão logo depois dela. Corrigido adicionando `'medico'` à
+lista de roles, igualando ao resto do CRUD de itens.
+
+### Nova cobertura: `FrequenciaControllerTest` (não existia teste de RBAC por endpoint pra este controller)
+`RbacIntegrationTest` só cobre um endpoint-stub genérico (`/api/faturamento`, que não toca banco) —
+nunca testou nenhum endpoint de `FrequenciaController` especificamente. Criado
+`FrequenciaControllerTest` com `@WebMvcTest(FrequenciaController.class)` + `@Import(SecurityConfig.class)`
++ `@MockBean FrequenciaService` (mesmo padrão já usado em `ConciliacaoControllerTest`) cobrindo
+`removerItem` para as 3 roles que devem ter acesso (`medico`/`operacao`/`gestao` → 204) e os casos
+negativos (`financeiro` → 403; sem token → 401) — fecha a lacuna de regressão pra esse bug
+especificamente e serve de precedente pra testar outros endpoints deste controller no futuro.
+
+### Verificação end-to-end sem tocar no dado real do cliente
+Em vez de testar a correção excluindo o item específico que o cliente reportou (dado real, com
+outros itens na mesma frequência — risco desnecessário), criei uma frequência + item descartáveis
+via API logada como médico, confirmei `DELETE` retornando `204` (antes: `403`), e apaguei a
+frequência de teste inteira em seguida — zero dado residual, zero risco ao dado do cliente. O
+cliente pôde então repetir a exclusão real pela própria tela.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
