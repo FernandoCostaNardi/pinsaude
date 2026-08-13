@@ -20,10 +20,6 @@ import { abrirPdfFrequencia } from '../utils/frequenciaPdf'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatBRL(centavos: number): string {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
 function generateCompetencias(): string[] {
   const comps: string[] = []
   const now = new Date()
@@ -56,33 +52,10 @@ function detalheModalidade(m: TomadorModalidade): string {
   return partes.length > 0 ? partes.join(' · ') : `${m.horas}h`
 }
 
-// Espelha FrequenciaService.calcularValorItem (backend) só para exibir um preview do valor
-// antes de salvar — o valor real que fica gravado é sempre recalculado no servidor. Diarista
-// paga um valor mensal fixo somado uma única vez pela frequência (não por lançamento) — cada
-// item individual vale R$0, então não há um "valor deste lançamento" pra mostrar aqui.
-function calcularValorPreview(m: TomadorModalidade): number | null {
-  if (m.tipo === 'DIARISTA') return 0
-  return m.valorCentavos + m.deslocamentoCentavos
-}
-
 // Diarista também exige horas trabalhadas por lançamento (usadas no acompanhamento semanal,
 // PINSAUDE-13.23) — mesma exigência que Plantonista nunca teve.
 function precisaHorasTrabalhadas(m: TomadorModalidade | null): boolean {
   return m?.tipo === 'DIARISTA'
-}
-
-// Espelha FrequenciaService.calcularValorOcorrencia (backend) só para preview — o % sempre
-// incide sobre o valor CADASTRADO da modalidade, nunca sobre o valor proporcional do item (META).
-function calcularValorOcorrenciaPreview(o: TomadorOcorrencia | null, valorModalidadeCentavos: number): number {
-  if (!o) return 0
-  let total = 0
-  if (o.valorPercentual != null) {
-    total += Math.round((valorModalidadeCentavos * o.valorPercentual) / 100)
-  }
-  if (o.valorCentavos != null) {
-    total += o.valorCentavos
-  }
-  return total
 }
 
 function fmtQtd(n: number): string {
@@ -465,7 +438,7 @@ function NovaFrequenciaModal({
 // ─── Formulário de plantão — empilhado no mobile ──────────────────────────────
 
 function PlantaoFormPanel({
-  tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, ocorrenciaFixaValorCentavos, onSave, onCancel,
+  tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, onSave, onCancel,
 }: {
   tomadorId: string
   tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null   // filtra a lista de modalidades (PINSAUDE-13.25)
@@ -473,8 +446,6 @@ function PlantaoFormPanel({
   // criação), o formulário não pergunta mais nenhuma das duas. null = frequência legada.
   modalidadeFixa: TomadorModalidade | null
   ocorrenciaFixaNome: string | null
-  // Ajuste pós-implantação: valor aplicado UMA ÚNICA VEZ pela frequência (exibição informativa).
-  ocorrenciaFixaValorCentavos: number | null
   onSave: (req: FrequenciaItemRequest) => Promise<void>
   onCancel: () => void
 }) {
@@ -508,7 +479,6 @@ function PlantaoFormPanel({
   }, [tomadorId, modalidadeFixa])
 
   const precisaHoras = precisaHorasTrabalhadas(modalidade)
-  const ocorrenciaSelecionada = ocorrencias.find(o => o.id === ocorrenciaId) ?? null
 
   async function handleSave() {
     if (!modalidade) return
@@ -540,9 +510,6 @@ function PlantaoFormPanel({
   }
 
   const horasPreview = precisaHoras ? calcularHorasEntrePeriodo(horaInicio, horaFim) : null
-  const totalModalidade = modalidade ? calcularValorPreview(modalidade) : null
-  const ocorrenciaValor = modalidade ? calcularValorOcorrenciaPreview(ocorrenciaSelecionada, modalidade.valorCentavos) : 0
-  const total = totalModalidade != null ? totalModalidade + ocorrenciaValor : null
 
   return (
     <div className="mx-3 sm:mx-4 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
@@ -605,34 +572,20 @@ function PlantaoFormPanel({
         </div>
       )}
 
-      {/* Preview de valores — quebra linha no mobile */}
+      {/* Detalhe da modalidade — sem valores financeiros na visão do médico (Portal) */}
       {modalidade && (
-        <div className="bg-white rounded-lg px-3 py-2.5 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs border border-ds-border/60">
+        <div className="bg-white rounded-lg px-3 py-2.5 mb-3 text-xs border border-ds-border/60">
           <span className="text-ds-light">{detalheModalidade(modalidade)}</span>
-          {modalidade.tipo !== 'DIARISTA' && (
-            <span className="text-ds-mid">Valor: <span className="font-bold text-ds-text">{formatBRL(modalidade.valorCentavos)}</span></span>
-          )}
-          {modalidade.deslocamentoCentavos > 0 && (
-            <span className="text-ds-mid">Desl.: <span className="font-bold text-ds-text">{formatBRL(modalidade.deslocamentoCentavos)}</span></span>
-          )}
-          {ocorrenciaSelecionada && (
-            <span className="text-ds-mid">Ocorrência: <span className="font-bold text-ds-text">{formatBRL(ocorrenciaValor)}</span></span>
-          )}
-          <span className="text-sm font-black text-primary sm:ml-auto">
-            {modalidade.tipo === 'DIARISTA'
-              ? 'Contabilizado no valor mensal'
-              : total != null ? `Total: ${formatBRL(total)}` : 'Informe as horas para calcular'}
-          </span>
         </div>
       )}
 
       {/* Ocorrência do catálogo — PINSAUDE-13.26: fixa na frequência (escolhida na criação),
-          nunca mais perguntada por lançamento. Sem seletor aqui; só um aviso informativo. */}
+          nunca mais perguntada por lançamento. Sem seletor aqui; só um aviso informativo (sem
+          valor — visão do médico não exibe valores financeiros). */}
       {modalidadeFixa ? (
         ocorrenciaFixaNome && (
           <p className="mb-3 text-xs text-ds-mid">
-            Ocorrência aplicada uma única vez nesta frequência (não por plantão): <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
-            {!!ocorrenciaFixaValorCentavos && <span className="text-green-600 font-bold"> +{formatBRL(ocorrenciaFixaValorCentavos)}</span>}
+            Ocorrência aplicada nesta frequência: <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
           </p>
         )
       ) : (
@@ -715,8 +668,6 @@ function FrequenciaItensPanel({
     horasSemanais: freq.modalidadeHorasSemanais,
   } : null
   const ocorrenciaFixaNome = freq.ocorrenciaId ? freq.ocorrenciaNome : null
-  // Ajuste pós-implantação: valor aplicado uma única vez pela frequência (não por lançamento).
-  const ocorrenciaFixaValorCentavos = freq.ocorrenciaId ? freq.ocorrenciaValorCentavos : null
 
   async function handleExcluir() {
     setExcluindo(true); setExcluirErr(null)
@@ -798,9 +749,6 @@ function FrequenciaItensPanel({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 bg-white border-b border-ds-border">
         <p className="text-xs font-bold text-ds-mid">
           {freq.itens.length} plantão{freq.itens.length !== 1 ? 'ões' : ''} lançado{freq.itens.length !== 1 ? 's' : ''}
-        </p>
-        <p className="text-xs text-ds-mid">
-          Total: <span className="font-black text-ds-text tabular-nums">{formatBRL(freq.totalValorCentavos)}</span>
         </p>
         <div className="flex items-center gap-2 ml-auto">
           {/* PINSAUDE-13.26: modalidade/ocorrência não são editáveis depois de criada a
@@ -917,7 +865,6 @@ function FrequenciaItensPanel({
           tipoMedico={freq.tipoMedico}
           modalidadeFixa={modalidadeFixa}
           ocorrenciaFixaNome={ocorrenciaFixaNome}
-          ocorrenciaFixaValorCentavos={ocorrenciaFixaValorCentavos}
           onSave={handleAdd}
           onCancel={() => setAdicionando(false)}
         />
@@ -962,44 +909,33 @@ function FrequenciaItensPanel({
                     {item.ocorrenciaNome && (
                       <p className="text-[11px] text-teal-600 font-medium mt-0.5">
                         {item.ocorrenciaNome}
-                        {!!item.ocorrenciaValorCentavos && ` +${formatBRL(item.ocorrenciaValorCentavos)}`}
                       </p>
                     )}
                     {item.ocorrencia && (
                       <p className="text-[11px] text-ds-mid italic mt-1">"{item.ocorrencia}"</p>
                     )}
-                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-2 text-[11px] text-ds-light">
-                      <span>Valor: {formatBRL(item.valorUnitarioCentavos)}</span>
-                      {item.deslocamentoCentavos > 0 && (
-                        <span>Desl.: {formatBRL(item.deslocamentoCentavos)}</span>
-                      )}
-                    </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1.5 shrink-0">
-                    <p className="text-sm font-black text-ds-text tabular-nums">
-                      {formatBRL(item.totalItemCentavos)}
-                    </p>
-                    {!isFaturada && (
-                      <button onClick={() => handleRemove(item.id)} disabled={removendo === item.id}
-                        className="p-2 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors -mr-1">
-                        {removendo === item.id
-                          ? <Loader2 size={14} className="animate-spin" />
-                          : <Trash2 size={14} />
-                        }
-                      </button>
-                    )}
-                  </div>
+                  {!isFaturada && (
+                    <button onClick={() => handleRemove(item.id)} disabled={removendo === item.id}
+                      className="p-2 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors -mr-1 shrink-0">
+                      {removendo === item.id
+                        ? <Loader2 size={14} className="animate-spin" />
+                        : <Trash2 size={14} />
+                      }
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
 
-          {/* ── Desktop: tabela (sm+) ── */}
+          {/* ── Desktop: tabela (sm+) — sem colunas de valor (visão do médico não exibe
+              valores financeiros, ver CLAUDE.md) ── */}
           <div className="hidden sm:block overflow-x-auto">
-            <table className="w-full min-w-[640px]">
+            <table className="w-full min-w-[480px]">
               <thead>
                 <tr className="border-b border-ds-border">
-                  {['Data', 'Modalidade', 'Ocorrência', 'Valor Unit.', 'Deslocamento', 'Total', ''].map(h => (
+                  {['Data', 'Modalidade', 'Ocorrência', ''].map(h => (
                     <th key={h} className="px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">
                       {h}
                     </th>
@@ -1026,24 +962,10 @@ function FrequenciaItensPanel({
                     </td>
                     <td className="px-3 py-2.5 text-xs text-ds-mid">
                       {item.ocorrenciaNome && (
-                        <p className="text-ds-text font-medium">
-                          {item.ocorrenciaNome}
-                          {!!item.ocorrenciaValorCentavos && (
-                            <span className="text-green-600 font-bold"> +{formatBRL(item.ocorrenciaValorCentavos)}</span>
-                          )}
-                        </p>
+                        <p className="text-ds-text font-medium">{item.ocorrenciaNome}</p>
                       )}
                       {item.ocorrencia && <p className={item.ocorrenciaNome ? 'text-[10px] italic' : ''}>{item.ocorrencia}</p>}
                       {!item.ocorrenciaNome && !item.ocorrencia && '—'}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs tabular-nums text-right text-ds-mid">
-                      {formatBRL(item.valorUnitarioCentavos)}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs tabular-nums text-right text-ds-mid">
-                      {item.deslocamentoCentavos > 0 ? formatBRL(item.deslocamentoCentavos) : '—'}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs tabular-nums font-bold text-right text-ds-text">
-                      {formatBRL(item.totalItemCentavos)}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       {!isFaturada && (
@@ -1110,8 +1032,7 @@ function FrequenciaCard({
           </div>
         </div>
         <div className="text-right shrink-0 ml-1">
-          <p className="text-sm font-black text-ds-text tabular-nums">{formatBRL(freq.totalValorCentavos)}</p>
-          <p className="text-[10px] text-ds-light">{freq.itens.length} plantão{freq.itens.length !== 1 ? 'ões' : ''}</p>
+          <p className="text-sm font-bold text-ds-text tabular-nums">{freq.itens.length} plantão{freq.itens.length !== 1 ? 'ões' : ''}</p>
         </div>
         <ChevronRight size={16} className={`shrink-0 text-ds-light transition-transform ${expanded ? 'rotate-90' : ''}`} />
       </button>

@@ -5859,6 +5859,49 @@ cliente pôde então repetir a exclusão real pela própria tela.
 
 ---
 
+## Portal do Médico — Remoção de Valores Financeiros de "Minhas Frequências"
+
+### Só o Portal muda — gestor continua vendo tudo normalmente
+Pedido explícito do cliente: o médico não deve ver nenhum valor financeiro (R$) nas telas de
+"Minhas Frequências" do Portal — nem total da frequência, nem valor por plantão, nem
+deslocamento, nem valor de ocorrência. Mudança restrita a `PortalFrequenciaPage.tsx`;
+`FrequenciasPage.tsx` (gestor/operação) não foi tocado — `git diff --stat` confirma zero linhas
+alteradas nesse arquivo.
+
+### O que foi removido (só exibição — nenhuma mudança de API/backend)
+- `FrequenciaCard` (lista): total da frequência (`formatBRL(freq.totalValorCentavos)`) — sobra só
+  a contagem de plantões.
+- `FrequenciaItensPanel` (toolbar do painel expandido): linha "Total: R$X".
+- Tabela de itens (mobile e desktop): colunas/linhas "Valor Unit.", "Deslocamento", "Total" e o
+  "+R$X" ao lado do nome da ocorrência — removidas por completo (não só escondidas via CSS).
+  Desktop: cabeçalho da tabela reduzido de 7 para 4 colunas (`Data`/`Modalidade`/`Ocorrência`/ações).
+- `PlantaoFormPanel` (form de novo plantão): a caixa de preview de valores (Valor/Deslocamento/
+  Ocorrência em R$/Total) foi reduzida a uma única linha com só `detalheModalidade(modalidade)`
+  (turno/horário/horas — informação operacional, não financeira). O aviso de ocorrência fixa
+  ("aplicada uma única vez...") perdeu o `+R$X`, mantendo só o nome da ocorrência.
+
+### Prop `ocorrenciaFixaValorCentavos` removida de ponta a ponta
+Como nenhuma tela do Portal mais precisa do valor da ocorrência fixa, a prop foi removida da
+assinatura de `PlantaoFormPanel`, do cálculo em `FrequenciaItensPanel`
+(`freq.ocorrenciaId ? freq.ocorrenciaValorCentavos : null`) e da chamada que passava a prop —
+eliminada em vez de só parar de usá-la, evitando prop morta. `formatBRL`,
+`calcularValorPreview` e `calcularValorOcorrenciaPreview` (helpers só usados pelos displays
+removidos) também foram deletados do arquivo — nenhum ficou órfão.
+
+### `NovaFrequenciaModal` (Portal) nunca teve valores — nada a remover ali
+O modal de criação de frequência já não exibia nenhum valor financeiro antes desta mudança (só
+nomes de modalidade/ocorrência, sem preço) — confirmado via teste manual, sem necessidade de
+alteração nesse componente.
+
+### Verificação: `document.body.innerText.includes('R$')` como assert rápido
+Em vez de inspecionar visualmente cada tela, o teste manual usou uma checagem simples e
+abrangente — `document.body.innerText.includes('R$')` deve ser `false` em qualquer tela do
+Portal (lista, painel expandido, form de novo plantão) e continuar `true` na tela equivalente do
+gestor (prova de que a mudança não vazou pro lado errado nem quebrou o lado que deveria
+continuar mostrando valores).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
