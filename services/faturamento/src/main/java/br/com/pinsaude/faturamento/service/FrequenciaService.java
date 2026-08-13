@@ -8,6 +8,7 @@ import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemResponse;
+import br.com.pinsaude.faturamento.dto.FrequenciaMedicaEditRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaMedicaRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
@@ -187,6 +188,45 @@ public class FrequenciaService {
     @Transactional(readOnly = true)
     public FrequenciaMedicaResponse buscarPorId(UUID id) {
         FrequenciaMedica f = findOrThrow(id);
+        return toResponse(f);
+    }
+
+    // Edição pós-criação: só Competência e Setor Operacional são editáveis (Tomador, Tipo de
+    // Escala, Modalidade e Ocorrência permanecem fixos — pedido explícito do cliente; erros
+    // nesses outros campos continuam exigindo excluir e criar de novo). Permitida em qualquer
+    // status exceto FATURADA — mesmo limite já usado para editar/remover um item individual.
+    @Transactional
+    public FrequenciaMedicaResponse atualizar(UUID id, FrequenciaMedicaEditRequest req) {
+        FrequenciaMedica f = findOrThrow(id);
+        if ("FATURADA".equals(f.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Não é possível editar uma frequência já faturada");
+        }
+
+        TomadorServicoOperacional setor = setorRepo.findById(req.servicoOperacionalId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Setor operacional não encontrado: " + req.servicoOperacionalId()));
+        if (!setor.getTomadorId().equals(f.getTomadorId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Setor operacional não pertence ao tomador desta frequência");
+        }
+
+        boolean chaveMudou = !req.competencia().equals(f.getCompetencia())
+            || !req.servicoOperacionalId().equals(f.getServicoOperacionalId());
+        if (chaveMudou) {
+            frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetencia(
+                    f.getMedicoId(), req.servicoOperacionalId(), req.competencia())
+                .filter(outra -> !outra.getId().equals(id))
+                .ifPresent(outra -> {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Já existe uma frequência para este médico neste setor na competência " + req.competencia());
+                });
+        }
+
+        f.setCompetencia(req.competencia());
+        f.setServicoOperacionalId(req.servicoOperacionalId());
+        frequenciaRepo.save(f);
+
         return toResponse(f);
     }
 
@@ -472,15 +512,20 @@ public class FrequenciaService {
         return FrequenciaMedicaResponse.from(f, setor, itemResponses, modalidadesMap, ocorrenciasMap);
     }
 
-    // PINSAUDE-13.26: exclusão só permitida em RASCUNHO (antes de gerar PDF) — decisão
-    // conservadora para não arriscar apagar algo já compartilhado/assinado. Itens são apagados
-    // em cascata pela FK (ON DELETE CASCADE em frequencia_itens.frequencia_id).
+    // Exclusão permitida em qualquer status exceto FATURADA (já entrou no Fechamento/NFS-e —
+    // apagar quebraria a rastreabilidade com a nota já emitida). Mesmo limite usado para editar
+    // a frequência e para editar/remover um item individual. Itens são apagados em cascata pela
+    // FK (ON DELETE CASCADE em frequencia_itens.frequencia_id); o documento assinado (se houver)
+    // é removido do storage antes — nunca deixa arquivo órfão no MinIO.
     @Transactional
     public void excluir(UUID id) {
         FrequenciaMedica f = findOrThrow(id);
-        if (!"RASCUNHO".equals(f.getStatus())) {
+        if ("FATURADA".equals(f.getStatus())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Só é possível excluir uma frequência em Rascunho — status atual: " + f.getStatus());
+                "Não é possível excluir uma frequência já faturada");
+        }
+        if (f.getDocumentoAssinadoKey() != null) {
+            storageService.delete(f.getDocumentoAssinadoKey());
         }
         frequenciaRepo.delete(f);
     }

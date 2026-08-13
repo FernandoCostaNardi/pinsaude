@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronRight,
-  Download, FileText, Loader2, Plus, Printer, Trash2, Upload, X,
+  Download, FileText, Loader2, Pencil, Plus, Printer, Trash2, Upload, X,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Spinner, Alert } from '@pinsaude/ui'
@@ -676,9 +676,9 @@ function FrequenciaItensPanel({
   const [excluindo,    setExcluindo]    = useState(false)
   const [excluirErr,   setExcluirErr]   = useState<string | null>(null)
   const [itemPage,     setItemPage]     = useState(0)
+  const [editandoFrequencia, setEditandoFrequencia] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isFaturada = freq.status === 'FATURADA'
-  const isRascunho = freq.status === 'RASCUNHO'
 
   // Plantões lançados — paginados em 5, do mais atual (data) para o mais antigo. O backend
   // retorna em ordem crescente de data (ver FrequenciaService.toResponse), então a ordenação
@@ -792,12 +792,20 @@ function FrequenciaItensPanel({
           {freq.itens.length} {itemLabel(freq.tipoMedico, freq.itens.length)} {itemAgree(freq.tipoMedico, freq.itens.length, 'lançad')}
         </p>
         <div className="flex items-center gap-2 ml-auto">
-          {/* PINSAUDE-13.26: modalidade/ocorrência não são editáveis depois de criada a
-              frequência — se foi escolhida errada, o jeito é excluir (só em Rascunho, antes de
-              gerar PDF) e criar de novo. */}
-          {isRascunho && (
+          {/* Competência e Setor Operacional são editáveis a qualquer momento antes de
+              faturada. Tomador, Tipo de Escala, Modalidade e Ocorrência permanecem fixos —
+              se algum deles estiver errado, o jeito continua sendo excluir e criar de novo. */}
+          {!isFaturada && (
+            <button onClick={() => setEditandoFrequencia(true)}
+              title="Editar competência e setor"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs font-semibold hover:bg-ds-input transition-colors min-h-[40px]">
+              <Pencil size={12} />
+              <span className="hidden sm:inline">Editar</span>
+            </button>
+          )}
+          {!isFaturada && (
             <button onClick={() => setConfirmExcluir(true)} disabled={excluindo}
-              title="Excluir frequência (só disponível em Rascunho)"
+              title="Excluir frequência"
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50 transition-colors disabled:opacity-50 min-h-[40px]">
               <Trash2 size={12} />
               <span className="hidden sm:inline">Excluir</span>
@@ -852,6 +860,15 @@ function FrequenciaItensPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Edição de Competência + Setor Operacional ─────────────────────── */}
+      {editandoFrequencia && (
+        <EditarFrequenciaModal
+          freq={freq}
+          onClose={() => setEditandoFrequencia(false)}
+          onSalvo={f => { onAtualizar(f); setEditandoFrequencia(false) }}
+        />
       )}
 
       {/* Progresso semanal (modalidade Diarista) */}
@@ -1054,6 +1071,99 @@ function FrequenciaItensPanel({
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// ─── Modal de edição de Competência + Setor — bottom-sheet no mobile ──────────
+
+// Só Competência e Setor Operacional são editáveis pós-criação (Tomador, Tipo de Escala,
+// Modalidade e Ocorrência permanecem fixos). Bloqueado só quando FATURADA (garantido pelo
+// caller, que só renderiza este modal nesse caso).
+function EditarFrequenciaModal({
+  freq, onClose, onSalvo,
+}: {
+  freq: FrequenciaMedicaResp
+  onClose: () => void
+  onSalvo: (f: FrequenciaMedicaResp) => void
+}) {
+  const [competencia, setCompetencia] = useState(freq.competencia)
+  const [grupos, setGrupos] = useState<TomadorGrupoFaturamento[]>([])
+  const [setorId, setSetorId] = useState(freq.servicoOperacionalId)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    tomadoresApi.listarGrupos(freq.tomadorId).then(setGrupos).catch(() => setGrupos([]))
+  }, [freq.tomadorId])
+
+  const setoresAtivos = grupos.flatMap(g => g.servicosOperacionais.filter(s => s.ativo))
+  // Garante que o setor atual da frequência apareça na lista mesmo se tiver sido desativado
+  // depois — mesmo padrão já usado pra modalidade/ocorrência inativa em outros formulários.
+  const setores = setoresAtivos.some(s => s.id === freq.servicoOperacionalId) || !freq.servicoOperacionalNome
+    ? setoresAtivos
+    : [{ id: freq.servicoOperacionalId, tomadorId: freq.tomadorId, grupoId: '', nome: freq.servicoOperacionalNome, ativo: false }, ...setoresAtivos]
+
+  // A competência atual pode estar fora da janela de 12 meses de COMPETENCIAS (frequência
+  // antiga) — injeta na lista pra não sumir do <select> quando o modal abre.
+  const competenciaOptions = COMPETENCIAS.includes(freq.competencia)
+    ? COMPETENCIAS
+    : [freq.competencia, ...COMPETENCIAS]
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true); setErr(null)
+    try {
+      const atualizada = await frequenciasApi.atualizar(freq.id, { competencia, servicoOperacionalId: setorId })
+      onSalvo(atualizada)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Erro ao salvar')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm font-bold text-ds-text">Editar Frequência</p>
+          <button type="button" onClick={onClose}
+            className="p-2 rounded-lg text-ds-light hover:bg-ds-input transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">
+            <X size={16} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          {err && <div className="mb-3"><Alert variant="error" onClose={() => setErr(null)}>{err}</Alert></div>}
+          <div className="mb-3">
+            <label className="block text-xs font-bold text-ds-mid mb-1">Competência *</label>
+            <select value={competencia} onChange={e => setCompetencia(e.target.value)}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
+              {competenciaOptions.map(c => <option key={c} value={c}>{formatCompetencia(c)}</option>)}
+            </select>
+          </div>
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-ds-mid mb-1">Setor Operacional *</label>
+            <select value={setorId} onChange={e => setSetorId(e.target.value)}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
+              {setores.map(s => <option key={s.id} value={s.id}>{s.nome}{!s.ativo ? ' (inativo)' : ''}</option>)}
+            </select>
+          </div>
+          <p className="text-[11px] text-ds-light mb-4">
+            Tomador, Tipo de Escala, Modalidade e Ocorrência não podem ser alterados aqui — se
+            algum deles estiver errado, exclua esta frequência e crie uma nova.
+          </p>
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} disabled={saving}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-ds-border text-sm font-semibold text-ds-mid hover:bg-ds-surface transition-colors disabled:opacity-50">
+              Cancelar
+            </button>
+            <button type="submit" disabled={saving}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+              {saving ? <><Loader2 size={14} className="animate-spin" />Salvando...</> : 'Salvar'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

@@ -1146,9 +1146,9 @@ function PainelFrequencia({
   const [confirmExcluir, setConfirmExcluir] = useState(false)
   const [excluindo,     setExcluindo]     = useState(false)
   const [excluirErr,    setExcluirErr]    = useState<string | null>(null)
+  const [editandoFrequencia, setEditandoFrequencia] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isFaturada = freq.status === 'FATURADA'
-  const isRascunho = freq.status === 'RASCUNHO'
 
   const tomador = tomadores.find(t => t.id === freq.tomadorId)
   const medico  = medicos.find(m => m.id === freq.medicoId)
@@ -1289,14 +1289,23 @@ function PainelFrequencia({
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0 ml-6">
-            {/* PINSAUDE-13.26: modalidade/ocorrência não são editáveis depois de criada a
-                frequência — se o usuário escolheu errado, o jeito é excluir (só em Rascunho,
-                antes de gerar PDF) e criar de novo. */}
-            {isRascunho && (
+            {/* Competência e Setor Operacional são editáveis a qualquer momento antes de
+                faturada. Tomador, Tipo de Escala, Modalidade e Ocorrência permanecem fixos —
+                se algum deles estiver errado, o jeito continua sendo excluir e criar de novo. */}
+            {!isFaturada && (
+              <button
+                onClick={() => setEditandoFrequencia(true)}
+                title="Editar competência e setor"
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-ds-border text-ds-mid text-sm font-bold hover:bg-ds-input transition-colors">
+                <Pencil size={15} />
+                Editar
+              </button>
+            )}
+            {!isFaturada && (
               <button
                 onClick={() => setConfirmExcluir(true)}
                 disabled={excluindo}
-                title="Excluir frequência (só disponível em Rascunho)"
+                title="Excluir frequência"
                 className="flex items-center gap-2 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-bold hover:bg-red-50 transition-colors disabled:opacity-50">
                 <Trash2 size={15} />
                 Excluir
@@ -1346,6 +1355,15 @@ function PainelFrequencia({
               </div>
             </div>
           </div>
+        )}
+
+        {/* ── Edição de Competência + Setor Operacional ─────────────────────── */}
+        {editandoFrequencia && (
+          <EditarFrequenciaModal
+            freq={freq}
+            onClose={() => setEditandoFrequencia(false)}
+            onSalvo={f => { onAtualizar(f); setEditandoFrequencia(false) }}
+          />
         )}
 
         {/* ── Dados do profissional ───────────────────────────────────────── */}
@@ -1574,6 +1592,97 @@ function PainelFrequencia({
             )}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Modal de edição de Competência + Setor ────────────────────────────────────
+
+// Só Competência e Setor Operacional são editáveis pós-criação (Tomador, Tipo de Escala,
+// Modalidade e Ocorrência permanecem fixos — pedido explícito do cliente). Bloqueado só quando
+// FATURADA (garantido pelo caller, que só renderiza este modal nesse caso).
+function EditarFrequenciaModal({
+  freq, onClose, onSalvo,
+}: {
+  freq: FrequenciaMedicaResp
+  onClose: () => void
+  onSalvo: (f: FrequenciaMedicaResp) => void
+}) {
+  const [competencia, setCompetencia] = useState(freq.competencia)
+  const [grupos, setGrupos] = useState<TomadorGrupoFaturamento[]>([])
+  const [setorId, setSetorId] = useState(freq.servicoOperacionalId)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    tomadoresApi.listarGrupos(freq.tomadorId).then(setGrupos).catch(() => setGrupos([]))
+  }, [freq.tomadorId])
+
+  const setoresAtivos = grupos.flatMap(g => g.servicosOperacionais.filter(s => s.ativo))
+  // Garante que o setor atual da frequência apareça na lista mesmo se tiver sido desativado
+  // depois — mesmo padrão já usado pra modalidade/ocorrência inativa em outros formulários.
+  const setores = setoresAtivos.some(s => s.id === freq.servicoOperacionalId) || !freq.servicoOperacionalNome
+    ? setoresAtivos
+    : [{ id: freq.servicoOperacionalId, tomadorId: freq.tomadorId, grupoId: '', nome: freq.servicoOperacionalNome, ativo: false }, ...setoresAtivos]
+
+  // A competência atual pode estar fora da janela de 12 meses gerada por generateCompetencias()
+  // (frequência antiga) — injeta na lista pra não sumir do <select> quando o modal abre.
+  const competenciaOptions = COMPETENCIAS.includes(freq.competencia)
+    ? COMPETENCIAS
+    : [freq.competencia, ...COMPETENCIAS]
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true); setErr(null)
+    try {
+      const atualizada = await frequenciasApi.atualizar(freq.id, { competencia, servicoOperacionalId: setorId })
+      onSalvo(atualizada)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Erro ao salvar')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm font-bold text-ds-text">Editar Frequência</p>
+          <button type="button" onClick={onClose} className="p-1 rounded-lg text-ds-light hover:bg-ds-input transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          {err && <div className="mb-3"><Alert variant="error" onClose={() => setErr(null)}>{err}</Alert></div>}
+          <div className="mb-3">
+            <label className="block text-xs font-bold text-ds-mid mb-1">Competência *</label>
+            <select value={competencia} onChange={e => setCompetencia(e.target.value)}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+              {competenciaOptions.map(c => <option key={c} value={c}>{formatCompetencia(c)}</option>)}
+            </select>
+          </div>
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-ds-mid mb-1">Setor Operacional *</label>
+            <select value={setorId} onChange={e => setSetorId(e.target.value)}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+              {setores.map(s => <option key={s.id} value={s.id}>{s.nome}{!s.ativo ? ' (inativo)' : ''}</option>)}
+            </select>
+          </div>
+          <p className="text-[11px] text-ds-light mb-4">
+            Tomador, Tipo de Escala, Modalidade e Ocorrência não podem ser alterados aqui — se
+            algum deles estiver errado, exclua esta frequência e crie uma nova.
+          </p>
+          <div className="flex gap-3">
+            <Button type="button" variant="secondary" className="flex-1" disabled={saving} onClick={onClose}>
+              Cancelar
+            </Button>
+            <button type="submit" disabled={saving}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+              {saving ? <><Loader2 size={14} className="animate-spin" />Salvando...</> : 'Salvar'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

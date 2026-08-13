@@ -7,6 +7,7 @@ import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemResponse;
+import br.com.pinsaude.faturamento.dto.FrequenciaMedicaEditRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaMedicaRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
@@ -561,7 +562,7 @@ class FrequenciaServiceTest {
         verify(modalidadeRepo, never()).findById(outraModalidadeId);
     }
 
-    // ─── PINSAUDE-13.26: excluir frequência (só em RASCUNHO) ───────────────────
+    // ─── Excluir frequência (bloqueado só em FATURADA) ─────────────────────────
 
     @Test
     void excluir_frequenciaRascunho_deletaComSucesso() {
@@ -571,6 +572,32 @@ class FrequenciaServiceTest {
 
         service.excluir(freqId);
 
+        verify(frequenciaRepo).delete(f);
+    }
+
+    @Test
+    void excluir_frequenciaAguardandoAssinatura_deletaComSucesso() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setStatus("AGUARDANDO_ASSINATURA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        service.excluir(freqId);
+
+        verify(frequenciaRepo).delete(f);
+    }
+
+    @Test
+    void excluir_frequenciaComDocumentoAssinado_removeDoStorageAntes() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setStatus("ASSINADA_RECEBIDA");
+        f.setDocumentoAssinadoKey("frequencias/" + freqId + "/doc.pdf");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        service.excluir(freqId);
+
+        verify(storageService).delete("frequencias/" + freqId + "/doc.pdf");
         verify(frequenciaRepo).delete(f);
     }
 
@@ -586,22 +613,6 @@ class FrequenciaServiceTest {
     }
 
     @Test
-    void excluir_frequenciaComPdfGerado_lanca422() {
-        UUID freqId = UUID.randomUUID();
-        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
-        f.setStatus("PDF_GERADO");
-        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-
-        assertThatThrownBy(() -> service.excluir(freqId))
-            .isInstanceOf(ResponseStatusException.class)
-            .hasMessageContaining("Só é possível excluir uma frequência em Rascunho")
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
-
-        verify(frequenciaRepo, never()).delete(any());
-    }
-
-    @Test
     void excluir_frequenciaFaturada_lanca422() {
         UUID freqId = UUID.randomUUID();
         FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
@@ -610,10 +621,120 @@ class FrequenciaServiceTest {
 
         assertThatThrownBy(() -> service.excluir(freqId))
             .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("já faturada")
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
 
         verify(frequenciaRepo, never()).delete(any());
+    }
+
+    // ─── Editar frequência (Competência + Setor, bloqueado só em FATURADA) ─────
+
+    @Test
+    void atualizar_competenciaESetor_salvaComSucesso() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        UUID outroSetorId = UUID.randomUUID();
+        TomadorServicoOperacional outroSetor = new TomadorServicoOperacional();
+        setId(outroSetor, outroSetorId);
+        outroSetor.setTomadorId(tomadorId);
+        outroSetor.setNome("UTI");
+        when(setorRepo.findById(outroSetorId)).thenReturn(Optional.of(outroSetor));
+        when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetencia(
+                medicoId, outroSetorId, "2026-08")).thenReturn(Optional.empty());
+
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", outroSetorId);
+        FrequenciaMedicaResponse resp = service.atualizar(freqId, req);
+
+        assertThat(resp.competencia()).isEqualTo("2026-08");
+        assertThat(f.getServicoOperacionalId()).isEqualTo(outroSetorId);
+        verify(frequenciaRepo).save(f);
+    }
+
+    @Test
+    void atualizar_setorDeOutroTomador_lanca422() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        UUID setorDeOutroTomadorId = UUID.randomUUID();
+        TomadorServicoOperacional setorDeOutroTomador = new TomadorServicoOperacional();
+        setId(setorDeOutroTomador, setorDeOutroTomadorId);
+        setorDeOutroTomador.setTomadorId(UUID.randomUUID()); // tomador diferente do da frequência
+        when(setorRepo.findById(setorDeOutroTomadorId)).thenReturn(Optional.of(setorDeOutroTomador));
+
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-07", setorDeOutroTomadorId);
+
+        assertThatThrownBy(() -> service.atualizar(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não pertence ao tomador")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(frequenciaRepo, never()).save(any());
+    }
+
+    @Test
+    void atualizar_conflitoComOutraFrequenciaExistente_lanca409() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        FrequenciaMedica outraExistente = frequenciaFixture(medicoId, setorId, "2026-08");
+        when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetencia(
+                medicoId, setorId, "2026-08")).thenReturn(Optional.of(outraExistente));
+
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", setorId);
+
+        assertThatThrownBy(() -> service.atualizar(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT));
+
+        verify(frequenciaRepo, never()).save(any());
+    }
+
+    @Test
+    void atualizar_mesmaFrequenciaEncontradaNaChecagemDeConflito_naoLancaErro() {
+        // A própria frequência sendo editada aparece na busca por (medico, setor, competência)
+        // quando os valores não mudam (ou mudam só um dos dois) — não pode ser tratada como conflito.
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        setId(f, freqId);
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        UUID outroSetorId = UUID.randomUUID();
+        TomadorServicoOperacional outroSetor = new TomadorServicoOperacional();
+        setId(outroSetor, outroSetorId);
+        outroSetor.setTomadorId(tomadorId);
+        when(setorRepo.findById(outroSetorId)).thenReturn(Optional.of(outroSetor));
+        when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetencia(
+                medicoId, outroSetorId, "2026-07")).thenReturn(Optional.of(f));
+
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-07", outroSetorId);
+        service.atualizar(freqId, req);
+
+        verify(frequenciaRepo).save(f);
+    }
+
+    @Test
+    void atualizar_frequenciaFaturada_lanca422() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setStatus("FATURADA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", setorId);
+
+        assertThatThrownBy(() -> service.atualizar(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("já faturada")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(frequenciaRepo, never()).save(any());
     }
 
     // ─── Valoração e coupling da modalidade Diarista (PINSAUDE-13.23) ─────────

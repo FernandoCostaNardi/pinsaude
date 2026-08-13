@@ -113,6 +113,14 @@ export interface FrequenciaMedicaResp {
   ocorrenciaValorCentavos: number
 }
 
+// Edição pós-criação: só Competência e Setor Operacional são editáveis (Tomador, Tipo de
+// Escala, Modalidade e Ocorrência permanecem fixos — se algo além disso estiver errado, o
+// caminho continua sendo excluir e criar de novo).
+export interface FrequenciaMedicaEditRequest {
+  competencia: string
+  servicoOperacionalId: string
+}
+
 export interface FrequenciaMedicaRequest {
   tomadorId: string
   medicoId: string
@@ -174,9 +182,18 @@ export const frequenciasApi = {
     return handleResponse<FrequenciaMedicaResp>(res)
   },
 
-  // PINSAUDE-13.26: só permitido enquanto a frequência está em RASCUNHO — dá pra corrigir uma
-  // escolha errada de modalidade/ocorrência (não editável depois de criada) apagando e criando
-  // de novo. Itens são apagados em cascata pelo backend.
+  // Edita Competência e Setor Operacional de uma frequência já criada. Bloqueado só quando
+  // status = FATURADA (já entrou no Fechamento/NFS-e).
+  async atualizar(id: string, req: FrequenciaMedicaEditRequest): Promise<FrequenciaMedicaResp> {
+    const res = await fetch(`/api/frequencias/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<FrequenciaMedicaResp>(res)
+  },
+
+  // Permitido em qualquer status exceto FATURADA. Itens são apagados em cascata pelo backend.
   async excluir(id: string): Promise<void> {
     const res = await fetch(`/api/frequencias/${id}`, {
       method: 'DELETE',
