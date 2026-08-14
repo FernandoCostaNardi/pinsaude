@@ -17,11 +17,14 @@ public interface FrequenciaMedicaRepository extends JpaRepository<FrequenciaMedi
 
     List<FrequenciaMedica> findByServicoOperacionalIdOrderByCompetenciaDescCreatedAtDesc(UUID servicoOperacionalId);
 
-    Optional<FrequenciaMedica> findByMedicoIdAndServicoOperacionalIdAndCompetencia(
-            UUID medicoId, UUID servicoOperacionalId, String competencia);
+    // Unicidade só se aplica a Diarista (modalidade fixa na frequência) — ver V34. Plantonista
+    // não tem checagem de duplicidade: o médico pode abrir quantas frequências ("folhas")
+    // precisar pro mesmo médico+setor+competência (ex.: uma pra semana, outra pro fim de semana).
+    Optional<FrequenciaMedica> findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+            UUID medicoId, UUID servicoOperacionalId, String competencia, String tipoMedico, UUID modalidadeId);
 
-    boolean existsByMedicoIdAndServicoOperacionalIdAndCompetencia(
-            UUID medicoId, UUID servicoOperacionalId, String competencia);
+    boolean existsByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+            UUID medicoId, UUID servicoOperacionalId, String competencia, String tipoMedico, UUID modalidadeId);
 
     List<FrequenciaMedica> findByTomadorIdAndCompetencia(UUID tomadorId, String competencia);
 }

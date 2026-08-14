@@ -285,9 +285,14 @@ function NovaFrequenciaModal({
       .catch(() => setOcorrencias([]))
   }, [form.tomador?.id, form.tipoMedico])
 
+  // Ajuste pós-implantação: modalidade (e ocorrência) só são fixadas na frequência para
+  // Diarista — Plantonista volta a escolher isso a cada plantão lançado, podendo ter
+  // turnos/modalidades diferentes dentro da mesma frequência (ver CLAUDE.md).
+  const isDiarista = form.tipoMedico === 'DIARISTA'
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.tomador || !form.setor || !modalidade) return
+    if (!form.tomador || !form.setor || (isDiarista && !modalidade)) return
     setSaving(true); setErr(null)
     try {
       const req: FrequenciaMedicaRequest = {
@@ -296,8 +301,8 @@ function NovaFrequenciaModal({
         servicoOperacionalId: form.setor.id,
         competencia: form.competencia,
         tipoMedico: form.tipoMedico,
-        modalidadeId: modalidade.id,
-        ocorrenciaId: ocorrenciaId || undefined,
+        modalidadeId: isDiarista ? modalidade?.id : undefined,
+        ocorrenciaId: isDiarista ? (ocorrenciaId || undefined) : undefined,
       }
       const criada = await frequenciasApi.criar(req)
       onCriada(criada)
@@ -306,7 +311,7 @@ function NovaFrequenciaModal({
     } finally { setSaving(false) }
   }
 
-  const canSave = !!form.tomador && !!form.setor && !!modalidade
+  const canSave = !!form.tomador && !!form.setor && (!isDiarista || !!modalidade)
 
   return (
     // Mobile: bottom-sheet que sobe. Desktop: modal centralizado.
@@ -387,34 +392,40 @@ function NovaFrequenciaModal({
               </div>
             </div>
 
-            {/* Modalidade (PINSAUDE-13.26) — escolhida uma única vez aqui; todo plantão lançado
-                nesta frequência sempre usará esta modalidade, sem perguntar de novo. */}
-            <div>
-              <Dropdown
-                label="Modalidade *"
-                placeholder={
-                  !form.tomador ? 'Selecione o tomador primeiro...'
-                  : modalidades.length === 0 ? `Nenhuma modalidade ${form.tipoMedico === 'PLANTONISTA' ? 'Plantonista' : 'Diarista'} cadastrada`
-                  : 'Selecione a modalidade...'
-                }
-                items={modalidades}
-                value={modalidade}
-                onChange={setModalidade}
-                getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
-                disabled={!form.tomador || modalidades.length === 0}
-              />
-              <p className="mt-1 text-[11px] text-ds-light">
-                {form.tipoMedico === 'DIARISTA'
-                  ? 'Toda frequência lançada aqui usará esta modalidade.'
-                  : 'Todo plantão lançado nesta frequência usará esta modalidade.'}
+            {/* Modalidade — só para Diarista (PINSAUDE-13.26). Escolhida uma única vez aqui;
+                todo lançamento desta frequência sempre usará esta modalidade. Plantonista não
+                escolhe modalidade aqui — cada plantão lançado escolhe a sua própria (turnos
+                diferentes dentro da mesma frequência são permitidos). */}
+            {isDiarista ? (
+              <div>
+                <Dropdown
+                  label="Modalidade *"
+                  placeholder={
+                    !form.tomador ? 'Selecione o tomador primeiro...'
+                    : modalidades.length === 0 ? 'Nenhuma modalidade Diarista cadastrada'
+                    : 'Selecione a modalidade...'
+                  }
+                  items={modalidades}
+                  value={modalidade}
+                  onChange={setModalidade}
+                  getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
+                  disabled={!form.tomador || modalidades.length === 0}
+                />
+                <p className="mt-1 text-[11px] text-ds-light">
+                  Toda frequência lançada aqui usará esta modalidade.
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-ds-light bg-ds-input/40 rounded-lg px-3 py-2">
+                A modalidade de cada plantão é escolhida no momento do lançamento — turnos/modalidades diferentes podem ser lançados dentro desta mesma frequência.
               </p>
-            </div>
+            )}
 
-            {/* Ocorrência (opcional, PINSAUDE-13.26) — idem, aplicada a todos os lançamentos.
+            {/* Ocorrência (opcional, PINSAUDE-13.26) — só para Diarista, mesmo motivo acima.
                 Com uma única ocorrência cadastrada para o tomador, um checkbox simples substitui
                 o select (menos fricção que abrir um dropdown pra escolher a única opção
                 disponível); com 2+ opções, mantém o select de sempre. */}
-            {ocorrencias.length === 1 ? (
+            {isDiarista && (ocorrencias.length === 1 ? (
               <label className="flex items-center gap-2.5 cursor-pointer group">
                 <input
                   type="checkbox"
@@ -440,7 +451,7 @@ function NovaFrequenciaModal({
                   ))}
                 </select>
               </div>
-            )}
+            ))}
           </div>
 
           {/* Rodapé fixo */}

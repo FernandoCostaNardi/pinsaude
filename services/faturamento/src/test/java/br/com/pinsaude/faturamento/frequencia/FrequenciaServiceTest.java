@@ -99,12 +99,10 @@ class FrequenciaServiceTest {
         when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(true);
     }
 
-    // ─── Criar frequência ─────────────────────────────────────────────────────
+    // ─── Criar frequência — Plantonista (sem modalidade/ocorrência fixa) ──────
 
     @Test
-    void criar_frequenciaValida_salvaNoBanco() {
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(
-                medicoId, setorId, "2026-07")).thenReturn(false);
+    void criar_plantonista_semModalidade_salvaNoBanco() {
         when(frequenciaRepo.save(any())).thenAnswer(inv -> {
             FrequenciaMedica f = inv.getArgument(0);
             setId(f, UUID.randomUUID());
@@ -112,7 +110,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", modalidadeId, null);
+            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", null, null);
 
         FrequenciaMedicaResponse resp = service.criar(req);
 
@@ -121,34 +119,69 @@ class FrequenciaServiceTest {
         assertThat(resp.status()).isEqualTo("RASCUNHO");
         assertThat(resp.servicoOperacionalNome()).isEqualTo("Emergência Cardiológica");
         assertThat(resp.totalValorCentavos()).isZero();
-        assertThat(resp.modalidadeId()).isEqualTo(modalidadeId);
-        assertThat(resp.modalidadeNome()).isEqualTo("Plantão 12h Noturno");
+        // Plantonista: modalidade escolhida por lançamento — nada fixado na frequência.
+        assertThat(resp.modalidadeId()).isNull();
         verify(frequenciaRepo).save(any());
     }
 
     @Test
-    void criar_duplicata_lanca409() {
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(
-                medicoId, setorId, "2026-07")).thenReturn(true);
+    void criar_plantonista_comModalidadeInformada_lanca422() {
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", modalidadeId, null);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Modalidade não deve ser informada para Tipo de Escala Plantonista")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(frequenciaRepo, never()).save(any());
+    }
+
+    @Test
+    void criar_plantonista_comOcorrenciaInformada_lanca422() {
+        UUID ocorrenciaId = UUID.randomUUID();
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", null, ocorrenciaId);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Ocorrência não deve ser informada para Tipo de Escala Plantonista")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(frequenciaRepo, never()).save(any());
+    }
+
+    @Test
+    void criar_plantonista_semChecagemDeDuplicidade_permiteMultiplasFolhas() {
+        // Pedido do cliente: o médico pode abrir mais de uma frequência ("folha") Plantonista
+        // pro mesmo médico+setor+competência (ex.: uma pra semana, outra pro fim de semana) —
+        // sem modalidade fixa, não existe checagem de duplicidade nenhuma pra Plantonista (V34).
+        when(frequenciaRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaMedica f = inv.getArgument(0);
+            setId(f, UUID.randomUUID());
+            return f;
+        });
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
             tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", null, null);
 
-        assertThatThrownBy(() -> service.criar(req))
-            .isInstanceOf(ResponseStatusException.class)
-            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                .isEqualTo(HttpStatus.CONFLICT));
+        service.criar(req);
+        service.criar(req);
+
+        verify(frequenciaRepo, times(2)).save(any());
+        verify(frequenciaRepo, never()).existsByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+            any(), any(), any(), any(), any());
     }
 
     @Test
     void criar_setorInexistente_lanca404() {
         UUID setorInexistente = UUID.randomUUID();
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
-            .thenReturn(false);
         when(setorRepo.findById(setorInexistente)).thenReturn(Optional.empty());
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorInexistente, "2026-07", "MEDICO PLANTONISTA", null, null);
+            tomadorId, medicoId, setorInexistente, "2026-07", "PLANTONISTA", null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -159,8 +192,6 @@ class FrequenciaServiceTest {
     @Test
     void criar_setorDeOutroTomador_lanca422() {
         UUID outroTomadorId = UUID.randomUUID();
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
-            .thenReturn(false);
 
         // setor pertence a tomadorId, mas a requisição informa outroTomadorId
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
@@ -175,8 +206,6 @@ class FrequenciaServiceTest {
 
     @Test
     void criar_medicoNaoAlocadoAoTomador_lanca422() {
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
-            .thenReturn(false);
         when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(false);
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
@@ -189,17 +218,69 @@ class FrequenciaServiceTest {
                 .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
     }
 
-    // ─── PINSAUDE-13.26: modalidade/ocorrência fixas na criação ───────────────
+    // ─── Criar frequência — Diarista (modalidade obrigatória e fixa) ──────────
+
+    @Test
+    void criar_diarista_semModalidade_lanca422() {
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", null, null);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Modalidade é obrigatória para Tipo de Escala Diarista")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(frequenciaRepo, never()).save(any());
+    }
+
+    @Test
+    void criar_diarista_comModalidade_salvaNoBanco() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+                medicoId, setorId, "2026-07", "DIARISTA", diaristaId)).thenReturn(false);
+        when(frequenciaRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaMedica f = inv.getArgument(0);
+            setId(f, UUID.randomUUID());
+            return f;
+        });
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", diaristaId, null);
+
+        FrequenciaMedicaResponse resp = service.criar(req);
+
+        assertThat(resp.tipoMedico()).isEqualTo("DIARISTA");
+        assertThat(resp.modalidadeId()).isEqualTo(diaristaId);
+        assertThat(resp.modalidadeNome()).isEqualTo("Diarista 20h/semana");
+        verify(frequenciaRepo).save(any());
+    }
+
+    @Test
+    void criar_diarista_duplicataMesmaModalidade_lanca409() {
+        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+                medicoId, setorId, "2026-07", "DIARISTA", modalidadeId)).thenReturn(true);
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", modalidadeId, null);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT));
+
+        verify(frequenciaRepo, never()).save(any());
+    }
 
     @Test
     void criar_modalidadeInexistente_lanca404() {
         UUID modalInexistente = UUID.randomUUID();
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
-            .thenReturn(false);
         when(modalidadeRepo.findById(modalInexistente)).thenReturn(Optional.empty());
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", modalInexistente, null);
+            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", modalInexistente, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -211,16 +292,12 @@ class FrequenciaServiceTest {
     void criar_modalidadeDeOutroTomador_lanca422() {
         UUID outroTomadorId = UUID.randomUUID();
         UUID modalOutroTomadorId = UUID.randomUUID();
-        TomadorModalidade modalOutroTomador = new TomadorModalidade();
-        setId(modalOutroTomador, modalOutroTomadorId);
+        TomadorModalidade modalOutroTomador = modalidadeDiaristaFixture(modalOutroTomadorId, 1_000_000L, "20");
         modalOutroTomador.setTomadorId(outroTomadorId);
-        modalOutroTomador.setTipo("PLANTONISTA");
         when(modalidadeRepo.findById(modalOutroTomadorId)).thenReturn(Optional.of(modalOutroTomador));
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
-            .thenReturn(false);
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", modalOutroTomadorId, null);
+            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", modalOutroTomadorId, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -231,32 +308,28 @@ class FrequenciaServiceTest {
 
     @Test
     void criar_modalidadeComTipoIncompativel_lanca422() {
-        UUID diaristaId = UUID.randomUUID();
-        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
-        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
-            .thenReturn(false);
-
-        // tipoMedico da frequência é PLANTONISTA, mas a modalidade escolhida é DIARISTA
+        // tipoMedico da frequência é DIARISTA, mas a modalidade escolhida (fixture padrão do
+        // setUp) é PLANTONISTA
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", diaristaId, null);
+            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", modalidadeId, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
-            .hasMessageContaining("não pode ser usada numa frequência com Tipo de Escala PLANTONISTA")
+            .hasMessageContaining("não pode ser usada numa frequência com Tipo de Escala DIARISTA")
             .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
     }
 
     @Test
     void criar_ocorrenciaInexistente_lanca404() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
         UUID ocorrenciaInexistente = UUID.randomUUID();
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
-            .thenReturn(false);
         when(ocorrenciaRepo.findById(ocorrenciaInexistente)).thenReturn(Optional.empty());
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", modalidadeId, ocorrenciaInexistente);
+            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaInexistente);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -266,16 +339,18 @@ class FrequenciaServiceTest {
 
     @Test
     void criar_ocorrenciaDeOutroTomador_lanca422() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
         UUID outroTomadorId = UUID.randomUUID();
         UUID ocorrenciaOutroTomadorId = UUID.randomUUID();
         TomadorOcorrencia ocorrenciaOutroTomador = ocorrenciaFixture(ocorrenciaOutroTomadorId, "FIXO", null, 5000L);
         ocorrenciaOutroTomador.setTomadorId(outroTomadorId);
         when(ocorrenciaRepo.findById(ocorrenciaOutroTomadorId)).thenReturn(Optional.of(ocorrenciaOutroTomador));
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
-            .thenReturn(false);
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", modalidadeId, ocorrenciaOutroTomadorId);
+            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaOutroTomadorId);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -285,12 +360,14 @@ class FrequenciaServiceTest {
     }
 
     @Test
-    void criar_comOcorrencia_salvaOcorrenciaIdEExibeNoResumo() {
+    void criar_diarista_comOcorrencia_salvaOcorrenciaIdEExibeNoResumo() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
         UUID ocorrenciaId = UUID.randomUUID();
         TomadorOcorrencia ocorrencia = ocorrenciaFixture(ocorrenciaId, "FIXO", null, 5000L);
         when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.of(ocorrencia));
-        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(any(), any(), any()))
-            .thenReturn(false);
         when(frequenciaRepo.save(any())).thenAnswer(inv -> {
             FrequenciaMedica f = inv.getArgument(0);
             setId(f, UUID.randomUUID());
@@ -298,7 +375,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", modalidadeId, ocorrenciaId);
+            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaId);
 
         FrequenciaMedicaResponse resp = service.criar(req);
 
@@ -634,6 +711,8 @@ class FrequenciaServiceTest {
     void atualizar_competenciaESetor_salvaComSucesso() {
         UUID freqId = UUID.randomUUID();
         FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        f.setModalidadeId(modalidadeId);
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
         UUID outroSetorId = UUID.randomUUID();
@@ -642,8 +721,8 @@ class FrequenciaServiceTest {
         outroSetor.setTomadorId(tomadorId);
         outroSetor.setNome("UTI");
         when(setorRepo.findById(outroSetorId)).thenReturn(Optional.of(outroSetor));
-        when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetencia(
-                medicoId, outroSetorId, "2026-08")).thenReturn(Optional.empty());
+        when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+                medicoId, outroSetorId, "2026-08", "DIARISTA", modalidadeId)).thenReturn(Optional.empty());
 
         FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", outroSetorId);
         FrequenciaMedicaResponse resp = service.atualizar(freqId, req);
@@ -680,11 +759,13 @@ class FrequenciaServiceTest {
     void atualizar_conflitoComOutraFrequenciaExistente_lanca409() {
         UUID freqId = UUID.randomUUID();
         FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        f.setModalidadeId(modalidadeId);
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
         FrequenciaMedica outraExistente = frequenciaFixture(medicoId, setorId, "2026-08");
-        when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetencia(
-                medicoId, setorId, "2026-08")).thenReturn(Optional.of(outraExistente));
+        when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+                medicoId, setorId, "2026-08", "DIARISTA", modalidadeId)).thenReturn(Optional.of(outraExistente));
 
         FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", setorId);
 
@@ -698,10 +779,13 @@ class FrequenciaServiceTest {
 
     @Test
     void atualizar_mesmaFrequenciaEncontradaNaChecagemDeConflito_naoLancaErro() {
-        // A própria frequência sendo editada aparece na busca por (medico, setor, competência)
-        // quando os valores não mudam (ou mudam só um dos dois) — não pode ser tratada como conflito.
+        // A própria frequência sendo editada aparece na busca por (medico, setor, competência,
+        // tipo, modalidade) quando os valores não mudam (ou mudam só um dos dois) — não pode ser
+        // tratada como conflito.
         UUID freqId = UUID.randomUUID();
         FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        f.setModalidadeId(modalidadeId);
         setId(f, freqId);
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
@@ -710,13 +794,37 @@ class FrequenciaServiceTest {
         setId(outroSetor, outroSetorId);
         outroSetor.setTomadorId(tomadorId);
         when(setorRepo.findById(outroSetorId)).thenReturn(Optional.of(outroSetor));
-        when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetencia(
-                medicoId, outroSetorId, "2026-07")).thenReturn(Optional.of(f));
+        when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+                medicoId, outroSetorId, "2026-07", "DIARISTA", modalidadeId)).thenReturn(Optional.of(f));
 
         FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-07", outroSetorId);
         service.atualizar(freqId, req);
 
         verify(frequenciaRepo).save(f);
+    }
+
+    @Test
+    void atualizar_plantonista_semChecagemDeConflito_permiteMesmaChave() {
+        // Plantonista nunca teve checagem de duplicidade (ver criar()/V34) — editar competência
+        // ou setor de uma frequência Plantonista nunca dispara a busca por conflito, mesmo já
+        // existindo outra frequência com a mesma chave (medico+setor+competência).
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("PLANTONISTA");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        UUID outroSetorId = UUID.randomUUID();
+        TomadorServicoOperacional outroSetor = new TomadorServicoOperacional();
+        setId(outroSetor, outroSetorId);
+        outroSetor.setTomadorId(tomadorId);
+        when(setorRepo.findById(outroSetorId)).thenReturn(Optional.of(outroSetor));
+
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", outroSetorId);
+        service.atualizar(freqId, req);
+
+        verify(frequenciaRepo).save(f);
+        verify(frequenciaRepo, never()).findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+            any(), any(), any(), any(), any());
     }
 
     @Test

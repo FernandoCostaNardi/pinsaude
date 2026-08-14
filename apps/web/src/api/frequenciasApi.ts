@@ -127,9 +127,12 @@ export interface FrequenciaMedicaRequest {
   servicoOperacionalId: string
   competencia: string
   tipoMedico: 'PLANTONISTA' | 'DIARISTA'
-  // PINSAUDE-13.26: modalidade (obrigatória) e ocorrência (opcional) escolhidas uma única vez
-  // aqui, na criação da frequência — o formulário de lançamento de plantão nunca mais pergunta.
-  modalidadeId: string
+  // Modalidade (obrigatória) e ocorrência (opcional) só são escolhidas aqui, na criação, quando
+  // tipoMedico = DIARISTA — nesse caso o formulário de lançamento de plantão nunca mais pergunta
+  // nenhuma das duas. Para PLANTONISTA, os dois campos devem vir undefined — modalidade e
+  // ocorrência voltam a ser escolhidas a cada plantão lançado (ajuste pós-implantação, reverte
+  // parte do comportamento fixo introduzido em PINSAUDE-13.26 — ver CLAUDE.md).
+  modalidadeId?: string
   ocorrenciaId?: string
 }
 
