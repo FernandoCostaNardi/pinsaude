@@ -367,9 +367,14 @@ function NovaFrequenciaModal({
       .catch(() => setOcorrencias([]))
   }, [tomador?.id, tipoMedico])
 
+  // Ajuste pós-implantação: modalidade (e ocorrência) só são fixadas na frequência para
+  // Diarista — Plantonista volta a escolher isso a cada plantão lançado, podendo ter
+  // turnos/modalidades diferentes dentro da mesma frequência (ver CLAUDE.md).
+  const isDiarista = tipoMedico === 'DIARISTA'
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!tomador || !medico || !setor || !modalidade) return
+    if (!tomador || !medico || !setor || (isDiarista && !modalidade)) return
     setSaving(true); setErr(null)
     try {
       const req: FrequenciaMedicaRequest = {
@@ -378,8 +383,8 @@ function NovaFrequenciaModal({
         servicoOperacionalId: setor.id,
         competencia,
         tipoMedico,
-        modalidadeId: modalidade.id,
-        ocorrenciaId: ocorrenciaId || undefined,
+        modalidadeId: isDiarista ? modalidade?.id : undefined,
+        ocorrenciaId: isDiarista ? (ocorrenciaId || undefined) : undefined,
       }
       const criada = await frequenciasApi.criar(req)
       onCriada(criada)
@@ -388,7 +393,7 @@ function NovaFrequenciaModal({
     } finally { setSaving(false) }
   }
 
-  const canSave = !!tomador && !!medico && !!setor && !!modalidade
+  const canSave = !!tomador && !!medico && !!setor && (!isDiarista || !!modalidade)
   const medicosFiltrados = medicos.filter(m => m.status === 'ATIVO')
 
   return (
@@ -481,43 +486,52 @@ function NovaFrequenciaModal({
             </div>
           </div>
 
-          {/* Linha 5: Modalidade (PINSAUDE-13.26) — escolhida uma única vez aqui; todo lançamento
-              de plantão desta frequência sempre usará esta modalidade, sem perguntar de novo. */}
-          <div className="mt-4">
-            <Dropdown
-              label="Modalidade *"
-              placeholder={
-                !tomador ? 'Selecione o tomador primeiro...'
-                : modalidades.length === 0 ? `Nenhuma modalidade ${tipoMedico === 'PLANTONISTA' ? 'Plantonista' : 'Diarista'} cadastrada`
-                : 'Selecione a modalidade...'
-              }
-              items={modalidades}
-              value={modalidade}
-              onChange={setModalidade}
-              getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
-              disabled={!tomador || modalidades.length === 0}
-            />
-            <p className="mt-1 text-[11px] text-ds-light">
-              {tipoMedico === 'DIARISTA'
-                ? 'Toda frequência lançada aqui usará esta modalidade — não será mais necessário escolher a cada lançamento.'
-                : 'Todo plantão lançado nesta frequência usará esta modalidade — não será mais necessário escolher a cada lançamento.'}
+          {/* Linha 5: Modalidade — só para Diarista (PINSAUDE-13.26). Escolhida uma única vez
+              aqui; todo lançamento desta frequência sempre usará esta modalidade. Plantonista
+              não escolhe modalidade aqui — cada plantão lançado escolhe a sua própria (turnos
+              diferentes dentro da mesma frequência são permitidos). */}
+          {isDiarista ? (
+            <div className="mt-4">
+              <Dropdown
+                label="Modalidade *"
+                placeholder={
+                  !tomador ? 'Selecione o tomador primeiro...'
+                  : modalidades.length === 0 ? 'Nenhuma modalidade Diarista cadastrada'
+                  : 'Selecione a modalidade...'
+                }
+                items={modalidades}
+                value={modalidade}
+                onChange={setModalidade}
+                getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
+                disabled={!tomador || modalidades.length === 0}
+              />
+              <p className="mt-1 text-[11px] text-ds-light">
+                Toda frequência lançada aqui usará esta modalidade — não será mais necessário escolher a cada lançamento.
+              </p>
+            </div>
+          ) : (
+            <p className="mt-4 text-[11px] text-ds-light bg-ds-input/40 rounded-lg px-3 py-2">
+              A modalidade de cada plantão é escolhida no momento do lançamento — turnos/modalidades diferentes podem ser lançados dentro desta mesma frequência.
             </p>
-          </div>
+          )}
 
-          {/* Linha 6: Ocorrência (opcional, PINSAUDE-13.26) — idem, aplicada a todos os lançamentos. */}
-          <div className="mt-4">
-            <label className="block text-xs font-bold text-ds-mid mb-1">
-              Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
-            </label>
-            <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
-              disabled={!tomador || ocorrencias.length === 0}
-              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white disabled:opacity-50">
-              <option value="">Nenhuma</option>
-              {ocorrencias.map(o => (
-                <option key={o.id} value={o.id}>{o.nome}</option>
-              ))}
-            </select>
-          </div>
+          {/* Linha 6: Ocorrência (opcional, PINSAUDE-13.26) — só para Diarista, mesmo motivo
+              acima. Plantonista escolhe (ou não) uma ocorrência a cada lançamento. */}
+          {isDiarista && (
+            <div className="mt-4">
+              <label className="block text-xs font-bold text-ds-mid mb-1">
+                Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
+              </label>
+              <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
+                disabled={!tomador || ocorrencias.length === 0}
+                className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white disabled:opacity-50">
+                <option value="">Nenhuma</option>
+                {ocorrencias.map(o => (
+                  <option key={o.id} value={o.id}>{o.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Rodapé com ações */}
           <div className="flex gap-3 mt-6 pt-5 border-t border-ds-border">
@@ -1708,7 +1722,7 @@ export function FrequenciasPage() {
 
   // Paginação
   const [page, setPage] = useState(0)
-  const pageSize = 15
+  const pageSize = 10
 
   const carregar = useCallback(async () => {
     const data = await frequenciasApi.listar({

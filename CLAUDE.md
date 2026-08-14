@@ -6235,6 +6235,123 @@ estariam ausentes nas respostas, mesmo com esta correção evitando o crash.
 
 ---
 
+## Múltiplas Frequências por Competência + Modalidade Plantonista Volta a Ser por Lançamento
+
+Três ajustes pedidos depois de mais uso real da PINSAUDE-13.26, todos ligados entre si.
+
+### 1. Paginação padrão da tela de Frequências (Gestor): 15 → 10
+`pageSize = 10` em `FrequenciasPage.tsx` — mudança de uma linha, sem nenhum efeito colateral
+(a paginação em si já existia desde antes).
+
+### 2. Chave composta pra permitir mais de uma frequência por médico+setor+competência
+Antes: `UNIQUE (medico_id, servico_operacional_id, competencia)` — só 1 frequência por
+médico+setor+competência, ponto final. Pedido do cliente: liberar mais de uma. A resposta certa
+**depende do Tipo de Escala**, confirmado em pergunta direta ao cliente:
+- **Diarista**: continua limitado, mas agora por `(medico, setor, competência, modalidade)` — o
+  médico pode ter 2+ cargos/valores mensais diferentes no mesmo mês, cada um em sua própria
+  frequência (uma modalidade Diarista = um valor mensal fixo; **duas modalidades diferentes
+  == duas frequências**, mesmo médico/setor/competência).
+- **Plantonista**: **sem nenhuma checagem de duplicidade**. Exemplo real do cliente: o médico
+  pode gerar uma "folha" (nome interno pro PDF entregue ao hospital) pros plantões da semana e
+  outra pros plantões de fim de semana — mesma médico+setor+competência, PDFs separados. Como o
+  item 3 abaixo tira a modalidade do nível da frequência pro Plantonista, não sobra nenhum campo
+  natural pra formar uma chave — a saída foi simplesmente não ter chave nenhuma nesse caso.
+
+`V34__frequencia_diarista_unica_por_modalidade.sql`: dropa o `UNIQUE` antigo, cria um **índice
+único parcial** que só vale quando `tipo_medico = 'DIARISTA'`:
+```sql
+ALTER TABLE faturamento.frequencias_medicas
+    DROP CONSTRAINT frequencias_medicas_medico_id_servico_operacional_id_compet_key;
+
+CREATE UNIQUE INDEX frequencias_medicas_diarista_unica_idx
+    ON faturamento.frequencias_medicas (medico_id, servico_operacional_id, competencia, modalidade_id)
+    WHERE tipo_medico = 'DIARISTA';
+```
+Um índice único parcial (`WHERE tipo_medico = 'DIARISTA'`) simplesmente **não indexa** as linhas
+Plantonista — não é que a checagem "passa" pra elas, é que elas nunca entram no índice, então
+nunca colidem entre si. `FrequenciaMedicaRepository` ganhou
+`existsBy.../findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId`
+(substituindo os métodos de 3 argumentos antigos, removidos — só tinham 2 usos, ambos
+reescritos). `FrequenciaService.criar()`/`atualizar()` só chamam esse método quando
+`"DIARISTA".equals(tipoMedico)` — Plantonista pula a checagem inteira (`if (diarista && ...)`).
+
+### 3. Modalidade do Plantonista volta a ser escolhida por lançamento (reverte parte do 13.26)
+Pedido do cliente: no modal "Nova Frequência Médica", só perguntar Modalidade quando a Escala for
+Diarista. Pra Plantonista, cada plantão lançado escolhe sua própria modalidade — podendo ter
+**turnos diferentes dentro da mesma frequência** (ex.: um plantão Diurno numa data, Noturno
+noutra, tudo na mesma "folha"). Isso desfaz, só pra Plantonista, a decisão central do
+PINSAUDE-13.26 ("modalidade fixada uma vez na criação, nenhum lançamento pergunta de novo") —
+Diarista mantém o comportamento fixo de sempre.
+
+**A boa notícia:** o mecanismo de "modalidade não fixa" já existia — foi construído no 13.26 pra
+suportar frequências **legadas** (`modalidadeId IS NULL`) sem quebrar dado antigo:
+```java
+// resolverModalidadeIdParaItem — já existia, nenhuma mudança de lógica:
+if (f.getModalidadeId() != null) return f.getModalidadeId();  // fixa (Diarista)
+if (reqModalidadeId == null) throw 422 "Informe a modalidade para este lançamento";
+return reqModalidadeId;  // por lançamento (Plantonista, a partir de agora — e legado)
+```
+Bastou fazer com que **toda frequência Plantonista nova** também nasça com `modalidadeId = null`
+(antes: nulo só em dado legado) — o resto (per-item modalidade, ocorrência per-item via
+`f.getModalidadeId() == null ? resolverOcorrencia(...) : null`, agregação no Fechamento que já
+pula frequências com `modalidadeId == null` na passada de "ocorrência fixa") já funcionava
+corretamente sem nenhuma mudança adicional.
+
+**O que de fato mudou no backend** (`FrequenciaService.criar()`):
+- `FrequenciaMedicaRequest.modalidadeId` deixou de ser `@NotNull` — obrigatoriedade agora é
+  condicional, validada no service (não dá pra expressar "obrigatório só se outro campo for X"
+  com Bean Validation puro sem uma anotação customizada, que não valia a pena pra um único caso).
+- Diarista: `modalidadeId` obrigatório (422 se faltar), continua validado/fixado como sempre.
+- Plantonista: **rejeita** `modalidadeId`/`ocorrenciaId` não-nulos com 422 explicativo — em vez
+  de ignorar silenciosamente um valor enviado por engano, força o front a não mandar nenhum dos
+  dois (fail-fast, evita um bug silencioso onde o front "acha" que fixou a modalidade mas o
+  back ignora).
+
+### Ocorrência do Plantonista também volta a ser por lançamento — mesma decisão, mesmo motivo
+Perguntado diretamente ao cliente: sem modalidade fixa, o % da ocorrência não tem mais um único
+valor de modalidade pra incidir — a resposta confirmada foi reverter ocorrência junto com
+modalidade pro Plantonista (Diarista não muda). Mecanismo idêntico ao da modalidade: já existia
+pra dado legado, só passou a valer sempre que `modalidadeId` da frequência é nulo.
+
+### Frontend — `NovaFrequenciaModal` (Gestor + Portal): condicional em `isDiarista`
+Os dois arquivos (`FrequenciasPage.tsx`, `PortalFrequenciaPage.tsx`) seguem exatamente o mesmo
+padrão: `const isDiarista = tipoMedico === 'DIARISTA'` decide se a seção de Modalidade/Ocorrência
+aparece (com o `<Dropdown>`/`<select>` de sempre) ou some, substituída por um aviso explicativo:
+> "A modalidade de cada plantão é escolhida no momento do lançamento — turnos/modalidades
+> diferentes podem ser lançados dentro desta mesma frequência."
+
+`canSave`/`handleSubmit` seguem a mesma condição: `modalidadeId: isDiarista ? modalidade?.id :
+undefined` — nunca manda o campo quando Plantonista, batendo com a validação nova do backend.
+`FrequenciaMedicaRequest.modalidadeId` (TS) também virou opcional (`modalidadeId?: string`),
+espelhando o DTO Java.
+
+### Testes — reescrita quase completa da seção "Criar frequência" do `FrequenciaServiceTest`
+Muitos testes antigos usavam `PLANTONISTA` + `modalidadeId` juntos — combinação que **deixa de
+ser válida**. Em vez de só trocar o nome do método mockado (compile fix mecânico), cada teste
+precisou de uma segunda leitura: os que testavam validação de modalidade (tipo incompatível,
+modalidade de outro tomador, etc.) migraram pra `DIARISTA` — só assim continuam exercitando o
+código que validam, já que Plantonista nunca mais chega perto da lógica de lookup de modalidade.
+Testes novos cobrem especificamente as duas metades da regra: `criar_plantonista_*` (sem
+modalidade, rejeita modalidade/ocorrência informadas, sem checagem de duplicidade — nem chama o
+repositório) e `criar_diarista_*` (modalidade obrigatória, duplicata por modalidade, modalidades
+diferentes não colidem). Mesmo padrão replicado nos testes de `atualizar()`. 241 testes no total
+(era 235 antes desta task).
+
+### Teste manual — API direta pra validar as 3 combinações, sem massa de dado fake residual
+1. Duas frequências Plantonista, médico+setor+competência **idênticos** → ambas 201 (antes: a
+   segunda daria 409).
+2. Duas frequências Diarista, mesma chave + mesma modalidade → 409 na segunda. Terceira com
+   modalidade **diferente** → 201.
+3. Dois itens lançados na mesma frequência Plantonista com modalidades diferentes (uma com turno
+   Diurno, outra sem turno/tipo "Diario") → ambos 201, confirma turnos/modalidades distintas
+   convivendo na mesma frequência.
+Confirmado também na UI (Gestor e Portal): alternar Tipo de Escala no modal "Nova Frequência"
+esconde/mostra Modalidade e Ocorrência em tempo real, sem reload. Todas as 4 frequências de teste
+criadas via API foram excluídas ao final — confirmado que a lista do médico voltou aos 6 registros
+reais originais.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

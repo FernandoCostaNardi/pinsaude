@@ -65,10 +65,36 @@ public class FrequenciaService {
 
     @Transactional
     public FrequenciaMedicaResponse criar(FrequenciaMedicaRequest req) {
-        if (frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetencia(
-                req.medicoId(), req.servicoOperacionalId(), req.competencia())) {
+        boolean diarista = "DIARISTA".equals(req.tipoMedico());
+
+        // Modalidade (e ocorrência) só são fixadas na frequência para Diarista (PINSAUDE-13.26).
+        // Plantonista volta a escolher modalidade/ocorrência por lançamento (ajuste pós-13.26,
+        // ver CLAUDE.md) — não faz sentido receber nenhum dos dois aqui nesse caso.
+        if (diarista) {
+            if (req.modalidadeId() == null) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Modalidade é obrigatória para Tipo de Escala Diarista");
+            }
+        } else {
+            if (req.modalidadeId() != null) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Modalidade não deve ser informada para Tipo de Escala Plantonista — é escolhida a cada plantão lançado");
+            }
+            if (req.ocorrenciaId() != null) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Ocorrência não deve ser informada para Tipo de Escala Plantonista — é escolhida a cada plantão lançado");
+            }
+        }
+
+        // Diarista: 1 frequência por médico+setor+competência+modalidade (o médico pode ter mais
+        // de um cargo/valor mensal diferente no mesmo mês, cada um em sua própria frequência).
+        // Plantonista: sem checagem de duplicidade — o médico pode abrir quantas frequências
+        // ("folhas") precisar pro mesmo médico+setor+competência (ex.: uma pra semana, outra pro
+        // fim de semana, cada uma virando um PDF separado entregue ao hospital) — ver V34.
+        if (diarista && frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+                req.medicoId(), req.servicoOperacionalId(), req.competencia(), req.tipoMedico(), req.modalidadeId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "Já existe uma frequência para este médico neste setor na competência " + req.competencia());
+                "Já existe uma frequência para este médico, neste setor, nesta competência, com esta modalidade");
         }
 
         TomadorServicoOperacional setor = setorRepo.findById(req.servicoOperacionalId())
@@ -85,24 +111,26 @@ public class FrequenciaService {
                 "Médico não está alocado a este tomador");
         }
 
-        // PINSAUDE-13.26: modalidade (e opcionalmente ocorrência) escolhidas uma única vez aqui —
-        // nenhum lançamento de plantão pergunta mais isso (ver adicionarItem/atualizarItem).
-        TomadorModalidade modalidade = modalidadeRepo.findById(req.modalidadeId())
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "Modalidade não encontrada: " + req.modalidadeId()));
-        if (!modalidade.getTomadorId().equals(req.tomadorId())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Modalidade não pertence ao tomador informado");
-        }
-        if (!modalidade.getTipo().equals(req.tipoMedico())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Modalidade do tipo " + modalidade.getTipo() + " não pode ser usada numa "
-                    + "frequência com Tipo de Escala " + req.tipoMedico());
-        }
-        TomadorOcorrencia ocorrencia = resolverOcorrencia(req.ocorrenciaId());
-        if (ocorrencia != null && !ocorrencia.getTomadorId().equals(req.tomadorId())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Ocorrência não pertence ao tomador informado");
+        TomadorModalidade modalidade = null;
+        TomadorOcorrencia ocorrencia = null;
+        if (diarista) {
+            modalidade = modalidadeRepo.findById(req.modalidadeId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Modalidade não encontrada: " + req.modalidadeId()));
+            if (!modalidade.getTomadorId().equals(req.tomadorId())) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Modalidade não pertence ao tomador informado");
+            }
+            if (!modalidade.getTipo().equals(req.tipoMedico())) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Modalidade do tipo " + modalidade.getTipo() + " não pode ser usada numa "
+                        + "frequência com Tipo de Escala " + req.tipoMedico());
+            }
+            ocorrencia = resolverOcorrencia(req.ocorrenciaId());
+            if (ocorrencia != null && !ocorrencia.getTomadorId().equals(req.tomadorId())) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Ocorrência não pertence ao tomador informado");
+            }
         }
 
         String tenant = SecurityUtils.currentCnpjTenant();
@@ -114,12 +142,12 @@ public class FrequenciaService {
         f.setServicoOperacionalId(req.servicoOperacionalId());
         f.setCompetencia(req.competencia());
         f.setTipoMedico(req.tipoMedico());
-        f.setModalidadeId(req.modalidadeId());
-        f.setOcorrenciaId(req.ocorrenciaId());
+        f.setModalidadeId(diarista ? req.modalidadeId() : null);
+        f.setOcorrenciaId(diarista ? req.ocorrenciaId() : null);
         f.setStatus("RASCUNHO");
         frequenciaRepo.save(f);
 
-        Map<UUID, TomadorModalidade> modalidadesMap = Map.of(modalidade.getId(), modalidade);
+        Map<UUID, TomadorModalidade> modalidadesMap = modalidade != null ? Map.of(modalidade.getId(), modalidade) : Map.of();
         Map<UUID, TomadorOcorrencia> ocorrenciasMap = ocorrencia != null ? Map.of(ocorrencia.getId(), ocorrencia) : Map.of();
         return FrequenciaMedicaResponse.from(f, setor, List.of(), modalidadesMap, ocorrenciasMap);
     }
@@ -211,15 +239,17 @@ public class FrequenciaService {
                 "Setor operacional não pertence ao tomador desta frequência");
         }
 
+        // Conflito só é checado para Diarista (chave inclui a modalidade fixa, que não muda
+        // nesta edição) — Plantonista nunca teve checagem de duplicidade (ver criar()/V34).
         boolean chaveMudou = !req.competencia().equals(f.getCompetencia())
             || !req.servicoOperacionalId().equals(f.getServicoOperacionalId());
-        if (chaveMudou) {
-            frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetencia(
-                    f.getMedicoId(), req.servicoOperacionalId(), req.competencia())
+        if (chaveMudou && "DIARISTA".equals(f.getTipoMedico())) {
+            frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+                    f.getMedicoId(), req.servicoOperacionalId(), req.competencia(), f.getTipoMedico(), f.getModalidadeId())
                 .filter(outra -> !outra.getId().equals(id))
                 .ifPresent(outra -> {
                     throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Já existe uma frequência para este médico neste setor na competência " + req.competencia());
+                        "Já existe uma frequência para este médico, neste setor, nesta competência, com esta modalidade");
                 });
         }
 
@@ -436,10 +466,12 @@ public class FrequenciaService {
         }
     }
 
-    // PINSAUDE-13.26: quando a frequência tem modalidade fixa (escolhida na criação), todo item
-    // usa sempre essa modalidade — o valor vindo do request do item é ignorado. Só frequências
-    // legadas (modalidadeId nulo, criadas antes desta mudança) continuam exigindo modalidadeId
-    // no request de cada lançamento, exatamente como antes.
+    // PINSAUDE-13.26 (Diarista) / ajuste pós-implantação (Plantonista): quando a frequência tem
+    // modalidade fixa (só acontece para Diarista, escolhida na criação), todo item usa sempre
+    // essa modalidade — o valor vindo do request do item é ignorado. Frequências com
+    // modalidadeId nulo — Plantonista (sempre, por design — ver criar()) ou legadas anteriores
+    // ao PINSAUDE-13.26 — continuam exigindo modalidadeId no request de cada lançamento, podendo
+    // variar turno/modalidade a cada plantão dentro da mesma frequência.
     private UUID resolverModalidadeIdParaItem(FrequenciaMedica f, UUID reqModalidadeId) {
         if (f.getModalidadeId() != null) return f.getModalidadeId();
         if (reqModalidadeId == null) {
