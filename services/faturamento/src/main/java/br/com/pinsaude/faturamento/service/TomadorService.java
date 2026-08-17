@@ -38,6 +38,8 @@ import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorServicoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorServicoResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
+import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
+import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
@@ -82,6 +84,8 @@ public class TomadorService {
     private final TomadorEmpresaRepository empresaTomadorRepo;
     private final TomadorOcorrenciaRepository ocorrenciaRepo;
     private final TomadorHorarioPadraoRepository horarioPadraoRepo;
+    private final FrequenciaMedicaRepository frequenciaMedicaRepo;
+    private final FrequenciaItemRepository frequenciaItemRepo;
 
     public TomadorService(TomadorRepository repo,
                           CryptoService crypto,
@@ -96,7 +100,9 @@ public class TomadorService {
                           MedicoTomadorRepository medicoTomadorRepo,
                           TomadorEmpresaRepository empresaTomadorRepo,
                           TomadorOcorrenciaRepository ocorrenciaRepo,
-                          TomadorHorarioPadraoRepository horarioPadraoRepo) {
+                          TomadorHorarioPadraoRepository horarioPadraoRepo,
+                          FrequenciaMedicaRepository frequenciaMedicaRepo,
+                          FrequenciaItemRepository frequenciaItemRepo) {
         this.repo = repo;
         this.crypto = crypto;
         this.consultaCnpjPort = consultaCnpjPort;
@@ -111,6 +117,8 @@ public class TomadorService {
         this.empresaTomadorRepo = empresaTomadorRepo;
         this.horarioPadraoRepo = horarioPadraoRepo;
         this.ocorrenciaRepo = ocorrenciaRepo;
+        this.frequenciaMedicaRepo = frequenciaMedicaRepo;
+        this.frequenciaItemRepo = frequenciaItemRepo;
     }
 
     public List<TomadorResponse> buscar(String q, UUID medicoId) {
@@ -383,6 +391,13 @@ public class TomadorService {
         TomadorGrupoFaturamento g = grupoRepo.findById(grupoId)
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado"));
+        List<UUID> setorIds = servicoOperacionalRepo.findByGrupoIdOrderByNomeAsc(grupoId).stream()
+            .map(TomadorServicoOperacional::getId)
+            .toList();
+        if (!setorIds.isEmpty() && frequenciaMedicaRepo.existsByServicoOperacionalIdIn(setorIds)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Não é possível remover: existem frequências médicas lançadas em setores deste grupo.");
+        }
         grupoRepo.delete(g);
     }
 
@@ -467,6 +482,11 @@ public class TomadorService {
         TomadorModalidade m = modalidadeRepo.findById(modalidadeId)
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Modalidade não encontrada"));
+        if (frequenciaItemRepo.existsByModalidadeId(modalidadeId)
+                || frequenciaMedicaRepo.existsByModalidadeId(modalidadeId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Não é possível remover: existem plantões ou frequências lançados com esta modalidade.");
+        }
         modalidadeRepo.delete(m);
     }
 
@@ -521,6 +541,10 @@ public class TomadorService {
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Serviço operacional não encontrado"));
+        if (frequenciaMedicaRepo.existsByServicoOperacionalId(servicoOperacionalId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Não é possível remover: existem frequências médicas lançadas para este setor operacional.");
+        }
         servicoOperacionalRepo.delete(s);
     }
 
@@ -748,6 +772,11 @@ public class TomadorService {
         TomadorOcorrencia o = ocorrenciaRepo.findById(ocorrenciaId)
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ocorrência não encontrada"));
+        if (frequenciaItemRepo.existsByOcorrenciaId(ocorrenciaId)
+                || frequenciaMedicaRepo.existsByOcorrenciaId(ocorrenciaId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Não é possível remover: existem plantões ou frequências lançados com esta ocorrência.");
+        }
         ocorrenciaRepo.delete(o);
     }
 

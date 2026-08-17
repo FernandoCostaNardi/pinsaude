@@ -14,6 +14,8 @@ import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
+import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
+import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
@@ -71,6 +73,8 @@ class TomadorServiceTest {
     @Mock TomadorEmpresaRepository empresaTomadorRepo;
     @Mock TomadorOcorrenciaRepository ocorrenciaRepo;
     @Mock TomadorHorarioPadraoRepository horarioPadraoRepo;
+    @Mock FrequenciaMedicaRepository frequenciaMedicaRepo;
+    @Mock FrequenciaItemRepository frequenciaItemRepo;
 
     @InjectMocks TomadorService service;
 
@@ -723,6 +727,35 @@ class TomadorServiceTest {
         assertThatThrownBy(() -> service.removerOcorrencia(tomadorId, o.getId()))
             .isInstanceOf(ResponseStatusException.class)
             .hasMessageContaining("não encontrada");
+    }
+
+    @Test
+    void removerOcorrencia_comItemDeFrequencia_lanca409() {
+        UUID tomadorId = UUID.randomUUID();
+        TomadorOcorrencia o = ocorrenciaFixture(tomadorId, "SEM_VALOR", null, null);
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(ocorrenciaRepo.findById(o.getId())).thenReturn(Optional.of(o));
+        when(frequenciaItemRepo.existsByOcorrenciaId(o.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.removerOcorrencia(tomadorId, o.getId()))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("existem plantões ou frequências lançados");
+        verify(ocorrenciaRepo, never()).delete(any());
+    }
+
+    @Test
+    void removerOcorrencia_comFrequenciaFixa_lanca409() {
+        UUID tomadorId = UUID.randomUUID();
+        TomadorOcorrencia o = ocorrenciaFixture(tomadorId, "SEM_VALOR", null, null);
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(ocorrenciaRepo.findById(o.getId())).thenReturn(Optional.of(o));
+        when(frequenciaItemRepo.existsByOcorrenciaId(o.getId())).thenReturn(false);
+        when(frequenciaMedicaRepo.existsByOcorrenciaId(o.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.removerOcorrencia(tomadorId, o.getId()))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("existem plantões ou frequências lançados");
+        verify(ocorrenciaRepo, never()).delete(any());
     }
 
     // ─── preenchimento rápido de turno (PINSAUDE-13.20) ────────────────────────

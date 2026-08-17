@@ -27,4 +27,15 @@ public interface FrequenciaMedicaRepository extends JpaRepository<FrequenciaMedi
             UUID medicoId, UUID servicoOperacionalId, String competencia, String tipoMedico, UUID modalidadeId);
 
     List<FrequenciaMedica> findByTomadorIdAndCompetencia(UUID tomadorId, String competencia);
+
+    // Checagens de dependência usadas antes de excluir cadastros (setor/modalidade/ocorrência)
+    // referenciados por frequências já lançadas — ver GlobalExceptionHandler: sem essa checagem
+    // prévia, o DELETE falha com violação de FK e é mal reportado como "Registro duplicado".
+    boolean existsByServicoOperacionalId(UUID servicoOperacionalId);
+
+    boolean existsByServicoOperacionalIdIn(List<UUID> servicoOperacionalIds);
+
+    boolean existsByModalidadeId(UUID modalidadeId);
+
+    boolean existsByOcorrenciaId(UUID ocorrenciaId);
 }

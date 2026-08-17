@@ -13,6 +13,8 @@ import br.com.pinsaude.faturamento.dto.TomadorModalidadeResponse;
 import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalRequest;
 import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalResponse;
 import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
+import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
+import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
@@ -58,6 +60,8 @@ class TomadorGruposModalidadesServiceTest {
     @Mock TomadorGrupoFaturamentoRepository grupoRepo;
     @Mock TomadorModalidadeRepository modalidadeRepo;
     @Mock TomadorServicoOperacionalRepository servicoOperacionalRepo;
+    @Mock FrequenciaMedicaRepository frequenciaMedicaRepo;
+    @Mock FrequenciaItemRepository frequenciaItemRepo;
 
     @InjectMocks TomadorService service;
 
@@ -179,6 +183,34 @@ class TomadorGruposModalidadesServiceTest {
         assertThatThrownBy(() -> service.removerGrupo(tomadorId, grupoId))
             .isInstanceOf(ResponseStatusException.class)
             .hasMessageContaining("Grupo não encontrado");
+    }
+
+    @Test
+    void removerGrupo_semSetores_removeComSucesso() {
+        TomadorGrupoFaturamento grupo = grupoFixture(tomadorId, servico.getId());
+        when(grupoRepo.findById(grupo.getId())).thenReturn(Optional.of(grupo));
+        when(servicoOperacionalRepo.findByGrupoIdOrderByNomeAsc(grupo.getId())).thenReturn(Collections.emptyList());
+
+        service.removerGrupo(tomadorId, grupo.getId());
+
+        verify(grupoRepo).delete(grupo);
+    }
+
+    @Test
+    void removerGrupo_comFrequenciaEmSetor_lanca409() {
+        // bug real de homologação: FK de frequencias_medicas.servico_operacional_id sem
+        // ON DELETE CASCADE fazia o DELETE do grupo (que cascateia pro setor) falhar e ser
+        // reportado como "Registro duplicado" pelo GlobalExceptionHandler
+        TomadorGrupoFaturamento grupo = grupoFixture(tomadorId, servico.getId());
+        TomadorServicoOperacional setor = setorFixture(tomadorId, grupo.getId());
+        when(grupoRepo.findById(grupo.getId())).thenReturn(Optional.of(grupo));
+        when(servicoOperacionalRepo.findByGrupoIdOrderByNomeAsc(grupo.getId())).thenReturn(List.of(setor));
+        when(frequenciaMedicaRepo.existsByServicoOperacionalIdIn(List.of(setor.getId()))).thenReturn(true);
+
+        assertThatThrownBy(() -> service.removerGrupo(tomadorId, grupo.getId()))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("existem frequências médicas lançadas");
+        verify(grupoRepo, never()).delete(any());
     }
 
     // ─── Modalidades ──────────────────────────────────────────────────────────
@@ -340,6 +372,42 @@ class TomadorGruposModalidadesServiceTest {
             .hasMessageContaining("Modalidade não encontrada");
     }
 
+    @Test
+    void removerModalidade_semUso_removeComSucesso() {
+        TomadorModalidade m = modalidadeFixture(tomadorId);
+        when(modalidadeRepo.findById(m.getId())).thenReturn(Optional.of(m));
+
+        service.removerModalidade(tomadorId, m.getId());
+
+        verify(modalidadeRepo).delete(m);
+    }
+
+    @Test
+    void removerModalidade_comItemDeFrequencia_lanca409() {
+        TomadorModalidade m = modalidadeFixture(tomadorId);
+        when(modalidadeRepo.findById(m.getId())).thenReturn(Optional.of(m));
+        when(frequenciaItemRepo.existsByModalidadeId(m.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.removerModalidade(tomadorId, m.getId()))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("existem plantões ou frequências lançados");
+        verify(modalidadeRepo, never()).delete(any());
+    }
+
+    @Test
+    void removerModalidade_comFrequenciaFixa_lanca409() {
+        // modalidade fixada na frequência (Diarista, PINSAUDE-13.26) sem nenhum item lançado ainda
+        TomadorModalidade m = modalidadeFixture(tomadorId);
+        when(modalidadeRepo.findById(m.getId())).thenReturn(Optional.of(m));
+        when(frequenciaItemRepo.existsByModalidadeId(m.getId())).thenReturn(false);
+        when(frequenciaMedicaRepo.existsByModalidadeId(m.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.removerModalidade(tomadorId, m.getId()))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("existem plantões ou frequências lançados");
+        verify(modalidadeRepo, never()).delete(any());
+    }
+
     // ─── Serviços operacionais ────────────────────────────────────────────────
 
     @Test
@@ -389,6 +457,42 @@ class TomadorGruposModalidadesServiceTest {
         assertThat(resp.nome()).isEqualTo("UTI-CARDIOLÓGICA");
         assertThat(resp.tomadorId()).isEqualTo(tomadorId);
         verify(servicoOperacionalRepo).save(any());
+    }
+
+    @Test
+    void removerServicoOperacional_outroTomador_lanca404() {
+        TomadorServicoOperacional outro = setorFixture(UUID.randomUUID(), UUID.randomUUID());
+        when(servicoOperacionalRepo.findById(outro.getId())).thenReturn(Optional.of(outro));
+
+        assertThatThrownBy(() -> service.removerServicoOperacional(tomadorId, outro.getId()))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Serviço operacional não encontrado");
+    }
+
+    @Test
+    void removerServicoOperacional_semFrequencia_removeComSucesso() {
+        TomadorServicoOperacional s = setorFixture(tomadorId, UUID.randomUUID());
+        when(servicoOperacionalRepo.findById(s.getId())).thenReturn(Optional.of(s));
+        when(frequenciaMedicaRepo.existsByServicoOperacionalId(s.getId())).thenReturn(false);
+
+        service.removerServicoOperacional(tomadorId, s.getId());
+
+        verify(servicoOperacionalRepo).delete(s);
+    }
+
+    @Test
+    void removerServicoOperacional_comFrequenciaVinculada_lanca409() {
+        // bug real de homologação (tomador FGH/Hospital Dom Helder, setor "Emergência
+        // Cardiológica"): DELETE falhava por violação de FK e o GlobalExceptionHandler reportava
+        // "Registro duplicado" -- a causa real é frequência médica já lançada nesse setor.
+        TomadorServicoOperacional s = setorFixture(tomadorId, UUID.randomUUID());
+        when(servicoOperacionalRepo.findById(s.getId())).thenReturn(Optional.of(s));
+        when(frequenciaMedicaRepo.existsByServicoOperacionalId(s.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.removerServicoOperacional(tomadorId, s.getId()))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("existem frequências médicas lançadas");
+        verify(servicoOperacionalRepo, never()).delete(any());
     }
 
     // ─── fixtures ────────────────────────────────────────────────────────────

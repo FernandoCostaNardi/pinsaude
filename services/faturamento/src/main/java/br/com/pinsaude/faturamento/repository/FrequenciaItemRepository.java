@@ -13,4 +13,8 @@ public interface FrequenciaItemRepository extends JpaRepository<FrequenciaItem, 
     void deleteByFrequenciaId(UUID frequenciaId);
 
     List<FrequenciaItem> findByFrequenciaIdIn(List<UUID> frequenciaIds);
+
+    boolean existsByModalidadeId(UUID modalidadeId);
+
+    boolean existsByOcorrenciaId(UUID ocorrenciaId);
 }
