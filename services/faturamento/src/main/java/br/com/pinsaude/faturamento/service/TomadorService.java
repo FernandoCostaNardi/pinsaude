@@ -7,6 +7,7 @@ import br.com.pinsaude.faturamento.domain.Tomador;
 import br.com.pinsaude.faturamento.domain.TomadorAliquota;
 import br.com.pinsaude.faturamento.domain.TomadorCnae;
 import br.com.pinsaude.faturamento.domain.TomadorGrupoFaturamento;
+import br.com.pinsaude.faturamento.domain.TomadorGrupoSetor;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorHorarioPadrao;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
@@ -33,6 +34,7 @@ import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
+import br.com.pinsaude.faturamento.dto.TomadorGrupoSetorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalRequest;
 import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorServicoRequest;
@@ -46,6 +48,7 @@ import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorEmpresaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
+import br.com.pinsaude.faturamento.repository.TomadorGrupoSetorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorHorarioPadraoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
@@ -58,9 +61,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -78,6 +83,7 @@ public class TomadorService {
     private final TomadorServicoRepository servicoVinculoRepo;
     private final ServicoRepository servicoRepo;
     private final TomadorGrupoFaturamentoRepository grupoRepo;
+    private final TomadorGrupoSetorRepository grupoSetorRepo;
     private final TomadorModalidadeRepository modalidadeRepo;
     private final TomadorServicoOperacionalRepository servicoOperacionalRepo;
     private final MedicoTomadorRepository medicoTomadorRepo;
@@ -95,6 +101,7 @@ public class TomadorService {
                           TomadorServicoRepository servicoVinculoRepo,
                           ServicoRepository servicoRepo,
                           TomadorGrupoFaturamentoRepository grupoRepo,
+                          TomadorGrupoSetorRepository grupoSetorRepo,
                           TomadorModalidadeRepository modalidadeRepo,
                           TomadorServicoOperacionalRepository servicoOperacionalRepo,
                           MedicoTomadorRepository medicoTomadorRepo,
@@ -111,6 +118,7 @@ public class TomadorService {
         this.servicoVinculoRepo = servicoVinculoRepo;
         this.servicoRepo = servicoRepo;
         this.grupoRepo = grupoRepo;
+        this.grupoSetorRepo = grupoSetorRepo;
         this.modalidadeRepo = modalidadeRepo;
         this.servicoOperacionalRepo = servicoOperacionalRepo;
         this.medicoTomadorRepo = medicoTomadorRepo;
@@ -341,12 +349,11 @@ public class TomadorService {
         findOrThrow(tomadorId);
         List<TomadorGrupoFaturamento> grupos = grupoRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId);
         Map<UUID, Servico> servicosPorId = servicosPorGrupoIds(grupos);
+        Map<UUID, List<TomadorServicoOperacional>> setoresPorGrupo = setoresPorGrupoIds(
+            grupos.stream().map(TomadorGrupoFaturamento::getId).toList());
         return grupos.stream()
-            .map(g -> {
-                List<TomadorServicoOperacional> setores =
-                    servicoOperacionalRepo.findByGrupoIdOrderByNomeAsc(g.getId());
-                return TomadorGrupoFaturamentoResponse.from(g, servicosPorId.get(g.getServicoLc116Id()), setores);
-            })
+            .map(g -> TomadorGrupoFaturamentoResponse.from(
+                g, servicosPorId.get(g.getServicoLc116Id()), setoresPorGrupo.getOrDefault(g.getId(), List.of())))
             .toList();
     }
 
@@ -381,7 +388,7 @@ public class TomadorService {
         g.setDescricaoNota(req.descricaoNota());
         g.setOrdem(req.ordem());
         g.setAtivo(req.ativo());
-        List<TomadorServicoOperacional> setores = servicoOperacionalRepo.findByGrupoIdOrderByNomeAsc(grupoId);
+        List<TomadorServicoOperacional> setores = setoresPorGrupoIds(List.of(grupoId)).getOrDefault(grupoId, List.of());
         return TomadorGrupoFaturamentoResponse.from(grupoRepo.save(g), servico, setores);
     }
 
@@ -391,12 +398,12 @@ public class TomadorService {
         TomadorGrupoFaturamento g = grupoRepo.findById(grupoId)
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado"));
-        List<UUID> setorIds = servicoOperacionalRepo.findByGrupoIdOrderByNomeAsc(grupoId).stream()
-            .map(TomadorServicoOperacional::getId)
-            .toList();
-        if (!setorIds.isEmpty() && frequenciaMedicaRepo.existsByServicoOperacionalIdIn(setorIds)) {
+        // Checagem precisa por grupo (não mais por setor): o mesmo setor pode estar vinculado a
+        // outros grupos sem frequência nenhuma lançada neste aqui — ver PINSAUDE (catálogo de
+        // setores reutilizável entre grupos).
+        if (frequenciaMedicaRepo.existsByGrupoId(grupoId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "Não é possível remover: existem frequências médicas lançadas em setores deste grupo.");
+                "Não é possível remover: existem frequências médicas lançadas neste grupo.");
         }
         grupoRepo.delete(g);
     }
@@ -491,6 +498,8 @@ public class TomadorService {
     }
 
     // ─── Serviços operacionais (setores) ──────────────────────────────────────
+    // Catálogo por tomador (sem grupo próprio, ver PINSAUDE) — o mesmo setor pode ser vinculado
+    // a quantos Grupos de Faturamento forem necessários via os métodos *SetorAoGrupo abaixo.
 
     public List<TomadorServicoOperacionalResponse> listarServicosOperacionais(UUID tomadorId) {
         findOrThrow(tomadorId);
@@ -503,14 +512,10 @@ public class TomadorService {
     public TomadorServicoOperacionalResponse criarServicoOperacional(UUID tomadorId,
                                                                       TomadorServicoOperacionalRequest req) {
         findOrThrow(tomadorId);
-        grupoRepo.findById(req.grupoId())
-            .filter(g -> tomadorId.equals(g.getTomadorId()))
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Grupo não encontrado: " + req.grupoId()));
         TomadorServicoOperacional s = new TomadorServicoOperacional();
         s.setTomadorId(tomadorId);
-        s.setGrupoId(req.grupoId());
         s.setNome(req.nome());
+        s.setCategoria(normalizarCategoria(req.categoria()));
         s.setAtivo(req.ativo());
         return TomadorServicoOperacionalResponse.from(servicoOperacionalRepo.save(s));
     }
@@ -524,14 +529,16 @@ public class TomadorService {
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Serviço operacional não encontrado"));
-        grupoRepo.findById(req.grupoId())
-            .filter(g -> tomadorId.equals(g.getTomadorId()))
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Grupo não encontrado: " + req.grupoId()));
-        s.setGrupoId(req.grupoId());
         s.setNome(req.nome());
+        s.setCategoria(normalizarCategoria(req.categoria()));
         s.setAtivo(req.ativo());
         return TomadorServicoOperacionalResponse.from(servicoOperacionalRepo.save(s));
+    }
+
+    // Categoria é texto livre e opcional — string em branco vira null pra não poluir o
+    // autocomplete de categorias já usadas (derivado no frontend a partir dos setores existentes).
+    private String normalizarCategoria(String categoria) {
+        return (categoria == null || categoria.isBlank()) ? null : categoria.trim();
     }
 
     @Transactional
@@ -546,6 +553,55 @@ public class TomadorService {
                 "Não é possível remover: existem frequências médicas lançadas para este setor operacional.");
         }
         servicoOperacionalRepo.delete(s);
+    }
+
+    // ─── Vínculo Grupo ↔ Setor (N:N) ───────────────────────────────────────────
+
+    public List<TomadorServicoOperacionalResponse> listarSetoresDoGrupo(UUID tomadorId, UUID grupoId) {
+        findOrThrow(tomadorId);
+        grupoRepo.findById(grupoId)
+            .filter(g -> tomadorId.equals(g.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado"));
+        return setoresPorGrupoIds(List.of(grupoId)).getOrDefault(grupoId, List.of()).stream()
+            .map(TomadorServicoOperacionalResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public TomadorServicoOperacionalResponse adicionarSetorAoGrupo(UUID tomadorId, UUID grupoId,
+                                                                    TomadorGrupoSetorRequest req) {
+        findOrThrow(tomadorId);
+        grupoRepo.findById(grupoId)
+            .filter(g -> tomadorId.equals(g.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado"));
+        TomadorServicoOperacional setor = servicoOperacionalRepo.findById(req.setorId())
+            .filter(x -> tomadorId.equals(x.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Serviço operacional não encontrado"));
+        if (grupoSetorRepo.existsByGrupoIdAndSetorId(grupoId, req.setorId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Setor já está vinculado a este grupo");
+        }
+        TomadorGrupoSetor link = new TomadorGrupoSetor();
+        link.setGrupoId(grupoId);
+        link.setSetorId(req.setorId());
+        grupoSetorRepo.save(link);
+        return TomadorServicoOperacionalResponse.from(setor);
+    }
+
+    @Transactional
+    public void removerSetorDoGrupo(UUID tomadorId, UUID grupoId, UUID setorId) {
+        findOrThrow(tomadorId);
+        grupoRepo.findById(grupoId)
+            .filter(g -> tomadorId.equals(g.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado"));
+        if (!grupoSetorRepo.existsByGrupoIdAndSetorId(grupoId, setorId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Setor não está vinculado a este grupo");
+        }
+        if (frequenciaMedicaRepo.existsByGrupoIdAndServicoOperacionalId(grupoId, setorId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Não é possível remover: existem frequências médicas lançadas com este setor neste grupo.");
+        }
+        grupoSetorRepo.deleteByGrupoIdAndSetorId(grupoId, setorId);
     }
 
     // ─── Médicos alocados ao tomador (EPIC-15) ────────────────────────────────
@@ -594,6 +650,26 @@ public class TomadorService {
         if (ids.isEmpty()) return Map.of();
         return servicoRepo.findAllById(ids).stream()
             .collect(Collectors.toMap(Servico::getId, Function.identity()));
+    }
+
+    // Batch: grupoId → setores vinculados (nome asc), via tomador_grupo_setores (N:N). Um único
+    // par de queries (findByGrupoIdIn + findAllById) independente de quantos grupos forem
+    // consultados de uma vez.
+    private Map<UUID, List<TomadorServicoOperacional>> setoresPorGrupoIds(List<UUID> grupoIds) {
+        if (grupoIds.isEmpty()) return Map.of();
+        List<TomadorGrupoSetor> links = grupoSetorRepo.findByGrupoIdIn(grupoIds);
+        if (links.isEmpty()) return Map.of();
+        Set<UUID> setorIds = links.stream().map(TomadorGrupoSetor::getSetorId).collect(Collectors.toSet());
+        Map<UUID, TomadorServicoOperacional> setoresMap = servicoOperacionalRepo.findAllById(setorIds).stream()
+            .collect(Collectors.toMap(TomadorServicoOperacional::getId, Function.identity()));
+        return links.stream()
+            .collect(Collectors.groupingBy(TomadorGrupoSetor::getGrupoId,
+                Collectors.mapping(l -> setoresMap.get(l.getSetorId()), Collectors.toList())))
+            .entrySet().stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(TomadorServicoOperacional::getNome))
+                .toList()));
     }
 
     private void validarDocumentoDuplicado(String cnpjCpfLimpo, UUID idExcluir) {

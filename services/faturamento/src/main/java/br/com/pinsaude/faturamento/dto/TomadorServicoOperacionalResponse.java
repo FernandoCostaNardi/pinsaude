@@ -7,16 +7,16 @@ import java.util.UUID;
 public record TomadorServicoOperacionalResponse(
     UUID id,
     UUID tomadorId,
-    UUID grupoId,
     String nome,
+    String categoria,
     boolean ativo
 ) {
     public static TomadorServicoOperacionalResponse from(TomadorServicoOperacional s) {
         return new TomadorServicoOperacionalResponse(
             s.getId(),
             s.getTomadorId(),
-            s.getGrupoId(),
             s.getNome(),
+            s.getCategoria(),
             s.isAtivo()
         );
     }

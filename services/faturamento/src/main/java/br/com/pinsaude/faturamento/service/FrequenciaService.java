@@ -3,6 +3,7 @@ package br.com.pinsaude.faturamento.service;
 import br.com.pinsaude.faturamento.config.SecurityUtils;
 import br.com.pinsaude.faturamento.domain.FrequenciaItem;
 import br.com.pinsaude.faturamento.domain.FrequenciaMedica;
+import br.com.pinsaude.faturamento.domain.TomadorGrupoFaturamento;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
@@ -14,6 +15,8 @@ import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
 import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
+import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
+import br.com.pinsaude.faturamento.repository.TomadorGrupoSetorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
@@ -44,6 +47,8 @@ public class FrequenciaService {
     private final StorageService storageService;
     private final MedicoTomadorRepository medicoTomadorRepo;
     private final TomadorOcorrenciaRepository ocorrenciaRepo;
+    private final TomadorGrupoFaturamentoRepository grupoRepo;
+    private final TomadorGrupoSetorRepository grupoSetorRepo;
 
     public FrequenciaService(FrequenciaMedicaRepository frequenciaRepo,
                              FrequenciaItemRepository itemRepo,
@@ -51,7 +56,9 @@ public class FrequenciaService {
                              TomadorModalidadeRepository modalidadeRepo,
                              StorageService storageService,
                              MedicoTomadorRepository medicoTomadorRepo,
-                             TomadorOcorrenciaRepository ocorrenciaRepo) {
+                             TomadorOcorrenciaRepository ocorrenciaRepo,
+                             TomadorGrupoFaturamentoRepository grupoRepo,
+                             TomadorGrupoSetorRepository grupoSetorRepo) {
         this.frequenciaRepo = frequenciaRepo;
         this.itemRepo       = itemRepo;
         this.setorRepo      = setorRepo;
@@ -59,6 +66,24 @@ public class FrequenciaService {
         this.storageService = storageService;
         this.medicoTomadorRepo = medicoTomadorRepo;
         this.ocorrenciaRepo = ocorrenciaRepo;
+        this.grupoRepo = grupoRepo;
+        this.grupoSetorRepo = grupoSetorRepo;
+    }
+
+    // Grupo precisa pertencer ao mesmo tomador e o setor precisa estar vinculado a esse grupo
+    // (catálogo de setores reutilizável entre grupos — ver PINSAUDE). Usado por criar()/atualizar().
+    private void validarGrupoESetor(UUID tomadorId, UUID grupoId, UUID setorId) {
+        TomadorGrupoFaturamento grupo = grupoRepo.findById(grupoId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Grupo de faturamento não encontrado: " + grupoId));
+        if (!grupo.getTomadorId().equals(tomadorId)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Grupo de faturamento não pertence ao tomador informado");
+        }
+        if (!grupoSetorRepo.existsByGrupoIdAndSetorId(grupoId, setorId)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Setor operacional não pertence ao grupo de faturamento informado");
+        }
     }
 
     // ── Frequência CRUD ───────────────────────────────────────────────────────
@@ -106,6 +131,8 @@ public class FrequenciaService {
                 "Setor operacional não pertence ao tomador informado");
         }
 
+        validarGrupoESetor(req.tomadorId(), req.grupoId(), req.servicoOperacionalId());
+
         if (!medicoTomadorRepo.existsByTomadorIdAndMedicoId(req.tomadorId(), req.medicoId())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "Médico não está alocado a este tomador");
@@ -140,6 +167,7 @@ public class FrequenciaService {
         f.setTomadorId(req.tomadorId());
         f.setMedicoId(req.medicoId());
         f.setServicoOperacionalId(req.servicoOperacionalId());
+        f.setGrupoId(req.grupoId());
         f.setCompetencia(req.competencia());
         f.setTipoMedico(req.tipoMedico());
         f.setModalidadeId(diarista ? req.modalidadeId() : null);
@@ -239,6 +267,8 @@ public class FrequenciaService {
                 "Setor operacional não pertence ao tomador desta frequência");
         }
 
+        validarGrupoESetor(f.getTomadorId(), req.grupoId(), req.servicoOperacionalId());
+
         // Conflito só é checado para Diarista (chave inclui a modalidade fixa, que não muda
         // nesta edição) — Plantonista nunca teve checagem de duplicidade (ver criar()/V34).
         boolean chaveMudou = !req.competencia().equals(f.getCompetencia())
@@ -255,6 +285,7 @@ public class FrequenciaService {
 
         f.setCompetencia(req.competencia());
         f.setServicoOperacionalId(req.servicoOperacionalId());
+        f.setGrupoId(req.grupoId());
         frequenciaRepo.save(f);
 
         return toResponse(f);

@@ -23,6 +23,7 @@ public record FrequenciaMedicaResponse(
     UUID id,
     UUID tomadorId,
     UUID medicoId,
+    UUID grupoId,
     UUID servicoOperacionalId,
     String servicoOperacionalNome,
     String competencia,
@@ -54,9 +55,9 @@ public record FrequenciaMedicaResponse(
     UUID ocorrenciaId,
     String ocorrenciaNome,
     // PINSAUDE-13.26 (ajuste pós-implantação): valor CADASTRADO da ocorrência fixa, calculado uma
-    // única vez sobre o valor da modalidade — nunca por item. Sempre exibido (mesmo sem nenhum
-    // item lançado ainda), espelhando modalidadeValorCentavos — mas só entra em
-    // totalValorCentavos quando há pelo menos 1 item lançado (ver ocorrenciaAplicadaNoTotal).
+    // única vez sobre o valor da modalidade — nunca por item. Sempre exibido e sempre somado em
+    // totalValorCentavos assim que a frequência é criada com modalidade+ocorrência Diarista
+    // fixas — não depende de nenhum plantão ter sido lançado (mesmo critério do valor mensal).
     long ocorrenciaValorCentavos
 ) {
     public static FrequenciaMedicaResponse from(FrequenciaMedica f,
@@ -73,17 +74,20 @@ public record FrequenciaMedicaResponse(
         long totalItens = itens.stream()
             .mapToLong(FrequenciaItemResponse::totalItemCentavos)
             .sum();
-        long totalMensalDiarista = valorMensalDiaristaUnico(itens, modalidadesMap);
         TomadorModalidade modalidadeFreq = f.getModalidadeId() != null ? modalidadesMap.get(f.getModalidadeId()) : null;
         TomadorOcorrencia ocorrenciaFreq = f.getOcorrenciaId() != null ? ocorrenciasMap.get(f.getOcorrenciaId()) : null;
+        long totalMensalDiarista = valorMensalDiaristaUnico(modalidadeFreq, itens, modalidadesMap);
         long ocorrenciaValorCadastrado = calcularValorOcorrenciaUnico(modalidadeFreq, ocorrenciaFreq);
-        // só soma no total quando já existe pelo menos 1 plantão lançado — sem lançamento, não
-        // faz sentido aplicar o bônus da ocorrência (mesmo critério de valorMensalDiaristaUnico).
-        long ocorrenciaAplicadaNoTotal = itens.isEmpty() ? 0L : ocorrenciaValorCadastrado;
+        // Ajuste pós-implantação: o valor mensal do Diarista (e da ocorrência fixa a ele
+        // associada) já entra no total apurado assim que a frequência é criada com a modalidade
+        // fixada — não é mais preciso lançar nenhum plantão pro valor ser computado. Continua
+        // condicionado a existir uma modalidade Diarista fixa (não a ter itens lançados).
+        long ocorrenciaAplicadaNoTotal = ocorrenciaValorCadastrado;
         return new FrequenciaMedicaResponse(
             f.getId(),
             f.getTomadorId(),
             f.getMedicoId(),
+            f.getGrupoId(),
             f.getServicoOperacionalId(),
             setor != null ? setor.getNome() : null,
             f.getCompetencia(),
@@ -136,10 +140,18 @@ public record FrequenciaMedicaResponse(
 
     // PINSAUDE-13.23: Diarista não paga por lançamento — cada item vale R$0 (ver
     // FrequenciaService.calcularValorItem), servindo só pra registrar presença/horas. O valor da
-    // frequência é o valor mensal fixo cadastrado na modalidade, somado UMA ÚNICA VEZ por
-    // modalidade Diarista distinta usada, independente de quantos dias foram lançados no mês.
-    private static long valorMensalDiaristaUnico(
+    // frequência é o valor mensal fixo cadastrado na modalidade.
+    //
+    // Ajuste pós-implantação: quando a frequência já tem uma modalidade Diarista FIXA (o caso
+    // normal desde PINSAUDE-13.26), o valor mensal é somado assim que a frequência é criada —
+    // NÃO é mais preciso lançar nenhum plantão pro valor entrar no total. Só frequências legadas
+    // sem modalidade fixa (anteriores ao PINSAUDE-13.26) continuam resolvendo o valor a partir
+    // dos itens já lançados (fallback abaixo).
+    private static long valorMensalDiaristaUnico(TomadorModalidade modalidadeFreq,
             List<FrequenciaItemResponse> itens, Map<UUID, TomadorModalidade> modalidadesMap) {
+        if (modalidadeFreq != null) {
+            return "DIARISTA".equals(modalidadeFreq.getTipo()) ? modalidadeFreq.getValorCentavos() : 0L;
+        }
         return itens.stream()
             .map(FrequenciaItemResponse::modalidadeId)
             .distinct()

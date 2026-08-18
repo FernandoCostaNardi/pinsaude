@@ -84,10 +84,10 @@ class FrequenciaControllerTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // Edição de Competência + Setor Operacional pós-criação — mesmas 3 roles do resto do CRUD.
+    // Edição de Competência + Grupo + Setor Operacional pós-criação — mesmas 3 roles do resto do CRUD.
     private static final String EDIT_BODY = """
-            {"competencia":"2026-08","servicoOperacionalId":"%s"}
-            """.formatted(UUID.randomUUID());
+            {"competencia":"2026-08","grupoId":"%s","servicoOperacionalId":"%s"}
+            """.formatted(UUID.randomUUID(), UUID.randomUUID());
 
     @Test
     void atualizar_medico_retorna200() throws Exception {

@@ -25,6 +25,12 @@ public class FrequenciaMedica {
     @Column(name = "servico_operacional_id", nullable = false)
     private UUID servicoOperacionalId;
 
+    // Grupo de Faturamento explícito (necessário desde que Serviços Operacionais viram catálogo
+    // reutilizável entre grupos — o setor sozinho não basta mais pra saber a qual grupo/NFS-e
+    // esta frequência pertence). Nullable só por segurança de migração (backfill sempre popula).
+    @Column(name = "grupo_id")
+    private UUID grupoId;
+
     @Column(name = "competencia", nullable = false, length = 7)
     private String competencia;
 
@@ -76,6 +82,8 @@ public class FrequenciaMedica {
     public void setMedicoId(UUID v)               { this.medicoId = v; }
     public UUID getServicoOperacionalId()          { return servicoOperacionalId; }
     public void setServicoOperacionalId(UUID v)   { this.servicoOperacionalId = v; }
+    public UUID getGrupoId()                       { return grupoId; }
+    public void setGrupoId(UUID v)                { this.grupoId = v; }
     public String getCompetencia()                 { return competencia; }
     public void setCompetencia(String v)          { this.competencia = v; }
     public String getEspecialidade()               { return especialidade; }

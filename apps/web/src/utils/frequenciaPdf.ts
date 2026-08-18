@@ -59,9 +59,11 @@ function inferirTurno(item: FrequenciaItemResp): string {
   return ''
 }
 
+// Pedido do cliente: quando o plantão tem uma Ocorrência (do catálogo, ex: "Líder"), o nome dela
+// entra ANTES de dia/turno/horas — ex: "Líder - SEXTA-FEIRA - Diurno - 6 horas". Na ausência de
+// ocorrência do catálogo, a nota livre (item.ocorrencia) assume o mesmo papel de prefixo — dia/
+// turno/horas sempre aparecem na coluna, com ou sem prefixo.
 function gerarOcorrencia(item: FrequenciaItemResp): string {
-  if (item.ocorrencia) return item.ocorrencia  // preserva valor informado manualmente
-
   const [y, m, d] = item.dataExecucao.split('-').map(Number)
   const diaSemana = DIAS_SEMANA[new Date(y, m - 1, d).getDay()]
 
@@ -77,7 +79,9 @@ function gerarOcorrencia(item: FrequenciaItemResp): string {
     horasStr = `${hFmt} hora${h !== 1 ? 's' : ''}`
   }
 
-  return [diaSemana, turno, horasStr].filter(Boolean).join(' - ')
+  const prefixo = item.ocorrenciaNome || item.ocorrencia || ''
+
+  return [prefixo, diaSemana, turno, horasStr].filter(Boolean).join(' - ')
 }
 
 // ─── Geração do HTML ──────────────────────────────────────────────────────────

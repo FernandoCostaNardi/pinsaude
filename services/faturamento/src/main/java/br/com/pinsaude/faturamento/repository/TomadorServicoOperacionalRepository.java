@@ -8,7 +8,5 @@ import java.util.UUID;
 
 public interface TomadorServicoOperacionalRepository extends JpaRepository<TomadorServicoOperacional, UUID> {
     List<TomadorServicoOperacional> findByTomadorIdOrderByNomeAsc(UUID tomadorId);
-    List<TomadorServicoOperacional> findByGrupoIdOrderByNomeAsc(UUID grupoId);
     List<TomadorServicoOperacional> findByTomadorIdAndAtivoTrueOrderByNomeAsc(UUID tomadorId);
-    List<TomadorServicoOperacional> findByGrupoIdAndAtivoTrueOrderByNomeAsc(UUID grupoId);
 }

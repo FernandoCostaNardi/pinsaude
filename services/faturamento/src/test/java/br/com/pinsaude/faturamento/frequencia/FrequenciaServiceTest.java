@@ -2,6 +2,7 @@ package br.com.pinsaude.faturamento.frequencia;
 
 import br.com.pinsaude.faturamento.domain.FrequenciaItem;
 import br.com.pinsaude.faturamento.domain.FrequenciaMedica;
+import br.com.pinsaude.faturamento.domain.TomadorGrupoFaturamento;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
@@ -13,6 +14,8 @@ import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
 import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
+import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
+import br.com.pinsaude.faturamento.repository.TomadorGrupoSetorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
@@ -55,6 +58,8 @@ class FrequenciaServiceTest {
     @Mock StorageService storageService;
     @Mock MedicoTomadorRepository medicoTomadorRepo;
     @Mock TomadorOcorrenciaRepository ocorrenciaRepo;
+    @Mock TomadorGrupoFaturamentoRepository grupoRepo;
+    @Mock TomadorGrupoSetorRepository grupoSetorRepo;
 
     @InjectMocks FrequenciaService service;
 
@@ -62,8 +67,10 @@ class FrequenciaServiceTest {
     private UUID medicoId;
     private UUID setorId;
     private UUID modalidadeId;
+    private UUID grupoId;
     private TomadorServicoOperacional setor;
     private TomadorModalidade modalidade;
+    private TomadorGrupoFaturamento grupo;
 
     @BeforeEach
     void setUp() {
@@ -71,12 +78,21 @@ class FrequenciaServiceTest {
         medicoId    = UUID.randomUUID();
         setorId     = UUID.randomUUID();
         modalidadeId = UUID.randomUUID();
+        grupoId     = UUID.randomUUID();
 
         setor = new TomadorServicoOperacional();
         setId(setor, setorId);
         setor.setTomadorId(tomadorId);
         setor.setNome("Emergência Cardiológica");
         setor.setAtivo(true);
+
+        grupo = new TomadorGrupoFaturamento();
+        setId(grupo, grupoId);
+        grupo.setTomadorId(tomadorId);
+        grupo.setNome("Plantões e Diárias");
+        grupo.setDescricaoNota("Serviços médicos referente a {competencia}.");
+        grupo.setOrdem(1);
+        grupo.setAtivo(true);
 
         modalidade = new TomadorModalidade();
         setId(modalidade, modalidadeId);
@@ -97,6 +113,10 @@ class FrequenciaServiceTest {
         when(modalidadeRepo.findAllById(any())).thenReturn(List.of(modalidade));
         when(ocorrenciaRepo.findAllById(any())).thenReturn(List.of());
         when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(true);
+        // Grupo válido por padrão pra qualquer combinação — testes que exercitam especificamente
+        // a validação de grupo/vínculo sobrescrevem estes stubs (ver seção dedicada abaixo).
+        when(grupoRepo.findById(any())).thenReturn(Optional.of(grupo));
+        when(grupoSetorRepo.existsByGrupoIdAndSetorId(any(), any())).thenReturn(true);
     }
 
     // ─── Criar frequência — Plantonista (sem modalidade/ocorrência fixa) ──────
@@ -110,7 +130,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", null, null);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "PLANTONISTA", null, null);
 
         FrequenciaMedicaResponse resp = service.criar(req);
 
@@ -127,7 +147,7 @@ class FrequenciaServiceTest {
     @Test
     void criar_plantonista_comModalidadeInformada_lanca422() {
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", modalidadeId, null);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "PLANTONISTA", modalidadeId, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -142,7 +162,7 @@ class FrequenciaServiceTest {
     void criar_plantonista_comOcorrenciaInformada_lanca422() {
         UUID ocorrenciaId = UUID.randomUUID();
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", null, ocorrenciaId);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "PLANTONISTA", null, ocorrenciaId);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -165,7 +185,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", null, null);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "PLANTONISTA", null, null);
 
         service.criar(req);
         service.criar(req);
@@ -181,7 +201,7 @@ class FrequenciaServiceTest {
         when(setorRepo.findById(setorInexistente)).thenReturn(Optional.empty());
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorInexistente, "2026-07", "PLANTONISTA", null, null);
+            tomadorId, medicoId, grupoId, setorInexistente, "2026-07", "PLANTONISTA", null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -195,7 +215,7 @@ class FrequenciaServiceTest {
 
         // setor pertence a tomadorId, mas a requisição informa outroTomadorId
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            outroTomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", null, null);
+            outroTomadorId, medicoId, grupoId, setorId, "2026-07", "PLANTONISTA", null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -209,7 +229,7 @@ class FrequenciaServiceTest {
         when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(false);
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "PLANTONISTA", null, null);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "PLANTONISTA", null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -218,12 +238,76 @@ class FrequenciaServiceTest {
                 .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
     }
 
+    // ─── Grupo de Faturamento explícito (catálogo de setores reutilizável) ────
+
+    @Test
+    void criar_grupoInexistente_lanca404() {
+        UUID grupoInexistente = UUID.randomUUID();
+        when(grupoRepo.findById(grupoInexistente)).thenReturn(Optional.empty());
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoInexistente, setorId, "2026-07", "PLANTONISTA", null, null);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Grupo de faturamento não encontrado")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void criar_grupoDeOutroTomador_lanca422() {
+        TomadorGrupoFaturamento grupoOutroTomador = new TomadorGrupoFaturamento();
+        setId(grupoOutroTomador, grupoId);
+        grupoOutroTomador.setTomadorId(UUID.randomUUID());
+        when(grupoRepo.findById(grupoId)).thenReturn(Optional.of(grupoOutroTomador));
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "PLANTONISTA", null, null);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Grupo de faturamento não pertence ao tomador informado")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void criar_setorNaoVinculadoAoGrupo_lanca422() {
+        when(grupoSetorRepo.existsByGrupoIdAndSetorId(grupoId, setorId)).thenReturn(false);
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "PLANTONISTA", null, null);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Setor operacional não pertence ao grupo de faturamento informado")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void criar_grupoESetorValidos_persisteGrupoIdNaFrequencia() {
+        when(frequenciaRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaMedica f = inv.getArgument(0);
+            setId(f, UUID.randomUUID());
+            return f;
+        });
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "PLANTONISTA", null, null);
+
+        FrequenciaMedicaResponse resp = service.criar(req);
+
+        assertThat(resp.grupoId()).isEqualTo(grupoId);
+    }
+
     // ─── Criar frequência — Diarista (modalidade obrigatória e fixa) ──────────
 
     @Test
     void criar_diarista_semModalidade_lanca422() {
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", null, null);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -248,7 +332,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", diaristaId, null);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", diaristaId, null);
 
         FrequenciaMedicaResponse resp = service.criar(req);
 
@@ -264,7 +348,7 @@ class FrequenciaServiceTest {
                 medicoId, setorId, "2026-07", "DIARISTA", modalidadeId)).thenReturn(true);
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", modalidadeId, null);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", modalidadeId, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -280,7 +364,7 @@ class FrequenciaServiceTest {
         when(modalidadeRepo.findById(modalInexistente)).thenReturn(Optional.empty());
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", modalInexistente, null);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", modalInexistente, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -297,7 +381,7 @@ class FrequenciaServiceTest {
         when(modalidadeRepo.findById(modalOutroTomadorId)).thenReturn(Optional.of(modalOutroTomador));
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", modalOutroTomadorId, null);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", modalOutroTomadorId, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -311,7 +395,7 @@ class FrequenciaServiceTest {
         // tipoMedico da frequência é DIARISTA, mas a modalidade escolhida (fixture padrão do
         // setUp) é PLANTONISTA
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", modalidadeId, null);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", modalidadeId, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -329,7 +413,7 @@ class FrequenciaServiceTest {
         when(ocorrenciaRepo.findById(ocorrenciaInexistente)).thenReturn(Optional.empty());
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaInexistente);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaInexistente);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -350,7 +434,7 @@ class FrequenciaServiceTest {
         when(ocorrenciaRepo.findById(ocorrenciaOutroTomadorId)).thenReturn(Optional.of(ocorrenciaOutroTomador));
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaOutroTomadorId);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaOutroTomadorId);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -375,7 +459,7 @@ class FrequenciaServiceTest {
         });
 
         FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
-            tomadorId, medicoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaId);
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaId);
 
         FrequenciaMedicaResponse resp = service.criar(req);
 
@@ -724,7 +808,7 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
                 medicoId, outroSetorId, "2026-08", "DIARISTA", modalidadeId)).thenReturn(Optional.empty());
 
-        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", outroSetorId);
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", grupoId, outroSetorId);
         FrequenciaMedicaResponse resp = service.atualizar(freqId, req);
 
         assertThat(resp.competencia()).isEqualTo("2026-08");
@@ -744,7 +828,7 @@ class FrequenciaServiceTest {
         setorDeOutroTomador.setTomadorId(UUID.randomUUID()); // tomador diferente do da frequência
         when(setorRepo.findById(setorDeOutroTomadorId)).thenReturn(Optional.of(setorDeOutroTomador));
 
-        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-07", setorDeOutroTomadorId);
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-07", grupoId, setorDeOutroTomadorId);
 
         assertThatThrownBy(() -> service.atualizar(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -767,7 +851,7 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
                 medicoId, setorId, "2026-08", "DIARISTA", modalidadeId)).thenReturn(Optional.of(outraExistente));
 
-        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", setorId);
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", grupoId, setorId);
 
         assertThatThrownBy(() -> service.atualizar(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -797,7 +881,7 @@ class FrequenciaServiceTest {
         when(frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
                 medicoId, outroSetorId, "2026-07", "DIARISTA", modalidadeId)).thenReturn(Optional.of(f));
 
-        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-07", outroSetorId);
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-07", grupoId, outroSetorId);
         service.atualizar(freqId, req);
 
         verify(frequenciaRepo).save(f);
@@ -819,7 +903,7 @@ class FrequenciaServiceTest {
         outroSetor.setTomadorId(tomadorId);
         when(setorRepo.findById(outroSetorId)).thenReturn(Optional.of(outroSetor));
 
-        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", outroSetorId);
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", grupoId, outroSetorId);
         service.atualizar(freqId, req);
 
         verify(frequenciaRepo).save(f);
@@ -834,7 +918,7 @@ class FrequenciaServiceTest {
         f.setStatus("FATURADA");
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
 
-        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", setorId);
+        FrequenciaMedicaEditRequest req = new FrequenciaMedicaEditRequest("2026-08", grupoId, setorId);
 
         assertThatThrownBy(() -> service.atualizar(freqId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -1196,7 +1280,10 @@ class FrequenciaServiceTest {
     }
 
     @Test
-    void buscarPorId_ocorrenciaFixaSemItensLancados_naoAplicaNoTotalMasExibeValorCadastrado() {
+    void buscarPorId_ocorrenciaFixaSemItensLancados_jaAplicaNoTotal() {
+        // Ajuste pós-implantação: o valor da ocorrência fixa (assim como o valor mensal do
+        // Diarista) já entra no total apurado assim que a frequência é criada com
+        // modalidade+ocorrência fixas — não é mais preciso lançar nenhum plantão.
         UUID freqId = UUID.randomUUID();
         UUID ocorrenciaFixaId = UUID.randomUUID();
         TomadorOcorrencia ocorrenciaFixa = ocorrenciaFixture(ocorrenciaFixaId, "FIXO", null, 5000L);
@@ -1212,7 +1299,7 @@ class FrequenciaServiceTest {
 
         FrequenciaMedicaResponse resp = service.buscarPorId(freqId);
 
-        assertThat(resp.totalValorCentavos()).isZero();
+        assertThat(resp.totalValorCentavos()).isEqualTo(5000L);
         assertThat(resp.ocorrenciaValorCentavos()).isEqualTo(5000L);
     }
 
