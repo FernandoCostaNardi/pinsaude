@@ -19,6 +19,7 @@ import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorResponse;
+import br.com.pinsaude.faturamento.dto.TomadorGrupoSetorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalRequest;
 import br.com.pinsaude.faturamento.dto.TomadorServicoOperacionalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorServicoRequest;
@@ -194,6 +195,35 @@ public class TomadorController {
             @PathVariable UUID id,
             @PathVariable UUID grupoId) {
         service.removerGrupo(id, grupoId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Vínculo Grupo ↔ Setor (N:N) — permite reutilizar o mesmo setor em vários grupos ──────
+
+    @GetMapping("/{id}/grupos/{grupoId}/setores")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<TomadorServicoOperacionalResponse>> listarSetoresDoGrupo(
+            @PathVariable UUID id,
+            @PathVariable UUID grupoId) {
+        return ResponseEntity.ok(service.listarSetoresDoGrupo(id, grupoId));
+    }
+
+    @PostMapping("/{id}/grupos/{grupoId}/setores")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorServicoOperacionalResponse> adicionarSetorAoGrupo(
+            @PathVariable UUID id,
+            @PathVariable UUID grupoId,
+            @Valid @RequestBody TomadorGrupoSetorRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.adicionarSetorAoGrupo(id, grupoId, req));
+    }
+
+    @DeleteMapping("/{id}/grupos/{grupoId}/setores/{setorId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerSetorDoGrupo(
+            @PathVariable UUID id,
+            @PathVariable UUID grupoId,
+            @PathVariable UUID setorId) {
+        service.removerSetorDoGrupo(id, grupoId, setorId);
         return ResponseEntity.noContent().build();
     }
 

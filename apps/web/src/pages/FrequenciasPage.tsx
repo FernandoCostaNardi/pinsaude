@@ -317,6 +317,7 @@ function NovaFrequenciaModal({
 }) {
   const [tomador,     setTomador]     = useState<Tomador | null>(null)
   const [medico,      setMedico]      = useState<Medico | null>(null)
+  const [grupo,       setGrupo]       = useState<TomadorGrupoFaturamento | null>(null)
   const [setor,       setSetor]       = useState<{ id: string; nome: string } | null>(null)
   const [competencia, setCompetencia] = useState(COMPETENCIAS[0])
   const [tipoMedico, setTipoMedico] = useState<'PLANTONISTA' | 'DIARISTA'>('PLANTONISTA')
@@ -346,11 +347,23 @@ function NovaFrequenciaModal({
 
   const tomadoresDisponiveis = tomadoresFiltrados ?? tomadores
 
-  const setores = grupos.flatMap(g => g.servicosOperacionais.filter(s => s.ativo))
+  // PINSAUDE: Setor Operacional virou catálogo reutilizável entre grupos — o mesmo setor pode
+  // aparecer em mais de um Grupo de Faturamento, então a frequência precisa fixar explicitamente
+  // a qual Grupo pertence (usado pelo Fechamento pra saber em qual NFS-e somar). O combo de Setor
+  // é sempre escopado ao Grupo escolhido.
+  const setores = grupo ? grupo.servicosOperacionais.filter(s => s.ativo) : []
 
   useEffect(() => {
+    setGrupo(null)
+    setSetor(null)
     if (!tomador) { setGrupos([]); return }
-    tomadoresApi.listarGrupos(tomador.id).then(setGrupos).catch(() => setGrupos([]))
+    tomadoresApi.listarGrupos(tomador.id).then(gs => {
+      setGrupos(gs)
+      // Auto-seleciona quando há exatamente 1 grupo ativo — mesmo padrão já usado em outros
+      // combos de vínculo único do projeto (empresa emissora, etc.).
+      const ativos = gs.filter(g => g.ativo)
+      if (ativos.length === 1) setGrupo(ativos[0])
+    }).catch(() => setGrupos([]))
   }, [tomador?.id])
 
   // PINSAUDE-13.26: modalidades filtradas pelo Tipo de Escala escolhido — troca de tomador ou
@@ -374,12 +387,13 @@ function NovaFrequenciaModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!tomador || !medico || !setor || (isDiarista && !modalidade)) return
+    if (!tomador || !medico || !grupo || !setor || (isDiarista && !modalidade)) return
     setSaving(true); setErr(null)
     try {
       const req: FrequenciaMedicaRequest = {
         tomadorId: tomador.id,
         medicoId: medico.id,
+        grupoId: grupo.id,
         servicoOperacionalId: setor.id,
         competencia,
         tipoMedico,
@@ -393,7 +407,7 @@ function NovaFrequenciaModal({
     } finally { setSaving(false) }
   }
 
-  const canSave = !!tomador && !!medico && !!setor && (!isDiarista || !!modalidade)
+  const canSave = !!tomador && !!medico && !!grupo && !!setor && (!isDiarista || !!modalidade)
   const medicosFiltrados = medicos.filter(m => m.status === 'ATIVO')
 
   return (
@@ -454,16 +468,30 @@ function NovaFrequenciaModal({
             )}
           </div>
 
-          {/* Linha 3: Setor (full width) */}
+          {/* Linha 3: Grupo de Faturamento (full width) */}
+          <div className="mt-4">
+            <Dropdown
+              label="Grupo de Faturamento *"
+              placeholder={!tomador ? 'Selecione o tomador primeiro...' : grupos.length === 0 ? 'Nenhum grupo cadastrado' : 'Selecione o grupo...'}
+              items={grupos.filter(g => g.ativo)}
+              value={grupo}
+              onChange={g => { setGrupo(g); setSetor(null) }}
+              getLabel={g => g.nome}
+              disabled={!tomador || grupos.length === 0}
+            />
+          </div>
+
+          {/* Linha 4: Setor (full width) — escopado ao Grupo escolhido acima (o mesmo setor pode
+              estar em vários grupos, então o combo nunca mostra o catálogo inteiro do tomador) */}
           <div className="mt-4">
             <Dropdown
               label="Setor Operacional *"
-              placeholder={!tomador ? 'Selecione o tomador primeiro...' : setores.length === 0 ? 'Nenhum setor cadastrado' : 'Selecione o setor...'}
+              placeholder={!grupo ? 'Selecione o grupo primeiro...' : setores.length === 0 ? 'Nenhum setor cadastrado neste grupo' : 'Selecione o setor...'}
               items={setores}
               value={setor}
               onChange={setSetor}
               getLabel={s => s.nome}
-              disabled={!tomador || setores.length === 0}
+              disabled={!grupo || setores.length === 0}
             />
           </div>
 
@@ -1625,6 +1653,7 @@ function EditarFrequenciaModal({
 }) {
   const [competencia, setCompetencia] = useState(freq.competencia)
   const [grupos, setGrupos] = useState<TomadorGrupoFaturamento[]>([])
+  const [grupoId, setGrupoId] = useState(freq.grupoId ?? '')
   const [setorId, setSetorId] = useState(freq.servicoOperacionalId)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -1633,12 +1662,23 @@ function EditarFrequenciaModal({
     tomadoresApi.listarGrupos(freq.tomadorId).then(setGrupos).catch(() => setGrupos([]))
   }, [freq.tomadorId])
 
-  const setoresAtivos = grupos.flatMap(g => g.servicosOperacionais.filter(s => s.ativo))
+  // Garante que o grupo atual da frequência apareça na lista mesmo se tiver sido desativado
+  // depois (ou removido — freq.grupoId pode não bater com nenhum grupo carregado).
+  const gruposOptions = !freq.grupoId || grupos.some(g => g.id === freq.grupoId)
+    ? grupos
+    : [{
+        id: freq.grupoId, tomadorId: freq.tomadorId, servicoLc116Id: '', codigoLc116: null,
+        descricaoServico: null, nome: '(grupo removido)', descricaoNota: '', ordem: 0,
+        ativo: false, servicosOperacionais: [],
+      }, ...grupos]
+
+  const grupoAtual = gruposOptions.find(g => g.id === grupoId) ?? null
+  const setoresAtivos = grupoAtual ? grupoAtual.servicosOperacionais.filter(s => s.ativo) : []
   // Garante que o setor atual da frequência apareça na lista mesmo se tiver sido desativado
   // depois — mesmo padrão já usado pra modalidade/ocorrência inativa em outros formulários.
   const setores = setoresAtivos.some(s => s.id === freq.servicoOperacionalId) || !freq.servicoOperacionalNome
     ? setoresAtivos
-    : [{ id: freq.servicoOperacionalId, tomadorId: freq.tomadorId, grupoId: '', nome: freq.servicoOperacionalNome, ativo: false }, ...setoresAtivos]
+    : [{ id: freq.servicoOperacionalId, tomadorId: freq.tomadorId, nome: freq.servicoOperacionalNome, ativo: false }, ...setoresAtivos]
 
   // A competência atual pode estar fora da janela de 12 meses gerada por generateCompetencias()
   // (frequência antiga) — injeta na lista pra não sumir do <select> quando o modal abre.
@@ -1646,11 +1686,14 @@ function EditarFrequenciaModal({
     ? COMPETENCIAS
     : [freq.competencia, ...COMPETENCIAS]
 
+  const canSave = !!grupoId && !!setorId
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!canSave) return
     setSaving(true); setErr(null)
     try {
-      const atualizada = await frequenciasApi.atualizar(freq.id, { competencia, servicoOperacionalId: setorId })
+      const atualizada = await frequenciasApi.atualizar(freq.id, { competencia, grupoId, servicoOperacionalId: setorId })
       onSalvo(atualizada)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erro ao salvar')
@@ -1676,10 +1719,19 @@ function EditarFrequenciaModal({
               {competenciaOptions.map(c => <option key={c} value={c}>{formatCompetencia(c)}</option>)}
             </select>
           </div>
+          <div className="mb-3">
+            <label className="block text-xs font-bold text-ds-mid mb-1">Grupo de Faturamento *</label>
+            <select value={grupoId} onChange={e => { setGrupoId(e.target.value); setSetorId('') }}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+              <option value="">Selecione o grupo...</option>
+              {gruposOptions.map(g => <option key={g.id} value={g.id}>{g.nome}{!g.ativo ? ' (inativo)' : ''}</option>)}
+            </select>
+          </div>
           <div className="mb-4">
             <label className="block text-xs font-bold text-ds-mid mb-1">Setor Operacional *</label>
-            <select value={setorId} onChange={e => setSetorId(e.target.value)}
-              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+            <select value={setorId} onChange={e => setSetorId(e.target.value)} disabled={!grupoId}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white disabled:opacity-50">
+              <option value="">Selecione o setor...</option>
               {setores.map(s => <option key={s.id} value={s.id}>{s.nome}{!s.ativo ? ' (inativo)' : ''}</option>)}
             </select>
           </div>
@@ -1691,7 +1743,7 @@ function EditarFrequenciaModal({
             <Button type="button" variant="secondary" className="flex-1" disabled={saving} onClick={onClose}>
               Cancelar
             </Button>
-            <button type="submit" disabled={saving}
+            <button type="submit" disabled={saving || !canSave}
               className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
               {saving ? <><Loader2 size={14} className="animate-spin" />Salvando...</> : 'Salvar'}
             </button>

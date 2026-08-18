@@ -77,6 +77,10 @@ export interface FrequenciaMedicaResp {
   id: string
   tomadorId: string
   medicoId: string
+  // PINSAUDE: grupo de faturamento explícito — necessário desde que Setor Operacional virou um
+  // catálogo reutilizável entre vários grupos (o setor sozinho não basta mais pra saber a qual
+  // grupo/NFS-e esta frequência pertence).
+  grupoId: string | null
   servicoOperacionalId: string
   servicoOperacionalNome: string | null
   competencia: string
@@ -118,12 +122,14 @@ export interface FrequenciaMedicaResp {
 // caminho continua sendo excluir e criar de novo).
 export interface FrequenciaMedicaEditRequest {
   competencia: string
+  grupoId: string
   servicoOperacionalId: string
 }
 
 export interface FrequenciaMedicaRequest {
   tomadorId: string
   medicoId: string
+  grupoId: string
   servicoOperacionalId: string
   competencia: string
   tipoMedico: 'PLANTONISTA' | 'DIARISTA'

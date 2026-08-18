@@ -35,6 +35,13 @@ public interface FrequenciaMedicaRepository extends JpaRepository<FrequenciaMedi
 
     boolean existsByServicoOperacionalIdIn(List<UUID> servicoOperacionalIds);
 
+    // Usado para bloquear remoção de um Grupo de Faturamento (ou de um vínculo grupo↔setor
+    // específico) quando já existem frequências médicas lançadas — mais preciso que checar por
+    // setor sozinho, já que o mesmo setor pode estar vinculado a vários grupos.
+    boolean existsByGrupoId(UUID grupoId);
+
+    boolean existsByGrupoIdAndServicoOperacionalId(UUID grupoId, UUID servicoOperacionalId);
+
     boolean existsByModalidadeId(UUID modalidadeId);
 
     boolean existsByOcorrenciaId(UUID ocorrenciaId);

@@ -73,7 +73,6 @@ class FechamentoServiceTest {
         setor = new TomadorServicoOperacional();
         setId(setor, setorId);
         setor.setTomadorId(tomadorId);
-        setor.setGrupoId(grupoId);
         setor.setNome("Emergência Cardiológica");
         setor.setAtivo(true);
 
@@ -521,6 +520,50 @@ class FechamentoServiceTest {
         assertThat(captor.getValue().get(0).getValorBruto()).isEqualTo(1_500_000L);
     }
 
+    // ─── Ajuste pós-implantação: Diarista já conta o valor sem nenhum plantão lançado ──────────
+
+    @Test
+    void preview_diaristaSemNenhumItemLancado_jaContaValorMensal() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L);
+        FrequenciaMedica freq = frequenciaFixture(medico1Id, setorId, COMPETENCIA, "RASCUNHO");
+        freq.setTipoMedico("DIARISTA");
+        freq.setModalidadeId(diaristaId);
+
+        when(frequenciaRepo.findByTomadorIdAndCompetencia(tomadorId, COMPETENCIA))
+            .thenReturn(List.of(freq));
+        when(itemRepo.findByFrequenciaIdIn(List.of(freq.getId()))).thenReturn(List.of()); // sem itens
+        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(diarista));
+
+        FechamentoPreviewResponse resp = service.preview(tomadorId, COMPETENCIA);
+
+        // valor mensal fixo já entra mesmo sem nenhum plantão lançado — não é mais preciso
+        // lançar frequência pra o valor ser computado.
+        assertThat(resp.totalCentavos()).isEqualTo(1_500_000L);
+        assertThat(resp.grupos()).hasSize(1);
+        assertThat(resp.grupos().get(0).totalCentavos()).isEqualTo(1_500_000L);
+    }
+
+    @Test
+    void executar_diaristaSemNenhumItemLancado_criaProducaoComValorMensal() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L);
+        FrequenciaMedica freq = frequenciaFixture(medico1Id, setorId, COMPETENCIA, "ASSINADA_RECEBIDA");
+        freq.setTipoMedico("DIARISTA");
+        freq.setModalidadeId(diaristaId);
+
+        when(frequenciaRepo.findByTomadorIdAndCompetencia(tomadorId, COMPETENCIA))
+            .thenReturn(List.of(freq));
+        when(itemRepo.findByFrequenciaIdIn(any())).thenReturn(List.of());
+        when(modalidadeRepo.findAllById(any())).thenReturn(List.of(diarista));
+
+        FechamentoResponse resp = service.executar(new FechamentoRequest(tomadorId, COMPETENCIA));
+
+        assertThat(resp.totalCentavos()).isEqualTo(1_500_000L);
+        assertThat(resp.producoes()).hasSize(1);
+        assertThat(freq.getStatus()).isEqualTo("FATURADA");
+    }
+
     // ─── Fixtures ─────────────────────────────────────────────────────────────
 
     private FrequenciaMedica frequenciaFixture(UUID medicoId, UUID setorId,
@@ -530,6 +573,7 @@ class FechamentoServiceTest {
         f.setTomadorId(tomadorId);
         f.setMedicoId(medicoId);
         f.setServicoOperacionalId(setorId);
+        f.setGrupoId(grupoId);
         f.setCompetencia(competencia);
         f.setEspecialidade("MEDICO PLANTONISTA");
         f.setStatus(status);

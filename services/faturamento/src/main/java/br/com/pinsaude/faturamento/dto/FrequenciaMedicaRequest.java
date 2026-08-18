@@ -15,6 +15,10 @@ import java.util.UUID;
 public record FrequenciaMedicaRequest(
     @NotNull UUID tomadorId,
     @NotNull UUID medicoId,
+    // Grupo de Faturamento explícito (PINSAUDE: setores viram catálogo reutilizável entre
+    // grupos — o setor sozinho não basta mais pra saber a qual grupo esta frequência pertence).
+    // servicoOperacionalId precisa estar vinculado a este grupo (validado no service).
+    @NotNull UUID grupoId,
     @NotNull UUID servicoOperacionalId,
     @NotBlank @Pattern(regexp = "\\d{4}-\\d{2}") String competencia,       // YYYY-MM
     @NotBlank @Pattern(regexp = "PLANTONISTA|DIARISTA") String tipoMedico, // tipo de escala

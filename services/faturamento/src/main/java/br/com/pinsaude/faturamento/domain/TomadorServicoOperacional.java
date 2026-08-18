@@ -16,11 +16,13 @@ public class TomadorServicoOperacional {
     @Column(name = "tomador_id", nullable = false)
     private UUID tomadorId;
 
-    @Column(name = "grupo_id", nullable = false)
-    private UUID grupoId;
-
     @Column(name = "nome", nullable = false, length = 150)
     private String nome;
+
+    // Categoria livre (ex: "Emergência", "UTI", "Ambulatório") — organiza o catálogo de setores
+    // do tomador; nullable pra não quebrar setores cadastrados antes deste campo existir.
+    @Column(name = "categoria", length = 100)
+    private String categoria;
 
     @Column(name = "ativo", nullable = false)
     private boolean ativo = true;
@@ -36,10 +38,10 @@ public class TomadorServicoOperacional {
     public UUID getId()                  { return id; }
     public UUID getTomadorId()           { return tomadorId; }
     public void setTomadorId(UUID v)     { this.tomadorId = v; }
-    public UUID getGrupoId()             { return grupoId; }
-    public void setGrupoId(UUID v)       { this.grupoId = v; }
     public String getNome()              { return nome; }
     public void setNome(String v)        { this.nome = v; }
+    public String getCategoria()         { return categoria; }
+    public void setCategoria(String v)   { this.categoria = v; }
     public boolean isAtivo()            { return ativo; }
     public void setAtivo(boolean v)     { this.ativo = v; }
     public OffsetDateTime getCreatedAt() { return createdAt; }

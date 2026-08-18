@@ -18,6 +18,7 @@ import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class FechamentoService {
@@ -221,8 +222,7 @@ public class FechamentoService {
             UUID producaoId = p.getId();
             UUID fechamentoId = fechamento.getId();
             for (FrequenciaMedica freq : agg.frequencias()) {
-                TomadorServicoOperacional setor = agg.setoresMap().get(freq.getServicoOperacionalId());
-                if (setor != null && grupoId.equals(setor.getGrupoId())) {
+                if (grupoId.equals(freq.getGrupoId())) {
                     freq.setStatus("FATURADA");
                     freq.setFechamentoId(fechamentoId);
                     freq.setProducaoId(producaoId);
@@ -297,10 +297,13 @@ public class FechamentoService {
         Map<UUID, TomadorServicoOperacional> setoresMap = setorRepo.findAllById(setorIds).stream()
             .collect(Collectors.toMap(TomadorServicoOperacional::getId, Function.identity()));
 
-        // Batch load modalidades
-        Set<UUID> modalidadeIds = todosItens.stream()
-            .map(FrequenciaItem::getModalidadeId)
-            .collect(Collectors.toSet());
+        // Batch load modalidades — inclui também o modalidadeId fixo de cada frequência (não só
+        // os referenciados pelos itens), necessário pra resolver o valor mensal do Diarista
+        // mesmo quando a frequência ainda não tem nenhum plantão lançado.
+        Set<UUID> modalidadeIds = Stream.concat(
+                todosItens.stream().map(FrequenciaItem::getModalidadeId),
+                frequencias.stream().map(FrequenciaMedica::getModalidadeId).filter(Objects::nonNull)
+            ).collect(Collectors.toSet());
         Map<UUID, TomadorModalidade> modalidadesMap = modalidadeRepo.findAllById(modalidadeIds).stream()
             .collect(Collectors.toMap(TomadorModalidade::getId, Function.identity()));
 
@@ -311,11 +314,8 @@ public class FechamentoService {
 
         for (FrequenciaItem item : todosItens) {
             FrequenciaMedica freq = freqMap.get(item.getFrequenciaId());
-            if (freq == null) continue;
-
-            TomadorServicoOperacional setor = setoresMap.get(freq.getServicoOperacionalId());
-            if (setor == null) continue;
-            UUID grupoId = setor.getGrupoId();
+            if (freq == null || freq.getGrupoId() == null) continue;
+            UUID grupoId = freq.getGrupoId();
 
             long ocorrenciaValor = item.getOcorrenciaValorCentavos() != null ? item.getOcorrenciaValorCentavos() : 0L;
             long itemTotal = item.getValorUnitarioCentavos() + item.getDeslocamentoCentavos() + ocorrenciaValor;
@@ -335,26 +335,44 @@ public class FechamentoService {
                 .merge(freq.getMedicoId(), itemTotal, Long::sum);
         }
 
-        // PINSAUDE-13.23: Diarista não paga por item (cada item vale R$0 — ver
-        // FrequenciaService.calcularValorItem), então o loop acima nunca soma o valor mensal
-        // fixo dele. Soma-se aqui, UMA ÚNICA VEZ por frequência/modalidade Diarista distinta,
-        // independente de quantos itens/dias foram lançados no mês. O count (ct[0]) de cada
-        // modalidade já foi corretamente incrementado por item no loop acima (reflete dias
-        // trabalhados) — aqui só o TOTAL em dinheiro é ajustado.
-        Map<UUID, Set<UUID>> modalidadesDiaristaPorFrequencia = todosItens.stream()
+        // Ajuste pós-implantação: uma frequência Diarista com modalidade FIXA (o caso normal
+        // desde PINSAUDE-13.26) já soma o valor mensal assim que é criada — não depende mais de
+        // ter algum item/plantão lançado. O count (ct[0]) de cada modalidade continua vindo só
+        // do loop de itens acima (reflete dias trabalhados); aqui só o TOTAL em dinheiro é somado.
+        for (FrequenciaMedica freq : frequencias) {
+            if (freq.getGrupoId() == null || freq.getModalidadeId() == null) continue;
+            if (!"DIARISTA".equals(freq.getTipoMedico())) continue;
+            TomadorModalidade modalidade = modalidadesMap.get(freq.getModalidadeId());
+            if (modalidade == null || !"DIARISTA".equals(modalidade.getTipo())) continue;
+
+            long valorMensal = modalidade.getValorCentavos();
+            modalidadeAgg.computeIfAbsent(freq.getModalidadeId(), k -> new long[]{0L, 0L});
+            modalidadeAgg.get(freq.getModalidadeId())[1] += valorMensal;
+
+            grupoSetorTotal.computeIfAbsent(freq.getGrupoId(), k -> new LinkedHashMap<>())
+                .merge(freq.getServicoOperacionalId(), valorMensal, Long::sum);
+
+            agrupado.computeIfAbsent(freq.getGrupoId(), k -> new LinkedHashMap<>())
+                .merge(freq.getMedicoId(), valorMensal, Long::sum);
+        }
+
+        // Legado: frequências Diarista sem modalidade fixa (anteriores ao PINSAUDE-13.26)
+        // resolvem o valor mensal a partir dos itens já lançados — nunca coexiste com a
+        // frequência acima (modalidadeId nulo é justamente o que a exclui do bloco de cima).
+        Map<UUID, Set<UUID>> modalidadesDiaristaPorFrequenciaLegado = todosItens.stream()
             .filter(item -> {
+                FrequenciaMedica freq = freqMap.get(item.getFrequenciaId());
+                if (freq == null || freq.getModalidadeId() != null) return false;
                 TomadorModalidade m = modalidadesMap.get(item.getModalidadeId());
                 return m != null && "DIARISTA".equals(m.getTipo());
             })
             .collect(Collectors.groupingBy(FrequenciaItem::getFrequenciaId,
                 Collectors.mapping(FrequenciaItem::getModalidadeId, Collectors.toSet())));
 
-        for (Map.Entry<UUID, Set<UUID>> entry : modalidadesDiaristaPorFrequencia.entrySet()) {
+        for (Map.Entry<UUID, Set<UUID>> entry : modalidadesDiaristaPorFrequenciaLegado.entrySet()) {
             FrequenciaMedica freq = freqMap.get(entry.getKey());
-            if (freq == null) continue;
-            TomadorServicoOperacional setor = setoresMap.get(freq.getServicoOperacionalId());
-            if (setor == null) continue;
-            UUID grupoId = setor.getGrupoId();
+            if (freq == null || freq.getGrupoId() == null) continue;
+            UUID grupoId = freq.getGrupoId();
 
             for (UUID modalidadeId : entry.getValue()) {
                 TomadorModalidade modalidade = modalidadesMap.get(modalidadeId);
@@ -375,27 +393,21 @@ public class FechamentoService {
         // PINSAUDE-13.26 (ajuste pós-implantação): ocorrência fixa na frequência (escolhida na
         // criação) tem seu valor somado UMA ÚNICA VEZ sobre o valor cadastrado da modalidade — o
         // loop de itens acima não soma mais ocorrência por item (ver FrequenciaService.
-        // adicionarItem). Só entra na agregação quando a frequência já tem pelo menos 1 item
-        // lançado (mesmo critério do bloco Diarista acima).
+        // adicionarItem). Já entra na agregação assim que a frequência é criada, mesmo sem
+        // nenhum item lançado (mesmo critério de valor mensal do Diarista acima).
         Set<UUID> ocorrenciaIds = frequencias.stream()
             .map(FrequenciaMedica::getOcorrenciaId)
             .filter(Objects::nonNull)
             .collect(Collectors.toSet());
         Map<UUID, TomadorOcorrencia> ocorrenciasMap = ocorrenciaRepo.findAllById(ocorrenciaIds).stream()
             .collect(Collectors.toMap(TomadorOcorrencia::getId, Function.identity()));
-        Set<UUID> frequenciasComItem = todosItens.stream()
-            .map(FrequenciaItem::getFrequenciaId)
-            .collect(Collectors.toSet());
 
         for (FrequenciaMedica freq : frequencias) {
-            if (freq.getModalidadeId() == null || freq.getOcorrenciaId() == null) continue;
-            if (!frequenciasComItem.contains(freq.getId())) continue;
+            if (freq.getModalidadeId() == null || freq.getOcorrenciaId() == null || freq.getGrupoId() == null) continue;
             TomadorModalidade modalidade = modalidadesMap.get(freq.getModalidadeId());
             TomadorOcorrencia ocorrencia = ocorrenciasMap.get(freq.getOcorrenciaId());
             if (modalidade == null || ocorrencia == null) continue;
-            TomadorServicoOperacional setor = setoresMap.get(freq.getServicoOperacionalId());
-            if (setor == null) continue;
-            UUID grupoId = setor.getGrupoId();
+            UUID grupoId = freq.getGrupoId();
 
             long valorOcorrencia = calcularValorOcorrenciaUnico(modalidade, ocorrencia);
             if (valorOcorrencia == 0L) continue;

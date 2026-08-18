@@ -358,6 +358,11 @@ export const tomadoresApi = {
 
   // ─── Serviços operacionais (setores) ─────────────────────────────────────
 
+  async listarServicosOperacionais(tomadorId: string): Promise<TomadorServicoOperacional[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/servicos-operacionais`, { headers: authHeaders() })
+    return handleResponse<TomadorServicoOperacional[]>(res)
+  },
+
   async criarServicoOperacional(tomadorId: string, req: TomadorServicoOperacionalRequest): Promise<TomadorServicoOperacional> {
     const res = await fetch(`/api/tomadores/${tomadorId}/servicos-operacionais`, {
       method: 'POST',
@@ -367,8 +372,41 @@ export const tomadoresApi = {
     return handleResponse<TomadorServicoOperacional>(res)
   },
 
+  async atualizarServicoOperacional(tomadorId: string, setorId: string, req: TomadorServicoOperacionalRequest): Promise<TomadorServicoOperacional> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/servicos-operacionais/${setorId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorServicoOperacional>(res)
+  },
+
   async removerServicoOperacional(tomadorId: string, setorId: string): Promise<void> {
     const res = await fetch(`/api/tomadores/${tomadorId}/servicos-operacionais/${setorId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
+
+  // ─── Vínculo Grupo ↔ Setor (N:N) — reutiliza o mesmo setor em vários grupos ──
+
+  async listarSetoresDoGrupo(tomadorId: string, grupoId: string): Promise<TomadorServicoOperacional[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/grupos/${grupoId}/setores`, { headers: authHeaders() })
+    return handleResponse<TomadorServicoOperacional[]>(res)
+  },
+
+  async adicionarSetorAoGrupo(tomadorId: string, grupoId: string, setorId: string): Promise<TomadorServicoOperacional> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/grupos/${grupoId}/setores`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ setorId }),
+    })
+    return handleResponse<TomadorServicoOperacional>(res)
+  },
+
+  async removerSetorDoGrupo(tomadorId: string, grupoId: string, setorId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/grupos/${grupoId}/setores/${setorId}`, {
       method: 'DELETE',
       headers: authHeaders(),
     })
@@ -426,11 +464,14 @@ export const tomadoresApi = {
 
 // ─── Tipos para grupos / modalidades / setores ────────────────────────────────
 
+// PINSAUDE: catálogo por tomador, sem grupo próprio — reutilizável em quantos Grupos de
+// Faturamento forem necessários via listarSetoresDoGrupo/adicionarSetorAoGrupo/removerSetorDoGrupo.
+// categoria é texto livre (ex: "Emergência", "UTI") — null quando não preenchida.
 export interface TomadorServicoOperacional {
   id: string
   tomadorId: string
-  grupoId: string
   nome: string
+  categoria: string | null
   ativo: boolean
 }
 
@@ -485,8 +526,8 @@ export interface TomadorModalidadeRequest {
 }
 
 export interface TomadorServicoOperacionalRequest {
-  grupoId: string
   nome: string
+  categoria: string | null
   ativo: boolean
 }
 

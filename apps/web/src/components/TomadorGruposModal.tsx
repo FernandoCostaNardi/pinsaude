@@ -14,6 +14,7 @@ import {
   TomadorModalidadeRequest,
   TomadorOcorrencia,
   TomadorOcorrenciaRequest,
+  TomadorServicoOperacional,
   TomadorServicoOperacionalRequest,
   tomadoresApi,
 } from '../api/tomadoresApi'
@@ -124,6 +125,37 @@ interface HorarioPadraoForm {
 
 function emptyHorarioPadraoForm(): HorarioPadraoForm {
   return { turno: 'DIURNO', horasStr: '', horario: '', ativo: true }
+}
+
+// Cadastro dedicado de Setores Operacionais (catálogo por tomador, com categoria própria) —
+// separado do fluxo de Grupos, que passa a só selecionar entre os setores já cadastrados aqui.
+interface SetorForm {
+  nome: string
+  categoria: string
+  ativo: boolean
+}
+
+function emptySetorForm(): SetorForm {
+  return { nome: '', categoria: '', ativo: true }
+}
+
+// Categoria "Sem categoria" agrupa setores sem esse campo preenchido — usado tanto no cadastro
+// (aba Setores Operacionais) quanto na seleção por grupo (aba Grupos).
+const SEM_CATEGORIA = 'Sem categoria'
+
+function agruparPorCategoria(setores: TomadorServicoOperacional[]): [string, TomadorServicoOperacional[]][] {
+  const porCategoria = new Map<string, TomadorServicoOperacional[]>()
+  for (const s of setores) {
+    const chave = s.categoria?.trim() || SEM_CATEGORIA
+    if (!porCategoria.has(chave)) porCategoria.set(chave, [])
+    porCategoria.get(chave)!.push(s)
+  }
+  for (const lista of porCategoria.values()) lista.sort((a, b) => a.nome.localeCompare(b.nome))
+  return Array.from(porCategoria.entries()).sort(([a], [b]) => {
+    if (a === SEM_CATEGORIA) return 1
+    if (b === SEM_CATEGORIA) return -1
+    return a.localeCompare(b)
+  })
 }
 
 const MODALIDADE_TIPOS: { modo: ModalidadeModo; titulo: string; sub: string }[] = [
@@ -565,6 +597,145 @@ function HorarioPadraoFormInline({
   )
 }
 
+// Switch estilo pílula (padrão do resto do app, ao invés de checkbox nativo). Sem `label`,
+// renderiza só o botão (pra compor livremente em listas que já têm seu próprio texto ao lado —
+// evita aninhar <label> dentro de <label>, que é inválido).
+function Switch({
+  checked, onChange, label, disabled,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  label?: string
+  disabled?: boolean
+}) {
+  const button = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={[
+        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+        'focus:outline-none focus:ring-2 focus:ring-primary-300 focus:ring-offset-1',
+        disabled ? 'opacity-50 cursor-not-allowed' : '',
+        checked ? 'bg-primary' : 'bg-gray-300',
+      ].join(' ')}
+    >
+      <span
+        className={[
+          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-[18px]' : 'translate-x-0.5',
+        ].join(' ')}
+      />
+    </button>
+  )
+  if (!label) return button
+  return (
+    <label className="flex items-center gap-2.5 cursor-pointer select-none">
+      {button}
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+    </label>
+  )
+}
+
+// Combobox de texto livre com sugestões — clicar/focar mostra todas as categorias já
+// cadastradas (filtradas conforme o usuário digita); escolher uma preenche o campo; digitar
+// algo que não existe ainda funciona normalmente (cria uma categoria nova ao salvar).
+function CategoriaCombobox({
+  value, onChange, categoriasExistentes,
+}: {
+  value: string
+  onChange: (v: string) => void
+  categoriasExistentes: string[]
+}) {
+  const [open, setOpen] = useState(false)
+  const filtradas = categoriasExistentes.filter(c =>
+    !value.trim() || c.toLowerCase().includes(value.trim().toLowerCase())
+  )
+  return (
+    <div className="relative">
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        placeholder="ex: Emergência, UTI, Ambulatório"
+        className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 pl-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white"
+      />
+      <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ds-light pointer-events-none" />
+      {open && categoriasExistentes.length > 0 && (
+        <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-ds-border bg-white shadow-lg py-1">
+          {filtradas.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-ds-light">Nenhuma categoria encontrada — "{value}" será criada</p>
+          ) : (
+            filtradas.map(c => (
+              <button
+                key={c}
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => { onChange(c); setOpen(false) }}
+                className="w-full text-left px-3 py-1.5 text-xs text-ds-text hover:bg-primary-50 hover:text-primary transition-colors"
+              >
+                {c}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SetorFormInline({
+  form, onChange, onSave, onCancel, saving, isNew, categoriasExistentes,
+}: {
+  form: SetorForm
+  onChange: (patch: Partial<SetorForm>) => void
+  onSave: () => void
+  onCancel: () => void
+  saving: boolean
+  isNew: boolean
+  categoriasExistentes: string[]
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Input
+            label="Nome do setor *"
+            value={form.nome}
+            onChange={e => onChange({ nome: e.target.value })}
+            placeholder="ex: Emergência Cardiológica"
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Categoria
+            <span className="ml-1 text-xs font-normal text-ds-light">(opcional — agrupa os setores na seleção por grupo)</span>
+          </label>
+          <CategoriaCombobox
+            value={form.categoria}
+            onChange={v => onChange({ categoria: v })}
+            categoriasExistentes={categoriasExistentes}
+          />
+        </div>
+        <div className="col-span-2">
+          <Switch checked={form.ativo} onChange={v => onChange({ ativo: v })} label="Setor ativo" />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-2 border-t border-ds-border">
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
+          Cancelar
+        </Button>
+        <Button size="sm" onClick={onSave} loading={saving}>
+          {isNew ? 'Adicionar Setor' : 'Salvar Alterações'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -574,7 +745,7 @@ interface Props {
 }
 
 export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
-  const [aba, setAba] = useState<'grupos' | 'modalidades' | 'ocorrencias' | 'horarios'>('grupos')
+  const [aba, setAba] = useState<'grupos' | 'setores' | 'modalidades' | 'ocorrencias' | 'horarios'>('grupos')
 
   // ── Grupos ────────────────────────────────────────────────────────────────
   const [grupos, setGrupos] = useState<TomadorGrupoFaturamento[]>([])
@@ -586,8 +757,17 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   const [editingGrupoId, setEditingGrupoId] = useState<string | null>(null)
   const [grupoSaving, setGrupoSaving] = useState(false)
 
-  const [setorForms, setSetorForms] = useState<Record<string, string>>({})
-  const [setorSaving, setSetorSaving] = useState<string | null>(null)
+  // Chave "grupoId:setorId" do checkbox em vôo (evita clique duplo enquanto a chamada não volta).
+  const [setorTogglingKey, setSetorTogglingKey] = useState<string | null>(null)
+
+  // ── Setores Operacionais (catálogo por tomador, com categoria própria) ─────
+  const [todosSetores, setTodosSetores] = useState<TomadorServicoOperacional[]>([])
+  const [setoresLoading, setSetoresLoading] = useState(false)
+  const [setorErr, setSetorErr] = useState<string | null>(null)
+
+  const [setorForm, setSetorForm] = useState<SetorForm | null>(null)
+  const [editingSetorId, setEditingSetorId] = useState<string | null>(null)
+  const [setorSaving, setSetorSaving] = useState(false)
 
   // ── Modalidades ───────────────────────────────────────────────────────────
   const [modalidades, setModalidades] = useState<TomadorModalidade[]>([])
@@ -632,6 +812,17 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     }
   }, [tomador.id])
 
+  const carregarTodosSetores = useCallback(async () => {
+    setSetoresLoading(true)
+    try {
+      setTodosSetores(await tomadoresApi.listarServicosOperacionais(tomador.id))
+    } catch (e) {
+      setSetorErr(e instanceof Error ? e.message : 'Erro ao carregar setores operacionais')
+    } finally {
+      setSetoresLoading(false)
+    }
+  }, [tomador.id])
+
   const carregarModalidades = useCallback(async () => {
     setModLoading(true)
     try {
@@ -667,10 +858,11 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
 
   useEffect(() => {
     carregarGrupos()
+    carregarTodosSetores()
     carregarModalidades()
     carregarOcorrencias()
     carregarHorariosPadrao()
-  }, [carregarGrupos, carregarModalidades, carregarOcorrencias, carregarHorariosPadrao])
+  }, [carregarGrupos, carregarTodosSetores, carregarModalidades, carregarOcorrencias, carregarHorariosPadrao])
 
   // ── Grupos CRUD ───────────────────────────────────────────────────────────
 
@@ -731,7 +923,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   }
 
   async function removerGrupo(grupoId: string, nome: string) {
-    if (!window.confirm(`Remover o grupo "${nome}"? Os setores vinculados também serão removidos.`)) return
+    if (!window.confirm(`Remover o grupo "${nome}"? O vínculo com os setores operacionais será removido (os setores continuam disponíveis para outros grupos).`)) return
     setGrupoErr(null)
     try {
       await tomadoresApi.removerGrupo(tomador.id, grupoId)
@@ -750,30 +942,88 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     })
   }
 
-  // ── Setores CRUD ──────────────────────────────────────────────────────────
+  // ── Seleção de setores dentro de um Grupo (marca/desmarca do catálogo) ─────
 
-  async function adicionarSetor(grupoId: string) {
-    const nome = (setorForms[grupoId] ?? '').trim()
-    if (!nome) return
-    setSetorSaving(grupoId)
+  // O catálogo de setores é cadastrado à parte (aba "Setores Operacionais"); aqui só
+  // marca/desmarca quais setores já cadastrados pertencem a este grupo — nunca cria/edita/apaga
+  // o setor em si.
+  async function toggleSetorNoGrupo(grupoId: string, setorId: string, marcar: boolean) {
+    const key = `${grupoId}:${setorId}`
+    setSetorTogglingKey(key)
+    setGrupoErr(null)
     try {
-      const req: TomadorServicoOperacionalRequest = { grupoId, nome, ativo: true }
-      await tomadoresApi.criarServicoOperacional(tomador.id, req)
-      setSetorForms(f => ({ ...f, [grupoId]: '' }))
+      if (marcar) {
+        await tomadoresApi.adicionarSetorAoGrupo(tomador.id, grupoId, setorId)
+      } else {
+        await tomadoresApi.removerSetorDoGrupo(tomador.id, grupoId, setorId)
+      }
       await carregarGrupos()
     } catch (e) {
-      setGrupoErr(e instanceof Error ? e.message : 'Erro ao adicionar setor')
+      setGrupoErr(e instanceof Error ? e.message : 'Erro ao atualizar setores deste grupo')
     } finally {
-      setSetorSaving(null)
+      setSetorTogglingKey(null)
     }
   }
 
-  async function removerSetor(setorId: string) {
+  // ── Setores Operacionais CRUD (catálogo por tomador, com categoria própria) ─
+
+  function abrirNovoSetor() {
+    setSetorForm(emptySetorForm())
+    setEditingSetorId(null)
+    setSetorErr(null)
+  }
+
+  function abrirEditarSetor(s: TomadorServicoOperacional) {
+    setSetorForm({ nome: s.nome, categoria: s.categoria ?? '', ativo: s.ativo })
+    setEditingSetorId(s.id)
+    setSetorErr(null)
+  }
+
+  function cancelarSetor() {
+    setSetorForm(null)
+    setEditingSetorId(null)
+    setSetorErr(null)
+  }
+
+  async function salvarSetor() {
+    if (!setorForm) return
+    if (!setorForm.nome.trim()) {
+      setSetorErr('Preencha o nome do setor')
+      return
+    }
+    const req: TomadorServicoOperacionalRequest = {
+      nome: setorForm.nome.trim(),
+      categoria: setorForm.categoria.trim() || null,
+      ativo: setorForm.ativo,
+    }
+    setSetorSaving(true)
+    setSetorErr(null)
     try {
-      await tomadoresApi.removerServicoOperacional(tomador.id, setorId)
-      await carregarGrupos()
+      if (editingSetorId) {
+        await tomadoresApi.atualizarServicoOperacional(tomador.id, editingSetorId, req)
+      } else {
+        await tomadoresApi.criarServicoOperacional(tomador.id, req)
+      }
+      cancelarSetor()
+      // Recarrega grupos também: nome/status do setor pode aparecer na lista de cada grupo.
+      await Promise.all([carregarTodosSetores(), carregarGrupos()])
     } catch (e) {
-      setGrupoErr(e instanceof Error ? e.message : 'Erro ao remover setor')
+      setSetorErr(e instanceof Error ? e.message : 'Erro ao salvar setor')
+    } finally {
+      setSetorSaving(false)
+    }
+  }
+
+  // Remove o setor do catálogo inteiro (não só de um grupo) — bloqueado pelo backend (409) se
+  // já houver frequência médica lançada com este setor.
+  async function removerSetorCatalogo(id: string, nome: string) {
+    if (!window.confirm(`Remover o setor "${nome}" do catálogo? Ele será desvinculado de todos os grupos.`)) return
+    setSetorErr(null)
+    try {
+      await tomadoresApi.removerServicoOperacional(tomador.id, id)
+      await Promise.all([carregarTodosSetores(), carregarGrupos()])
+    } catch (e) {
+      setSetorErr(e instanceof Error ? e.message : 'Erro ao remover setor')
     }
   }
 
@@ -1066,7 +1316,8 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       {/* Tab bar */}
       <div className="flex gap-1 mb-4 p-1 bg-ds-input rounded-xl border border-ds-border">
         {([
-          ['grupos', 'Grupos & Setores'],
+          ['grupos', 'Grupos'],
+          ['setores', 'Setores Operacionais'],
           ['modalidades', 'Modalidades (Tabela de Preços)'],
           ['ocorrencias', 'Ocorrências'],
           ['horarios', 'Preenchimento Rápido'],
@@ -1190,69 +1441,70 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                               <p className="text-xs text-ds-mid italic">"{g.descricaoNota}"</p>
                             </div>
 
-                            {/* Setores */}
+                            {/* Setores — seleção a partir do catálogo (aba "Setores Operacionais"),
+                                agrupados por categoria. Nada aqui cria/edita/apaga o setor em si. */}
                             <div>
                               <p className="text-[10px] text-ds-light font-semibold uppercase mb-1.5">
                                 Setores operacionais ({g.servicosOperacionais.length})
                               </p>
-                              {g.servicosOperacionais.length === 0 ? (
-                                <p className="text-xs text-ds-light mb-2">Nenhum setor ainda</p>
-                              ) : (
-                                <div className="space-y-1 mb-2">
-                                  {g.servicosOperacionais.map(s => (
-                                    <div
-                                      key={s.id}
-                                      className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 border border-ds-border"
-                                    >
-                                      <div className="flex items-center gap-2">
+                              {!canWrite ? (
+                                g.servicosOperacionais.length === 0 ? (
+                                  <p className="text-xs text-ds-light">Nenhum setor vinculado</p>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {g.servicosOperacionais.map(s => (
+                                      <div key={s.id} className="flex items-center gap-2 bg-white rounded-lg px-3 py-1.5 border border-ds-border">
                                         <span className="text-xs text-ds-text">{s.nome}</span>
+                                        {s.categoria && (
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-50 text-primary">
+                                            {s.categoria}
+                                          </span>
+                                        )}
                                         {!s.ativo && (
                                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500">
                                             INATIVO
                                           </span>
                                         )}
                                       </div>
-                                      {canWrite && (
-                                        <button
-                                          type="button"
-                                          onClick={() => removerSetor(s.id)}
-                                          className="text-ds-light hover:text-red-500 transition-colors p-0.5"
-                                          title="Remover setor"
-                                        >
-                                          <Trash2 size={12} />
-                                        </button>
-                                      )}
+                                    ))}
+                                  </div>
+                                )
+                              ) : todosSetores.length === 0 ? (
+                                <div className="text-xs text-ds-light bg-white rounded-lg border border-dashed border-ds-border px-3 py-2.5">
+                                  Nenhum setor cadastrado ainda.{' '}
+                                  <button type="button" onClick={() => setAba('setores')} className="text-primary font-semibold hover:underline">
+                                    Cadastre na aba "Setores Operacionais" →
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="max-h-56 overflow-y-auto rounded-lg border border-ds-border bg-white divide-y divide-ds-border">
+                                  {agruparPorCategoria(todosSetores).map(([categoria, setoresCategoria]) => (
+                                    <div key={categoria} className="px-3 py-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-wide text-ds-light mb-1">{categoria}</p>
+                                      <div className="space-y-1">
+                                        {setoresCategoria.map(s => {
+                                          const vinculado = g.servicosOperacionais.some(x => x.id === s.id)
+                                          const key = `${g.id}:${s.id}`
+                                          return (
+                                            <div key={s.id} className="flex items-center gap-2">
+                                              <Switch
+                                                checked={vinculado}
+                                                disabled={setorTogglingKey === key}
+                                                onChange={marcar => toggleSetorNoGrupo(g.id, s.id, marcar)}
+                                              />
+                                              <span className="text-xs text-ds-text">{s.nome}</span>
+                                              {!s.ativo && (
+                                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500">
+                                                  INATIVO
+                                                </span>
+                                              )}
+                                              {setorTogglingKey === key && <Loader2 size={11} className="animate-spin text-ds-light" />}
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
                                     </div>
                                   ))}
-                                </div>
-                              )}
-
-                              {/* Adicionar setor */}
-                              {canWrite && (
-                                <div className="flex gap-2">
-                                  <input
-                                    value={setorForms[g.id] ?? ''}
-                                    onChange={e => setSetorForms(f => ({ ...f, [g.id]: e.target.value }))}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter') {
-                                        e.preventDefault()
-                                        adicionarSetor(g.id)
-                                      }
-                                    }}
-                                    placeholder="Nome do setor (ex: Emergência Cardiológica)"
-                                    className="flex-1 h-8 text-xs rounded-lg border border-ds-border px-2.5 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => adicionarSetor(g.id)}
-                                    disabled={setorSaving === g.id || !(setorForms[g.id] ?? '').trim()}
-                                    className="h-8 px-2.5 rounded-lg bg-primary text-white text-xs font-semibold flex items-center gap-1 hover:bg-primary-600 disabled:opacity-50 transition-colors shrink-0"
-                                  >
-                                    {setorSaving === g.id
-                                      ? <Loader2 size={12} className="animate-spin" />
-                                      : <Plus size={12} />}
-                                    Adicionar
-                                  </button>
                                 </div>
                               )}
                             </div>
@@ -1289,6 +1541,105 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
               className="flex items-center gap-2 justify-center w-full py-2.5 rounded-xl border-2 border-dashed border-ds-border text-ds-light hover:border-primary hover:text-primary text-xs font-semibold transition-all"
             >
               <Plus size={14} /> Novo Grupo de Faturamento
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Aba: Setores Operacionais (catálogo por tomador, com categoria) ── */}
+      {aba === 'setores' && (
+        <div className="flex flex-col gap-3">
+          {setorErr && (
+            <Alert variant="error" onClose={() => setSetorErr(null)}>{setorErr}</Alert>
+          )}
+
+          {setoresLoading ? (
+            <div className="flex justify-center py-10"><Spinner /></div>
+          ) : todosSetores.length === 0 && !setorForm ? (
+            <div className="flex flex-col items-center py-10 gap-2 text-ds-light">
+              <FolderOpen size={36} className="opacity-25" />
+              <p className="text-sm font-semibold">Nenhum setor operacional cadastrado</p>
+              <p className="text-xs">Ex: Emergência Cardiológica, UTI Neonatal, Ambulatório Geral</p>
+              {canWrite && (
+                <Button size="sm" className="mt-2" onClick={abrirNovoSetor}>
+                  <Plus size={14} /> Adicionar primeiro setor
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {agruparPorCategoria(todosSetores).map(([categoria, setoresCategoria]) => (
+                <div key={categoria} className="rounded-xl border border-ds-border overflow-hidden">
+                  <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ds-light bg-ds-surface border-b border-ds-border">
+                    {categoria}
+                  </p>
+                  <div className="divide-y divide-ds-border">
+                    {setoresCategoria.map(s => (
+                      <div key={s.id} className="flex items-center justify-between px-3 py-2 hover:bg-ds-surface/50">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-ds-text">{s.nome}</span>
+                          {!s.ativo && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500">
+                              INATIVO
+                            </span>
+                          )}
+                        </div>
+                        {canWrite && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => abrirEditarSetor(s)}
+                              className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
+                              title="Editar"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removerSetorCatalogo(s.id, s.nome)}
+                              className="p-1 rounded text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors"
+                              title="Remover do catálogo"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Form de novo / editar setor */}
+          {canWrite && setorForm && (
+            <div className="rounded-xl border border-primary/30 bg-primary-50/30 p-4">
+              <p className="text-xs font-bold text-ds-mid uppercase mb-3">
+                {editingSetorId ? 'Editar setor' : 'Novo setor'}
+              </p>
+              <SetorFormInline
+                form={setorForm}
+                onChange={patch => setSetorForm(f => f ? { ...f, ...patch } : f)}
+                onSave={salvarSetor}
+                onCancel={cancelarSetor}
+                saving={setorSaving}
+                isNew={!editingSetorId}
+                categoriasExistentes={Array.from(new Set(
+                  todosSetores.map(s => s.categoria?.trim()).filter((c): c is string => !!c)
+                )).sort()}
+              />
+            </div>
+          )}
+
+          {/* Botão adicionar setor */}
+          {canWrite && !setorForm && todosSetores.length > 0 && (
+            <button
+              type="button"
+              onClick={abrirNovoSetor}
+              className="flex items-center gap-2 justify-center w-full py-2.5 rounded-xl border-2 border-dashed border-ds-border text-ds-light hover:border-primary hover:text-primary text-xs font-semibold transition-all"
+            >
+              <Plus size={14} /> Novo Setor Operacional
             </button>
           )}
         </div>

@@ -241,6 +241,7 @@ function Dropdown<T extends { id: string }>({
 
 interface NovaFreqForm {
   tomador: Tomador | null
+  grupo: TomadorGrupoFaturamento | null
   setor: { id: string; nome: string } | null
   competencia: string
   tipoMedico: 'PLANTONISTA' | 'DIARISTA'
@@ -254,7 +255,7 @@ function NovaFrequenciaModal({
   onClose: () => void
   onCriada: (f: FrequenciaMedicaResp) => void
 }) {
-  const [form, setForm]     = useState<NovaFreqForm>({ tomador: null, setor: null, competencia: COMPETENCIAS[0], tipoMedico: 'PLANTONISTA' })
+  const [form, setForm]     = useState<NovaFreqForm>({ tomador: null, grupo: null, setor: null, competencia: COMPETENCIAS[0], tipoMedico: 'PLANTONISTA' })
   const [grupos, setGrupos] = useState<TomadorGrupoFaturamento[]>([])
   const [saving, setSaving] = useState(false)
   const [err, setErr]       = useState<string | null>(null)
@@ -266,11 +267,18 @@ function NovaFrequenciaModal({
   const [ocorrencias,  setOcorrencias]  = useState<TomadorOcorrencia[]>([])
   const [ocorrenciaId, setOcorrenciaId] = useState('')
 
-  const setores = grupos.flatMap(g => g.servicosOperacionais.filter(s => s.ativo))
+  // PINSAUDE: Setor Operacional virou catálogo reutilizável entre grupos — o combo de Setor é
+  // sempre escopado ao Grupo escolhido (o mesmo setor pode estar em mais de um grupo).
+  const setores = form.grupo ? form.grupo.servicosOperacionais.filter(s => s.ativo) : []
 
   useEffect(() => {
+    setForm(f => ({ ...f, grupo: null, setor: null }))
     if (!form.tomador) { setGrupos([]); return }
-    tomadoresApi.listarGrupos(form.tomador.id).then(setGrupos).catch(() => setGrupos([]))
+    tomadoresApi.listarGrupos(form.tomador.id).then(gs => {
+      setGrupos(gs)
+      const ativos = gs.filter(g => g.ativo)
+      if (ativos.length === 1) setForm(f => ({ ...f, grupo: ativos[0] }))
+    }).catch(() => setGrupos([]))
   }, [form.tomador?.id])
 
   useEffect(() => {
@@ -292,12 +300,13 @@ function NovaFrequenciaModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.tomador || !form.setor || (isDiarista && !modalidade)) return
+    if (!form.tomador || !form.grupo || !form.setor || (isDiarista && !modalidade)) return
     setSaving(true); setErr(null)
     try {
       const req: FrequenciaMedicaRequest = {
         tomadorId: form.tomador.id,
         medicoId: perfil.id,
+        grupoId: form.grupo.id,
         servicoOperacionalId: form.setor.id,
         competencia: form.competencia,
         tipoMedico: form.tipoMedico,
@@ -311,7 +320,7 @@ function NovaFrequenciaModal({
     } finally { setSaving(false) }
   }
 
-  const canSave = !!form.tomador && !!form.setor && (!isDiarista || !!modalidade)
+  const canSave = !!form.tomador && !!form.grupo && !!form.setor && (!isDiarista || !!modalidade)
 
   return (
     // Mobile: bottom-sheet que sobe. Desktop: modal centralizado.
@@ -357,19 +366,29 @@ function NovaFrequenciaModal({
                 placeholder="Selecione o tomador..."
                 items={tomadores}
                 value={form.tomador}
-                onChange={t => setForm(f => ({ ...f, tomador: t, setor: null }))}
+                onChange={t => setForm(f => ({ ...f, tomador: t, grupo: null, setor: null }))}
                 getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
               />
             )}
 
             <Dropdown
+              label="Grupo de Faturamento *"
+              placeholder={!form.tomador ? 'Selecione o tomador primeiro...' : grupos.length === 0 ? 'Nenhum grupo cadastrado' : 'Selecione o grupo...'}
+              items={grupos.filter(g => g.ativo)}
+              value={form.grupo}
+              onChange={g => setForm(f => ({ ...f, grupo: g, setor: null }))}
+              getLabel={g => g.nome}
+              disabled={!form.tomador || grupos.length === 0}
+            />
+
+            <Dropdown
               label="Setor Operacional *"
-              placeholder={!form.tomador ? 'Selecione o tomador primeiro...' : setores.length === 0 ? 'Nenhum setor cadastrado' : 'Selecione o setor...'}
+              placeholder={!form.grupo ? 'Selecione o grupo primeiro...' : setores.length === 0 ? 'Nenhum setor cadastrado neste grupo' : 'Selecione o setor...'}
               items={setores}
               value={form.setor}
               onChange={s => setForm(f => ({ ...f, setor: s }))}
               getLabel={s => s.nome}
-              disabled={!form.tomador || setores.length === 0}
+              disabled={!form.grupo || setores.length === 0}
             />
 
             {/* Competência + Tipo — 1 coluna no mobile, 2 colunas no desktop */}
@@ -1100,6 +1119,7 @@ function EditarFrequenciaModal({
 }) {
   const [competencia, setCompetencia] = useState(freq.competencia)
   const [grupos, setGrupos] = useState<TomadorGrupoFaturamento[]>([])
+  const [grupoId, setGrupoId] = useState(freq.grupoId ?? '')
   const [setorId, setSetorId] = useState(freq.servicoOperacionalId)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -1108,12 +1128,23 @@ function EditarFrequenciaModal({
     tomadoresApi.listarGrupos(freq.tomadorId).then(setGrupos).catch(() => setGrupos([]))
   }, [freq.tomadorId])
 
-  const setoresAtivos = grupos.flatMap(g => g.servicosOperacionais.filter(s => s.ativo))
+  // Garante que o grupo atual da frequência apareça na lista mesmo se tiver sido desativado
+  // depois (ou removido — freq.grupoId pode não bater com nenhum grupo carregado).
+  const gruposOptions = !freq.grupoId || grupos.some(g => g.id === freq.grupoId)
+    ? grupos
+    : [{
+        id: freq.grupoId, tomadorId: freq.tomadorId, servicoLc116Id: '', codigoLc116: null,
+        descricaoServico: null, nome: '(grupo removido)', descricaoNota: '', ordem: 0,
+        ativo: false, servicosOperacionais: [],
+      }, ...grupos]
+
+  const grupoAtual = gruposOptions.find(g => g.id === grupoId) ?? null
+  const setoresAtivos = grupoAtual ? grupoAtual.servicosOperacionais.filter(s => s.ativo) : []
   // Garante que o setor atual da frequência apareça na lista mesmo se tiver sido desativado
   // depois — mesmo padrão já usado pra modalidade/ocorrência inativa em outros formulários.
   const setores = setoresAtivos.some(s => s.id === freq.servicoOperacionalId) || !freq.servicoOperacionalNome
     ? setoresAtivos
-    : [{ id: freq.servicoOperacionalId, tomadorId: freq.tomadorId, grupoId: '', nome: freq.servicoOperacionalNome, ativo: false }, ...setoresAtivos]
+    : [{ id: freq.servicoOperacionalId, tomadorId: freq.tomadorId, nome: freq.servicoOperacionalNome, ativo: false }, ...setoresAtivos]
 
   // A competência atual pode estar fora da janela de 12 meses de COMPETENCIAS (frequência
   // antiga) — injeta na lista pra não sumir do <select> quando o modal abre.
@@ -1121,11 +1152,14 @@ function EditarFrequenciaModal({
     ? COMPETENCIAS
     : [freq.competencia, ...COMPETENCIAS]
 
+  const canSave = !!grupoId && !!setorId
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!canSave) return
     setSaving(true); setErr(null)
     try {
-      const atualizada = await frequenciasApi.atualizar(freq.id, { competencia, servicoOperacionalId: setorId })
+      const atualizada = await frequenciasApi.atualizar(freq.id, { competencia, grupoId, servicoOperacionalId: setorId })
       onSalvo(atualizada)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erro ao salvar')
@@ -1152,10 +1186,19 @@ function EditarFrequenciaModal({
               {competenciaOptions.map(c => <option key={c} value={c}>{formatCompetencia(c)}</option>)}
             </select>
           </div>
+          <div className="mb-3">
+            <label className="block text-xs font-bold text-ds-mid mb-1">Grupo de Faturamento *</label>
+            <select value={grupoId} onChange={e => { setGrupoId(e.target.value); setSetorId('') }}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
+              <option value="">Selecione o grupo...</option>
+              {gruposOptions.map(g => <option key={g.id} value={g.id}>{g.nome}{!g.ativo ? ' (inativo)' : ''}</option>)}
+            </select>
+          </div>
           <div className="mb-4">
             <label className="block text-xs font-bold text-ds-mid mb-1">Setor Operacional *</label>
-            <select value={setorId} onChange={e => setSetorId(e.target.value)}
-              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
+            <select value={setorId} onChange={e => setSetorId(e.target.value)} disabled={!grupoId}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px] disabled:opacity-50">
+              <option value="">Selecione o setor...</option>
               {setores.map(s => <option key={s.id} value={s.id}>{s.nome}{!s.ativo ? ' (inativo)' : ''}</option>)}
             </select>
           </div>
@@ -1168,7 +1211,7 @@ function EditarFrequenciaModal({
               className="flex-1 px-4 py-2.5 rounded-xl border border-ds-border text-sm font-semibold text-ds-mid hover:bg-ds-surface transition-colors disabled:opacity-50">
               Cancelar
             </button>
-            <button type="submit" disabled={saving}
+            <button type="submit" disabled={saving || !canSave}
               className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
               {saving ? <><Loader2 size={14} className="animate-spin" />Salvando...</> : 'Salvar'}
             </button>
