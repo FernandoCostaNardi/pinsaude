@@ -101,6 +101,12 @@ export interface TomadorPortal {
   municipio: string | null
 }
 
+export interface SetorOperacionalPortal {
+  id: string
+  nome: string
+  categoria: string | null
+}
+
 export interface ProducaoPortal {
   id: string
   competencia: string
@@ -182,7 +188,14 @@ async function getTomadoresAlocados(): Promise<TomadorPortal[]> {
   return handleResponse<TomadorPortal[]>(res)
 }
 
+// Setores Operacionais que o médico logado está autorizado a exercer neste tomador — só
+// relevante quando o tomador tem `exigeFrequencia: true` (ver Tomador em tomadoresApi.ts).
+async function getSetoresDoMedicoNoTomador(tomadorId: string): Promise<SetorOperacionalPortal[]> {
+  const res = await fetch(`/api/portal/tomadores/${tomadorId}/setores`, { headers: authHeaders() })
+  return handleResponse<SetorOperacionalPortal[]>(res)
+}
+
 export const portalApi = {
   getDashboard, getNotas, getProducao, downloadXml, downloadPdf,
-  getExtrato, getPerfil, getVinculosEmpresa, getTomadoresAlocados,
+  getExtrato, getPerfil, getVinculosEmpresa, getTomadoresAlocados, getSetoresDoMedicoNoTomador,
 }

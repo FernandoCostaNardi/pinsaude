@@ -24,5 +24,6 @@ public record TomadorResponse(
     List<TomadorCnaeResponse> cnaes,
     List<TomadorServicoResponse> servicos,
     boolean temGrupoFaturamento,
-    List<TomadorEmpresaResponse> empresas
+    List<TomadorEmpresaResponse> empresas,
+    boolean exigeFrequencia
 ) {}

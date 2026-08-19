@@ -2,6 +2,7 @@ package br.com.pinsaude.faturamento.controller;
 
 import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorResponse;
+import br.com.pinsaude.faturamento.dto.MedicoTomadorSetorRequest;
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorEmpresaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorEmpresaResponse;
@@ -319,6 +320,35 @@ public class TomadorController {
             @PathVariable UUID id,
             @PathVariable UUID medicoId) {
         service.removerMedico(id, medicoId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── Setores Operacionais do médico alocado (tomador.exigeFrequencia) ─────
+
+    @GetMapping("/{id}/medicos/{medicoId}/setores")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    public ResponseEntity<List<TomadorServicoOperacionalResponse>> listarSetoresDoMedico(
+            @PathVariable UUID id,
+            @PathVariable UUID medicoId) {
+        return ResponseEntity.ok(service.listarSetoresDoMedico(id, medicoId));
+    }
+
+    @PostMapping("/{id}/medicos/{medicoId}/setores")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<TomadorServicoOperacionalResponse> adicionarSetorAoMedico(
+            @PathVariable UUID id,
+            @PathVariable UUID medicoId,
+            @Valid @RequestBody MedicoTomadorSetorRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.adicionarSetorAoMedico(id, medicoId, req));
+    }
+
+    @DeleteMapping("/{id}/medicos/{medicoId}/setores/{setorId}")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<Void> removerSetorDoMedico(
+            @PathVariable UUID id,
+            @PathVariable UUID medicoId,
+            @PathVariable UUID setorId) {
+        service.removerSetorDoMedico(id, medicoId, setorId);
         return ResponseEntity.noContent().build();
     }
 

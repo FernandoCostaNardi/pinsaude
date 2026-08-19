@@ -67,6 +67,12 @@ public class Tomador {
     @Column(name = "pais", length = 50)
     private String pais;
 
+    // Quando true, exige que médicos alocados a este tomador tenham os Setores Operacionais em
+    // que atuam explicitamente atribuídos — usado para filtrar o combo de Setor no Portal do
+    // Médico ao criar uma nova competência de Frequência. Ver V37.
+    @Column(name = "exige_frequencia", nullable = false)
+    private boolean exigeFrequencia;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -109,5 +115,7 @@ public class Tomador {
     public void setUf(String uf) { this.uf = uf; }
     public String getPais() { return pais; }
     public void setPais(String pais) { this.pais = pais; }
+    public boolean isExigeFrequencia() { return exigeFrequencia; }
+    public void setExigeFrequencia(boolean v) { this.exigeFrequencia = v; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

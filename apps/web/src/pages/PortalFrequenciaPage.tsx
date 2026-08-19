@@ -267,9 +267,18 @@ function NovaFrequenciaModal({
   const [ocorrencias,  setOcorrencias]  = useState<TomadorOcorrencia[]>([])
   const [ocorrenciaId, setOcorrenciaId] = useState('')
 
+  // Setores atribuídos ao médico logado neste tomador — só populado quando o tomador exige
+  // controle de frequência (Tomador.exigeFrequencia). `null` = sem restrição (tomador não usa
+  // essa granularidade, ou ainda carregando) → mostra o catálogo completo do grupo, como sempre.
+  const [setoresPermitidosIds, setSetoresPermitidosIds] = useState<Set<string> | null>(null)
+
   // PINSAUDE: Setor Operacional virou catálogo reutilizável entre grupos — o combo de Setor é
-  // sempre escopado ao Grupo escolhido (o mesmo setor pode estar em mais de um grupo).
-  const setores = form.grupo ? form.grupo.servicosOperacionais.filter(s => s.ativo) : []
+  // sempre escopado ao Grupo escolhido (o mesmo setor pode estar em mais de um grupo), e — quando
+  // o tomador exige frequência — também restrito aos setores atribuídos ao médico logado.
+  const setores = form.grupo
+    ? form.grupo.servicosOperacionais.filter(s =>
+        s.ativo && (setoresPermitidosIds === null || setoresPermitidosIds.has(s.id)))
+    : []
 
   useEffect(() => {
     setForm(f => ({ ...f, grupo: null, setor: null }))
@@ -280,6 +289,13 @@ function NovaFrequenciaModal({
       if (ativos.length === 1) setForm(f => ({ ...f, grupo: ativos[0] }))
     }).catch(() => setGrupos([]))
   }, [form.tomador?.id])
+
+  useEffect(() => {
+    if (!form.tomador?.exigeFrequencia) { setSetoresPermitidosIds(null); return }
+    portalApi.getSetoresDoMedicoNoTomador(form.tomador.id)
+      .then(lista => setSetoresPermitidosIds(new Set(lista.map(s => s.id))))
+      .catch(() => setSetoresPermitidosIds(new Set()))
+  }, [form.tomador?.id, form.tomador?.exigeFrequencia])
 
   useEffect(() => {
     setModalidade(null)
@@ -383,13 +399,23 @@ function NovaFrequenciaModal({
 
             <Dropdown
               label="Setor Operacional *"
-              placeholder={!form.grupo ? 'Selecione o grupo primeiro...' : setores.length === 0 ? 'Nenhum setor cadastrado neste grupo' : 'Selecione o setor...'}
+              placeholder={
+                !form.grupo ? 'Selecione o grupo primeiro...'
+                : setores.length > 0 ? 'Selecione o setor...'
+                : setoresPermitidosIds !== null ? 'Você não está alocado a nenhum setor deste grupo'
+                : 'Nenhum setor cadastrado neste grupo'
+              }
               items={setores}
               value={form.setor}
               onChange={s => setForm(f => ({ ...f, setor: s }))}
               getLabel={s => s.nome}
               disabled={!form.grupo || setores.length === 0}
             />
+            {form.grupo && setores.length === 0 && setoresPermitidosIds !== null && (
+              <p className="text-xs text-ds-light -mt-2">
+                Este tomador exige controle de frequência — fale com a operação para atribuir os setores em que você atua aqui.
+              </p>
+            )}
 
             {/* Competência + Tipo — 1 coluna no mobile, 2 colunas no desktop */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

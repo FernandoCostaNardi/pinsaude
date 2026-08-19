@@ -140,4 +140,34 @@ class PortalMedicoControllerTest {
         mockMvc.perform(get("/api/portal/tomadores"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void setoresDoTomador_comRoleMedico_retornaLista() throws Exception {
+        UUID medicoId = UUID.randomUUID();
+        UUID tomadorId = UUID.randomUUID();
+        when(service.resolveMedicoId("medico@test.com")).thenReturn(medicoId);
+        when(service.getSetoresDoMedicoNoTomador(medicoId, tomadorId)).thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/api/portal/tomadores/{tomadorId}/setores", tomadorId)
+                .with(jwt()
+                        .authorities(new SimpleGrantedAuthority("ROLE_medico"))
+                        .jwt(j -> j.claim("email", "medico@test.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void setoresDoTomador_semRoleMedico_retorna403() throws Exception {
+        mockMvc.perform(get("/api/portal/tomadores/{tomadorId}/setores", UUID.randomUUID())
+                .with(jwt()
+                        .authorities(new SimpleGrantedAuthority("ROLE_gestao"))
+                        .jwt(j -> j.claim("email", "gestao@test.com"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void setoresDoTomador_semAutenticacao_retorna401() throws Exception {
+        mockMvc.perform(get("/api/portal/tomadores/{tomadorId}/setores", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized());
+    }
 }
