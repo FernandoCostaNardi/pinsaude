@@ -69,6 +69,10 @@ export interface Tomador {
   servicos: TomadorServico[]
   temGrupoFaturamento: boolean
   empresas: TomadorEmpresa[]
+  // Quando true, médicos alocados a este tomador precisam ter os Setores Operacionais em que
+  // atuam explicitamente atribuídos (TomadorMedicosModal) — filtra o combo de Setor no Portal
+  // ao criar uma nova competência de Frequência.
+  exigeFrequencia: boolean
 }
 
 export interface TomadorRequest {
@@ -87,6 +91,7 @@ export interface TomadorRequest {
   cep: string
   uf: string
   pais: string
+  exigeFrequencia: boolean
 }
 
 export interface ReceitaFederalData {
@@ -431,6 +436,30 @@ export const tomadoresApi = {
 
   async removerMedico(tomadorId: string, medicoId: string): Promise<void> {
     const res = await fetch(`/api/tomadores/${tomadorId}/medicos/${medicoId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
+
+  // ─── Setores Operacionais do médico alocado (tomador.exigeFrequencia) ────
+
+  async listarSetoresDoMedico(tomadorId: string, medicoId: string): Promise<TomadorServicoOperacional[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/medicos/${medicoId}/setores`, { headers: authHeaders() })
+    return handleResponse<TomadorServicoOperacional[]>(res)
+  },
+
+  async adicionarSetorAoMedico(tomadorId: string, medicoId: string, setorId: string): Promise<TomadorServicoOperacional> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/medicos/${medicoId}/setores`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ setorId }),
+    })
+    return handleResponse<TomadorServicoOperacional>(res)
+  },
+
+  async removerSetorDoMedico(tomadorId: string, medicoId: string, setorId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/medicos/${medicoId}/setores/${setorId}`, {
       method: 'DELETE',
       headers: authHeaders(),
     })

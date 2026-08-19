@@ -6,6 +6,7 @@ import br.com.pinsaude.portal.dto.ExtratoResponse;
 import br.com.pinsaude.portal.dto.NotaPortalResponse;
 import br.com.pinsaude.portal.dto.PerfilMedicoResponse;
 import br.com.pinsaude.portal.dto.ProducaoPortalResponse;
+import br.com.pinsaude.portal.dto.SetorOperacionalPortalResponse;
 import br.com.pinsaude.portal.dto.TomadorPortalResponse;
 import br.com.pinsaude.portal.service.PortalService;
 import org.springframework.http.MediaType;
@@ -116,6 +117,15 @@ public class PortalMedicoController {
     public ResponseEntity<List<TomadorPortalResponse>> tomadores(@AuthenticationPrincipal Jwt jwt) {
         UUID medicoId = service.resolveMedicoId(jwt.getClaimAsString("email"));
         return ResponseEntity.ok(service.getTomadoresDoMedico(medicoId));
+    }
+
+    @GetMapping("/tomadores/{tomadorId}/setores")
+    @PreAuthorize("hasRole('medico')")
+    public ResponseEntity<List<SetorOperacionalPortalResponse>> setoresDoTomador(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID tomadorId) {
+        UUID medicoId = service.resolveMedicoId(jwt.getClaimAsString("email"));
+        return ResponseEntity.ok(service.getSetoresDoMedicoNoTomador(medicoId, tomadorId));
     }
 
     @GetMapping("/repasses")

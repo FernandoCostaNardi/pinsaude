@@ -18,5 +18,6 @@ public record TomadorRequest(
     String bairro,
     String cep,
     String uf,
-    String pais
+    String pais,
+    Boolean exigeFrequencia
 ) {}

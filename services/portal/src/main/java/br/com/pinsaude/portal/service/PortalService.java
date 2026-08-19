@@ -6,6 +6,7 @@ import br.com.pinsaude.portal.dto.ExtratoResponse;
 import br.com.pinsaude.portal.dto.NotaPortalResponse;
 import br.com.pinsaude.portal.dto.PerfilMedicoResponse;
 import br.com.pinsaude.portal.dto.ProducaoPortalResponse;
+import br.com.pinsaude.portal.dto.SetorOperacionalPortalResponse;
 import br.com.pinsaude.portal.dto.TomadorPortalResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -188,6 +189,26 @@ public class PortalService {
                         rs.getString("razao_social_nome"),
                         rs.getString("municipio")),
                 medicoId);
+    }
+
+    // Setores Operacionais que o médico logado está autorizado a exercer neste tomador —
+    // só populado quando o tomador exige controle de frequência (ver TomadorMedicosModal no
+    // admin). Lista vazia quando o tomador não usa essa granularidade (a tela filtra pelo flag
+    // Tomador.exigeFrequencia, que já vem no shape completo de Tomador consumido pelo Portal).
+    public List<SetorOperacionalPortalResponse> getSetoresDoMedicoNoTomador(UUID medicoId, UUID tomadorId) {
+        return jdbc.query("""
+                SELECT s.id, s.nome, s.categoria
+                FROM faturamento.medico_tomador_setores mts
+                JOIN faturamento.medico_tomadores mt ON mt.id = mts.medico_tomador_id
+                JOIN faturamento.tomador_servicos_operacionais s ON s.id = mts.setor_id
+                WHERE mt.medico_id = ? AND mt.tomador_id = ? AND s.ativo = true
+                ORDER BY s.nome
+                """,
+                (rs, row) -> new SetorOperacionalPortalResponse(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("nome"),
+                        rs.getString("categoria")),
+                medicoId, tomadorId);
     }
 
     public ExtratoResponse getExtrato(UUID medicoId, LocalDate dtInicio, LocalDate dtFim) {

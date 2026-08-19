@@ -14,9 +14,11 @@ import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServico;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 import br.com.pinsaude.faturamento.domain.MedicoTomador;
+import br.com.pinsaude.faturamento.domain.MedicoTomadorSetor;
 import br.com.pinsaude.faturamento.domain.TomadorEmpresa;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorResponse;
+import br.com.pinsaude.faturamento.dto.MedicoTomadorSetorRequest;
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorEmpresaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorEmpresaResponse;
@@ -43,6 +45,7 @@ import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
 import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
 import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
+import br.com.pinsaude.faturamento.repository.MedicoTomadorSetorRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
@@ -87,6 +90,7 @@ public class TomadorService {
     private final TomadorModalidadeRepository modalidadeRepo;
     private final TomadorServicoOperacionalRepository servicoOperacionalRepo;
     private final MedicoTomadorRepository medicoTomadorRepo;
+    private final MedicoTomadorSetorRepository medicoTomadorSetorRepo;
     private final TomadorEmpresaRepository empresaTomadorRepo;
     private final TomadorOcorrenciaRepository ocorrenciaRepo;
     private final TomadorHorarioPadraoRepository horarioPadraoRepo;
@@ -105,6 +109,7 @@ public class TomadorService {
                           TomadorModalidadeRepository modalidadeRepo,
                           TomadorServicoOperacionalRepository servicoOperacionalRepo,
                           MedicoTomadorRepository medicoTomadorRepo,
+                          MedicoTomadorSetorRepository medicoTomadorSetorRepo,
                           TomadorEmpresaRepository empresaTomadorRepo,
                           TomadorOcorrenciaRepository ocorrenciaRepo,
                           TomadorHorarioPadraoRepository horarioPadraoRepo,
@@ -122,6 +127,7 @@ public class TomadorService {
         this.modalidadeRepo = modalidadeRepo;
         this.servicoOperacionalRepo = servicoOperacionalRepo;
         this.medicoTomadorRepo = medicoTomadorRepo;
+        this.medicoTomadorSetorRepo = medicoTomadorSetorRepo;
         this.empresaTomadorRepo = empresaTomadorRepo;
         this.horarioPadraoRepo = horarioPadraoRepo;
         this.ocorrenciaRepo = ocorrenciaRepo;
@@ -195,6 +201,7 @@ public class TomadorService {
         t.setCep(req.cep());
         t.setUf(req.uf());
         t.setPais(req.pais());
+        t.setExigeFrequencia(Boolean.TRUE.equals(req.exigeFrequencia()));
 
         return toResponse(repo.save(t));
     }
@@ -227,6 +234,7 @@ public class TomadorService {
         t.setCep(req.cep());
         t.setUf(req.uf());
         t.setPais(req.pais());
+        t.setExigeFrequencia(Boolean.TRUE.equals(req.exigeFrequencia()));
 
         return toResponse(repo.save(t));
     }
@@ -636,6 +644,58 @@ public class TomadorService {
         medicoTomadorRepo.deleteByTomadorIdAndMedicoId(tomadorId, medicoId);
     }
 
+    // ─── Setores Operacionais do médico alocado (só quando tomador.exigeFrequencia) ──────────
+
+    public List<TomadorServicoOperacionalResponse> listarSetoresDoMedico(UUID tomadorId, UUID medicoId) {
+        findOrThrow(tomadorId);
+        MedicoTomador mt = medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Médico não está alocado a este tomador"));
+        List<MedicoTomadorSetor> vinculos = medicoTomadorSetorRepo.findByMedicoTomadorId(mt.getId());
+        if (vinculos.isEmpty()) return List.of();
+        Map<UUID, TomadorServicoOperacional> setoresPorId = servicoOperacionalRepo
+            .findAllById(vinculos.stream().map(MedicoTomadorSetor::getSetorId).toList()).stream()
+            .collect(Collectors.toMap(TomadorServicoOperacional::getId, Function.identity()));
+        return vinculos.stream()
+            .map(v -> setoresPorId.get(v.getSetorId()))
+            .filter(Objects::nonNull)
+            .map(TomadorServicoOperacionalResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public TomadorServicoOperacionalResponse adicionarSetorAoMedico(UUID tomadorId, UUID medicoId,
+                                                                      MedicoTomadorSetorRequest req) {
+        findOrThrow(tomadorId);
+        MedicoTomador mt = medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Médico não está alocado a este tomador"));
+        TomadorServicoOperacional setor = servicoOperacionalRepo.findById(req.setorId())
+            .filter(s -> tomadorId.equals(s.getTomadorId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Serviço operacional não encontrado"));
+        if (medicoTomadorSetorRepo.existsByMedicoTomadorIdAndSetorId(mt.getId(), req.setorId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Setor já atribuído a este médico");
+        }
+        MedicoTomadorSetor vinculo = new MedicoTomadorSetor();
+        vinculo.setMedicoTomadorId(mt.getId());
+        vinculo.setSetorId(req.setorId());
+        medicoTomadorSetorRepo.save(vinculo);
+        return TomadorServicoOperacionalResponse.from(setor);
+    }
+
+    @Transactional
+    public void removerSetorDoMedico(UUID tomadorId, UUID medicoId, UUID setorId) {
+        findOrThrow(tomadorId);
+        MedicoTomador mt = medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Médico não está alocado a este tomador"));
+        if (!medicoTomadorSetorRepo.existsByMedicoTomadorIdAndSetorId(mt.getId(), setorId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Setor não está atribuído a este médico");
+        }
+        medicoTomadorSetorRepo.deleteByMedicoTomadorIdAndSetorId(mt.getId(), setorId);
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     private Map<UUID, Servico> servicosPorId(List<TomadorServico> vinculos) {
@@ -743,7 +803,8 @@ public class TomadorService {
             cnaes,
             servicos,
             temGrupoFaturamento,
-            empresas
+            empresas,
+            t.isExigeFrequencia()
         );
     }
 

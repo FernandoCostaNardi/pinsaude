@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface MedicoTomadorRepository extends JpaRepository<MedicoTomador, UUID> {
@@ -16,6 +17,8 @@ public interface MedicoTomadorRepository extends JpaRepository<MedicoTomador, UU
     List<MedicoTomador> findByMedicoId(UUID medicoId);
 
     boolean existsByTomadorIdAndMedicoId(UUID tomadorId, UUID medicoId);
+
+    Optional<MedicoTomador> findByTomadorIdAndMedicoId(UUID tomadorId, UUID medicoId);
 
     @Transactional
     void deleteByTomadorIdAndMedicoId(UUID tomadorId, UUID medicoId);

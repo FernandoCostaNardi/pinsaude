@@ -2,12 +2,15 @@ package br.com.pinsaude.faturamento.tomador;
 
 import br.com.pinsaude.faturamento.config.SecurityUtils;
 import br.com.pinsaude.faturamento.domain.MedicoTomador;
+import br.com.pinsaude.faturamento.domain.MedicoTomadorSetor;
 import br.com.pinsaude.faturamento.domain.TipoTomador;
 import br.com.pinsaude.faturamento.domain.Tomador;
 import br.com.pinsaude.faturamento.domain.TomadorEmpresa;
 import br.com.pinsaude.faturamento.domain.TomadorHorarioPadrao;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
+import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
+import br.com.pinsaude.faturamento.dto.MedicoTomadorSetorRequest;
 import br.com.pinsaude.faturamento.dto.TomadorEmpresaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorHorarioPadraoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaRequest;
@@ -17,6 +20,7 @@ import br.com.pinsaude.faturamento.port.ConsultaCnpjPort;
 import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
 import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
+import br.com.pinsaude.faturamento.repository.MedicoTomadorSetorRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
@@ -70,6 +74,7 @@ class TomadorServiceTest {
     @Mock TomadorModalidadeRepository modalidadeRepo;
     @Mock TomadorServicoOperacionalRepository servicoOperacionalRepo;
     @Mock MedicoTomadorRepository medicoTomadorRepo;
+    @Mock MedicoTomadorSetorRepository medicoTomadorSetorRepo;
     @Mock TomadorEmpresaRepository empresaTomadorRepo;
     @Mock TomadorOcorrenciaRepository ocorrenciaRepo;
     @Mock TomadorHorarioPadraoRepository horarioPadraoRepo;
@@ -192,7 +197,7 @@ class TomadorServiceTest {
     void criar_comCnpjValido_salvaRetornaResponse() {
         TomadorRequest req = new TomadorRequest(
             "HOSPITAL", CNPJ_VALIDO, "Hospital Novo",
-            null, null, null, false, false, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null, null, null);
 
         Tomador saved = tomadorFixture(TENANT);
         when(crypto.encrypt(CNPJ_VALIDO)).thenReturn(new byte[]{1, 2, 3});
@@ -207,6 +212,24 @@ class TomadorServiceTest {
     }
 
     @Test
+    void criar_comExigeFrequenciaTrue_persisteFlag() {
+        TomadorRequest req = new TomadorRequest(
+            "HOSPITAL", CNPJ_VALIDO, "Hospital Novo",
+            null, null, null, false, false, null, null, null, null, null, null, null, true);
+
+        when(crypto.encrypt(CNPJ_VALIDO)).thenReturn(new byte[]{1, 2, 3});
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        TomadorResponse result = service.criar(req);
+
+        assertThat(result.exigeFrequencia()).isTrue();
+        var captor = org.mockito.ArgumentCaptor.forClass(Tomador.class);
+        verify(repo).save(captor.capture());
+        assertThat(captor.getValue().isExigeFrequencia()).isTrue();
+    }
+
+    @Test
     void criar_comCnpjDuplicado_lanca409() {
         Tomador existente = tomadorFixture(TENANT);
         when(repo.findAll()).thenReturn(List.of(existente));
@@ -214,7 +237,7 @@ class TomadorServiceTest {
 
         TomadorRequest req = new TomadorRequest(
             "CLINICA", CNPJ_VALIDO, "Outra Clínica",
-            null, null, null, false, false, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -225,7 +248,7 @@ class TomadorServiceTest {
     void criar_comCnpjInvalido_lanca400() {
         TomadorRequest req = new TomadorRequest(
             "CLINICA", CNPJ_INVALIDO, "Clínica Inválida",
-            null, null, null, false, false, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -236,7 +259,7 @@ class TomadorServiceTest {
     void criar_pacientePfComCpfValido_salva() {
         TomadorRequest req = new TomadorRequest(
             "PACIENTE_PF", CPF_VALIDO, "João da Silva",
-            null, null, null, false, false, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null, null, null);
 
         Tomador saved = tomadorPfFixture(TENANT);
         when(crypto.encrypt(CPF_VALIDO)).thenReturn(new byte[]{4, 5, 6});
@@ -253,7 +276,7 @@ class TomadorServiceTest {
     void criar_pacientePfComCpfInvalido_lanca400() {
         TomadorRequest req = new TomadorRequest(
             "PACIENTE_PF", "11111111111", "Nome",
-            null, null, null, false, false, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -264,7 +287,7 @@ class TomadorServiceTest {
     void criar_tipoInvalido_lanca400() {
         TomadorRequest req = new TomadorRequest(
             "INVALIDO", CNPJ_VALIDO, "Teste",
-            null, null, null, false, false, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -290,7 +313,7 @@ class TomadorServiceTest {
         Tomador existente = tomadorFixture(TENANT);
         TomadorRequest req = new TomadorRequest(
             "OPERADORA", CNPJ_VALIDO, "Operadora Nova",
-            null, null, null, true, false, null, null, null, null, null, null, null);
+            null, null, null, true, false, null, null, null, null, null, null, null, null);
 
         when(repo.findById(id)).thenReturn(Optional.of(existente));
         when(crypto.encrypt(CNPJ_VALIDO)).thenReturn(new byte[]{7, 8, 9});
@@ -324,7 +347,7 @@ class TomadorServiceTest {
 
         TomadorRequest req = new TomadorRequest(
             "OPERADORA", CNPJ_VALIDO, "Operadora Nova",
-            null, null, null, true, false, null, null, null, null, null, null, null);
+            null, null, null, true, false, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.atualizar(id, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -486,6 +509,180 @@ class TomadorServiceTest {
         service.removerMedico(tomadorId, medicoId);
 
         verify(medicoTomadorRepo).deleteByTomadorIdAndMedicoId(tomadorId, medicoId);
+    }
+
+    // ─── setores operacionais do médico alocado ────────────────────────────────
+
+    @Test
+    void listarSetoresDoMedico_medicoNaoAlocado_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.listarSetoresDoMedico(tomadorId, medicoId))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não está alocado");
+    }
+
+    @Test
+    void listarSetoresDoMedico_retornaSetoresVinculados() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        UUID medicoTomadorId = UUID.randomUUID();
+        UUID setorId = UUID.randomUUID();
+
+        MedicoTomador mt = new MedicoTomador();
+        mt.setTomadorId(tomadorId);
+        mt.setMedicoId(medicoId);
+        setId(mt, medicoTomadorId);
+
+        MedicoTomadorSetor vinculo = new MedicoTomadorSetor();
+        vinculo.setMedicoTomadorId(medicoTomadorId);
+        vinculo.setSetorId(setorId);
+
+        TomadorServicoOperacional setor = new TomadorServicoOperacional();
+        setId(setor, setorId);
+        setor.setTomadorId(tomadorId);
+        setor.setNome("Emergência");
+
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(Optional.of(mt));
+        when(medicoTomadorSetorRepo.findByMedicoTomadorId(medicoTomadorId)).thenReturn(List.of(vinculo));
+        when(servicoOperacionalRepo.findAllById(List.of(setorId))).thenReturn(List.of(setor));
+
+        var result = service.listarSetoresDoMedico(tomadorId, medicoId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(setorId);
+        assertThat(result.get(0).nome()).isEqualTo("Emergência");
+    }
+
+    @Test
+    void adicionarSetorAoMedico_medicoNaoAlocado_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.adicionarSetorAoMedico(tomadorId, medicoId,
+                new MedicoTomadorSetorRequest(UUID.randomUUID())))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não está alocado");
+    }
+
+    @Test
+    void adicionarSetorAoMedico_setorDeOutroTomador_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        UUID setorId = UUID.randomUUID();
+        MedicoTomador mt = new MedicoTomador();
+        mt.setTomadorId(tomadorId);
+        mt.setMedicoId(medicoId);
+        setId(mt, UUID.randomUUID());
+
+        TomadorServicoOperacional setorDeOutroTomador = new TomadorServicoOperacional();
+        setId(setorDeOutroTomador, setorId);
+        setorDeOutroTomador.setTomadorId(UUID.randomUUID());
+
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(Optional.of(mt));
+        when(servicoOperacionalRepo.findById(setorId)).thenReturn(Optional.of(setorDeOutroTomador));
+
+        assertThatThrownBy(() -> service.adicionarSetorAoMedico(tomadorId, medicoId,
+                new MedicoTomadorSetorRequest(setorId)))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não encontrado");
+    }
+
+    @Test
+    void adicionarSetorAoMedico_jaAtribuido_lanca409() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        UUID medicoTomadorId = UUID.randomUUID();
+        UUID setorId = UUID.randomUUID();
+        MedicoTomador mt = new MedicoTomador();
+        mt.setTomadorId(tomadorId);
+        mt.setMedicoId(medicoId);
+        setId(mt, medicoTomadorId);
+
+        TomadorServicoOperacional setor = new TomadorServicoOperacional();
+        setId(setor, setorId);
+        setor.setTomadorId(tomadorId);
+
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(Optional.of(mt));
+        when(servicoOperacionalRepo.findById(setorId)).thenReturn(Optional.of(setor));
+        when(medicoTomadorSetorRepo.existsByMedicoTomadorIdAndSetorId(medicoTomadorId, setorId)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.adicionarSetorAoMedico(tomadorId, medicoId,
+                new MedicoTomadorSetorRequest(setorId)))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("já atribuído");
+    }
+
+    @Test
+    void adicionarSetorAoMedico_valido_salvaRetornaResponse() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        UUID medicoTomadorId = UUID.randomUUID();
+        UUID setorId = UUID.randomUUID();
+        MedicoTomador mt = new MedicoTomador();
+        mt.setTomadorId(tomadorId);
+        mt.setMedicoId(medicoId);
+        setId(mt, medicoTomadorId);
+
+        TomadorServicoOperacional setor = new TomadorServicoOperacional();
+        setId(setor, setorId);
+        setor.setTomadorId(tomadorId);
+        setor.setNome("UTI");
+
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(Optional.of(mt));
+        when(servicoOperacionalRepo.findById(setorId)).thenReturn(Optional.of(setor));
+        when(medicoTomadorSetorRepo.existsByMedicoTomadorIdAndSetorId(medicoTomadorId, setorId)).thenReturn(false);
+
+        var result = service.adicionarSetorAoMedico(tomadorId, medicoId, new MedicoTomadorSetorRequest(setorId));
+
+        assertThat(result.id()).isEqualTo(setorId);
+        assertThat(result.nome()).isEqualTo("UTI");
+        verify(medicoTomadorSetorRepo).save(any());
+    }
+
+    @Test
+    void removerSetorDoMedico_naoAtribuido_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        UUID medicoTomadorId = UUID.randomUUID();
+        UUID setorId = UUID.randomUUID();
+        MedicoTomador mt = new MedicoTomador();
+        setId(mt, medicoTomadorId);
+
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(Optional.of(mt));
+        when(medicoTomadorSetorRepo.existsByMedicoTomadorIdAndSetorId(medicoTomadorId, setorId)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.removerSetorDoMedico(tomadorId, medicoId, setorId))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não está atribuído");
+    }
+
+    @Test
+    void removerSetorDoMedico_atribuido_removeComSucesso() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID medicoId = UUID.randomUUID();
+        UUID medicoTomadorId = UUID.randomUUID();
+        UUID setorId = UUID.randomUUID();
+        MedicoTomador mt = new MedicoTomador();
+        setId(mt, medicoTomadorId);
+
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(medicoTomadorRepo.findByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(Optional.of(mt));
+        when(medicoTomadorSetorRepo.existsByMedicoTomadorIdAndSetorId(medicoTomadorId, setorId)).thenReturn(true);
+
+        service.removerSetorDoMedico(tomadorId, medicoId, setorId);
+
+        verify(medicoTomadorSetorRepo).deleteByMedicoTomadorIdAndSetorId(medicoTomadorId, setorId);
     }
 
     // ─── empresas Pin vinculadas ao tomador (PINSAUDE-13.12) ──────────────────
@@ -845,6 +1042,16 @@ class TomadorServiceTest {
     }
 
     // ─── fixtures ────────────────────────────────────────────────────────────
+
+    // Entidades com @GeneratedValue não expõem setId() — reflection para simular um registro
+    // já persistido em fixtures de teste (mesmo padrão usado nos demais fixtures deste arquivo).
+    private static void setId(Object entity, UUID id) {
+        try {
+            var f = entity.getClass().getDeclaredField("id");
+            f.setAccessible(true);
+            f.set(entity, id);
+        } catch (Exception ignored) { /* fixture de teste — falha aqui só deixaria o id nulo */ }
+    }
 
     private TomadorOcorrencia ocorrenciaFixture(UUID tomadorId, String tipoValor,
                                                 java.math.BigDecimal valorPercentual, Long valorCentavos) {

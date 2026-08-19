@@ -64,6 +64,7 @@ const emptyForm = (): TomadorRequest => ({
   cep: '',
   uf: '',
   pais: 'Brasil',
+  exigeFrequencia: false,
 })
 
 let cnaeKey = 1
@@ -130,6 +131,7 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
         cep: tomador.cep ?? '',
         uf: tomador.uf ?? '',
         pais: tomador.pais ?? 'Brasil',
+        exigeFrequencia: tomador.exigeFrequencia,
       })
       const map = { ...EMPTY_ALIQ }
       for (const a of tomador.aliquotas ?? []) {
@@ -534,6 +536,30 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
               className={isPf ? 'col-span-2' : ''}
             />
           </div>
+        </div>
+
+        {/* ── Controle de Frequência Médica ── */}
+        <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.exigeFrequencia}
+              onChange={e => set('exigeFrequencia', e.target.checked)}
+              className="mt-0.5 rounded border-ds-border text-primary focus:ring-primary"
+            />
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-medium text-ds-text">Exige controle de frequência</span>
+                <span className="cursor-help text-ds-light hover:text-primary transition-colors"
+                  title="Quando marcado, cada médico alocado a este tomador (aba Médicos Alocados) precisa ter os Setores Operacionais em que atua atribuídos explicitamente — o Portal do médico mostra apenas esses setores ao lançar uma nova competência de Frequência.">
+                  <Info size={13} />
+                </span>
+              </div>
+              <p className="text-xs text-ds-light mt-0.5">
+                Restringe, por médico, quais setores operacionais aparecem no Portal ao criar uma Frequência
+              </p>
+            </div>
+          </label>
         </div>
 
         </div>
