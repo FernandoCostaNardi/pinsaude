@@ -197,17 +197,21 @@ public class PortalService {
     // Tomador.exigeFrequencia, que já vem no shape completo de Tomador consumido pelo Portal).
     public List<SetorOperacionalPortalResponse> getSetoresDoMedicoNoTomador(UUID medicoId, UUID tomadorId) {
         return jdbc.query("""
-                SELECT s.id, s.nome, s.categoria
+                SELECT s.id, s.nome, s.categoria, s.modalidade_id, m.nome AS modalidade_nome, m.tipo AS modalidade_tipo
                 FROM faturamento.medico_tomador_setores mts
                 JOIN faturamento.medico_tomadores mt ON mt.id = mts.medico_tomador_id
                 JOIN faturamento.tomador_servicos_operacionais s ON s.id = mts.setor_id
+                LEFT JOIN faturamento.tomador_modalidades m ON m.id = s.modalidade_id
                 WHERE mt.medico_id = ? AND mt.tomador_id = ? AND s.ativo = true
                 ORDER BY s.nome
                 """,
                 (rs, row) -> new SetorOperacionalPortalResponse(
                         rs.getObject("id", UUID.class),
                         rs.getString("nome"),
-                        rs.getString("categoria")),
+                        rs.getString("categoria"),
+                        rs.getObject("modalidade_id", UUID.class),
+                        rs.getString("modalidade_nome"),
+                        rs.getString("modalidade_tipo")),
                 medicoId, tomadorId);
     }
 

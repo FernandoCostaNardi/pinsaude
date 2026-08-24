@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Plus, Pencil, Trash2, Layers, ChevronDown, ChevronRight,
   Moon, Sun, Loader2, FolderOpen, Tag, Clock,
@@ -129,14 +129,31 @@ function emptyHorarioPadraoForm(): HorarioPadraoForm {
 
 // Cadastro dedicado de Setores Operacionais (catálogo por tomador, com categoria própria) —
 // separado do fluxo de Grupos, que passa a só selecionar entre os setores já cadastrados aqui.
+//
+// modalidadeId/tipoEscalaLabel: pedido do cliente — o setor define explicitamente qual a
+// Modalidade daquele setor (usada pra derivar o Tipo de Escala da Frequência automaticamente,
+// sem precisar mais perguntar isso na tela de Nova Frequência) e o texto exibido no campo
+// "Tipo de Escala" do PDF (sugestão default "Modalidade - Setor", editável).
 interface SetorForm {
   nome: string
   categoria: string
   ativo: boolean
+  modalidadeId: string
+  tipoEscalaLabel: string
 }
 
 function emptySetorForm(): SetorForm {
-  return { nome: '', categoria: '', ativo: true }
+  return { nome: '', categoria: '', ativo: true, modalidadeId: '', tipoEscalaLabel: '' }
+}
+
+// "Plantonista - Setor" / "Diarista - Setor" — sugestão default do texto exibido no PDF (usa o
+// Tipo de Escala da modalidade escolhida, não o nome específico dela — ex: "Diária 10h" vira
+// "Diarista", não o nome da modalidade), recalculada enquanto o usuário não customizar o campo
+// manualmente (ver lastSugestaoRef em SetorFormInline).
+function sugerirTipoEscalaLabel(nome: string, modalidade: TomadorModalidade | undefined): string {
+  if (!modalidade || !nome.trim()) return ''
+  const tipoLabel = modalidade.tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'
+  return `${tipoLabel} - ${nome.trim()}`
 }
 
 // Categoria "Sem categoria" agrupa setores sem esse campo preenchido — usado tanto no cadastro
@@ -688,7 +705,7 @@ function CategoriaCombobox({
 }
 
 function SetorFormInline({
-  form, onChange, onSave, onCancel, saving, isNew, categoriasExistentes,
+  form, onChange, onSave, onCancel, saving, isNew, categoriasExistentes, modalidades,
 }: {
   form: SetorForm
   onChange: (patch: Partial<SetorForm>) => void
@@ -697,7 +714,43 @@ function SetorFormInline({
   saving: boolean
   isNew: boolean
   categoriasExistentes: string[]
+  modalidades: TomadorModalidade[]
 }) {
+  const SELECT_CLS = 'w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white'
+
+  // Sugestão "Plantonista/Diarista - Setor" recalculada enquanto o usuário não customizar o campo
+  // à mão — lastSugestaoRef guarda a última sugestão aplicada automaticamente; se o valor atual do campo
+  // ainda bater com ela (ou estiver vazio), a próxima sugestão sobrescreve; se o usuário já
+  // digitou algo diferente, o campo nunca mais é sobrescrito sozinho. O componente é remontado
+  // (key no ponto de uso) sempre que troca de setor sendo editado, então este ref começa "limpo"
+  // a cada abertura de formulário.
+  const modalidadeInicial = modalidades.find(m => m.id === form.modalidadeId)
+  const sugestaoInicial = sugerirTipoEscalaLabel(form.nome, modalidadeInicial)
+  const lastSugestaoRef = useRef<string>(
+    form.tipoEscalaLabel === sugestaoInicial ? sugestaoInicial : '__custom__'
+  )
+
+  function aplicarComSugestao(patch: Partial<SetorForm>) {
+    const nome = patch.nome ?? form.nome
+    const modalidadeId = patch.modalidadeId ?? form.modalidadeId
+    const modalidade = modalidades.find(m => m.id === modalidadeId)
+    const sugestao = sugerirTipoEscalaLabel(nome, modalidade)
+    const next = { ...patch }
+    if (!form.tipoEscalaLabel.trim() || form.tipoEscalaLabel === lastSugestaoRef.current) {
+      next.tipoEscalaLabel = sugestao
+    }
+    lastSugestaoRef.current = sugestao
+    onChange(next)
+  }
+
+  // Modalidade selecionada mas hoje inativa (ex: setor cadastrado antes dela ser desativada) —
+  // injeta no topo da lista pra o <select> não ficar em branco (mesmo padrão já usado em outros
+  // formulários deste componente para modalidade/ocorrência inativa).
+  const modalidadeSelecionadaInativa = modalidadeInicial && !modalidadeInicial.ativo ? modalidadeInicial : null
+  const modalidadeOptions = modalidadeSelecionadaInativa
+    ? [modalidadeSelecionadaInativa, ...modalidades.filter(m => m.ativo)]
+    : modalidades.filter(m => m.ativo)
+
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
@@ -705,7 +758,7 @@ function SetorFormInline({
           <Input
             label="Nome do setor *"
             value={form.nome}
-            onChange={e => onChange({ nome: e.target.value })}
+            onChange={e => aplicarComSugestao({ nome: e.target.value })}
             placeholder="ex: Emergência Cardiológica"
           />
         </div>
@@ -718,6 +771,42 @@ function SetorFormInline({
             value={form.categoria}
             onChange={v => onChange({ categoria: v })}
             categoriasExistentes={categoriasExistentes}
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Modalidade *
+            <span className="ml-1 text-xs font-normal text-ds-light">(define o Tipo de Escala da Frequência automaticamente)</span>
+          </label>
+          {modalidades.length === 0 ? (
+            <p className="text-[11px] text-ds-light">
+              Nenhuma modalidade cadastrada — configure ao menos uma na aba "Modalidades" antes de cadastrar o setor.
+            </p>
+          ) : (
+            <select
+              value={form.modalidadeId}
+              onChange={e => aplicarComSugestao({ modalidadeId: e.target.value })}
+              className={SELECT_CLS}
+            >
+              <option value="">Selecione a modalidade...</option>
+              {modalidadeOptions.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.nome} ({m.tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'}{!m.ativo ? ' — inativa' : ''})
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Texto no PDF (campo "Tipo de Escala") *
+            <span className="ml-1 text-xs font-normal text-ds-light">(sugerido automaticamente, mas pode ser alterado)</span>
+          </label>
+          <input
+            value={form.tipoEscalaLabel}
+            onChange={e => onChange({ tipoEscalaLabel: e.target.value })}
+            placeholder="ex: Plantonista - Emergência Cardiológica"
+            className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
           />
         </div>
         <div className="col-span-2">
@@ -974,7 +1063,13 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   }
 
   function abrirEditarSetor(s: TomadorServicoOperacional) {
-    setSetorForm({ nome: s.nome, categoria: s.categoria ?? '', ativo: s.ativo })
+    setSetorForm({
+      nome: s.nome,
+      categoria: s.categoria ?? '',
+      ativo: s.ativo,
+      modalidadeId: s.modalidadeId ?? '',
+      tipoEscalaLabel: s.tipoEscalaLabel ?? '',
+    })
     setEditingSetorId(s.id)
     setSetorErr(null)
   }
@@ -991,10 +1086,20 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       setSetorErr('Preencha o nome do setor')
       return
     }
+    if (!setorForm.modalidadeId) {
+      setSetorErr('Selecione a modalidade do setor')
+      return
+    }
+    if (!setorForm.tipoEscalaLabel.trim()) {
+      setSetorErr('Preencha o texto exibido no PDF (campo "Tipo de Escala")')
+      return
+    }
     const req: TomadorServicoOperacionalRequest = {
       nome: setorForm.nome.trim(),
       categoria: setorForm.categoria.trim() || null,
       ativo: setorForm.ativo,
+      modalidadeId: setorForm.modalidadeId,
+      tipoEscalaLabel: setorForm.tipoEscalaLabel.trim(),
     }
     setSetorSaving(true)
     setSetorErr(null)
@@ -1576,12 +1681,21 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                   <div className="divide-y divide-ds-border">
                     {setoresCategoria.map(s => (
                       <div key={s.id} className="flex items-center justify-between px-3 py-2 hover:bg-ds-surface/50">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium text-ds-text">{s.nome}</span>
-                          {!s.ativo && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500">
-                              INATIVO
-                            </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-ds-text">{s.nome}</span>
+                            {!s.ativo && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500">
+                                INATIVO
+                              </span>
+                            )}
+                          </div>
+                          {s.modalidadeNome ? (
+                            <p className="text-[10px] text-ds-light mt-0.5">
+                              {s.modalidadeNome} ({s.modalidadeTipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'})
+                            </p>
+                          ) : (
+                            <p className="text-[10px] text-amber-600 mt-0.5">Sem modalidade configurada</p>
                           )}
                         </div>
                         {canWrite && (
@@ -1619,6 +1733,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                 {editingSetorId ? 'Editar setor' : 'Novo setor'}
               </p>
               <SetorFormInline
+                key={editingSetorId ?? 'novo-setor'}
                 form={setorForm}
                 onChange={patch => setSetorForm(f => f ? { ...f, ...patch } : f)}
                 onSave={salvarSetor}
@@ -1628,6 +1743,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                 categoriasExistentes={Array.from(new Set(
                   todosSetores.map(s => s.categoria?.trim()).filter((c): c is string => !!c)
                 )).sort()}
+                modalidades={modalidades}
               />
             </div>
           )}

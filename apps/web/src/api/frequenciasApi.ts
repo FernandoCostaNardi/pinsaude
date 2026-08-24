@@ -83,6 +83,10 @@ export interface FrequenciaMedicaResp {
   grupoId: string | null
   servicoOperacionalId: string
   servicoOperacionalNome: string | null
+  // Texto customizável do setor, exibido no campo "Tipo de Escala" do PDF — pedido do cliente
+  // (ver TomadorServicoOperacional.tipoEscalaLabel em tomadoresApi.ts). Null pra setores legados
+  // nunca editados desde a criação deste campo; o PDF cai de volta pra tipoMedico nesse caso.
+  tipoEscalaLabel: string | null
   competencia: string
   especialidade: string | null
   tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null

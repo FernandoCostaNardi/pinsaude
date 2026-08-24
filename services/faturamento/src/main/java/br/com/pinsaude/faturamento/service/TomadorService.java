@@ -359,9 +359,12 @@ public class TomadorService {
         Map<UUID, Servico> servicosPorId = servicosPorGrupoIds(grupos);
         Map<UUID, List<TomadorServicoOperacional>> setoresPorGrupo = setoresPorGrupoIds(
             grupos.stream().map(TomadorGrupoFaturamento::getId).toList());
+        Map<UUID, TomadorModalidade> modalidadesMap = modalidadesPorId(
+            setoresPorGrupo.values().stream().flatMap(List::stream).toList());
         return grupos.stream()
             .map(g -> TomadorGrupoFaturamentoResponse.from(
-                g, servicosPorId.get(g.getServicoLc116Id()), setoresPorGrupo.getOrDefault(g.getId(), List.of())))
+                g, servicosPorId.get(g.getServicoLc116Id()), setoresPorGrupo.getOrDefault(g.getId(), List.of()),
+                modalidadesMap))
             .toList();
     }
 
@@ -397,7 +400,7 @@ public class TomadorService {
         g.setOrdem(req.ordem());
         g.setAtivo(req.ativo());
         List<TomadorServicoOperacional> setores = setoresPorGrupoIds(List.of(grupoId)).getOrDefault(grupoId, List.of());
-        return TomadorGrupoFaturamentoResponse.from(grupoRepo.save(g), servico, setores);
+        return TomadorGrupoFaturamentoResponse.from(grupoRepo.save(g), servico, setores, modalidadesPorId(setores));
     }
 
     @Transactional
@@ -511,8 +514,10 @@ public class TomadorService {
 
     public List<TomadorServicoOperacionalResponse> listarServicosOperacionais(UUID tomadorId) {
         findOrThrow(tomadorId);
-        return servicoOperacionalRepo.findByTomadorIdOrderByNomeAsc(tomadorId).stream()
-            .map(TomadorServicoOperacionalResponse::from)
+        List<TomadorServicoOperacional> setores = servicoOperacionalRepo.findByTomadorIdOrderByNomeAsc(tomadorId);
+        Map<UUID, TomadorModalidade> modalidadesMap = modalidadesPorId(setores);
+        return setores.stream()
+            .map(s -> TomadorServicoOperacionalResponse.from(s, modalidadesMap.get(s.getModalidadeId())))
             .toList();
     }
 
@@ -520,12 +525,15 @@ public class TomadorService {
     public TomadorServicoOperacionalResponse criarServicoOperacional(UUID tomadorId,
                                                                       TomadorServicoOperacionalRequest req) {
         findOrThrow(tomadorId);
+        TomadorModalidade modalidade = resolverModalidadeDoSetor(tomadorId, req.modalidadeId());
         TomadorServicoOperacional s = new TomadorServicoOperacional();
         s.setTomadorId(tomadorId);
         s.setNome(req.nome());
         s.setCategoria(normalizarCategoria(req.categoria()));
         s.setAtivo(req.ativo());
-        return TomadorServicoOperacionalResponse.from(servicoOperacionalRepo.save(s));
+        s.setModalidadeId(req.modalidadeId());
+        s.setTipoEscalaLabel(req.tipoEscalaLabel().trim());
+        return TomadorServicoOperacionalResponse.from(servicoOperacionalRepo.save(s), modalidade);
     }
 
     @Transactional
@@ -537,10 +545,26 @@ public class TomadorService {
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Serviço operacional não encontrado"));
+        TomadorModalidade modalidade = resolverModalidadeDoSetor(tomadorId, req.modalidadeId());
         s.setNome(req.nome());
         s.setCategoria(normalizarCategoria(req.categoria()));
         s.setAtivo(req.ativo());
-        return TomadorServicoOperacionalResponse.from(servicoOperacionalRepo.save(s));
+        s.setModalidadeId(req.modalidadeId());
+        s.setTipoEscalaLabel(req.tipoEscalaLabel().trim());
+        return TomadorServicoOperacionalResponse.from(servicoOperacionalRepo.save(s), modalidade);
+    }
+
+    // Modalidade de referência do setor precisa existir e pertencer ao mesmo tomador — mesmo
+    // padrão de validação já usado para modalidade fixa da Frequência (FrequenciaService).
+    private TomadorModalidade resolverModalidadeDoSetor(UUID tomadorId, UUID modalidadeId) {
+        TomadorModalidade m = modalidadeRepo.findById(modalidadeId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Modalidade não encontrada: " + modalidadeId));
+        if (!m.getTomadorId().equals(tomadorId)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Modalidade não pertence ao tomador informado");
+        }
+        return m;
     }
 
     // Categoria é texto livre e opcional — string em branco vira null pra não poluir o
@@ -570,8 +594,10 @@ public class TomadorService {
         grupoRepo.findById(grupoId)
             .filter(g -> tomadorId.equals(g.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado"));
-        return setoresPorGrupoIds(List.of(grupoId)).getOrDefault(grupoId, List.of()).stream()
-            .map(TomadorServicoOperacionalResponse::from)
+        List<TomadorServicoOperacional> setores = setoresPorGrupoIds(List.of(grupoId)).getOrDefault(grupoId, List.of());
+        Map<UUID, TomadorModalidade> modalidadesMap = modalidadesPorId(setores);
+        return setores.stream()
+            .map(s -> TomadorServicoOperacionalResponse.from(s, modalidadesMap.get(s.getModalidadeId())))
             .toList();
     }
 
@@ -593,7 +619,9 @@ public class TomadorService {
         link.setGrupoId(grupoId);
         link.setSetorId(req.setorId());
         grupoSetorRepo.save(link);
-        return TomadorServicoOperacionalResponse.from(setor);
+        TomadorModalidade modalidade = setor.getModalidadeId() != null
+            ? modalidadeRepo.findById(setor.getModalidadeId()).orElse(null) : null;
+        return TomadorServicoOperacionalResponse.from(setor, modalidade);
     }
 
     @Transactional
@@ -656,10 +684,11 @@ public class TomadorService {
         Map<UUID, TomadorServicoOperacional> setoresPorId = servicoOperacionalRepo
             .findAllById(vinculos.stream().map(MedicoTomadorSetor::getSetorId).toList()).stream()
             .collect(Collectors.toMap(TomadorServicoOperacional::getId, Function.identity()));
+        Map<UUID, TomadorModalidade> modalidadesMap = modalidadesPorId(List.copyOf(setoresPorId.values()));
         return vinculos.stream()
             .map(v -> setoresPorId.get(v.getSetorId()))
             .filter(Objects::nonNull)
-            .map(TomadorServicoOperacionalResponse::from)
+            .map(s -> TomadorServicoOperacionalResponse.from(s, modalidadesMap.get(s.getModalidadeId())))
             .toList();
     }
 
@@ -681,7 +710,9 @@ public class TomadorService {
         vinculo.setMedicoTomadorId(mt.getId());
         vinculo.setSetorId(req.setorId());
         medicoTomadorSetorRepo.save(vinculo);
-        return TomadorServicoOperacionalResponse.from(setor);
+        TomadorModalidade modalidade = setor.getModalidadeId() != null
+            ? modalidadeRepo.findById(setor.getModalidadeId()).orElse(null) : null;
+        return TomadorServicoOperacionalResponse.from(setor, modalidade);
     }
 
     @Transactional
@@ -710,6 +741,23 @@ public class TomadorService {
         if (ids.isEmpty()) return Map.of();
         return servicoRepo.findAllById(ids).stream()
             .collect(Collectors.toMap(Servico::getId, Function.identity()));
+    }
+
+    // Batch: modalidadeId → modalidade, resolvendo de uma vez a Modalidade de referência de um
+    // lote de setores (pedido do cliente — ver TomadorServicoOperacional.modalidadeId). Um único
+    // findAllById independente de quantos setores forem enriquecidos.
+    //
+    // Collectors.toMap sempre produz um HashMap regular (tolera .get(null) retornando null) —
+    // nunca usar Map.of() aqui: setores sem modalidade (legados) fazem .get(s.getModalidadeId())
+    // ser chamado com chave null, e Map.of().get(null) lança NPE.
+    private Map<UUID, TomadorModalidade> modalidadesPorId(List<TomadorServicoOperacional> setores) {
+        List<UUID> ids = setores.stream()
+            .map(TomadorServicoOperacional::getModalidadeId)
+            .filter(Objects::nonNull)
+            .distinct()
+            .toList();
+        return modalidadeRepo.findAllById(ids).stream()
+            .collect(Collectors.toMap(TomadorModalidade::getId, Function.identity()));
     }
 
     // Batch: grupoId → setores vinculados (nome asc), via tomador_grupo_setores (N:N). Um único

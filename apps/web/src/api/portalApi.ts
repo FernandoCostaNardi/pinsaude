@@ -101,10 +101,17 @@ export interface TomadorPortal {
   municipio: string | null
 }
 
+// modalidadeId/modalidadeNome/modalidadeTipo: Modalidade de referência configurada no cadastro do
+// setor — usada pra (1) derivar o Tipo de Escala da frequência automaticamente ao selecionar o
+// setor e (2), pra Diarista, usar essa modalidade direto sem perguntar de novo na tela de Nova
+// Frequência (pedido do cliente). Todos null pra setores sem modalidade configurada (legados).
 export interface SetorOperacionalPortal {
   id: string
   nome: string
   categoria: string | null
+  modalidadeId: string | null
+  modalidadeNome: string | null
+  modalidadeTipo: 'PLANTONISTA' | 'DIARISTA' | null
 }
 
 export interface ProducaoPortal {

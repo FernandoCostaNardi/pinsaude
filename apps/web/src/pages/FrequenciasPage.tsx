@@ -5,7 +5,7 @@ import {
   FileText, Loader2, Pencil, Plus, Printer, Search, Trash2, Upload, X,
 } from 'lucide-react'
 import { Button, Spinner, Alert, Table, THead, TBody, TRow, TH, TD } from '@pinsaude/ui'
-import { tomadoresApi, Tomador, TomadorGrupoFaturamento, TomadorModalidade, TomadorOcorrencia } from '../api/tomadoresApi'
+import { tomadoresApi, Tomador, TomadorGrupoFaturamento, TomadorModalidade, TomadorOcorrencia, TomadorServicoOperacional } from '../api/tomadoresApi'
 import { medicosApi, Medico, MedicoPage } from '../api/medicosApi'
 import {
   frequenciasApi,
@@ -318,17 +318,16 @@ function NovaFrequenciaModal({
   const [tomador,     setTomador]     = useState<Tomador | null>(null)
   const [medico,      setMedico]      = useState<Medico | null>(null)
   const [grupo,       setGrupo]       = useState<TomadorGrupoFaturamento | null>(null)
-  const [setor,       setSetor]       = useState<{ id: string; nome: string } | null>(null)
+  const [setor,       setSetor]       = useState<TomadorServicoOperacional | null>(null)
   const [competencia, setCompetencia] = useState(COMPETENCIAS[0])
-  const [tipoMedico, setTipoMedico] = useState<'PLANTONISTA' | 'DIARISTA'>('PLANTONISTA')
   const [grupos,      setGrupos]      = useState<TomadorGrupoFaturamento[]>([])
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
 
-  // PINSAUDE-13.26: modalidade (obrigatória) e ocorrência (opcional) passam a ser escolhidas
-  // aqui, uma única vez — o formulário de lançamento de plantão não pergunta mais nenhuma das duas.
-  const [modalidades,  setModalidades]  = useState<TomadorModalidade[]>([])
-  const [modalidade,   setModalidade]   = useState<TomadorModalidade | null>(null)
+  // PINSAUDE-13.26: ocorrência (opcional) é escolhida aqui, uma única vez — o formulário de
+  // lançamento de plantão não pergunta mais isso. Modalidade (Diarista) deixou de ser escolhida
+  // aqui também (pedido do cliente) — usa direto a Modalidade de referência já cadastrada no
+  // Setor Operacional (setor.modalidadeId), sem perguntar de novo.
   const [ocorrencias,  setOcorrencias]  = useState<TomadorOcorrencia[]>([])
   const [ocorrenciaId, setOcorrenciaId] = useState('')
 
@@ -366,15 +365,18 @@ function NovaFrequenciaModal({
     }).catch(() => setGrupos([]))
   }, [tomador?.id])
 
-  // PINSAUDE-13.26: modalidades filtradas pelo Tipo de Escala escolhido — troca de tomador ou
-  // de tipo de escala reseta a modalidade/ocorrência já selecionadas (podem não ser mais válidas).
+  // Pedido do cliente: Tipo de Escala deixa de ser escolhido aqui — vem junto com o setor (a
+  // Modalidade de referência configurada no cadastro do Setor Operacional já define se é
+  // Plantonista ou Diarista). null quando o setor escolhido ainda não tem modalidade configurada
+  // (setor legado ou cadastro incompleto) — nesse caso a frequência não pode ser criada até o
+  // setor ser corrigido na aba "Setores Operacionais".
+  const tipoMedico = setor?.modalidadeTipo ?? null
+
+  // Ocorrências do tomador — troca de tomador ou de setor reseta a já selecionada (pode não ser
+  // mais válida).
   useEffect(() => {
-    setModalidade(null)
     setOcorrenciaId('')
-    if (!tomador) { setModalidades([]); setOcorrencias([]); return }
-    tomadoresApi.listarModalidades(tomador.id)
-      .then(ms => setModalidades(ms.filter(m => m.tipo === tipoMedico && m.ativo)))
-      .catch(() => setModalidades([]))
+    if (!tomador || !tipoMedico) { setOcorrencias([]); return }
     tomadoresApi.listarOcorrencias(tomador.id)
       .then(os => setOcorrencias(os.filter(o => o.ativo)))
       .catch(() => setOcorrencias([]))
@@ -382,12 +384,13 @@ function NovaFrequenciaModal({
 
   // Ajuste pós-implantação: modalidade (e ocorrência) só são fixadas na frequência para
   // Diarista — Plantonista volta a escolher isso a cada plantão lançado, podendo ter
-  // turnos/modalidades diferentes dentro da mesma frequência (ver CLAUDE.md).
+  // turnos/modalidades diferentes dentro da mesma frequência (ver CLAUDE.md). A modalidade
+  // Diarista em si não é mais escolhida aqui — vem direto do cadastro do setor (setor.modalidadeId).
   const isDiarista = tipoMedico === 'DIARISTA'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!tomador || !medico || !grupo || !setor || (isDiarista && !modalidade)) return
+    if (!tomador || !medico || !grupo || !setor || !tipoMedico || (isDiarista && !setor.modalidadeId)) return
     setSaving(true); setErr(null)
     try {
       const req: FrequenciaMedicaRequest = {
@@ -397,7 +400,7 @@ function NovaFrequenciaModal({
         servicoOperacionalId: setor.id,
         competencia,
         tipoMedico,
-        modalidadeId: isDiarista ? modalidade?.id : undefined,
+        modalidadeId: isDiarista ? (setor.modalidadeId ?? undefined) : undefined,
         ocorrenciaId: isDiarista ? (ocorrenciaId || undefined) : undefined,
       }
       const criada = await frequenciasApi.criar(req)
@@ -407,7 +410,7 @@ function NovaFrequenciaModal({
     } finally { setSaving(false) }
   }
 
-  const canSave = !!tomador && !!medico && !!grupo && !!setor && (!isDiarista || !!modalidade)
+  const canSave = !!tomador && !!medico && !!grupo && !!setor && !!tipoMedico
   const medicosFiltrados = medicos.filter(m => m.status === 'ATIVO')
 
   return (
@@ -482,7 +485,10 @@ function NovaFrequenciaModal({
           </div>
 
           {/* Linha 4: Setor (full width) — escopado ao Grupo escolhido acima (o mesmo setor pode
-              estar em vários grupos, então o combo nunca mostra o catálogo inteiro do tomador) */}
+              estar em vários grupos, então o combo nunca mostra o catálogo inteiro do tomador).
+              Pedido do cliente: também define o Tipo de Escala (Plantonista/Diarista)
+              automaticamente, via a Modalidade configurada no cadastro do setor — não pergunta
+              mais isso num campo separado. */}
           <div className="mt-4">
             <Dropdown
               label="Setor Operacional *"
@@ -493,48 +499,41 @@ function NovaFrequenciaModal({
               getLabel={s => s.nome}
               disabled={!grupo || setores.length === 0}
             />
+            {setor && (
+              tipoMedico ? (
+                <p className="mt-1 text-[11px] text-ds-light">
+                  Tipo de Escala: <span className="font-semibold text-ds-text">{tipoMedico === 'DIARISTA' ? 'Diarista' : 'Plantonista'}</span> (definido pela modalidade configurada no setor)
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
+                  <AlertCircle size={11} />
+                  Este setor não tem uma modalidade configurada — edite o cadastro dele na aba "Setores Operacionais" antes de criar a frequência.
+                </p>
+              )
+            )}
           </div>
 
-          {/* Linha 4: Competência + Tipo de Escala (2 colunas) */}
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-ds-mid mb-1">Competência *</label>
-              <select value={competencia} onChange={e => setCompetencia(e.target.value)}
-                className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
-                {COMPETENCIAS.map(c => <option key={c} value={c}>{formatCompetencia(c)}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-ds-mid mb-1">Tipo de Escala *</label>
-              <select value={tipoMedico} onChange={e => setTipoMedico(e.target.value as 'PLANTONISTA' | 'DIARISTA')}
-                className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
-                <option value="PLANTONISTA">Plantonista</option>
-                <option value="DIARISTA">Diarista</option>
-              </select>
-            </div>
+          {/* Linha 5: Competência (full width) */}
+          <div className="mt-4">
+            <label className="block text-xs font-bold text-ds-mid mb-1">Competência *</label>
+            <select value={competencia} onChange={e => setCompetencia(e.target.value)}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white">
+              {COMPETENCIAS.map(c => <option key={c} value={c}>{formatCompetencia(c)}</option>)}
+            </select>
           </div>
 
-          {/* Linha 5: Modalidade — só para Diarista (PINSAUDE-13.26). Escolhida uma única vez
-              aqui; todo lançamento desta frequência sempre usará esta modalidade. Plantonista
-              não escolhe modalidade aqui — cada plantão lançado escolhe a sua própria (turnos
-              diferentes dentro da mesma frequência são permitidos). */}
+          {/* Linha 5: Modalidade — só para Diarista. Pedido do cliente: não pergunta mais aqui,
+              usa direto a Modalidade de referência já cadastrada no Setor Operacional
+              (setor.modalidadeId) — todo lançamento desta frequência usará essa modalidade.
+              Plantonista não usa modalidade fixa aqui — cada plantão lançado escolhe a sua
+              própria (turnos diferentes dentro da mesma frequência são permitidos). */}
           {isDiarista ? (
-            <div className="mt-4">
-              <Dropdown
-                label="Modalidade *"
-                placeholder={
-                  !tomador ? 'Selecione o tomador primeiro...'
-                  : modalidades.length === 0 ? 'Nenhuma modalidade Diarista cadastrada'
-                  : 'Selecione a modalidade...'
-                }
-                items={modalidades}
-                value={modalidade}
-                onChange={setModalidade}
-                getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
-                disabled={!tomador || modalidades.length === 0}
-              />
-              <p className="mt-1 text-[11px] text-ds-light">
-                Toda frequência lançada aqui usará esta modalidade — não será mais necessário escolher a cada lançamento.
+            <div className="mt-4 rounded-lg bg-ds-input/40 px-3 py-2">
+              <p className="text-xs text-ds-mid">
+                Modalidade: <span className="font-semibold text-ds-text">{setor?.modalidadeNome}</span>
+              </p>
+              <p className="mt-0.5 text-[11px] text-ds-light">
+                Definida pelo cadastro do setor — toda frequência lançada aqui usará esta modalidade.
               </p>
             </div>
           ) : (
@@ -1686,7 +1685,10 @@ function EditarFrequenciaModal({
   // depois — mesmo padrão já usado pra modalidade/ocorrência inativa em outros formulários.
   const setores = setoresAtivos.some(s => s.id === freq.servicoOperacionalId) || !freq.servicoOperacionalNome
     ? setoresAtivos
-    : [{ id: freq.servicoOperacionalId, tomadorId: freq.tomadorId, nome: freq.servicoOperacionalNome, ativo: false }, ...setoresAtivos]
+    : [{
+        id: freq.servicoOperacionalId, tomadorId: freq.tomadorId, nome: freq.servicoOperacionalNome, ativo: false,
+        categoria: null, modalidadeId: null, modalidadeNome: null, modalidadeTipo: null, tipoEscalaLabel: null,
+      }, ...setoresAtivos]
 
   // A competência atual pode estar fora da janela de 12 meses gerada por generateCompetencias()
   // (frequência antiga) — injeta na lista pra não sumir do <select> quando o modal abre.

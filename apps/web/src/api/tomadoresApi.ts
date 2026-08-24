@@ -496,12 +496,23 @@ export const tomadoresApi = {
 // PINSAUDE: catálogo por tomador, sem grupo próprio — reutilizável em quantos Grupos de
 // Faturamento forem necessários via listarSetoresDoGrupo/adicionarSetorAoGrupo/removerSetorDoGrupo.
 // categoria é texto livre (ex: "Emergência", "UTI") — null quando não preenchida.
+//
+// modalidadeId/modalidadeNome/modalidadeTipo: Modalidade de referência do setor (pedido do
+// cliente) — modalidadeTipo é o que o frontend usa pra derivar o Tipo de Escala da Frequência
+// assim que o setor é selecionado (não pergunta mais isso na tela de Nova Frequência). Null pra
+// setores legados nunca editados desde a criação deste campo.
+// tipoEscalaLabel: texto exibido no campo "Tipo de Escala" do PDF de Frequência — sugestão
+// default "Modalidade - Setor", editável.
 export interface TomadorServicoOperacional {
   id: string
   tomadorId: string
   nome: string
   categoria: string | null
   ativo: boolean
+  modalidadeId: string | null
+  modalidadeNome: string | null
+  modalidadeTipo: 'PLANTONISTA' | 'DIARISTA' | null
+  tipoEscalaLabel: string | null
 }
 
 export interface TomadorGrupoFaturamento {
@@ -558,6 +569,8 @@ export interface TomadorServicoOperacionalRequest {
   nome: string
   categoria: string | null
   ativo: boolean
+  modalidadeId: string
+  tipoEscalaLabel: string
 }
 
 export interface TomadorOcorrencia {
