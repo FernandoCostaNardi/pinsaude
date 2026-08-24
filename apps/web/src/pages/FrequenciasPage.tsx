@@ -1408,6 +1408,12 @@ function PainelFrequencia({
           />
         )}
 
+        {/* Corpo scrollável — envolve dados, progresso, painel de adição/edição, tabela de
+            itens e paginação num único container com scroll vertical, para telas menores
+            conseguirem rolar até todos os itens (edição/exclusão inclusive). Só o header
+            fica fixo fora daqui. */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+
         {/* ── Dados do profissional ───────────────────────────────────────── */}
         <div className="grid grid-cols-3 gap-0 border-b border-ds-border shrink-0 bg-ds-surface/40">
           <div className="px-6 py-3 border-r border-ds-border">
@@ -1526,8 +1532,7 @@ function PainelFrequencia({
         )}
 
         {/* ── Tabela de itens ────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="overflow-x-auto">
+        <div className="overflow-x-auto">
             <table className="w-full min-w-[600px]">
               <thead className="sticky top-0 bg-white z-10 border-b border-ds-border">
                 <tr>
@@ -1610,7 +1615,6 @@ function PainelFrequencia({
                 )}
               </tbody>
             </table>
-          </div>
         </div>
 
         {/* ── Paginação dos plantões ──────────────────────────────────────── */}
@@ -1634,6 +1638,10 @@ function PainelFrequencia({
             )}
           </div>
         )}
+
+        </div>
+        {/* ── /Corpo scrollável ── */}
+
       </div>
     </div>
   )
