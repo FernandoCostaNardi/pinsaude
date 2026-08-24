@@ -437,14 +437,20 @@ class TomadorGruposModalidadesServiceTest {
             } catch (Exception ignored) {}
             return ss;
         });
+        TomadorModalidade modalidade = modalidadeFixture(tomadorId);
+        when(modalidadeRepo.findById(modalidade.getId())).thenReturn(Optional.of(modalidade));
 
-        TomadorServicoOperacionalRequest req = new TomadorServicoOperacionalRequest("UTI-CARDIOLÓGICA", "UTI", true);
+        TomadorServicoOperacionalRequest req = new TomadorServicoOperacionalRequest(
+            "UTI-CARDIOLÓGICA", "UTI", true, modalidade.getId(), "Plantonista - UTI-CARDIOLÓGICA");
 
         TomadorServicoOperacionalResponse resp = service.criarServicoOperacional(tomadorId, req);
 
         assertThat(resp.nome()).isEqualTo("UTI-CARDIOLÓGICA");
         assertThat(resp.categoria()).isEqualTo("UTI");
         assertThat(resp.tomadorId()).isEqualTo(tomadorId);
+        assertThat(resp.modalidadeId()).isEqualTo(modalidade.getId());
+        assertThat(resp.modalidadeTipo()).isEqualTo("PLANTONISTA");
+        assertThat(resp.tipoEscalaLabel()).isEqualTo("Plantonista - UTI-CARDIOLÓGICA");
         verify(servicoOperacionalRepo).save(any());
     }
 
@@ -458,12 +464,29 @@ class TomadorGruposModalidadesServiceTest {
             } catch (Exception ignored) {}
             return ss;
         });
+        TomadorModalidade modalidade = modalidadeFixture(tomadorId);
+        when(modalidadeRepo.findById(modalidade.getId())).thenReturn(Optional.of(modalidade));
 
-        TomadorServicoOperacionalRequest req = new TomadorServicoOperacionalRequest("Emergência", "   ", true);
+        TomadorServicoOperacionalRequest req = new TomadorServicoOperacionalRequest(
+            "Emergência", "   ", true, modalidade.getId(), "Plantonista - Emergência");
 
         TomadorServicoOperacionalResponse resp = service.criarServicoOperacional(tomadorId, req);
 
         assertThat(resp.categoria()).isNull();
+    }
+
+    @Test
+    void criarServicoOperacional_modalidadeDeOutroTomador_lanca422() {
+        TomadorModalidade modalidadeDeOutroTomador = modalidadeFixture(UUID.randomUUID());
+        when(modalidadeRepo.findById(modalidadeDeOutroTomador.getId())).thenReturn(Optional.of(modalidadeDeOutroTomador));
+
+        TomadorServicoOperacionalRequest req = new TomadorServicoOperacionalRequest(
+            "Emergência", null, true, modalidadeDeOutroTomador.getId(), "Plantonista - Emergência");
+
+        assertThatThrownBy(() -> service.criarServicoOperacional(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não pertence ao tomador");
+        verify(servicoOperacionalRepo, never()).save(any());
     }
 
     @Test

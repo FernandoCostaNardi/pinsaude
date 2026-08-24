@@ -355,7 +355,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
     </tr>
     <tr>
       <td class="field-label-cell">Tipo de Escala:</td>
-      <td class="field-value-cell field-value-normal">${freq.tipoMedico ?? ''}</td>
+      <td class="field-value-cell field-value-normal">${freq.tipoEscalaLabel ?? freq.tipoMedico ?? ''}</td>
       <td class="field-setor-cell">${freq.servicoOperacionalNome ?? ''}</td>
     </tr>
   </table>

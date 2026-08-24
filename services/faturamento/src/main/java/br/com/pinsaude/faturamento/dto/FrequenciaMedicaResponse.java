@@ -26,6 +26,10 @@ public record FrequenciaMedicaResponse(
     UUID grupoId,
     UUID servicoOperacionalId,
     String servicoOperacionalNome,
+    // Texto customizável do setor, exibido no campo "Tipo de Escala" do PDF — pedido do cliente
+    // (ver TomadorServicoOperacional.tipoEscalaLabel). Null pra setores legados nunca editados
+    // desde a criação deste campo; o PDF cai de volta pra tipoMedico nesse caso.
+    String tipoEscalaLabel,
     String competencia,
     String especialidade,
     String tipoMedico,
@@ -90,6 +94,7 @@ public record FrequenciaMedicaResponse(
             f.getGrupoId(),
             f.getServicoOperacionalId(),
             setor != null ? setor.getNome() : null,
+            setor != null ? setor.getTipoEscalaLabel() : null,
             f.getCompetencia(),
             f.getEspecialidade(),
             f.getTipoMedico(),
