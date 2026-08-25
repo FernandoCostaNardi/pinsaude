@@ -26,6 +26,7 @@ import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorEmpresaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
+import br.com.pinsaude.faturamento.repository.SetorOperacionalModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorHorarioPadraoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
@@ -71,6 +72,7 @@ class TomadorServiceTest {
     @Mock TomadorServicoRepository servicoVinculoRepo;
     @Mock ServicoRepository servicoRepo;
     @Mock TomadorGrupoFaturamentoRepository grupoRepo;
+    @Mock SetorOperacionalModalidadeRepository setorModalidadeRepo;
     @Mock TomadorModalidadeRepository modalidadeRepo;
     @Mock TomadorServicoOperacionalRepository servicoOperacionalRepo;
     @Mock MedicoTomadorRepository medicoTomadorRepo;

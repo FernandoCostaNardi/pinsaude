@@ -3,6 +3,7 @@ package br.com.pinsaude.faturamento.dto;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 
+import java.util.List;
 import java.util.UUID;
 
 public record TomadorServicoOperacionalResponse(
@@ -11,32 +12,34 @@ public record TomadorServicoOperacionalResponse(
     String nome,
     String categoria,
     boolean ativo,
-    // Modalidade de referência do setor (pedido do cliente) — modalidadeTipo é o que o frontend
-    // usa pra derivar o Tipo de Escala da Frequência assim que o setor é selecionado, sem
-    // precisar mais de um seletor próprio na tela de Nova Frequência.
-    UUID modalidadeId,
-    String modalidadeNome,
-    String modalidadeTipo,
+    // Modalidades de referência do setor (pedido do cliente: pode ter mais de uma) — o frontend
+    // usa a lista pra derivar o Tipo de Escala da Frequência automaticamente quando só há 1, ou
+    // pra oferecer a escolha (Tipo de Escala e/ou Modalidade específica) quando há mais de 1.
+    List<ModalidadeResumo> modalidades,
     String tipoEscalaLabel
 ) {
-    // modalidade pode vir null pra setores legados sem modalidade resolvida (nunca editados
-    // desde a criação deste campo, ou modalidade removida do catálogo) — campos derivados ficam
-    // null nesse caso, mesma convenção já usada em outros DTOs deste service.
-    public static TomadorServicoOperacionalResponse from(TomadorServicoOperacional s, TomadorModalidade modalidade) {
+    public record ModalidadeResumo(UUID id, String nome, String tipo) {
+        public static ModalidadeResumo from(TomadorModalidade m) {
+            return new ModalidadeResumo(m.getId(), m.getNome(), m.getTipo());
+        }
+    }
+
+    // modalidades pode vir vazia pra setores legados sem nenhuma modalidade resolvida (nunca
+    // editados desde a criação deste campo, ou todas as modalidades vinculadas removidas do
+    // catálogo) — campos derivados no frontend ficam null/bloqueados nesse caso.
+    public static TomadorServicoOperacionalResponse from(TomadorServicoOperacional s, List<TomadorModalidade> modalidades) {
         return new TomadorServicoOperacionalResponse(
             s.getId(),
             s.getTomadorId(),
             s.getNome(),
             s.getCategoria(),
             s.isAtivo(),
-            s.getModalidadeId(),
-            modalidade != null ? modalidade.getNome() : null,
-            modalidade != null ? modalidade.getTipo() : null,
+            modalidades.stream().map(ModalidadeResumo::from).toList(),
             s.getTipoEscalaLabel()
         );
     }
 
     public static TomadorServicoOperacionalResponse from(TomadorServicoOperacional s) {
-        return from(s, null);
+        return from(s, List.of());
     }
 }

@@ -497,21 +497,25 @@ export const tomadoresApi = {
 // Faturamento forem necessários via listarSetoresDoGrupo/adicionarSetorAoGrupo/removerSetorDoGrupo.
 // categoria é texto livre (ex: "Emergência", "UTI") — null quando não preenchida.
 //
-// modalidadeId/modalidadeNome/modalidadeTipo: Modalidade de referência do setor (pedido do
-// cliente) — modalidadeTipo é o que o frontend usa pra derivar o Tipo de Escala da Frequência
-// assim que o setor é selecionado (não pergunta mais isso na tela de Nova Frequência). Null pra
-// setores legados nunca editados desde a criação deste campo.
+// modalidades: Modalidade(s) de referência do setor (pedido do cliente: pode ter mais de uma) —
+// o frontend usa a lista pra derivar o Tipo de Escala da Frequência automaticamente quando só há
+// 1, ou pra oferecer a escolha (Tipo de Escala e/ou Modalidade específica) quando há mais de 1.
+// Lista vazia pra setores legados nunca editados desde a criação deste campo.
 // tipoEscalaLabel: texto exibido no campo "Tipo de Escala" do PDF de Frequência — sugestão
-// default "Modalidade - Setor", editável.
+// default "Plantonista/Diarista - Setor", editável.
+export interface SetorModalidadeResumo {
+  id: string
+  nome: string
+  tipo: 'PLANTONISTA' | 'DIARISTA'
+}
+
 export interface TomadorServicoOperacional {
   id: string
   tomadorId: string
   nome: string
   categoria: string | null
   ativo: boolean
-  modalidadeId: string | null
-  modalidadeNome: string | null
-  modalidadeTipo: 'PLANTONISTA' | 'DIARISTA' | null
+  modalidades: SetorModalidadeResumo[]
   tipoEscalaLabel: string | null
 }
 
@@ -569,7 +573,7 @@ export interface TomadorServicoOperacionalRequest {
   nome: string
   categoria: string | null
   ativo: boolean
-  modalidadeId: string
+  modalidadeIds: string[]
   tipoEscalaLabel: string
 }
 

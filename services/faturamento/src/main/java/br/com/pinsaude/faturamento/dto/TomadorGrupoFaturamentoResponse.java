@@ -26,9 +26,9 @@ public record TomadorGrupoFaturamentoResponse(
             TomadorGrupoFaturamento g,
             Servico servico,
             List<TomadorServicoOperacional> setores,
-            Map<UUID, TomadorModalidade> modalidadesMap) {
+            Map<UUID, List<TomadorModalidade>> modalidadesPorSetor) {
         List<TomadorServicoOperacionalResponse> setoresResp = setores.stream()
-            .map(s -> TomadorServicoOperacionalResponse.from(s, modalidadesMap.get(s.getModalidadeId())))
+            .map(s -> TomadorServicoOperacionalResponse.from(s, modalidadesPorSetor.getOrDefault(s.getId(), List.of())))
             .toList();
         return new TomadorGrupoFaturamentoResponse(
             g.getId(),
@@ -44,8 +44,9 @@ public record TomadorGrupoFaturamentoResponse(
         );
     }
 
-    // Collections.emptyMap() — nunca Map.of() aqui: um setor legado sem modalidade (getModalidadeId()
-    // == null) faz o .get(...) em from() ser chamado com chave null, e Map.of().get(null) lança NPE.
+    // Collections.emptyMap() — nunca Map.of() aqui: mesma armadilha já documentada (ver
+    // CLAUDE.md) — evita NPE em .getOrDefault caso algum chamador futuro passe uma chave que o
+    // Map.of() não tolere.
     public static TomadorGrupoFaturamentoResponse from(
             TomadorGrupoFaturamento g, Servico servico, List<TomadorServicoOperacional> setores) {
         return from(g, servico, setores, Collections.emptyMap());

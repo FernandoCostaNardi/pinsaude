@@ -24,12 +24,6 @@ public class TomadorServicoOperacional {
     @Column(name = "categoria", length = 100)
     private String categoria;
 
-    // Modalidade de referência do setor — define o Tipo de Escala (Plantonista/Diarista)
-    // derivado automaticamente na criação da Frequência (não pergunta mais isso na tela).
-    // Nullable pra não quebrar setores cadastrados antes deste campo existir (ver V38).
-    @Column(name = "modalidade_id")
-    private UUID modalidadeId;
-
     // Texto customizável exibido no campo "Tipo de Escala" do PDF de Frequência — sugestão
     // default "Modalidade - Setor" (montada no frontend), mas editável pelo usuário.
     @Column(name = "tipo_escala_label", length = 150)
@@ -53,8 +47,6 @@ public class TomadorServicoOperacional {
     public void setNome(String v)        { this.nome = v; }
     public String getCategoria()         { return categoria; }
     public void setCategoria(String v)   { this.categoria = v; }
-    public UUID getModalidadeId()        { return modalidadeId; }
-    public void setModalidadeId(UUID v)  { this.modalidadeId = v; }
     public String getTipoEscalaLabel()       { return tipoEscalaLabel; }
     public void setTipoEscalaLabel(String v) { this.tipoEscalaLabel = v; }
     public boolean isAtivo()            { return ativo; }
