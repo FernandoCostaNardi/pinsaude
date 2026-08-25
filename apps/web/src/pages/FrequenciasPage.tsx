@@ -216,7 +216,15 @@ function Dropdown<T extends { id: string }>({
 }) {
   const [open, setOpen]       = useState(false)
   const [q, setQ]             = useState('')
-  const [pos, setPos]         = useState({ top: 0, left: 0, width: 0 })
+  // top/bottom: só um dos dois é definido por vez — decide se a lista abre pra baixo (padrão) ou
+  // pra cima (quando não há espaço suficiente abaixo do botão, ex: campo perto do rodapé de um
+  // modal). maxListHeight: altura máxima calculada pro espaço realmente disponível na direção
+  // escolhida, pra lista SEMPRE caber na tela com scroll interno — sem isso, um <select> aberto
+  // perto da borda da tela (position: fixed) pode render parte da lista fora do viewport, sem
+  // nenhum jeito de rolar até lá (fixed não expande a área de scroll do documento).
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; width: number; maxListHeight: number }>(
+    { top: 0, left: 0, width: 0, maxListHeight: 224 }
+  )
   const btnRef                = useRef<HTMLButtonElement>(null)
   const containerRef          = useRef<HTMLDivElement>(null)
 
@@ -236,7 +244,20 @@ function Dropdown<T extends { id: string }>({
   function handleToggle() {
     if (!open && btnRef.current) {
       const r = btnRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 4, left: r.left, width: r.width })
+      const GAP = 4
+      const MARGIN = 8       // respiro em relação à borda da tela
+      const HEADER_H = 48    // campo de busca + padding, aproximado
+      const spaceBelow = window.innerHeight - r.bottom - GAP - MARGIN
+      const spaceAbove = r.top - GAP - MARGIN
+      const openUp = spaceBelow < 160 && spaceAbove > spaceBelow
+      const available = Math.max(openUp ? spaceAbove : spaceBelow, 100)
+      setPos({
+        top: openUp ? undefined : r.bottom + GAP,
+        bottom: openUp ? window.innerHeight - r.top + GAP : undefined,
+        left: r.left,
+        width: r.width,
+        maxListHeight: Math.max(Math.min(224, available - HEADER_H), 80),
+      })
     }
     if (open) setQ('')
     setOpen(o => !o)
@@ -274,13 +295,17 @@ function Dropdown<T extends { id: string }>({
 
       {open && createPortal(
         <div id="dropdown-portal-active"
-          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
+          style={{
+            position: 'fixed',
+            ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }),
+            left: pos.left, width: pos.width, zIndex: 9999,
+          }}
           className="bg-white border border-ds-border rounded-xl shadow-2xl overflow-hidden">
           <div className="p-2 border-b border-ds-border">
             <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar..."
               className="w-full text-xs px-2 py-1.5 border border-ds-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
           </div>
-          <div className="max-h-56 overflow-y-auto divide-y divide-ds-border">
+          <div className="overflow-y-auto divide-y divide-ds-border" style={{ maxHeight: pos.maxListHeight }}>
             {filtered.length === 0
               ? <p className="px-3 py-3 text-xs text-ds-light text-center">Sem resultados</p>
               : filtered.map(item => (
