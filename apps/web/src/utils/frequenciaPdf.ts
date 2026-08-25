@@ -356,7 +356,10 @@ function buildHtml(p: FrequenciaPdfParams): string {
     <tr>
       <td class="field-label-cell">Tipo de Escala:</td>
       <td class="field-value-cell field-value-normal">${freq.tipoEscalaLabel ?? freq.tipoMedico ?? ''}</td>
-      <td class="field-setor-cell">${freq.servicoOperacionalNome ?? ''}</td>
+      <!-- tipoEscalaLabel já vem composto como "Tipo - Setor" (cadastro do Setor Operacional) —
+           repetir o nome do setor aqui duplicaria o texto. Só mostra o setor nesta célula em
+           frequências legadas sem tipoEscalaLabel (fallback pro tipoMedico genérico sozinho). -->
+      <td class="field-setor-cell">${freq.tipoEscalaLabel ? '' : (freq.servicoOperacionalNome ?? '')}</td>
     </tr>
   </table>
 
