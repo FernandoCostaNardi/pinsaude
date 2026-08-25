@@ -18,6 +18,12 @@ import {
   TomadorServicoOperacionalRequest,
   tomadoresApi,
 } from '../api/tomadoresApi'
+// Placeholder usado no texto do PDF quando o setor tem modalidades dos DOIS Tipos de Escala
+// (Plantonista + Diarista) — nesse caso não dá pra fixar um dos dois no cadastro, já que a Nova
+// Frequência só resolve qual Tipo de Escala usar na hora de criar cada frequência (ambíguo ali,
+// ver FrequenciasPage.tsx/PortalFrequenciaPage.tsx). Definido em frequenciaPdf.ts (dono do
+// contrato de geração do PDF, que também resolve o placeholder — resolverTipoEscalaLabel).
+import { PLACEHOLDER_TIPO_ESCALA } from '../utils/frequenciaPdf'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -148,12 +154,17 @@ function emptySetorForm(): SetorForm {
 }
 
 // "Plantonista - Setor" / "Diarista - Setor" — sugestão default do texto exibido no PDF, baseada
-// na PRIMEIRA modalidade marcada (em ordem de exibição da lista) — usa o Tipo de Escala dela, não
-// o nome específico (ex: "Diária 10h" vira "Diarista", não o nome da modalidade). Recalculada
-// enquanto o usuário não customizar o campo manualmente (ver lastSugestaoRef em SetorFormInline).
-function sugerirTipoEscalaLabel(nome: string, primeiraModalidade: TomadorModalidade | undefined): string {
-  if (!primeiraModalidade || !nome.trim()) return ''
-  const tipoLabel = primeiraModalidade.tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'
+// no(s) Tipo(s) de Escala das modalidades marcadas, não no nome específico de cada uma (ex:
+// "Diária 10h" vira "Diarista", não o nome da modalidade). Quando as modalidades marcadas
+// cobrem os dois Tipos de Escala, usa PLACEHOLDER_TIPO_ESCALA em vez de fixar um dos dois.
+// Recalculada enquanto o usuário não customizar o campo manualmente (ver lastSugestaoRef em
+// SetorFormInline).
+function sugerirTipoEscalaLabel(nome: string, modalidadesSelecionadas: TomadorModalidade[]): string {
+  if (modalidadesSelecionadas.length === 0 || !nome.trim()) return ''
+  const tipos = new Set(modalidadesSelecionadas.map(m => m.tipo))
+  const tipoLabel = tipos.size > 1
+    ? PLACEHOLDER_TIPO_ESCALA
+    : (modalidadesSelecionadas[0].tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista')
   return `${tipoLabel} - ${nome.trim()}`
 }
 
@@ -730,8 +741,8 @@ function SetorFormInline({
   // digitou algo diferente, o campo nunca mais é sobrescrito sozinho. O componente é remontado
   // (key no ponto de uso) sempre que troca de setor sendo editado, então este ref começa "limpo"
   // a cada abertura de formulário.
-  const primeiraModalidadeInicial = modalidadeOptions.find(m => form.modalidadeIds.includes(m.id))
-  const sugestaoInicial = sugerirTipoEscalaLabel(form.nome, primeiraModalidadeInicial)
+  const modalidadesSelecionadasInicial = modalidadeOptions.filter(m => form.modalidadeIds.includes(m.id))
+  const sugestaoInicial = sugerirTipoEscalaLabel(form.nome, modalidadesSelecionadasInicial)
   const lastSugestaoRef = useRef<string>(
     form.tipoEscalaLabel === sugestaoInicial ? sugestaoInicial : '__custom__'
   )
@@ -739,8 +750,8 @@ function SetorFormInline({
   function aplicarComSugestao(patch: Partial<SetorForm>) {
     const nome = patch.nome ?? form.nome
     const modalidadeIds = patch.modalidadeIds ?? form.modalidadeIds
-    const primeira = modalidadeOptions.find(m => modalidadeIds.includes(m.id))
-    const sugestao = sugerirTipoEscalaLabel(nome, primeira)
+    const selecionadas = modalidadeOptions.filter(m => modalidadeIds.includes(m.id))
+    const sugestao = sugerirTipoEscalaLabel(nome, selecionadas)
     const next = { ...patch }
     if (!form.tipoEscalaLabel.trim() || form.tipoEscalaLabel === lastSugestaoRef.current) {
       next.tipoEscalaLabel = sugestao
@@ -813,6 +824,11 @@ function SetorFormInline({
             placeholder="ex: Plantonista - Emergência Cardiológica"
             className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
           />
+          <p className="mt-1 text-[11px] text-ds-light">
+            Use <code className="px-1 py-0.5 rounded bg-gray-100 text-gray-700">{PLACEHOLDER_TIPO_ESCALA}</code> pra
+            o texto se ajustar automaticamente ao Tipo de Escala (Plantonista/Diarista) escolhido em cada
+            frequência — sugerido sozinho quando o setor tem modalidades dos dois tipos.
+          </p>
         </div>
         <div className="col-span-2">
           <Switch checked={form.ativo} onChange={v => onChange({ ativo: v })} label="Setor ativo" />
