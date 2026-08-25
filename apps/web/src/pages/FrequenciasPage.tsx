@@ -434,10 +434,10 @@ function NovaFrequenciaModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
 
         {/* Cabeçalho */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-ds-border">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-ds-border shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-primary-50 flex items-center justify-center shrink-0">
               <CalendarDays size={18} className="text-primary" />
@@ -452,7 +452,8 @@ function NovaFrequenciaModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto min-h-0 p-6">
           {err && <div className="mb-5"><Alert variant="error" onClose={() => setErr(null)}>{err}</Alert></div>}
 
           {/* Linha 1: Médico (full width) */}
@@ -607,9 +608,10 @@ function NovaFrequenciaModal({
               </select>
             </div>
           )}
+          </div>
 
-          {/* Rodapé com ações */}
-          <div className="flex gap-3 mt-6 pt-5 border-t border-ds-border">
+          {/* Rodapé com ações — fora da área com scroll, sempre visível */}
+          <div className="flex gap-3 px-6 py-4 border-t border-ds-border shrink-0">
             <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Cancelar</Button>
             <Button type="submit" disabled={!canSave || saving} className="flex-1">
               {saving ? <><Loader2 size={14} className="animate-spin mr-1.5" />Criando...</> : 'Criar Frequência'}
