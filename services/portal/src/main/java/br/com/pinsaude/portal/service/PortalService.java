@@ -10,6 +10,7 @@ import br.com.pinsaude.portal.dto.SetorOperacionalPortalResponse;
 import br.com.pinsaude.portal.dto.TomadorPortalResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -19,8 +20,11 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -195,23 +199,44 @@ public class PortalService {
     // só populado quando o tomador exige controle de frequência (ver TomadorMedicosModal no
     // admin). Lista vazia quando o tomador não usa essa granularidade (a tela filtra pelo flag
     // Tomador.exigeFrequencia, que já vem no shape completo de Tomador consumido pelo Portal).
+    // Query em 1 passe: LEFT JOIN setor↔modalidade (N:N, pedido do cliente — um setor pode ter
+    // mais de uma modalidade) produz 1 linha por combinação setor+modalidade (ou 1 linha só, com
+    // modalidade null, pra setor sem nenhuma). Agrupado em Java num único ResultSetExtractor —
+    // evita uma segunda query batch (não há NamedParameterJdbcTemplate/IN aqui) e mantém a ordem
+    // de s.nome vinda do banco (LinkedHashMap preserva a ordem de primeira aparição).
     public List<SetorOperacionalPortalResponse> getSetoresDoMedicoNoTomador(UUID medicoId, UUID tomadorId) {
         return jdbc.query("""
-                SELECT s.id, s.nome, s.categoria, s.modalidade_id, m.nome AS modalidade_nome, m.tipo AS modalidade_tipo
+                SELECT s.id AS setor_id, s.nome AS setor_nome, s.categoria,
+                       m.id AS modalidade_id, m.nome AS modalidade_nome, m.tipo AS modalidade_tipo
                 FROM faturamento.medico_tomador_setores mts
                 JOIN faturamento.medico_tomadores mt ON mt.id = mts.medico_tomador_id
                 JOIN faturamento.tomador_servicos_operacionais s ON s.id = mts.setor_id
-                LEFT JOIN faturamento.tomador_modalidades m ON m.id = s.modalidade_id
+                LEFT JOIN faturamento.setor_operacional_modalidades som ON som.setor_id = s.id
+                LEFT JOIN faturamento.tomador_modalidades m ON m.id = som.modalidade_id
                 WHERE mt.medico_id = ? AND mt.tomador_id = ? AND s.ativo = true
-                ORDER BY s.nome
+                ORDER BY s.nome, m.nome
                 """,
-                (rs, row) -> new SetorOperacionalPortalResponse(
-                        rs.getObject("id", UUID.class),
-                        rs.getString("nome"),
-                        rs.getString("categoria"),
-                        rs.getObject("modalidade_id", UUID.class),
-                        rs.getString("modalidade_nome"),
-                        rs.getString("modalidade_tipo")),
+                (ResultSetExtractor<List<SetorOperacionalPortalResponse>>) rs -> {
+                    Map<UUID, String[]> setorInfo = new LinkedHashMap<>();
+                    Map<UUID, List<SetorOperacionalPortalResponse.ModalidadeResumo>> modalidadesPorSetor = new LinkedHashMap<>();
+                    while (rs.next()) {
+                        UUID setorId = rs.getObject("setor_id", UUID.class);
+                        setorInfo.putIfAbsent(setorId, new String[]{rs.getString("setor_nome"), rs.getString("categoria")});
+                        UUID modalidadeId = rs.getObject("modalidade_id", UUID.class);
+                        if (modalidadeId != null) {
+                            modalidadesPorSetor.computeIfAbsent(setorId, id -> new ArrayList<>())
+                                .add(new SetorOperacionalPortalResponse.ModalidadeResumo(
+                                        modalidadeId, rs.getString("modalidade_nome"), rs.getString("modalidade_tipo")));
+                        }
+                    }
+                    List<SetorOperacionalPortalResponse> result = new ArrayList<>();
+                    for (Map.Entry<UUID, String[]> e : setorInfo.entrySet()) {
+                        result.add(new SetorOperacionalPortalResponse(
+                                e.getKey(), e.getValue()[0], e.getValue()[1],
+                                modalidadesPorSetor.getOrDefault(e.getKey(), List.of())));
+                    }
+                    return result;
+                },
                 medicoId, tomadorId);
     }
 

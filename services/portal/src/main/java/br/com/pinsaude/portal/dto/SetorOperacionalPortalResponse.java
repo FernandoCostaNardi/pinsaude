@@ -1,17 +1,19 @@
 package br.com.pinsaude.portal.dto;
 
+import java.util.List;
 import java.util.UUID;
 
-// modalidadeId/modalidadeNome/modalidadeTipo: Modalidade de referência configurada no cadastro do
-// setor (faturamento.tomador_servicos_operacionais.modalidade_id) — o Portal usa esses campos pra
-// (1) derivar o Tipo de Escala da frequência automaticamente ao selecionar o setor e (2), pra
-// Diarista, usar direto essa modalidade sem perguntar de novo na tela de Nova Frequência (pedido
-// do cliente). Todos null pra setores sem modalidade configurada (legados).
+// modalidades: Modalidade(s) de referência configuradas no cadastro do setor (pedido do cliente:
+// um setor pode ter mais de uma) — o Portal usa a lista pra (1) derivar o Tipo de Escala da
+// frequência automaticamente quando há só 1, ou pra oferecer a escolha quando há mais de 1, e
+// (2), pra Diarista, usar a modalidade direto sem perguntar de novo (quando só há 1 opção
+// Diarista) ou oferecer a escolha entre as opções Diarista do setor (quando há mais de 1).
+// Lista vazia pra setores sem nenhuma modalidade configurada (legados).
 public record SetorOperacionalPortalResponse(
     UUID id,
     String nome,
     String categoria,
-    UUID modalidadeId,
-    String modalidadeNome,
-    String modalidadeTipo
-) {}
+    List<ModalidadeResumo> modalidades
+) {
+    public record ModalidadeResumo(UUID id, String nome, String tipo) {}
+}

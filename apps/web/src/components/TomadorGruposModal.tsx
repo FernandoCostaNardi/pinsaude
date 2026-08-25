@@ -130,29 +130,30 @@ function emptyHorarioPadraoForm(): HorarioPadraoForm {
 // Cadastro dedicado de Setores Operacionais (catálogo por tomador, com categoria própria) —
 // separado do fluxo de Grupos, que passa a só selecionar entre os setores já cadastrados aqui.
 //
-// modalidadeId/tipoEscalaLabel: pedido do cliente — o setor define explicitamente qual a
-// Modalidade daquele setor (usada pra derivar o Tipo de Escala da Frequência automaticamente,
-// sem precisar mais perguntar isso na tela de Nova Frequência) e o texto exibido no campo
-// "Tipo de Escala" do PDF (sugestão default "Modalidade - Setor", editável).
+// modalidadeIds/tipoEscalaLabel: pedido do cliente — o setor define explicitamente qual(is)
+// Modalidade(s) daquele setor (pode ter mais de uma — usadas pra derivar o Tipo de Escala da
+// Frequência automaticamente quando só há 1, ou oferecer a escolha quando há mais de 1, sem
+// precisar recadastrar nada) e o texto exibido no campo "Tipo de Escala" do PDF (sugestão
+// default "Plantonista/Diarista - Setor", editável).
 interface SetorForm {
   nome: string
   categoria: string
   ativo: boolean
-  modalidadeId: string
+  modalidadeIds: string[]
   tipoEscalaLabel: string
 }
 
 function emptySetorForm(): SetorForm {
-  return { nome: '', categoria: '', ativo: true, modalidadeId: '', tipoEscalaLabel: '' }
+  return { nome: '', categoria: '', ativo: true, modalidadeIds: [], tipoEscalaLabel: '' }
 }
 
-// "Plantonista - Setor" / "Diarista - Setor" — sugestão default do texto exibido no PDF (usa o
-// Tipo de Escala da modalidade escolhida, não o nome específico dela — ex: "Diária 10h" vira
-// "Diarista", não o nome da modalidade), recalculada enquanto o usuário não customizar o campo
-// manualmente (ver lastSugestaoRef em SetorFormInline).
-function sugerirTipoEscalaLabel(nome: string, modalidade: TomadorModalidade | undefined): string {
-  if (!modalidade || !nome.trim()) return ''
-  const tipoLabel = modalidade.tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'
+// "Plantonista - Setor" / "Diarista - Setor" — sugestão default do texto exibido no PDF, baseada
+// na PRIMEIRA modalidade marcada (em ordem de exibição da lista) — usa o Tipo de Escala dela, não
+// o nome específico (ex: "Diária 10h" vira "Diarista", não o nome da modalidade). Recalculada
+// enquanto o usuário não customizar o campo manualmente (ver lastSugestaoRef em SetorFormInline).
+function sugerirTipoEscalaLabel(nome: string, primeiraModalidade: TomadorModalidade | undefined): string {
+  if (!primeiraModalidade || !nome.trim()) return ''
+  const tipoLabel = primeiraModalidade.tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'
   return `${tipoLabel} - ${nome.trim()}`
 }
 
@@ -716,25 +717,30 @@ function SetorFormInline({
   categoriasExistentes: string[]
   modalidades: TomadorModalidade[]
 }) {
-  const SELECT_CLS = 'w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white'
+  // Modalidade(s) já selecionadas mas hoje inativas (ex: setor cadastrado antes de uma delas ser
+  // desativada) — injetadas no topo da lista pra não sumirem dos checkboxes (mesmo padrão já
+  // usado em outros formulários deste componente para modalidade/ocorrência inativa).
+  const modalidadesSelecionadasInativas = modalidades.filter(m => form.modalidadeIds.includes(m.id) && !m.ativo)
+  const modalidadeOptions = [...modalidadesSelecionadasInativas, ...modalidades.filter(m => m.ativo)]
 
   // Sugestão "Plantonista/Diarista - Setor" recalculada enquanto o usuário não customizar o campo
-  // à mão — lastSugestaoRef guarda a última sugestão aplicada automaticamente; se o valor atual do campo
+  // à mão, baseada na PRIMEIRA modalidade marcada (em ordem de exibição, não de clique) —
+  // lastSugestaoRef guarda a última sugestão aplicada automaticamente; se o valor atual do campo
   // ainda bater com ela (ou estiver vazio), a próxima sugestão sobrescreve; se o usuário já
   // digitou algo diferente, o campo nunca mais é sobrescrito sozinho. O componente é remontado
   // (key no ponto de uso) sempre que troca de setor sendo editado, então este ref começa "limpo"
   // a cada abertura de formulário.
-  const modalidadeInicial = modalidades.find(m => m.id === form.modalidadeId)
-  const sugestaoInicial = sugerirTipoEscalaLabel(form.nome, modalidadeInicial)
+  const primeiraModalidadeInicial = modalidadeOptions.find(m => form.modalidadeIds.includes(m.id))
+  const sugestaoInicial = sugerirTipoEscalaLabel(form.nome, primeiraModalidadeInicial)
   const lastSugestaoRef = useRef<string>(
     form.tipoEscalaLabel === sugestaoInicial ? sugestaoInicial : '__custom__'
   )
 
   function aplicarComSugestao(patch: Partial<SetorForm>) {
     const nome = patch.nome ?? form.nome
-    const modalidadeId = patch.modalidadeId ?? form.modalidadeId
-    const modalidade = modalidades.find(m => m.id === modalidadeId)
-    const sugestao = sugerirTipoEscalaLabel(nome, modalidade)
+    const modalidadeIds = patch.modalidadeIds ?? form.modalidadeIds
+    const primeira = modalidadeOptions.find(m => modalidadeIds.includes(m.id))
+    const sugestao = sugerirTipoEscalaLabel(nome, primeira)
     const next = { ...patch }
     if (!form.tipoEscalaLabel.trim() || form.tipoEscalaLabel === lastSugestaoRef.current) {
       next.tipoEscalaLabel = sugestao
@@ -743,13 +749,12 @@ function SetorFormInline({
     onChange(next)
   }
 
-  // Modalidade selecionada mas hoje inativa (ex: setor cadastrado antes dela ser desativada) —
-  // injeta no topo da lista pra o <select> não ficar em branco (mesmo padrão já usado em outros
-  // formulários deste componente para modalidade/ocorrência inativa).
-  const modalidadeSelecionadaInativa = modalidadeInicial && !modalidadeInicial.ativo ? modalidadeInicial : null
-  const modalidadeOptions = modalidadeSelecionadaInativa
-    ? [modalidadeSelecionadaInativa, ...modalidades.filter(m => m.ativo)]
-    : modalidades.filter(m => m.ativo)
+  function toggleModalidade(modalidadeId: string) {
+    const novosIds = form.modalidadeIds.includes(modalidadeId)
+      ? form.modalidadeIds.filter(id => id !== modalidadeId)
+      : [...form.modalidadeIds, modalidadeId]
+    aplicarComSugestao({ modalidadeIds: novosIds })
+  }
 
   return (
     <div className="space-y-3">
@@ -775,26 +780,26 @@ function SetorFormInline({
         </div>
         <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Modalidade *
-            <span className="ml-1 text-xs font-normal text-ds-light">(define o Tipo de Escala da Frequência automaticamente)</span>
+            Modalidade(s) *
+            <span className="ml-1 text-xs font-normal text-ds-light">
+              (define o Tipo de Escala da Frequência automaticamente — marque mais de uma se o setor puder usar modalidades diferentes; a Nova Frequência pergunta qual usar quando houver mais de uma)
+            </span>
           </label>
           {modalidades.length === 0 ? (
             <p className="text-[11px] text-ds-light">
               Nenhuma modalidade cadastrada — configure ao menos uma na aba "Modalidades" antes de cadastrar o setor.
             </p>
           ) : (
-            <select
-              value={form.modalidadeId}
-              onChange={e => aplicarComSugestao({ modalidadeId: e.target.value })}
-              className={SELECT_CLS}
-            >
-              <option value="">Selecione a modalidade...</option>
+            <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2.5">
               {modalidadeOptions.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.nome} ({m.tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'}{!m.ativo ? ' — inativa' : ''})
-                </option>
+                <Switch
+                  key={m.id}
+                  checked={form.modalidadeIds.includes(m.id)}
+                  onChange={() => toggleModalidade(m.id)}
+                  label={`${m.nome} (${m.tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'}${!m.ativo ? ' — inativa' : ''})`}
+                />
               ))}
-            </select>
+            </div>
           )}
         </div>
         <div className="col-span-2">
@@ -1067,7 +1072,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       nome: s.nome,
       categoria: s.categoria ?? '',
       ativo: s.ativo,
-      modalidadeId: s.modalidadeId ?? '',
+      modalidadeIds: s.modalidades.map(m => m.id),
       tipoEscalaLabel: s.tipoEscalaLabel ?? '',
     })
     setEditingSetorId(s.id)
@@ -1086,8 +1091,8 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       setSetorErr('Preencha o nome do setor')
       return
     }
-    if (!setorForm.modalidadeId) {
-      setSetorErr('Selecione a modalidade do setor')
+    if (setorForm.modalidadeIds.length === 0) {
+      setSetorErr('Selecione ao menos uma modalidade do setor')
       return
     }
     if (!setorForm.tipoEscalaLabel.trim()) {
@@ -1098,7 +1103,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       nome: setorForm.nome.trim(),
       categoria: setorForm.categoria.trim() || null,
       ativo: setorForm.ativo,
-      modalidadeId: setorForm.modalidadeId,
+      modalidadeIds: setorForm.modalidadeIds,
       tipoEscalaLabel: setorForm.tipoEscalaLabel.trim(),
     }
     setSetorSaving(true)
@@ -1690,9 +1695,9 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                               </span>
                             )}
                           </div>
-                          {s.modalidadeNome ? (
+                          {s.modalidades.length > 0 ? (
                             <p className="text-[10px] text-ds-light mt-0.5">
-                              {s.modalidadeNome} ({s.modalidadeTipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'})
+                              {s.modalidades.map(m => `${m.nome} (${m.tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'})`).join(' · ')}
                             </p>
                           ) : (
                             <p className="text-[10px] text-amber-600 mt-0.5">Sem modalidade configurada</p>
