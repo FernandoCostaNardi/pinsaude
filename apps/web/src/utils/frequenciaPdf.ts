@@ -35,6 +35,25 @@ function formatCnpj(cnpj: string): string {
   return cnpj
 }
 
+// Placeholder que TomadorGruposModal.tsx sugere no texto do PDF (campo "Texto no PDF") quando o
+// setor tem modalidades dos dois Tipos de Escala (Plantonista + Diarista) — nesse caso o cadastro
+// não pode fixar um dos dois de antemão, já que a Nova Frequência só resolve isso na hora de
+// criar cada frequência (ambíguo quando o setor tem os dois tipos). Exportado daqui (não de
+// TomadorGruposModal.tsx) porque este arquivo é quem define/entende o contrato do placeholder no
+// momento de gerar o PDF — ver resolverTipoEscalaLabel logo abaixo.
+export const PLACEHOLDER_TIPO_ESCALA = '{TipoEscala}'
+
+// Resolve o campo "Tipo de Escala" do PDF: freq.tipoEscalaLabel (texto customizado do cadastro do
+// setor) pode conter o PLACEHOLDER_TIPO_ESCALA — substituído pelo Tipo de Escala real desta
+// frequência (freq.tipoMedico). Sem tipoEscalaLabel (setor legado): cai de volta pro tipoMedico
+// genérico sozinho.
+function resolverTipoEscalaLabel(label: string | null, tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null): string {
+  if (!label) return tipoMedico ?? ''
+  if (!label.includes(PLACEHOLDER_TIPO_ESCALA)) return label
+  const tipoTexto = tipoMedico === 'DIARISTA' ? 'Diarista' : tipoMedico === 'PLANTONISTA' ? 'Plantonista' : ''
+  return label.split(PLACEHOLDER_TIPO_ESCALA).join(tipoTexto)
+}
+
 // PINSAUDE-13.25: modalidade Diarista não tem turno/horário cadastrados (paga valor mensal
 // fixo) — o horário impresso no PDF é o que o médico digitou naquele lançamento específico
 // (horaInicio/horaFim), nunca um valor da modalidade. Plantonista continua usando
@@ -355,7 +374,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
     </tr>
     <tr>
       <td class="field-label-cell">Tipo de Escala:</td>
-      <td class="field-value-cell field-value-normal">${freq.tipoEscalaLabel ?? freq.tipoMedico ?? ''}</td>
+      <td class="field-value-cell field-value-normal">${resolverTipoEscalaLabel(freq.tipoEscalaLabel, freq.tipoMedico)}</td>
       <!-- tipoEscalaLabel já vem composto como "Tipo - Setor" (cadastro do Setor Operacional) —
            repetir o nome do setor aqui duplicaria o texto. Só mostra o setor nesta célula em
            frequências legadas sem tipoEscalaLabel (fallback pro tipoMedico genérico sozinho). -->
