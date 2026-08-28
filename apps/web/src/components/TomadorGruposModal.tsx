@@ -18,12 +18,15 @@ import {
   TomadorServicoOperacionalRequest,
   tomadoresApi,
 } from '../api/tomadoresApi'
-// Placeholder usado no texto do PDF quando o setor tem modalidades dos DOIS Tipos de Escala
-// (Plantonista + Diarista) — nesse caso não dá pra fixar um dos dois no cadastro, já que a Nova
-// Frequência só resolve qual Tipo de Escala usar na hora de criar cada frequência (ambíguo ali,
-// ver FrequenciasPage.tsx/PortalFrequenciaPage.tsx). Definido em frequenciaPdf.ts (dono do
-// contrato de geração do PDF, que também resolve o placeholder — resolverTipoEscalaLabel).
-import { PLACEHOLDER_TIPO_ESCALA } from '../utils/frequenciaPdf'
+// Placeholders usados no texto do PDF (campo "Texto no PDF" do Setor Operacional). Definidos em
+// frequenciaPdf.ts (dono do contrato de geração do PDF, que também os resolve —
+// resolverTipoEscalaLabel). PLACEHOLDER_TIPO_ESCALA é sugerido automaticamente quando o setor
+// tem modalidades dos DOIS Tipos de Escala (Plantonista + Diarista) — nesse caso não dá pra
+// fixar um dos dois no cadastro, já que a Nova Frequência só resolve qual usar na hora de criar
+// cada frequência (ver FrequenciasPage.tsx/PortalFrequenciaPage.tsx). PLACEHOLDER_MODALIDADE
+// resolve pro nome da modalidade selecionada — nunca sugerido automaticamente, só quando digitado
+// manualmente.
+import { PLACEHOLDER_TIPO_ESCALA, PLACEHOLDER_MODALIDADE } from '../utils/frequenciaPdf'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -827,7 +830,9 @@ function SetorFormInline({
           <p className="mt-1 text-[11px] text-ds-light">
             Use <code className="px-1 py-0.5 rounded bg-gray-100 text-gray-700">{PLACEHOLDER_TIPO_ESCALA}</code> pra
             o texto se ajustar automaticamente ao Tipo de Escala (Plantonista/Diarista) escolhido em cada
-            frequência — sugerido sozinho quando o setor tem modalidades dos dois tipos.
+            frequência — sugerido sozinho quando o setor tem modalidades dos dois tipos. Use{' '}
+            <code className="px-1 py-0.5 rounded bg-gray-100 text-gray-700">{PLACEHOLDER_MODALIDADE}</code> pra
+            entrar o nome da modalidade selecionada na frequência.
           </p>
         </div>
         <div className="col-span-2">
