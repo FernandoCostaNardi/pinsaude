@@ -35,23 +35,47 @@ function formatCnpj(cnpj: string): string {
   return cnpj
 }
 
-// Placeholder que TomadorGruposModal.tsx sugere no texto do PDF (campo "Texto no PDF") quando o
-// setor tem modalidades dos dois Tipos de Escala (Plantonista + Diarista) — nesse caso o cadastro
-// não pode fixar um dos dois de antemão, já que a Nova Frequência só resolve isso na hora de
-// criar cada frequência (ambíguo quando o setor tem os dois tipos). Exportado daqui (não de
-// TomadorGruposModal.tsx) porque este arquivo é quem define/entende o contrato do placeholder no
-// momento de gerar o PDF — ver resolverTipoEscalaLabel logo abaixo.
+// Placeholders que TomadorGruposModal.tsx aceita no texto do PDF (campo "Texto no PDF") do
+// cadastro do Setor Operacional — exportados daqui (não de TomadorGruposModal.tsx) porque este
+// arquivo é quem define/entende o contrato de resolução na hora de gerar o PDF, ver
+// resolverTipoEscalaLabel logo abaixo.
+//
+// {TipoEscala} — sugerido automaticamente quando o setor tem modalidades dos dois Tipos de
+// Escala (Plantonista + Diarista), já que o cadastro não pode fixar um dos dois de antemão (a
+// Nova Frequência só resolve isso na hora de criar cada frequência).
 export const PLACEHOLDER_TIPO_ESCALA = '{TipoEscala}'
+// {Modalidade} — resolve pro nome da modalidade selecionada na frequência (freq.modalidadeNome,
+// fixada na criação — hoje sempre o caso do Diarista). Nunca sugerido automaticamente (diferente
+// de {TipoEscala}); só funciona quando digitado manualmente no campo "Texto no PDF".
+export const PLACEHOLDER_MODALIDADE = '{Modalidade}'
+
+// Nome da modalidade a usar na resolução de {Modalidade}: freq.modalidadeNome quando a
+// modalidade é fixa na frequência (Diarista, ou Plantonista legado anterior ao revert do
+// PINSAUDE-13.26). Modalidade Plantonista atual é escolhida por lançamento (freq.modalidadeNome
+// null) — nesse caso deriva dos itens já lançados, só quando TODOS usam a mesma modalidade;
+// ambíguo (itens com modalidades diferentes) ou nenhum item lançado ainda: cai pra string vazia,
+// não dá pra apontar "a" modalidade da frequência.
+function resolverModalidadeNome(freq: FrequenciaMedicaResp): string {
+  if (freq.modalidadeNome) return freq.modalidadeNome
+  const nomes = new Set(freq.itens.map(i => i.modalidadeNome).filter((n): n is string => !!n))
+  return nomes.size === 1 ? [...nomes][0] : ''
+}
 
 // Resolve o campo "Tipo de Escala" do PDF: freq.tipoEscalaLabel (texto customizado do cadastro do
-// setor) pode conter o PLACEHOLDER_TIPO_ESCALA — substituído pelo Tipo de Escala real desta
-// frequência (freq.tipoMedico). Sem tipoEscalaLabel (setor legado): cai de volta pro tipoMedico
-// genérico sozinho.
-function resolverTipoEscalaLabel(label: string | null, tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null): string {
-  if (!label) return tipoMedico ?? ''
-  if (!label.includes(PLACEHOLDER_TIPO_ESCALA)) return label
-  const tipoTexto = tipoMedico === 'DIARISTA' ? 'Diarista' : tipoMedico === 'PLANTONISTA' ? 'Plantonista' : ''
-  return label.split(PLACEHOLDER_TIPO_ESCALA).join(tipoTexto)
+// setor) pode conter PLACEHOLDER_TIPO_ESCALA e/ou PLACEHOLDER_MODALIDADE — os dois são
+// substituídos pelo valor real desta frequência. Sem tipoEscalaLabel (setor legado): cai de volta
+// pro tipoMedico genérico sozinho.
+function resolverTipoEscalaLabel(label: string | null, freq: FrequenciaMedicaResp): string {
+  if (!label) return freq.tipoMedico ?? ''
+  let resolvido = label
+  if (resolvido.includes(PLACEHOLDER_TIPO_ESCALA)) {
+    const tipoTexto = freq.tipoMedico === 'DIARISTA' ? 'Diarista' : freq.tipoMedico === 'PLANTONISTA' ? 'Plantonista' : ''
+    resolvido = resolvido.split(PLACEHOLDER_TIPO_ESCALA).join(tipoTexto)
+  }
+  if (resolvido.includes(PLACEHOLDER_MODALIDADE)) {
+    resolvido = resolvido.split(PLACEHOLDER_MODALIDADE).join(resolverModalidadeNome(freq))
+  }
+  return resolvido
 }
 
 // PINSAUDE-13.25: modalidade Diarista não tem turno/horário cadastrados (paga valor mensal
@@ -374,7 +398,7 @@ function buildHtml(p: FrequenciaPdfParams): string {
     </tr>
     <tr>
       <td class="field-label-cell">Tipo de Escala:</td>
-      <td class="field-value-cell field-value-normal">${resolverTipoEscalaLabel(freq.tipoEscalaLabel, freq.tipoMedico)}</td>
+      <td class="field-value-cell field-value-normal">${resolverTipoEscalaLabel(freq.tipoEscalaLabel, freq)}</td>
       <!-- tipoEscalaLabel já vem composto como "Tipo - Setor" (cadastro do Setor Operacional) —
            repetir o nome do setor aqui duplicaria o texto. Só mostra o setor nesta célula em
            frequências legadas sem tipoEscalaLabel (fallback pro tipoMedico genérico sozinho). -->
