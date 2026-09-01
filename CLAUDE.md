@@ -6462,6 +6462,28 @@ IPs). Resolver TXT em cada nível manualmente (`nslookup -type=TXT <include> 8.8
 dá pra confiar só no primeiro nível do SPF, o include mais externo quase nunca lista os IPs
 diretamente.
 
+### SPF corrigido (EMAIL-05) — `ip4:` direto, sem depender de include de terceiros
+Registro final aplicado em `pinsaude.com.br` (editado manualmente no Zone Editor do cPanel, não pela
+ferramenta "Email Deliverability"):
+```
+v=spf1 include:_spf.google.com include:websitewelcome.com ip4:162.241.63.36 ~all
+```
+Adicionar o IP do servidor SMTP direto como `ip4:` (em vez de tentar achar/confiar num `include:`
+de terceiro que talvez cubra o range) é a correção mais simples e à prova de mudança futura do
+provedor de hospedagem compartilhada — não depende de nenhum SPF de terceiro continuar cobrindo
+esse IP específico no futuro. DKIM (`default._domainkey`) e DMARC (`p=none`) já estavam corretos
+desde antes (EMAIL-04) e permaneceram intocados.
+
+### ⚠️ Validar sempre no nameserver autoritativo, nunca só num resolver público cacheado
+Na primeira tentativa de correção, o usuário editou o registro mas o resolver público (`8.8.8.8`)
+continuou mostrando o valor antigo — parecia propagação/cache. Consultar direto o nameserver
+autoritativo do domínio (`nslookup -type=TXT <dominio> <nameserver-autoritativo>`, sem passar por
+nenhum resolver recursivo/cache no meio) mostrou que era o **mesmo valor antigo ali também** —
+confirmando que a primeira edição não tinha sido salva de verdade (não era propagação). Só depois de
+uma segunda edição o nameserver autoritativo passou a mostrar o valor novo. **Um nameserver
+autoritativo não tem cache** — se ele ainda mostra o valor antigo, a mudança não foi salva, ponto
+final; não gastar tempo esperando "propagação" antes de descartar essa hipótese.
+
 ---
 
 ## Convenções de Commit e Branch
