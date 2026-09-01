@@ -6428,6 +6428,40 @@ destinatário.
    oportunidade, já que a config em si foi confirmada via `GET` e usa as mesmas credenciais já
    validadas por SMTP puro.
 
+### DNS de `pinsaude.com.br` — levantamento público, sem precisar de credenciais
+Antes de pedir acesso ao painel de DNS pra ninguém, dá pra descobrir bastante coisa só com `nslookup`/
+`dig` contra um resolver público (`8.8.8.8`) — não confiar no resolver local (nesta rede, o resolver
+padrão simplesmente não respondia pro domínio, sem erro claro do motivo; sempre forçar um resolver
+público explícito ao investigar DNS de produção). Achados (2026-09-01):
+
+- **Quem administra o DNS**: Hostgator — nameservers `nspro102.hostgator.com.br` /
+  `nspro103.hostgator.com.br`. Mesmo provedor do e-mail configurado na seção acima.
+- **DKIM já existe** (`default._domainkey.pinsaude.com.br`, chave RSA publicada) — padrão automático
+  de cPanel, criado quando a conta de e-mail foi criada no Hostgator. Não precisa de ação.
+- **DMARC já existe** e já na política inicial recomendada:
+  `v=DMARC1; p=none; rua=mailto:postmaster@pinsaude.com.br`. Não precisa de ação por enquanto — só
+  evoluir pra `p=quarantine`/`p=reject` mais adiante, quando o volume real de envio estiver estável.
+- **SPF existe, mas NÃO cobre o servidor SMTP novo**: registro atual
+  `v=spf1 include:_spf.google.com include:websitewelcome.com ~all`. Resolvendo toda a cadeia de
+  `include` (`websitewelcome.com` → `_spf.nfco-mailout.com` → `_netblocks-pro`/`_netblocks-atl.nfco-mailout.com`
+  + `eig.spf.a.cloudfilter.net`), nenhum dos blocos IPv4 listados cobre `162.241.63.36`
+  (IP de `sh-pro102.hostgator.com.br`, o servidor SMTP usado pelo onboarding/Keycloak) — mesmo sendo
+  infraestrutura Hostgator/EIG, é um bloco de IP diferente do coberto pelos includes genéricos de
+  hospedagem compartilhada. **Ação pendente**: adicionar esse IP (ou o range `/24`) ao SPF — a forma
+  mais confiável é usar a ferramenta "Email Deliverability" do cPanel (gera o registro exato
+  recomendado com validação em tempo real) em vez de editar a mão.
+- **MX aponta pro Google** (`ASPMX.L.GOOGLE.COM` etc.) — o domínio recebe e-mail via Google Workspace,
+  mesmo enviando via SMTP da Hostgator pro `noreply@`. Isso é normal (envio e recebimento são
+  mecanismos independentes) — só relevante se algum dia alguém precisar responder a partir desse
+  endereço "noreply".
+
+### Método pra checar cobertura de IP num SPF com includes aninhados
+SPF records costumam ter múltiplos níveis de `include:` (provedor → sub-provedor → range real de
+IPs). Resolver TXT em cada nível manualmente (`nslookup -type=TXT <include> 8.8.8.8`) até achar os
+`ip4:`/`ip6:` finais, e comparar contra o IP real do servidor (`nslookup <mail-host> 8.8.8.8`) — não
+dá pra confiar só no primeiro nível do SPF, o include mais externo quase nunca lista os IPs
+diretamente.
+
 ---
 
 ## Convenções de Commit e Branch
