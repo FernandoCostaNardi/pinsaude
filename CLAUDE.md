@@ -6352,6 +6352,84 @@ reais originais.
 
 ---
 
+## E-mail Oficial em Produção — pingestao.com.br (pós-EPIC, infra-only)
+
+### Divergência intencional entre os dois ambientes de produção
+A partir desta task, **`pingestao.com.br` usa SMTP real** (Hostgator) tanto no `onboarding`
+(`spring.mail`) quanto no Keycloak (`smtpServer` do realm) — **`212.85.12.228` e todos os
+ambientes locais/dev continuam 100% Mailhog**, propositalmente. Isso é uma mudança **só de infra**,
+sem nenhum código/arquivo do git alterado nos dois serviços que enviam e-mail — os dois hosts já
+eram totalmente independentes (checkout git, Postgres, Keycloak próprios), então essa divergência é
+só configuração local a cada VPS.
+
+Credenciais reais (Hostgator, domínio `pinsaude.com.br`) vivem exclusivamente em
+`/home/pinsaude/apps/onboarding/application-prod.yml` (fora do git) e no `smtpServer` do Keycloak em
+`pingestao.com.br` (aplicado via Admin API, sem tocar `tools/keycloak/realm-export.json`) — nunca
+commitadas. Backup do `application-prod.yml` anterior guardado como
+`application-prod.yml.bak-<data>` no mesmo diretório.
+
+### ⚠️ Porta 465 é SSL implícito, não STARTTLS — `ssl.enable`, não `starttls.enable`
+A Hostgator (como a maioria dos provedores com porta 465) usa **SSL/TLS implícito** — a conexão já
+nasce criptografada, diferente da porta 587 (STARTTLS, começa em texto plano e faz upgrade). Usar
+`starttls.enable: true` numa conexão que já é SSL na 465 é o erro mais comum nesse tipo de setup.
+Config correta no `spring.mail.properties.mail.smtp`:
+```yaml
+smtp:
+  auth: true
+  ssl:
+    enable: true
+  starttls:
+    enable: false
+```
+Mesma lógica no Keycloak: `"ssl": "true", "starttls": "false"` no `smtpServer` do realm. Confirmado
+por teste manual (script Python `smtplib.SMTP_SSL` direto na porta 465) antes de aplicar em
+produção — validar credenciais com um teste isolado (fora da aplicação) antes de configurar
+`spring.mail`/Keycloak evita descobrir um erro de STARTTLS-vs-SSL só depois do deploy.
+
+### `smtpServer.from` do realm pode já ter divergido do `realm-export.json` do git
+Ao inspecionar o `smtpServer` atual de `pingestao.com.br` antes de alterar (sempre fazer isso —
+`GET /admin/realms/{realm}` antes de qualquer `PUT`), o campo `from` já estava como
+`noreply@pingestao.com` — **diferente** do default versionado em `realm-export.json:35`
+(`noreply@pinsaude.com.br`). Ou seja, alguém (ou algum script) já tinha customizado esse campo
+direto via Admin API nesse host, sem deixar rastro no git. Reforça o padrão já documentado em outras
+seções: **o `realm-export.json` do git nunca é a fonte da verdade pra um host já em produção** — só
+vale pra criação inicial do realm (`--import-realm`). Sempre conferir o estado real via `GET` antes
+de assumir o que está configurado.
+
+### Testando o pipeline onboarding→e-mail sem tocar em dado real: endpoint público de candidatura
+`POST /api/onboarding/publico/candidaturas` (EPIC-14.2, `permitAll` nos dois `SecurityConfig`) é a
+forma mais segura de validar ponta a ponta que `spring.mail` está funcionando: cria uma
+`CandidaturaMedico` em `RASCUNHO` com um e-mail arbitrário (o do teste) e dispara
+`CANDIDATURA_RECEBIDA` automaticamente via `NotificacaoService.publicar()` — sem precisar de token,
+sem tocar em nenhum médico/usuário real. CPF de teste com checksum válido reutilizável:
+`529.982.247-25`. Registro de teste pode ser removido depois via SQL direto (`DELETE FROM
+onboarding.medicos WHERE id = '<id>'`) — não existe endpoint de exclusão de candidatura.
+
+### ⚠️ Ausência de log NÃO é evidência de falha no envio de e-mail
+`EmailTemplateService.enviar()` só loga em caso de **falha** (`catch`, sem log de sucesso) — depois
+de disparar um e-mail de teste, `tail`/`journalctl` no `onboarding` sem nenhuma linha nova é
+justamente o resultado **esperado** de um envio bem-sucedido, não um sinal de que nada aconteceu.
+Não confundir com o serviço estar mudo por outro motivo — sempre cruzar com o HTTP status da
+chamada que disparou o e-mail (ex.: `201` da candidatura) e, quando possível, confirmação direta do
+destinatário.
+
+### Testando o SMTP do Keycloak sem mexer em usuário real — duas tentativas, duas limitações
+1. `POST /admin/realms/{realm}/testSMTPConnection` (endpoint dedicado do Keycloak pra esse fim)
+   retornou `400 {"error":"unknown_error"}` genérico nesse Keycloak 24 — a mensagem sugere log em
+   nível debug pra mais detalhe, não investigado a fundo (fora de escopo desta task). Não confiável
+   como teste rápido nessa versão sem mais investigação.
+2. Editar temporariamente o `email` de um usuário real via Admin API (mesmo reversível, só pra
+   disparar `execute-actions-email` e testar) **é bloqueado pelo classificador de segurança do modo
+   automático do Claude Code** — mesmo sendo uma conta de teste/seed documentada
+   (`medico@pinsaude.com.br`). Não insistir tentando contornar; é um limite esperado.
+   Consequência prática: a validação do transporte SMTP do **Keycloak** especificamente (diferente
+   do `onboarding`, validado via candidatura pública) ficou incompleta nesta sessão — recomenda-se
+   testar manualmente pela tela de login ("Esqueci minha senha") com uma conta real na primeira
+   oportunidade, já que a config em si foi confirmada via `GET` e usa as mesmas credenciais já
+   validadas por SMTP puro.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
