@@ -1,3 +1,5 @@
+import type { TipoEscala } from '../utils/tipoEscala'
+
 const STORAGE_KEY = 'pinsaude_tokens'
 
 function getAccessToken(): string {
@@ -83,13 +85,9 @@ export interface FrequenciaMedicaResp {
   grupoId: string | null
   servicoOperacionalId: string
   servicoOperacionalNome: string | null
-  // Texto customizável do setor, exibido no campo "Tipo de Escala" do PDF — pedido do cliente
-  // (ver TomadorServicoOperacional.tipoEscalaLabel em tomadoresApi.ts). Null pra setores legados
-  // nunca editados desde a criação deste campo; o PDF cai de volta pra tipoMedico nesse caso.
-  tipoEscalaLabel: string | null
   competencia: string
   especialidade: string | null
-  tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null
+  tipoMedico: TipoEscala | null
   status: string
   documentoAssinado: boolean
   enviadaTomadorEm: string | null
@@ -105,7 +103,7 @@ export interface FrequenciaMedicaResp {
   // null, o formulário de lançamento de plantão não pergunta mais modalidade/ocorrência.
   modalidadeId: string | null
   modalidadeNome: string | null
-  modalidadeTipo: 'PLANTONISTA' | 'DIARISTA' | null
+  modalidadeTipo: TipoEscala | null
   modalidadeTurno: string | null
   modalidadeHorario: string | null
   modalidadeHoras: number | null
@@ -136,12 +134,14 @@ export interface FrequenciaMedicaRequest {
   grupoId: string
   servicoOperacionalId: string
   competencia: string
-  tipoMedico: 'PLANTONISTA' | 'DIARISTA'
+  tipoMedico: TipoEscala
   // Modalidade (obrigatória) e ocorrência (opcional) só são escolhidas aqui, na criação, quando
-  // tipoMedico = DIARISTA — nesse caso o formulário de lançamento de plantão nunca mais pergunta
-  // nenhuma das duas. Para PLANTONISTA, os dois campos devem vir undefined — modalidade e
-  // ocorrência voltam a ser escolhidas a cada plantão lançado (ajuste pós-implantação, reverte
-  // parte do comportamento fixo introduzido em PINSAUDE-13.26 — ver CLAUDE.md).
+  // tipoMedico é um tipo "fixo" (DIARISTA/EVOLUCIONISTA — ver isTipoModalidadeFixa em
+  // utils/tipoEscala.ts) — nesse caso o formulário de lançamento de plantão nunca mais pergunta
+  // nenhuma das duas. Para tipos "por lançamento" (PLANTONISTA/EVOLUCIONISTA_FDS), os dois campos
+  // devem vir undefined — modalidade e ocorrência voltam a ser escolhidas a cada plantão lançado
+  // (ajuste pós-implantação, reverte parte do comportamento fixo introduzido em PINSAUDE-13.26 —
+  // ver CLAUDE.md).
   modalidadeId?: string
   ocorrenciaId?: string
 }

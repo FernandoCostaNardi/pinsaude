@@ -345,6 +345,85 @@ class TomadorGruposModalidadesServiceTest {
             .hasMessageContaining("Horas semanais são obrigatórias para modalidade do tipo Diarista");
     }
 
+    // ─── Modalidade Evolucionista / Evolucionista FDS ───────────────────────────
+    // Reaproveitam exatamente as mesmas regras de campos do Diarista (horas semanais
+    // obrigatórias, turno/horário/horas sempre zerados) — só o tipo muda.
+
+    @Test
+    void criarModalidade_evolucionista_salva() {
+        stubSaveComId();
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Evolucionista 30h/semana", "EVOLUCIONISTA", null, null, null, 1_200_000L, 0L, true,
+            BigDecimal.valueOf(30));
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.tipo()).isEqualTo("EVOLUCIONISTA");
+        assertThat(resp.horasSemanais()).isEqualByComparingTo(BigDecimal.valueOf(30));
+        assertThat(resp.turno()).isNull();
+        assertThat(resp.horario()).isNull();
+        assertThat(resp.horas()).isNull();
+    }
+
+    // EVOLUCIONISTA_FDS se comporta como PLANTONISTA por trás dos panos (turno/horário/horas
+    // obrigatórios, modalidade por lançamento) — não como DIARISTA/EVOLUCIONISTA, apesar do nome
+    // parecido (correção pós-implantação, ver TipoEscala).
+    @Test
+    void criarModalidade_evolucionistaFds_salva() {
+        stubSaveComId();
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Evolucionista FDS 12h", "EVOLUCIONISTA_FDS", "DIURNO", "07:00 as 19:00",
+            BigDecimal.valueOf(12), 600_000L, 0L, true, null);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.tipo()).isEqualTo("EVOLUCIONISTA_FDS");
+        assertThat(resp.turno()).isEqualTo("DIURNO");
+        assertThat(resp.horario()).isEqualTo("07:00 as 19:00");
+        assertThat(resp.horas()).isEqualByComparingTo(BigDecimal.valueOf(12));
+        assertThat(resp.horasSemanais()).isNull();
+    }
+
+    @Test
+    void criarModalidade_evolucionistaSemHorasSemanais_lanca422() {
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Evolucionista sem meta", "EVOLUCIONISTA", null, null, null, 1_200_000L, 0L, true, null);
+
+        assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Horas semanais são obrigatórias para modalidade do tipo Evolucionista");
+    }
+
+    @Test
+    void criarModalidade_evolucionistaFdsSemTurno_lanca422() {
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Evolucionista FDS incompleta", "EVOLUCIONISTA_FDS", null, "07:00 as 19:00",
+            BigDecimal.valueOf(12), 600_000L, 0L, true, null);
+
+        assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Turno é obrigatório para modalidade do tipo Evolucionista FDS");
+    }
+
+    @Test
+    void criarModalidade_tipoInvalido_rejeitadoPeloDto() {
+        // @Pattern do TomadorModalidadeRequest só aceita os 4 valores válidos — não é
+        // responsabilidade do service validar isso, mas confirma que o service não quebra se
+        // por algum motivo um tipo desconhecido chegar até aqui (cai no ramo "por lançamento"/
+        // else, já que não está em TipoEscala.TIPOS_MODALIDADE_FIXA). TipoEscala.label() devolve
+        // o valor bruto quando não reconhece o tipo — nunca rotula um tipo desconhecido como
+        // "Plantonista" silenciosamente.
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Tipo desconhecido", "OUTRO_TIPO", null, "07:00 as 17:00", BigDecimal.valueOf(10),
+            800_000L, 0L, true, null);
+
+        assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Turno é obrigatório para modalidade do tipo OUTRO_TIPO");
+    }
+
     private void stubSaveComId() {
         when(modalidadeRepo.save(any())).thenAnswer(inv -> {
             TomadorModalidade mm = inv.getArgument(0);
@@ -443,7 +522,7 @@ class TomadorGruposModalidadesServiceTest {
         when(modalidadeRepo.findAllById(List.of(modalidade.getId()))).thenReturn(List.of(modalidade));
 
         TomadorServicoOperacionalRequest req = new TomadorServicoOperacionalRequest(
-            "UTI-CARDIOLÓGICA", "UTI", true, List.of(modalidade.getId()), "Plantonista - UTI-CARDIOLÓGICA");
+            "UTI-CARDIOLÓGICA", "UTI", true, List.of(modalidade.getId()));
 
         TomadorServicoOperacionalResponse resp = service.criarServicoOperacional(tomadorId, req);
 
@@ -453,7 +532,6 @@ class TomadorGruposModalidadesServiceTest {
         assertThat(resp.modalidades()).hasSize(1);
         assertThat(resp.modalidades().get(0).id()).isEqualTo(modalidade.getId());
         assertThat(resp.modalidades().get(0).tipo()).isEqualTo("PLANTONISTA");
-        assertThat(resp.tipoEscalaLabel()).isEqualTo("Plantonista - UTI-CARDIOLÓGICA");
         verify(servicoOperacionalRepo).save(any());
         verify(setorModalidadeRepo).save(any());
     }
@@ -472,7 +550,7 @@ class TomadorGruposModalidadesServiceTest {
         when(modalidadeRepo.findAllById(List.of(modalidade.getId()))).thenReturn(List.of(modalidade));
 
         TomadorServicoOperacionalRequest req = new TomadorServicoOperacionalRequest(
-            "Emergência", "   ", true, List.of(modalidade.getId()), "Plantonista - Emergência");
+            "Emergência", "   ", true, List.of(modalidade.getId()));
 
         TomadorServicoOperacionalResponse resp = service.criarServicoOperacional(tomadorId, req);
 
@@ -485,7 +563,7 @@ class TomadorGruposModalidadesServiceTest {
         when(modalidadeRepo.findAllById(List.of(modalidadeDeOutroTomador.getId()))).thenReturn(List.of(modalidadeDeOutroTomador));
 
         TomadorServicoOperacionalRequest req = new TomadorServicoOperacionalRequest(
-            "Emergência", null, true, List.of(modalidadeDeOutroTomador.getId()), "Plantonista - Emergência");
+            "Emergência", null, true, List.of(modalidadeDeOutroTomador.getId()));
 
         assertThatThrownBy(() -> service.criarServicoOperacional(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)

@@ -14,6 +14,7 @@ import br.com.pinsaude.faturamento.domain.TomadorHorarioPadrao;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServico;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
+import br.com.pinsaude.faturamento.domain.TipoEscala;
 import br.com.pinsaude.faturamento.domain.MedicoTomador;
 import br.com.pinsaude.faturamento.domain.MedicoTomadorSetor;
 import br.com.pinsaude.faturamento.domain.TomadorEmpresa;
@@ -462,38 +463,39 @@ public class TomadorService {
         return TomadorModalidadeResponse.from(modalidadeRepo.save(m));
     }
 
-    // Modalidade PLANTONISTA exige turno + horário + horas (todos obrigatórios — o preenchimento
-    // rápido por tomador, EPIC-13.20, existe justamente para agilizar o preenchimento dos 3
-    // juntos). DIARISTA exige horas semanais e ignora turno/horário/horas (paga um valor mensal
-    // fixo — o motor de cálculo em si é implementado em PINSAUDE-13.23). Campos que não
+    // Tipos "fixos" (DIARISTA, EVOLUCIONISTA — ver TipoEscala) exigem horas semanais e ignoram
+    // turno/horário/horas (pagam um valor mensal fixo — motor de cálculo em PINSAUDE-13.23).
+    // Tipos "por lançamento" (PLANTONISTA, EVOLUCIONISTA_FDS — reaproveita exatamente as mesmas
+    // regras do PLANTONISTA, não do DIARISTA/EVOLUCIONISTA, apesar do nome parecido) exigem
+    // turno + horário + horas (todos obrigatórios — o preenchimento rápido por tomador,
+    // EPIC-13.20, existe justamente para agilizar o preenchimento dos 3 juntos). Campos que não
     // pertencem ao tipo são sempre zerados para manter a tabela consistente com o CHECK do banco.
     private void aplicarCamposPorTipo(TomadorModalidade m, TomadorModalidadeRequest req) {
-        if ("DIARISTA".equals(req.tipo())) {
+        if (TipoEscala.isModalidadeFixa(req.tipo())) {
             if (req.horasSemanais() == null) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Horas semanais são obrigatórias para modalidade do tipo Diarista");
+                    "Horas semanais são obrigatórias para modalidade do tipo " + TipoEscala.label(req.tipo()));
             }
-            m.setTipo("DIARISTA");
+            m.setTipo(req.tipo());
             m.setTurno(null);
             m.setHorario(null);
             m.setHoras(null);
             m.setHorasSemanais(req.horasSemanais());
             return;
         }
-        // PLANTONISTA
         if (req.turno() == null || req.turno().isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Turno é obrigatório para modalidade do tipo Plantonista");
+                "Turno é obrigatório para modalidade do tipo " + TipoEscala.label(req.tipo()));
         }
         if (req.horario() == null || req.horario().isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Horário é obrigatório para modalidade do tipo Plantonista");
+                "Horário é obrigatório para modalidade do tipo " + TipoEscala.label(req.tipo()));
         }
         if (req.horas() == null) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Horas são obrigatórias para modalidade do tipo Plantonista");
+                "Horas são obrigatórias para modalidade do tipo " + TipoEscala.label(req.tipo()));
         }
-        m.setTipo("PLANTONISTA");
+        m.setTipo(req.tipo());
         m.setTurno(req.turno());
         m.setHorario(req.horario());
         m.setHoras(req.horas());
@@ -537,7 +539,6 @@ public class TomadorService {
         s.setNome(req.nome());
         s.setCategoria(normalizarCategoria(req.categoria()));
         s.setAtivo(req.ativo());
-        s.setTipoEscalaLabel(req.tipoEscalaLabel().trim());
         TomadorServicoOperacional salvo = servicoOperacionalRepo.save(s);
         salvarVinculosModalidade(salvo.getId(), req.modalidadeIds());
         return TomadorServicoOperacionalResponse.from(salvo, modalidades);
@@ -556,7 +557,6 @@ public class TomadorService {
         s.setNome(req.nome());
         s.setCategoria(normalizarCategoria(req.categoria()));
         s.setAtivo(req.ativo());
-        s.setTipoEscalaLabel(req.tipoEscalaLabel().trim());
         TomadorServicoOperacional salvo = servicoOperacionalRepo.save(s);
         // Reconstrói o vínculo N:N inteiro a cada PUT — o form envia sempre a lista completa
         // desejada (switches), não deltas; mais simples e sem risco de divergência que diffing.

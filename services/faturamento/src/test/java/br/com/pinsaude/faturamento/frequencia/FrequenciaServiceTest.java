@@ -358,6 +358,121 @@ class FrequenciaServiceTest {
         verify(frequenciaRepo, never()).save(any());
     }
 
+    // ─── Criar frequência — Evolucionista / Evolucionista FDS (mesmo comportamento do Diarista:
+    // modalidade obrigatória e fixa na criação, checagem de duplicidade ativa) ────────────────
+
+    @Test
+    void criar_evolucionista_semModalidade_lanca422() {
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "EVOLUCIONISTA", null, null);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Modalidade é obrigatória para Tipo de Escala Evolucionista")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(frequenciaRepo, never()).save(any());
+    }
+
+    @Test
+    void criar_evolucionista_comModalidade_salvaNoBanco() {
+        UUID evolucionistaId = UUID.randomUUID();
+        TomadorModalidade evolucionista = modalidadeEvolucionistaFixture(evolucionistaId, 1_200_000L, "30");
+        when(modalidadeRepo.findById(evolucionistaId)).thenReturn(Optional.of(evolucionista));
+        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+                medicoId, setorId, "2026-07", "EVOLUCIONISTA", evolucionistaId)).thenReturn(false);
+        when(frequenciaRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaMedica f = inv.getArgument(0);
+            setId(f, UUID.randomUUID());
+            return f;
+        });
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "EVOLUCIONISTA", evolucionistaId, null);
+
+        FrequenciaMedicaResponse resp = service.criar(req);
+
+        assertThat(resp.tipoMedico()).isEqualTo("EVOLUCIONISTA");
+        assertThat(resp.modalidadeId()).isEqualTo(evolucionistaId);
+        assertThat(resp.modalidadeNome()).isEqualTo("Evolucionista 30h/semana");
+        verify(frequenciaRepo).save(any());
+    }
+
+    // EVOLUCIONISTA_FDS se comporta como PLANTONISTA por trás dos panos (modalidade escolhida por
+    // lançamento, nunca fixada na criação da frequência) — não como DIARISTA/EVOLUCIONISTA,
+    // apesar do nome parecido (correção pós-implantação, ver TipoEscala).
+    @Test
+    void criar_evolucionistaFds_semModalidade_salvaNoBanco() {
+        when(frequenciaRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaMedica f = inv.getArgument(0);
+            setId(f, UUID.randomUUID());
+            return f;
+        });
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "EVOLUCIONISTA_FDS", null, null);
+
+        FrequenciaMedicaResponse resp = service.criar(req);
+
+        assertThat(resp.tipoMedico()).isEqualTo("EVOLUCIONISTA_FDS");
+        assertThat(resp.modalidadeId()).isNull();
+        verify(frequenciaRepo).save(any());
+    }
+
+    @Test
+    void criar_evolucionistaFds_comModalidadeInformada_lanca422() {
+        UUID evolucionistaFdsId = UUID.randomUUID();
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "EVOLUCIONISTA_FDS", evolucionistaFdsId, null);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Modalidade não deve ser informada para Tipo de Escala Evolucionista FDS")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(frequenciaRepo, never()).save(any());
+    }
+
+    @Test
+    void criar_evolucionista_duplicataMesmaModalidade_lanca409() {
+        UUID evolucionistaId = UUID.randomUUID();
+        when(frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+                medicoId, setorId, "2026-07", "EVOLUCIONISTA", evolucionistaId)).thenReturn(true);
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "EVOLUCIONISTA", evolucionistaId, null);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT));
+
+        verify(frequenciaRepo, never()).save(any());
+    }
+
+    @Test
+    void criar_evolucionistaFds_semChecagemDeDuplicidade_permiteMultiplasFolhas() {
+        // Mesma garantia já existente pro Plantonista (V34/V41) — EVOLUCIONISTA_FDS é "por
+        // lançamento", sem modalidade fixa, então não há checagem de duplicidade nenhuma.
+        when(frequenciaRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaMedica f = inv.getArgument(0);
+            setId(f, UUID.randomUUID());
+            return f;
+        });
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "EVOLUCIONISTA_FDS", null, null);
+
+        service.criar(req);
+        service.criar(req);
+
+        verify(frequenciaRepo, times(2)).save(any());
+        verify(frequenciaRepo, never()).existsByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+            any(), any(), any(), any(), any());
+    }
+
     @Test
     void criar_modalidadeInexistente_lanca404() {
         UUID modalInexistente = UUID.randomUUID();
@@ -1706,6 +1821,39 @@ class FrequenciaServiceTest {
         m.setNome("Diarista 20h/semana");
         m.setTipo("DIARISTA");
         m.setHorasSemanais(new BigDecimal(horasSemanais));
+        m.setValorCentavos(valorCentavos);
+        m.setDeslocamentoCentavos(0L);
+        m.setAtivo(true);
+        return m;
+    }
+
+    // Evolucionista/Evolucionista FDS reaproveitam exatamente o mesmo shape do Diarista — só o
+    // tipo (e o nome, pra facilitar debug de asserts) mudam.
+    private TomadorModalidade modalidadeEvolucionistaFixture(UUID id, long valorCentavos, String horasSemanais) {
+        TomadorModalidade m = new TomadorModalidade();
+        setId(m, id);
+        m.setTomadorId(tomadorId);
+        m.setNome("Evolucionista 30h/semana");
+        m.setTipo("EVOLUCIONISTA");
+        m.setHorasSemanais(new BigDecimal(horasSemanais));
+        m.setValorCentavos(valorCentavos);
+        m.setDeslocamentoCentavos(0L);
+        m.setAtivo(true);
+        return m;
+    }
+
+    // EVOLUCIONISTA_FDS reaproveita exatamente o mesmo shape do PLANTONISTA (turno/horário/horas,
+    // sem horasSemanais) — não do DIARISTA/EVOLUCIONISTA, apesar do nome parecido (correção
+    // pós-implantação, ver TipoEscala).
+    private TomadorModalidade modalidadeEvolucionistaFdsFixture(UUID id, long valorCentavos, String horas) {
+        TomadorModalidade m = new TomadorModalidade();
+        setId(m, id);
+        m.setTomadorId(tomadorId);
+        m.setNome("Evolucionista FDS 12h");
+        m.setTipo("EVOLUCIONISTA_FDS");
+        m.setTurno("DIURNO");
+        m.setHorario("07:00 as 19:00");
+        m.setHoras(new BigDecimal(horas));
         m.setValorCentavos(valorCentavos);
         m.setDeslocamentoCentavos(0L);
         m.setAtivo(true);

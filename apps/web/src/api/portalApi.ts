@@ -1,3 +1,5 @@
+import type { TipoEscala } from '../utils/tipoEscala'
+
 const STORAGE_KEY = 'pinsaude_tokens'
 
 function getAccessToken(): string {
@@ -109,7 +111,7 @@ export interface TomadorPortal {
 export interface SetorModalidadeResumoPortal {
   id: string
   nome: string
-  tipo: 'PLANTONISTA' | 'DIARISTA'
+  tipo: TipoEscala
 }
 
 export interface SetorOperacionalPortal {
