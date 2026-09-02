@@ -4,6 +4,7 @@ import br.com.pinsaude.faturamento.domain.FrequenciaMedica;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
+import br.com.pinsaude.faturamento.domain.TipoEscala;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -26,10 +27,6 @@ public record FrequenciaMedicaResponse(
     UUID grupoId,
     UUID servicoOperacionalId,
     String servicoOperacionalNome,
-    // Texto customizável do setor, exibido no campo "Tipo de Escala" do PDF — pedido do cliente
-    // (ver TomadorServicoOperacional.tipoEscalaLabel). Null pra setores legados nunca editados
-    // desde a criação deste campo; o PDF cai de volta pra tipoMedico nesse caso.
-    String tipoEscalaLabel,
     String competencia,
     String especialidade,
     String tipoMedico,
@@ -94,7 +91,6 @@ public record FrequenciaMedicaResponse(
             f.getGrupoId(),
             f.getServicoOperacionalId(),
             setor != null ? setor.getNome() : null,
-            setor != null ? setor.getTipoEscalaLabel() : null,
             f.getCompetencia(),
             f.getEspecialidade(),
             f.getTipoMedico(),
@@ -143,11 +139,12 @@ public record FrequenciaMedicaResponse(
         return total;
     }
 
-    // PINSAUDE-13.23: Diarista não paga por lançamento — cada item vale R$0 (ver
+    // PINSAUDE-13.23: os tipos "fixos" (DIARISTA, EVOLUCIONISTA — ver
+    // TipoEscala.TIPOS_MODALIDADE_FIXA) não pagam por lançamento — cada item vale R$0 (ver
     // FrequenciaService.calcularValorItem), servindo só pra registrar presença/horas. O valor da
     // frequência é o valor mensal fixo cadastrado na modalidade.
     //
-    // Ajuste pós-implantação: quando a frequência já tem uma modalidade Diarista FIXA (o caso
+    // Ajuste pós-implantação: quando a frequência já tem uma modalidade de tipo fixo FIXA (o caso
     // normal desde PINSAUDE-13.26), o valor mensal é somado assim que a frequência é criada —
     // NÃO é mais preciso lançar nenhum plantão pro valor entrar no total. Só frequências legadas
     // sem modalidade fixa (anteriores ao PINSAUDE-13.26) continuam resolvendo o valor a partir
@@ -155,27 +152,28 @@ public record FrequenciaMedicaResponse(
     private static long valorMensalDiaristaUnico(TomadorModalidade modalidadeFreq,
             List<FrequenciaItemResponse> itens, Map<UUID, TomadorModalidade> modalidadesMap) {
         if (modalidadeFreq != null) {
-            return "DIARISTA".equals(modalidadeFreq.getTipo()) ? modalidadeFreq.getValorCentavos() : 0L;
+            return TipoEscala.isModalidadeFixa(modalidadeFreq.getTipo()) ? modalidadeFreq.getValorCentavos() : 0L;
         }
         return itens.stream()
             .map(FrequenciaItemResponse::modalidadeId)
             .distinct()
             .map(modalidadesMap::get)
-            .filter(m -> m != null && "DIARISTA".equals(m.getTipo()))
+            .filter(m -> m != null && TipoEscala.isModalidadeFixa(m.getTipo()))
             .mapToLong(TomadorModalidade::getValorCentavos)
             .sum();
     }
 
-    // PINSAUDE-13.23: acompanhamento semanal do tipo DIARISTA — agrupa horasTrabalhadas por
-    // semana ISO (segunda a domingo) para cada modalidade DIARISTA usada na frequência,
-    // comparando à meta semanal cadastrada (horasSemanais). Puramente informativo, nunca altera
-    // o valor pago. Semanas sem nenhum item lançado não aparecem no resultado.
+    // PINSAUDE-13.23: acompanhamento semanal dos tipos fixos (DIARISTA, EVOLUCIONISTA) —
+    // agrupa horasTrabalhadas por semana ISO (segunda a domingo) para cada
+    // modalidade de tipo fixo usada na frequência, comparando à meta semanal cadastrada
+    // (horasSemanais). Puramente informativo, nunca altera o valor pago. Semanas sem nenhum item
+    // lançado não aparecem no resultado.
     private static List<FrequenciaSemanaProgressoResponse> calcularProgressoSemanal(
             List<FrequenciaItemResponse> itens, Map<UUID, TomadorModalidade> modalidadesMap) {
         Map<UUID, List<FrequenciaItemResponse>> porModalidade = itens.stream()
             .filter(i -> {
                 TomadorModalidade m = modalidadesMap.get(i.modalidadeId());
-                return m != null && "DIARISTA".equals(m.getTipo());
+                return m != null && TipoEscala.isModalidadeFixa(m.getTipo());
             })
             .collect(Collectors.groupingBy(FrequenciaItemResponse::modalidadeId));
 

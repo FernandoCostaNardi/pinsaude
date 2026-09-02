@@ -11,15 +11,14 @@ import java.util.UUID;
 // Faturamento, usar TomadorGrupoSetorRequest via POST /api/tomadores/{id}/grupos/{grupoId}/setores.
 // categoria é texto livre (opcional) — ex: "Emergência", "UTI", "Ambulatório".
 //
-// modalidadeIds/tipoEscalaLabel: pedido do cliente — o setor define explicitamente qual(is)
-// Modalidade(s) daquele setor (usadas pra derivar o Tipo de Escala da Frequência automaticamente
-// quando só há 1, ou pra oferecer a escolha quando há mais de 1 — sem precisar mais perguntar
-// isso do zero na tela de Nova Frequência) e o texto exibido no campo "Tipo de Escala" do PDF
-// (sugestão default "Plantonista/Diarista - Setor", montada no frontend, editável).
+// modalidadeIds: pedido do cliente — o setor define explicitamente qual(is) Modalidade(s)
+// daquele setor (usadas pra derivar o Tipo de Escala da Frequência automaticamente quando só há
+// 1, ou pra oferecer a escolha quando há mais de 1 — sem precisar mais perguntar isso do zero na
+// tela de Nova Frequência). O campo "Tipo de Escala" do PDF é 100% calculado a partir do
+// tipoMedico da frequência + nome do setor — não há mais texto customizável aqui.
 public record TomadorServicoOperacionalRequest(
     @NotBlank @Size(max = 150) String nome,
     @Size(max = 100) String categoria,
     boolean ativo,
-    @NotEmpty List<UUID> modalidadeIds,
-    @NotBlank @Size(max = 150) String tipoEscalaLabel
+    @NotEmpty List<UUID> modalidadeIds
 ) {}

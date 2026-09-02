@@ -1,3 +1,5 @@
+import type { TipoEscala } from '../utils/tipoEscala'
+
 const STORAGE_KEY = 'pinsaude_tokens'
 
 function getAccessToken(): string {
@@ -501,12 +503,12 @@ export const tomadoresApi = {
 // o frontend usa a lista pra derivar o Tipo de Escala da Frequência automaticamente quando só há
 // 1, ou pra oferecer a escolha (Tipo de Escala e/ou Modalidade específica) quando há mais de 1.
 // Lista vazia pra setores legados nunca editados desde a criação deste campo.
-// tipoEscalaLabel: texto exibido no campo "Tipo de Escala" do PDF de Frequência — sugestão
-// default "Plantonista/Diarista - Setor", editável.
+// O campo "Tipo de Escala" do PDF é 100% calculado (Tipo + Setor) — não há mais texto
+// customizável (`tipoEscalaLabel` removido).
 export interface SetorModalidadeResumo {
   id: string
   nome: string
-  tipo: 'PLANTONISTA' | 'DIARISTA'
+  tipo: TipoEscala
 }
 
 export interface TomadorServicoOperacional {
@@ -516,7 +518,6 @@ export interface TomadorServicoOperacional {
   categoria: string | null
   ativo: boolean
   modalidades: SetorModalidadeResumo[]
-  tipoEscalaLabel: string | null
 }
 
 export interface TomadorGrupoFaturamento {
@@ -541,25 +542,27 @@ export interface TomadorGrupoFaturamentoRequest {
 }
 
 // PINSAUDE-13.22/13.23: tipo colapsado de 3 valores (PLANTAO/MENSAL/META) para 2
-// (PLANTONISTA/DIARISTA), unificando o vocabulário com o Tipo de Escala da Frequência.
+// (PLANTONISTA/DIARISTA); depois estendido pra 4 (EVOLUCIONISTA/EVOLUCIONISTA_FDS reaproveitam
+// exatamente as mesmas regras de campos/valor do DIARISTA — ver TIPOS_MODALIDADE_FIXA em
+// utils/tipoEscala.ts), unificando o vocabulário com o Tipo de Escala da Frequência.
 export interface TomadorModalidade {
   id: string
   tomadorId: string
   nome: string
-  tipo: 'PLANTONISTA' | 'DIARISTA'
+  tipo: TipoEscala
   turno: 'DIURNO' | 'NOTURNO' | null
   horario: string | null
   horas: number | null
   valorCentavos: number
   deslocamentoCentavos: number
   ativo: boolean
-  // Campo do tipo Diarista — carga horária semanal obrigatória
+  // Campo dos tipos "fixos" (Diarista/Evolucionista) — carga horária semanal obrigatória
   horasSemanais: number | null
 }
 
 export interface TomadorModalidadeRequest {
   nome: string
-  tipo: 'PLANTONISTA' | 'DIARISTA'
+  tipo: TipoEscala
   turno: 'DIURNO' | 'NOTURNO' | null
   horario: string | null
   horas: number | null
@@ -574,7 +577,6 @@ export interface TomadorServicoOperacionalRequest {
   categoria: string | null
   ativo: boolean
   modalidadeIds: string[]
-  tipoEscalaLabel: string
 }
 
 export interface TomadorOcorrencia {

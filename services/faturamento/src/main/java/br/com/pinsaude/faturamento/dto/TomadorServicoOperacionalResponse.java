@@ -15,8 +15,7 @@ public record TomadorServicoOperacionalResponse(
     // Modalidades de referência do setor (pedido do cliente: pode ter mais de uma) — o frontend
     // usa a lista pra derivar o Tipo de Escala da Frequência automaticamente quando só há 1, ou
     // pra oferecer a escolha (Tipo de Escala e/ou Modalidade específica) quando há mais de 1.
-    List<ModalidadeResumo> modalidades,
-    String tipoEscalaLabel
+    List<ModalidadeResumo> modalidades
 ) {
     public record ModalidadeResumo(UUID id, String nome, String tipo) {
         public static ModalidadeResumo from(TomadorModalidade m) {
@@ -34,8 +33,7 @@ public record TomadorServicoOperacionalResponse(
             s.getNome(),
             s.getCategoria(),
             s.isAtivo(),
-            modalidades.stream().map(ModalidadeResumo::from).toList(),
-            s.getTipoEscalaLabel()
+            modalidades.stream().map(ModalidadeResumo::from).toList()
         );
     }
 

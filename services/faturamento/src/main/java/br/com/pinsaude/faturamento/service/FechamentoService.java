@@ -335,15 +335,16 @@ public class FechamentoService {
                 .merge(freq.getMedicoId(), itemTotal, Long::sum);
         }
 
-        // Ajuste pós-implantação: uma frequência Diarista com modalidade FIXA (o caso normal
-        // desde PINSAUDE-13.26) já soma o valor mensal assim que é criada — não depende mais de
+        // Ajuste pós-implantação: uma frequência de tipo fixo (DIARISTA, EVOLUCIONISTA — ver
+        // TipoEscala) com modalidade FIXA (o caso normal desde
+        // PINSAUDE-13.26) já soma o valor mensal assim que é criada — não depende mais de
         // ter algum item/plantão lançado. O count (ct[0]) de cada modalidade continua vindo só
         // do loop de itens acima (reflete dias trabalhados); aqui só o TOTAL em dinheiro é somado.
         for (FrequenciaMedica freq : frequencias) {
             if (freq.getGrupoId() == null || freq.getModalidadeId() == null) continue;
-            if (!"DIARISTA".equals(freq.getTipoMedico())) continue;
+            if (!TipoEscala.isModalidadeFixa(freq.getTipoMedico())) continue;
             TomadorModalidade modalidade = modalidadesMap.get(freq.getModalidadeId());
-            if (modalidade == null || !"DIARISTA".equals(modalidade.getTipo())) continue;
+            if (modalidade == null || !TipoEscala.isModalidadeFixa(modalidade.getTipo())) continue;
 
             long valorMensal = modalidade.getValorCentavos();
             modalidadeAgg.computeIfAbsent(freq.getModalidadeId(), k -> new long[]{0L, 0L});
@@ -356,7 +357,7 @@ public class FechamentoService {
                 .merge(freq.getMedicoId(), valorMensal, Long::sum);
         }
 
-        // Legado: frequências Diarista sem modalidade fixa (anteriores ao PINSAUDE-13.26)
+        // Legado: frequências de tipo fixo sem modalidade fixa (anteriores ao PINSAUDE-13.26)
         // resolvem o valor mensal a partir dos itens já lançados — nunca coexiste com a
         // frequência acima (modalidadeId nulo é justamente o que a exclui do bloco de cima).
         Map<UUID, Set<UUID>> modalidadesDiaristaPorFrequenciaLegado = todosItens.stream()
@@ -364,7 +365,7 @@ public class FechamentoService {
                 FrequenciaMedica freq = freqMap.get(item.getFrequenciaId());
                 if (freq == null || freq.getModalidadeId() != null) return false;
                 TomadorModalidade m = modalidadesMap.get(item.getModalidadeId());
-                return m != null && "DIARISTA".equals(m.getTipo());
+                return m != null && TipoEscala.isModalidadeFixa(m.getTipo());
             })
             .collect(Collectors.groupingBy(FrequenciaItem::getFrequenciaId,
                 Collectors.mapping(FrequenciaItem::getModalidadeId, Collectors.toSet())));

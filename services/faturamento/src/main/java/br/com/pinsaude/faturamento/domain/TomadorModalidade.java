@@ -20,7 +20,7 @@ public class TomadorModalidade {
     @Column(name = "nome", nullable = false, length = 120)
     private String nome;
 
-    @Column(name = "tipo", nullable = false, length = 12)
+    @Column(name = "tipo", nullable = false, length = 20)
     private String tipo = "PLANTONISTA";
 
     @Column(name = "turno", length = 10)

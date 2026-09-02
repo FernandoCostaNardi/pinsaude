@@ -14,6 +14,7 @@ import {
   ModalidadeDetalhe,
 } from '../api/fechamentosApi'
 import { useAuth } from '../auth/AuthContext'
+import { labelTipoEscala, isTipoModalidadeFixa } from '../utils/tipoEscala'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -94,17 +95,18 @@ function TabelaModalidades({ modalidades, catalogo }: { modalidades: ModalidadeD
               : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
             const hasDesl = m.deslocamentoCentavos > 0
             const cat = catalogoMap[m.modalidadeId]
-            // PINSAUDE-13.24: Diarista paga um valor mensal fixo somado uma única vez (ver
-            // FechamentoService, PINSAUDE-13.23) — cada item individual vale R$0, então o "valor
-            // médio apurado" (totalCentavos ÷ quantidade) representa o custo diário amortizado.
-            const isDiarista = cat?.tipo === 'DIARISTA'
+            // PINSAUDE-13.24: tipos "fixos" (Diarista/Evolucionista) pagam um valor mensal fixo
+            // somado uma única vez (ver FechamentoService, PINSAUDE-13.23) —
+            // cada item individual vale R$0, então o "valor médio apurado" (totalCentavos ÷
+            // quantidade) representa o custo diário amortizado.
+            const isTipoFixo = isTipoModalidadeFixa(cat?.tipo)
             const valorMedioApurado = m.quantidade > 0 ? Math.round(m.totalCentavos / m.quantidade) : 0
             return (
               <tr key={m.modalidadeId} className={`border-b border-gray-200 ${rowCls}`}>
                 <td className="px-3 py-1.5 font-medium">{m.nome}</td>
                 <td className="px-2 py-1.5 text-center tabular-nums">
-                  {isDiarista
-                    ? <span className="inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700">DIARISTA</span>
+                  {isTipoFixo
+                    ? <span className="inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700">{labelTipoEscala(cat?.tipo).toUpperCase()}</span>
                     : fmtHoras(m.horas)}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">
@@ -114,7 +116,7 @@ function TabelaModalidades({ modalidades, catalogo }: { modalidades: ModalidadeD
                   {hasDesl ? fmtNum(m.deslocamentoCentavos) : ''}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums font-medium">
-                  {isDiarista
+                  {isTipoFixo
                     ? <span title="Valor médio apurado (mensal amortizado nos lançamentos)">{fmtNum(valorMedioApurado)}</span>
                     : fmtNum(m.valorItemCentavos)}
                 </td>

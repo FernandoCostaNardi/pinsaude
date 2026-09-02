@@ -17,6 +17,7 @@ import {
 } from '../api/frequenciasApi'
 import { useAuth } from '../auth/AuthContext'
 import { abrirPdfFrequencia } from '../utils/frequenciaPdf'
+import { TipoEscala, labelTipoEscala, isTipoModalidadeFixa } from '../utils/tipoEscala'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,20 +43,22 @@ function formatDate(iso: string): string {
   return `${d}/${m}/${y}`
 }
 
-// PINSAUDE-13.22: turno/horário são ambos obrigatórios numa modalidade Plantonista — sempre
-// mostra os dois. Diarista não usa turno/horário/horas, mostra a carga horária semanal cadastrada.
+// PINSAUDE-13.22: turno/horário são ambos obrigatórios nos tipos "por lançamento"
+// (Plantonista/Evolucionista FDS) — sempre mostra os dois. Tipos "fixos" (Diarista/Evolucionista)
+// não usam turno/horário/horas, mostram a carga horária semanal cadastrada.
 function detalheModalidade(m: TomadorModalidade): string {
-  if (m.tipo === 'DIARISTA') {
-    return m.horasSemanais != null ? `Diarista — ${m.horasSemanais}h/semana` : 'Diarista'
+  if (isTipoModalidadeFixa(m.tipo)) {
+    const label = labelTipoEscala(m.tipo)
+    return m.horasSemanais != null ? `${label} — ${m.horasSemanais}h/semana` : label
   }
   const partes = [m.turno, m.horario].filter(Boolean)
   return partes.length > 0 ? partes.join(' · ') : `${m.horas}h`
 }
 
-// Diarista também exige horas trabalhadas por lançamento (usadas no acompanhamento semanal,
-// PINSAUDE-13.23) — mesma exigência que Plantonista nunca teve.
+// Tipos de modalidade fixa também exigem horas trabalhadas por lançamento (usadas no
+// acompanhamento semanal, PINSAUDE-13.23) — mesma exigência que Plantonista nunca teve.
 function precisaHorasTrabalhadas(m: TomadorModalidade | null): boolean {
-  return m?.tipo === 'DIARISTA'
+  return isTipoModalidadeFixa(m?.tipo)
 }
 
 function fmtQtd(n: number): string {
@@ -63,24 +66,25 @@ function fmtQtd(n: number): string {
 }
 
 // Pedido do cliente: o lançamento individual dentro de "Minhas Frequências" é chamado de
-// "plantão" para Tipo de Escala Plantonista, mas de "frequência" para Diarista — vocabulário
-// mais próximo do dia a dia de cada tipo de médico. `tipoMedico === null` (frequência legada,
-// sem Tipo de Escala definido) mantém o rótulo antigo ("plantão").
-function itemLabel(tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null, count: number): string {
-  const singular = tipoMedico === 'DIARISTA' ? 'frequência' : 'plantão'
-  const plural = tipoMedico === 'DIARISTA' ? 'frequências' : 'plantões'
+// "plantão" pros tipos "por lançamento" (Plantonista/Evolucionista FDS), mas de "frequência"
+// pros tipos "fixos" (Diarista/Evolucionista) — vocabulário mais próximo do dia a dia de cada
+// tipo de médico. `tipoMedico === null` (frequência legada, sem Tipo de Escala definido) mantém
+// o rótulo antigo ("plantão").
+function itemLabel(tipoMedico: TipoEscala | null, count: number): string {
+  const singular = isTipoModalidadeFixa(tipoMedico) ? 'frequência' : 'plantão'
+  const plural = isTipoModalidadeFixa(tipoMedico) ? 'frequências' : 'plantões'
   return count === 1 ? singular : plural
 }
 
 // "plantão" é masculino, "frequência" é feminino — qualquer adjetivo/particípio que acompanhe
 // o rótulo (lançado/apagado etc.) precisa concordar em gênero e número.
-function itemAgree(tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null, count: number, stem: string): string {
-  const fem = tipoMedico === 'DIARISTA'
+function itemAgree(tipoMedico: TipoEscala | null, count: number, stem: string): string {
+  const fem = isTipoModalidadeFixa(tipoMedico)
   return stem + (fem ? (count === 1 ? 'a' : 'as') : (count === 1 ? 'o' : 'os'))
 }
 
-function itemArtigo(tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null, count: number): string {
-  const fem = tipoMedico === 'DIARISTA'
+function itemArtigo(tipoMedico: TipoEscala | null, count: number): string {
+  const fem = isTipoModalidadeFixa(tipoMedico)
   if (count === 1) return fem ? 'A' : 'O'
   return fem ? 'As' : 'Os'
 }
@@ -273,7 +277,7 @@ function Dropdown<T extends { id: string }>({
 interface NovaFreqSetor {
   id: string
   nome: string
-  modalidades: { id: string; nome: string; tipo: 'PLANTONISTA' | 'DIARISTA' }[]
+  modalidades: { id: string; nome: string; tipo: TipoEscala }[]
 }
 
 interface NovaFreqForm {
@@ -304,7 +308,7 @@ function NovaFrequenciaModal({
   // Correção pós-implantação: o setor pode ter mais de uma modalidade cadastrada — quando isso
   // acontece, Tipo de Escala e/ou Modalidade voltam a ser perguntados aqui (só nesse caso; com 1
   // modalidade só, continua tudo automático). Resetados sempre que o setor muda.
-  const [tipoEscolhido, setTipoEscolhido] = useState<'PLANTONISTA' | 'DIARISTA' | null>(null)
+  const [tipoEscolhido, setTipoEscolhido] = useState<TipoEscala | null>(null)
   const [modalidadeEscolhidaId, setModalidadeEscolhidaId] = useState('')
 
   useEffect(() => {
@@ -392,23 +396,24 @@ function NovaFrequenciaModal({
       .catch(() => setOcorrencias([]))
   }, [form.tomador?.id, tipoMedico])
 
-  // Ajuste pós-implantação: modalidade (e ocorrência) só são fixadas na frequência para
-  // Diarista — Plantonista volta a escolher isso a cada plantão lançado, podendo ter
-  // turnos/modalidades diferentes dentro da mesma frequência (ver CLAUDE.md).
-  const isDiarista = tipoMedico === 'DIARISTA'
+  // Ajuste pós-implantação: modalidade (e ocorrência) só são fixadas na frequência pros tipos
+  // "fixos" (Diarista/Evolucionista) — tipos "por lançamento" (Plantonista/Evolucionista FDS)
+  // voltam a escolher isso a cada plantão lançado, podendo ter turnos/modalidades diferentes
+  // dentro da mesma frequência (ver CLAUDE.md).
+  const isTipoFixo = isTipoModalidadeFixa(tipoMedico)
 
-  // Correção pós-implantação: com o setor podendo ter mais de uma modalidade Diarista, a
+  // Correção pós-implantação: com o setor podendo ter mais de uma modalidade do mesmo tipo, a
   // modalidade fixa da frequência só continua 100% automática quando há exatamente 1 opção
-  // Diarista no setor — com 2+, volta a perguntar.
-  const modalidadesDiarista = form.setor ? form.setor.modalidades.filter(m => m.tipo === 'DIARISTA') : []
-  const modalidadeAmbigua = isDiarista && modalidadesDiarista.length > 1
-  const modalidadeIdResolvida = isDiarista
-    ? (modalidadeAmbigua ? (modalidadeEscolhidaId || null) : (modalidadesDiarista[0]?.id ?? null))
+  // desse tipo no setor — com 2+, volta a perguntar.
+  const modalidadesDoTipoFixo = form.setor ? form.setor.modalidades.filter(m => m.tipo === tipoMedico) : []
+  const modalidadeAmbigua = isTipoFixo && modalidadesDoTipoFixo.length > 1
+  const modalidadeIdResolvida = isTipoFixo
+    ? (modalidadeAmbigua ? (modalidadeEscolhidaId || null) : (modalidadesDoTipoFixo[0]?.id ?? null))
     : null
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.tomador || !form.grupo || !form.setor || !tipoMedico || (isDiarista && !modalidadeIdResolvida)) return
+    if (!form.tomador || !form.grupo || !form.setor || !tipoMedico || (isTipoFixo && !modalidadeIdResolvida)) return
     setSaving(true); setErr(null)
     try {
       const req: FrequenciaMedicaRequest = {
@@ -418,8 +423,8 @@ function NovaFrequenciaModal({
         servicoOperacionalId: form.setor.id,
         competencia: form.competencia,
         tipoMedico,
-        modalidadeId: isDiarista ? (modalidadeIdResolvida ?? undefined) : undefined,
-        ocorrenciaId: isDiarista ? (ocorrenciaId || undefined) : undefined,
+        modalidadeId: isTipoFixo ? (modalidadeIdResolvida ?? undefined) : undefined,
+        ocorrenciaId: isTipoFixo ? (ocorrenciaId || undefined) : undefined,
       }
       const criada = await frequenciasApi.criar(req)
       onCriada(criada)
@@ -428,7 +433,7 @@ function NovaFrequenciaModal({
     } finally { setSaving(false) }
   }
 
-  const canSave = !!form.tomador && !!form.grupo && !!form.setor && !!tipoMedico && (!isDiarista || !!modalidadeIdResolvida)
+  const canSave = !!form.tomador && !!form.grupo && !!form.setor && !!tipoMedico && (!isTipoFixo || !!modalidadeIdResolvida)
 
   return (
     // Mobile: bottom-sheet que sobe. Desktop: modal centralizado.
@@ -541,10 +546,10 @@ function NovaFrequenciaModal({
             {form.setor && form.setor.modalidades.length > 0 && tipoAmbiguo && (
               <div>
                 <label className="block text-xs font-bold text-ds-mid mb-1">Tipo de Escala *</label>
-                <select value={tipoEscolhido ?? ''} onChange={e => setTipoEscolhido(e.target.value as 'PLANTONISTA' | 'DIARISTA')}
+                <select value={tipoEscolhido ?? ''} onChange={e => setTipoEscolhido(e.target.value as TipoEscala)}
                   className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
                   <option value="">Selecione...</option>
-                  {tiposDisponiveis.map(t => <option key={t} value={t}>{t === 'DIARISTA' ? 'Diarista' : 'Plantonista'}</option>)}
+                  {tiposDisponiveis.map(t => <option key={t} value={t}>{labelTipoEscala(t)}</option>)}
                 </select>
                 <p className="mt-1 text-[11px] text-ds-light">
                   Este setor tem modalidades de mais de um Tipo de Escala cadastradas — selecione qual usar nesta frequência.
@@ -560,29 +565,30 @@ function NovaFrequenciaModal({
               </select>
             </div>
 
-            {/* Modalidade — só para Diarista. Com 1 modalidade Diarista só no setor, usa direto
-                sem perguntar; com 2+, volta a perguntar qual usar (correção pós-implantação).
-                Plantonista não usa modalidade fixa aqui — cada plantão lançado escolhe a sua
-                própria (turnos diferentes dentro da mesma frequência são permitidos). */}
-            {isDiarista && (
+            {/* Modalidade — só pros tipos "fixos" (Diarista/Evolucionista). Com 1 modalidade só
+                desse tipo no setor, usa direto sem perguntar; com 2+, volta a perguntar qual usar
+                (correção pós-implantação). Tipos "por lançamento" (Plantonista/Evolucionista FDS)
+                não usam modalidade fixa aqui — cada plantão lançado escolhe a sua própria (turnos
+                diferentes dentro da mesma frequência são permitidos). */}
+            {isTipoFixo && (
               modalidadeAmbigua ? (
                 <div>
                   <Dropdown
                     label="Modalidade *"
                     placeholder="Selecione a modalidade..."
-                    items={modalidadesDiarista}
-                    value={modalidadesDiarista.find(m => m.id === modalidadeEscolhidaId) ?? null}
+                    items={modalidadesDoTipoFixo}
+                    value={modalidadesDoTipoFixo.find(m => m.id === modalidadeEscolhidaId) ?? null}
                     onChange={m => setModalidadeEscolhidaId(m.id)}
                     getLabel={m => m.nome}
                   />
                   <p className="mt-1 text-[11px] text-ds-light">
-                    Este setor tem mais de uma modalidade Diarista cadastrada — selecione qual usar nesta frequência.
+                    Este setor tem mais de uma modalidade {labelTipoEscala(tipoMedico)} cadastrada — selecione qual usar nesta frequência.
                   </p>
                 </div>
               ) : (
                 <div className="rounded-lg bg-ds-input/40 px-3 py-2">
                   <p className="text-xs text-ds-mid">
-                    Modalidade: <span className="font-semibold text-ds-text">{modalidadesDiarista[0]?.nome}</span>
+                    Modalidade: <span className="font-semibold text-ds-text">{modalidadesDoTipoFixo[0]?.nome}</span>
                   </p>
                   <p className="mt-0.5 text-[11px] text-ds-light">
                     Definida pelo cadastro do setor — toda frequência lançada aqui usará esta modalidade.
@@ -590,17 +596,17 @@ function NovaFrequenciaModal({
                 </div>
               )
             )}
-            {tipoMedico && !isDiarista && (
+            {tipoMedico && !isTipoFixo && (
               <p className="text-[11px] text-ds-light bg-ds-input/40 rounded-lg px-3 py-2">
                 A modalidade de cada plantão é escolhida no momento do lançamento — turnos/modalidades diferentes podem ser lançados dentro desta mesma frequência.
               </p>
             )}
 
-            {/* Ocorrência (opcional, PINSAUDE-13.26) — só para Diarista, mesmo motivo acima.
+            {/* Ocorrência (opcional, PINSAUDE-13.26) — só pros tipos "fixos", mesmo motivo acima.
                 Com uma única ocorrência cadastrada para o tomador, um checkbox simples substitui
                 o select (menos fricção que abrir um dropdown pra escolher a única opção
                 disponível); com 2+ opções, mantém o select de sempre. */}
-            {isDiarista && (ocorrencias.length === 1 ? (
+            {isTipoFixo && (ocorrencias.length === 1 ? (
               <label className="flex items-center gap-2.5 cursor-pointer group">
                 <input
                   type="checkbox"
@@ -652,7 +658,7 @@ function PlantaoFormPanel({
   tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, onSave, onCancel,
 }: {
   tomadorId: string
-  tipoMedico: 'PLANTONISTA' | 'DIARISTA' | null   // filtra a lista de modalidades (PINSAUDE-13.25)
+  tipoMedico: TipoEscala | null   // filtra a lista de modalidades (PINSAUDE-13.25)
   // PINSAUDE-13.26: quando a frequência já tem modalidade/ocorrência fixa (escolhida na
   // criação), o formulário não pergunta mais nenhuma das duas. null = frequência legada.
   modalidadeFixa: TomadorModalidade | null
@@ -726,7 +732,7 @@ function PlantaoFormPanel({
     <div className="mx-3 sm:mx-4 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-bold text-primary flex items-center gap-1.5">
-          <Plus size={12} /> {tipoMedico === 'DIARISTA' ? 'Nova Frequência' : 'Novo Plantão'}
+          <Plus size={12} /> {isTipoModalidadeFixa(tipoMedico) ? 'Nova Frequência' : 'Novo Plantão'}
         </p>
         <button type="button" onClick={onCancel}
           className="p-2 rounded-lg text-ds-light hover:bg-white/70 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">
@@ -834,7 +840,7 @@ function PlantaoFormPanel({
           className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-white text-xs font-bold disabled:opacity-50 hover:bg-primary-700 transition-colors flex items-center justify-center gap-1.5 min-h-[44px]">
           {saving
             ? <><Loader2 size={12} className="animate-spin" />Adicionando...</>
-            : <><Plus size={12} />{tipoMedico === 'DIARISTA' ? 'Adicionar Frequência' : 'Adicionar Plantão'}</>}
+            : <><Plus size={12} />{isTipoModalidadeFixa(tipoMedico) ? 'Adicionar Frequência' : 'Adicionar Plantão'}</>}
         </button>
       </div>
     </div>
@@ -1009,7 +1015,7 @@ function FrequenciaItensPanel({
               <Plus size={12} />
               <span className="sm:hidden">Adicionar</span>
               <span className="hidden sm:inline">
-                {freq.tipoMedico === 'DIARISTA' ? 'Adicionar Frequência' : 'Adicionar Plantão'}
+                {isTipoModalidadeFixa(freq.tipoMedico) ? 'Adicionar Frequência' : 'Adicionar Plantão'}
               </span>
             </button>
           )}
@@ -1120,7 +1126,7 @@ function FrequenciaItensPanel({
       {freq.itens.length === 0 && !adicionando && (
         <div className="px-4 py-10 text-center text-xs text-ds-light">
           <FileText size={28} className="mx-auto mb-2 opacity-20" />
-          <p>Nenhum{freq.tipoMedico === 'DIARISTA' ? 'a' : ''} {itemLabel(freq.tipoMedico, 1)} {itemAgree(freq.tipoMedico, 1, 'lançad')} ainda.</p>
+          <p>Nenhum{isTipoModalidadeFixa(freq.tipoMedico) ? 'a' : ''} {itemLabel(freq.tipoMedico, 1)} {itemAgree(freq.tipoMedico, 1, 'lançad')} ainda.</p>
           {!isFaturada && <p className="mt-1">Toque em "Adicionar" para começar.</p>}
         </div>
       )}

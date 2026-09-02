@@ -7,6 +7,7 @@ import br.com.pinsaude.faturamento.domain.TomadorGrupoFaturamento;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
+import br.com.pinsaude.faturamento.domain.TipoEscala;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemRequest;
 import br.com.pinsaude.faturamento.dto.FrequenciaItemResponse;
 import br.com.pinsaude.faturamento.dto.FrequenciaMedicaEditRequest;
@@ -90,33 +91,38 @@ public class FrequenciaService {
 
     @Transactional
     public FrequenciaMedicaResponse criar(FrequenciaMedicaRequest req) {
-        boolean diarista = "DIARISTA".equals(req.tipoMedico());
+        boolean modalidadeFixa = TipoEscala.isModalidadeFixa(req.tipoMedico());
 
-        // Modalidade (e ocorrência) só são fixadas na frequência para Diarista (PINSAUDE-13.26).
-        // Plantonista volta a escolher modalidade/ocorrência por lançamento (ajuste pós-13.26,
-        // ver CLAUDE.md) — não faz sentido receber nenhum dos dois aqui nesse caso.
-        if (diarista) {
+        // Modalidade (e ocorrência) só são fixadas na frequência pros tipos "fixos" (DIARISTA,
+        // EVOLUCIONISTA — ver TipoEscala.TIPOS_MODALIDADE_FIXA, PINSAUDE-13.26). Tipos "por
+        // lançamento" (PLANTONISTA, EVOLUCIONISTA_FDS) continuam escolhendo modalidade/ocorrência
+        // a cada plantão (ajuste pós-13.26, ver CLAUDE.md) — não faz sentido receber nenhum dos
+        // dois aqui nesse caso.
+        if (modalidadeFixa) {
             if (req.modalidadeId() == null) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Modalidade é obrigatória para Tipo de Escala Diarista");
+                    "Modalidade é obrigatória para Tipo de Escala " + TipoEscala.label(req.tipoMedico()));
             }
         } else {
             if (req.modalidadeId() != null) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Modalidade não deve ser informada para Tipo de Escala Plantonista — é escolhida a cada plantão lançado");
+                    "Modalidade não deve ser informada para Tipo de Escala " + TipoEscala.label(req.tipoMedico())
+                        + " — é escolhida a cada plantão lançado");
             }
             if (req.ocorrenciaId() != null) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Ocorrência não deve ser informada para Tipo de Escala Plantonista — é escolhida a cada plantão lançado");
+                    "Ocorrência não deve ser informada para Tipo de Escala " + TipoEscala.label(req.tipoMedico())
+                        + " — é escolhida a cada plantão lançado");
             }
         }
 
-        // Diarista: 1 frequência por médico+setor+competência+modalidade (o médico pode ter mais
-        // de um cargo/valor mensal diferente no mesmo mês, cada um em sua própria frequência).
-        // Plantonista: sem checagem de duplicidade — o médico pode abrir quantas frequências
-        // ("folhas") precisar pro mesmo médico+setor+competência (ex.: uma pra semana, outra pro
-        // fim de semana, cada uma virando um PDF separado entregue ao hospital) — ver V34.
-        if (diarista && frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
+        // Tipos fixos: 1 frequência por médico+setor+competência+modalidade (o médico pode ter
+        // mais de um cargo/valor mensal diferente no mesmo mês, cada um em sua própria
+        // frequência). Tipos "por lançamento" (PLANTONISTA, EVOLUCIONISTA_FDS): sem checagem de
+        // duplicidade — o médico pode abrir quantas frequências ("folhas") precisar pro mesmo
+        // médico+setor+competência (ex.: uma pra semana, outra pro fim de semana, cada uma
+        // virando um PDF separado entregue ao hospital) — ver V34/V40/V41.
+        if (modalidadeFixa && frequenciaRepo.existsByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
                 req.medicoId(), req.servicoOperacionalId(), req.competencia(), req.tipoMedico(), req.modalidadeId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Já existe uma frequência para este médico, neste setor, nesta competência, com esta modalidade");
@@ -140,7 +146,7 @@ public class FrequenciaService {
 
         TomadorModalidade modalidade = null;
         TomadorOcorrencia ocorrencia = null;
-        if (diarista) {
+        if (modalidadeFixa) {
             modalidade = modalidadeRepo.findById(req.modalidadeId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Modalidade não encontrada: " + req.modalidadeId()));
@@ -170,8 +176,8 @@ public class FrequenciaService {
         f.setGrupoId(req.grupoId());
         f.setCompetencia(req.competencia());
         f.setTipoMedico(req.tipoMedico());
-        f.setModalidadeId(diarista ? req.modalidadeId() : null);
-        f.setOcorrenciaId(diarista ? req.ocorrenciaId() : null);
+        f.setModalidadeId(modalidadeFixa ? req.modalidadeId() : null);
+        f.setOcorrenciaId(modalidadeFixa ? req.ocorrenciaId() : null);
         f.setStatus("RASCUNHO");
         frequenciaRepo.save(f);
 
@@ -269,11 +275,11 @@ public class FrequenciaService {
 
         validarGrupoESetor(f.getTomadorId(), req.grupoId(), req.servicoOperacionalId());
 
-        // Conflito só é checado para Diarista (chave inclui a modalidade fixa, que não muda
+        // Conflito só é checado pros tipos "fixos" (chave inclui a modalidade fixa, que não muda
         // nesta edição) — Plantonista nunca teve checagem de duplicidade (ver criar()/V34).
         boolean chaveMudou = !req.competencia().equals(f.getCompetencia())
             || !req.servicoOperacionalId().equals(f.getServicoOperacionalId());
-        if (chaveMudou && "DIARISTA".equals(f.getTipoMedico())) {
+        if (chaveMudou && TipoEscala.isModalidadeFixa(f.getTipoMedico())) {
             frequenciaRepo.findByMedicoIdAndServicoOperacionalIdAndCompetenciaAndTipoMedicoAndModalidadeId(
                     f.getMedicoId(), req.servicoOperacionalId(), req.competencia(), f.getTipoMedico(), f.getModalidadeId())
                 .filter(outra -> !outra.getId().equals(id))
@@ -313,7 +319,7 @@ public class FrequenciaService {
         TomadorOcorrencia ocorrencia = f.getModalidadeId() == null ? resolverOcorrencia(req.ocorrenciaId()) : null;
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
-        boolean diarista = "DIARISTA".equals(modalidade.getTipo());
+        boolean modalidadeFixa = TipoEscala.isModalidadeFixa(modalidade.getTipo());
 
         FrequenciaItem item = new FrequenciaItem();
         item.setFrequenciaId(frequenciaId);
@@ -322,8 +328,8 @@ public class FrequenciaService {
         item.setOcorrencia(req.ocorrencia());
         item.setOcorrenciaId(ocorrencia != null ? ocorrencia.getId() : null);
         item.setHorasTrabalhadas(horasTrabalhadas);
-        item.setHoraInicio(diarista ? req.horaInicio() : null);
-        item.setHoraFim(diarista ? req.horaFim() : null);
+        item.setHoraInicio(modalidadeFixa ? req.horaInicio() : null);
+        item.setHoraFim(modalidadeFixa ? req.horaFim() : null);
         // Snapshot de preço no momento do lançamento
         item.setValorUnitarioCentavos(calcularValorItem(modalidade));
         item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
@@ -356,15 +362,15 @@ public class FrequenciaService {
         TomadorOcorrencia ocorrencia = f.getModalidadeId() == null ? resolverOcorrencia(req.ocorrenciaId()) : null;
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
-        boolean diarista = "DIARISTA".equals(modalidade.getTipo());
+        boolean modalidadeFixa = TipoEscala.isModalidadeFixa(modalidade.getTipo());
 
         item.setModalidadeId(modalidadeId);
         item.setDataExecucao(req.dataExecucao());
         item.setOcorrencia(req.ocorrencia());
         item.setOcorrenciaId(ocorrencia != null ? ocorrencia.getId() : null);
         item.setHorasTrabalhadas(horasTrabalhadas);
-        item.setHoraInicio(diarista ? req.horaInicio() : null);
-        item.setHoraFim(diarista ? req.horaFim() : null);
+        item.setHoraInicio(modalidadeFixa ? req.horaInicio() : null);
+        item.setHoraFim(modalidadeFixa ? req.horaFim() : null);
         item.setValorUnitarioCentavos(calcularValorItem(modalidade));
         item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
         item.setOcorrenciaValorCentavos(calcularValorOcorrencia(ocorrencia, modalidade.getValorCentavos()));
@@ -459,20 +465,21 @@ public class FrequenciaService {
     // vale R$0 e serve só pra registrar presença/horas trabalhadas naquele dia, usadas no
     // acompanhamento semanal (FrequenciaMedicaResponse.calcularProgressoSemanal).
     private long calcularValorItem(TomadorModalidade modalidade) {
-        if ("DIARISTA".equals(modalidade.getTipo())) return 0L;
+        if (TipoEscala.isModalidadeFixa(modalidade.getTipo())) return 0L;
         return modalidade.getValorCentavos();
     }
 
-    // PINSAUDE-13.25: modalidade DIARISTA não aceita mais horasTrabalhadas direto do cliente —
-    // o médico digita a hora de entrada e saída daquele dia (também impressas no PDF, ver
-    // frequenciaPdf.ts), e horasTrabalhadas é sempre derivado daqui, nunca do request. Turnos que
-    // atravessam a meia-noite (ex: 19:00 às 07:00) são detectados quando horaFim <= horaInicio,
-    // somando 24h à duração. PLANTONISTA nunca chama este método (retorna null).
+    // PINSAUDE-13.25: modalidades de tipo fixo (DIARISTA, EVOLUCIONISTA — ver TipoEscala) não
+    // aceitam mais horasTrabalhadas direto do cliente — o médico digita a hora de entrada e saída
+    // daquele dia (também impressas no PDF, ver frequenciaPdf.ts), e horasTrabalhadas é sempre
+    // derivado daqui, nunca do request. Turnos que atravessam a meia-noite (ex: 19:00 às 07:00)
+    // são detectados quando horaFim <= horaInicio, somando 24h à duração. Tipos "por lançamento"
+    // (PLANTONISTA, EVOLUCIONISTA_FDS) nunca precisam desse cálculo (retorna null).
     private BigDecimal calcularHorasTrabalhadas(TomadorModalidade modalidade, FrequenciaItemRequest req) {
-        if (!"DIARISTA".equals(modalidade.getTipo())) return null;
+        if (!TipoEscala.isModalidadeFixa(modalidade.getTipo())) return null;
         if (req.horaInicio() == null || req.horaFim() == null) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Informe o horário de entrada e saída para lançar um item desta modalidade (Diarista)");
+                "Informe o horário de entrada e saída para lançar um item desta modalidade (" + TipoEscala.label(modalidade.getTipo()) + ")");
         }
         if (req.horaInicio().equals(req.horaFim())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Plus, Pencil, Trash2, Layers, ChevronDown, ChevronRight,
   Moon, Sun, Loader2, FolderOpen, Tag, Clock,
@@ -18,15 +18,7 @@ import {
   TomadorServicoOperacionalRequest,
   tomadoresApi,
 } from '../api/tomadoresApi'
-// Placeholders usados no texto do PDF (campo "Texto no PDF" do Setor Operacional). Definidos em
-// frequenciaPdf.ts (dono do contrato de geração do PDF, que também os resolve —
-// resolverTipoEscalaLabel). PLACEHOLDER_TIPO_ESCALA é sugerido automaticamente quando o setor
-// tem modalidades dos DOIS Tipos de Escala (Plantonista + Diarista) — nesse caso não dá pra
-// fixar um dos dois no cadastro, já que a Nova Frequência só resolve qual usar na hora de criar
-// cada frequência (ver FrequenciasPage.tsx/PortalFrequenciaPage.tsx). PLACEHOLDER_MODALIDADE
-// resolve pro nome da modalidade selecionada — nunca sugerido automaticamente, só quando digitado
-// manualmente.
-import { PLACEHOLDER_TIPO_ESCALA, PLACEHOLDER_MODALIDADE } from '../utils/frequenciaPdf'
+import { TIPO_ESCALA_LABEL, isTipoModalidadeFixa, type TipoEscala } from '../utils/tipoEscala'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -52,10 +44,16 @@ function maskValor(e: React.ChangeEvent<HTMLInputElement>): string {
 }
 
 // PINSAUDE-13.24: Tipo de Escala colapsado de 3 tipos (PLANTAO/MENSAL/META) para 2
-// (PLANTONISTA/DIARISTA) — mesmo vocabulário já usado no campo "Tipo de Escala" da Frequência.
+// (PLANTONISTA/DIARISTA), depois estendido pra 4 (EVOLUCIONISTA/EVOLUCIONISTA_FDS) — mesmo
+// vocabulário já usado no campo "Tipo de Escala" da Frequência.
+const TIPO_BADGE_CLS: Record<TipoEscala, string> = {
+  PLANTONISTA: 'bg-blue-50 text-blue-700',
+  DIARISTA: 'bg-purple-50 text-purple-700',
+  EVOLUCIONISTA: 'bg-green-50 text-green-700',
+  EVOLUCIONISTA_FDS: 'bg-orange-50 text-orange-700',
+}
 function tipoBadgeInfo(m: TomadorModalidade): { label: string; cls: string } {
-  if (m.tipo === 'DIARISTA') return { label: 'DIARISTA', cls: 'bg-purple-50 text-purple-700' }
-  return { label: 'PLANTONISTA', cls: 'bg-blue-50 text-blue-700' }
+  return { label: m.tipo, cls: TIPO_BADGE_CLS[m.tipo] ?? 'bg-gray-50 text-gray-700' }
 }
 
 // Badge do tipo de valor na tabela de ocorrências.
@@ -83,19 +81,20 @@ interface GrupoForm {
 
 // PINSAUDE-13.24: modo do formulário (UI) mapeia 1:1 no tipo do backend — sem mais a heurística
 // com perda que existia entre os 4 modos antigos (Por Plantão/Valor Fixo Mensal/Por Horas/Por Mês)
-// e os 3 tipos do backend (PLANTAO/MENSAL/META).
-type ModalidadeModo = 'PLANTONISTA' | 'DIARISTA'
-
+// e os 3 tipos do backend (PLANTAO/MENSAL/META). Estendido pra 4 tipos: EVOLUCIONISTA reaproveita
+// as mesmas regras de campos/valor do DIARISTA (tipo "fixo"); EVOLUCIONISTA_FDS reaproveita as
+// mesmas regras do PLANTONISTA (tipo "por lançamento") — apesar do nome parecido com
+// EVOLUCIONISTA, o comportamento é o oposto (correção pós-implantação, ver TipoEscala).
 interface ModalidadeForm {
   nome: string
-  tipo: ModalidadeModo
+  tipo: TipoEscala
   turno: 'DIURNO' | 'NOTURNO' | ''
   horario: string
   horasStr: string
   valorStr: string
   deslocamentoStr: string
   ativo: boolean
-  // Campo do tipo Diarista — carga horária semanal obrigatória
+  // Campo dos tipos "fixos" (Diarista/Evolucionista) — carga horária semanal obrigatória
   horasSemanaisStr: string
 }
 
@@ -139,36 +138,20 @@ function emptyHorarioPadraoForm(): HorarioPadraoForm {
 // Cadastro dedicado de Setores Operacionais (catálogo por tomador, com categoria própria) —
 // separado do fluxo de Grupos, que passa a só selecionar entre os setores já cadastrados aqui.
 //
-// modalidadeIds/tipoEscalaLabel: pedido do cliente — o setor define explicitamente qual(is)
-// Modalidade(s) daquele setor (pode ter mais de uma — usadas pra derivar o Tipo de Escala da
-// Frequência automaticamente quando só há 1, ou oferecer a escolha quando há mais de 1, sem
-// precisar recadastrar nada) e o texto exibido no campo "Tipo de Escala" do PDF (sugestão
-// default "Plantonista/Diarista - Setor", editável).
+// modalidadeIds: pedido do cliente — o setor define explicitamente qual(is) Modalidade(s)
+// daquele setor (pode ter mais de uma — usadas pra derivar o Tipo de Escala da Frequência
+// automaticamente quando só há 1, ou oferecer a escolha quando há mais de 1, sem precisar
+// recadastrar nada). O campo "Tipo de Escala" do PDF é 100% calculado a partir do Tipo de Escala
+// da frequência + nome do setor — sem texto customizável (campo "Texto no PDF" removido).
 interface SetorForm {
   nome: string
   categoria: string
   ativo: boolean
   modalidadeIds: string[]
-  tipoEscalaLabel: string
 }
 
 function emptySetorForm(): SetorForm {
-  return { nome: '', categoria: '', ativo: true, modalidadeIds: [], tipoEscalaLabel: '' }
-}
-
-// "Plantonista - Setor" / "Diarista - Setor" — sugestão default do texto exibido no PDF, baseada
-// no(s) Tipo(s) de Escala das modalidades marcadas, não no nome específico de cada uma (ex:
-// "Diária 10h" vira "Diarista", não o nome da modalidade). Quando as modalidades marcadas
-// cobrem os dois Tipos de Escala, usa PLACEHOLDER_TIPO_ESCALA em vez de fixar um dos dois.
-// Recalculada enquanto o usuário não customizar o campo manualmente (ver lastSugestaoRef em
-// SetorFormInline).
-function sugerirTipoEscalaLabel(nome: string, modalidadesSelecionadas: TomadorModalidade[]): string {
-  if (modalidadesSelecionadas.length === 0 || !nome.trim()) return ''
-  const tipos = new Set(modalidadesSelecionadas.map(m => m.tipo))
-  const tipoLabel = tipos.size > 1
-    ? PLACEHOLDER_TIPO_ESCALA
-    : (modalidadesSelecionadas[0].tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista')
-  return `${tipoLabel} - ${nome.trim()}`
+  return { nome: '', categoria: '', ativo: true, modalidadeIds: [] }
 }
 
 // Categoria "Sem categoria" agrupa setores sem esse campo preenchido — usado tanto no cadastro
@@ -190,9 +173,14 @@ function agruparPorCategoria(setores: TomadorServicoOperacional[]): [string, Tom
   })
 }
 
-const MODALIDADE_TIPOS: { modo: ModalidadeModo; titulo: string; sub: string }[] = [
-  { modo: 'PLANTONISTA', titulo: 'Plantonista', sub: 'valor por plantão; turno, horário e horas obrigatórios' },
-  { modo: 'DIARISTA',    titulo: 'Diarista',    sub: 'valor mensal fixo; carga horária semanal obrigatória' },
+// EVOLUCIONISTA se comporta como DIARISTA por trás dos panos (modalidade fixa, horas semanais);
+// EVOLUCIONISTA_FDS se comporta como PLANTONISTA (modalidade por lançamento, turno/horas) —
+// apesar do nome parecido com EVOLUCIONISTA, o comportamento é o oposto. Ver isTipoModalidadeFixa.
+const MODALIDADE_TIPOS: { modo: TipoEscala; titulo: string; sub: string }[] = [
+  { modo: 'PLANTONISTA', titulo: TIPO_ESCALA_LABEL.PLANTONISTA, sub: 'valor por plantão; turno, horário e horas obrigatórios' },
+  { modo: 'DIARISTA', titulo: TIPO_ESCALA_LABEL.DIARISTA, sub: 'valor mensal fixo; carga horária semanal obrigatória' },
+  { modo: 'EVOLUCIONISTA', titulo: TIPO_ESCALA_LABEL.EVOLUCIONISTA, sub: 'valor mensal fixo; carga horária semanal obrigatória' },
+  { modo: 'EVOLUCIONISTA_FDS', titulo: TIPO_ESCALA_LABEL.EVOLUCIONISTA_FDS, sub: 'valor por plantão; turno, horário e horas obrigatórios' },
 ]
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -272,9 +260,10 @@ function ModalidadeFormInline({
   horariosPadrao: TomadorHorarioPadrao[]
 }) {
   const SELECT_CLS = 'w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white'
-  const isPlantao = form.tipo === 'PLANTONISTA'
-  const isDiarista = form.tipo === 'DIARISTA'
-  const valorLabel = isDiarista ? 'Valor Mensal *' : 'Valor *'
+  const isTipoFixo = isTipoModalidadeFixa(form.tipo)
+  // "por lançamento" (turno/horário/horas) = PLANTONISTA e EVOLUCIONISTA_FDS
+  const isPorLancamento = !isTipoFixo
+  const valorLabel = isTipoFixo ? 'Valor Mensal *' : 'Valor *'
 
   return (
     <div className="space-y-3">
@@ -309,8 +298,8 @@ function ModalidadeFormInline({
           </div>
         </div>
 
-        {/* ── PLANTONISTA: turno/horas/horário, todos obrigatórios ── */}
-        {isPlantao && (
+        {/* ── Tipos "por lançamento" (Plantonista/Evolucionista FDS): turno/horas/horário, todos obrigatórios ── */}
+        {isPorLancamento && (
           <>
             {/* Presets rápidos — preenchem turno + horas + horário de uma vez, mas os 3 campos abaixo continuam livres para edição.
                 Configuráveis por tomador na aba "Preenchimento Rápido" (PINSAUDE-13.20). */}
@@ -374,8 +363,9 @@ function ModalidadeFormInline({
           </>
         )}
 
-        {/* ── DIARISTA: carga horária semanal obrigatória, paga valor mensal fixo ── */}
-        {isDiarista && (
+        {/* ── Tipos "fixos" (Diarista/Evolucionista): carga horária semanal obrigatória, pagam
+             valor mensal fixo ── */}
+        {isTipoFixo && (
           <div className="col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Horas semanais obrigatórias *</label>
             <input
@@ -737,37 +727,11 @@ function SetorFormInline({
   const modalidadesSelecionadasInativas = modalidades.filter(m => form.modalidadeIds.includes(m.id) && !m.ativo)
   const modalidadeOptions = [...modalidadesSelecionadasInativas, ...modalidades.filter(m => m.ativo)]
 
-  // Sugestão "Plantonista/Diarista - Setor" recalculada enquanto o usuário não customizar o campo
-  // à mão, baseada na PRIMEIRA modalidade marcada (em ordem de exibição, não de clique) —
-  // lastSugestaoRef guarda a última sugestão aplicada automaticamente; se o valor atual do campo
-  // ainda bater com ela (ou estiver vazio), a próxima sugestão sobrescreve; se o usuário já
-  // digitou algo diferente, o campo nunca mais é sobrescrito sozinho. O componente é remontado
-  // (key no ponto de uso) sempre que troca de setor sendo editado, então este ref começa "limpo"
-  // a cada abertura de formulário.
-  const modalidadesSelecionadasInicial = modalidadeOptions.filter(m => form.modalidadeIds.includes(m.id))
-  const sugestaoInicial = sugerirTipoEscalaLabel(form.nome, modalidadesSelecionadasInicial)
-  const lastSugestaoRef = useRef<string>(
-    form.tipoEscalaLabel === sugestaoInicial ? sugestaoInicial : '__custom__'
-  )
-
-  function aplicarComSugestao(patch: Partial<SetorForm>) {
-    const nome = patch.nome ?? form.nome
-    const modalidadeIds = patch.modalidadeIds ?? form.modalidadeIds
-    const selecionadas = modalidadeOptions.filter(m => modalidadeIds.includes(m.id))
-    const sugestao = sugerirTipoEscalaLabel(nome, selecionadas)
-    const next = { ...patch }
-    if (!form.tipoEscalaLabel.trim() || form.tipoEscalaLabel === lastSugestaoRef.current) {
-      next.tipoEscalaLabel = sugestao
-    }
-    lastSugestaoRef.current = sugestao
-    onChange(next)
-  }
-
   function toggleModalidade(modalidadeId: string) {
     const novosIds = form.modalidadeIds.includes(modalidadeId)
       ? form.modalidadeIds.filter(id => id !== modalidadeId)
       : [...form.modalidadeIds, modalidadeId]
-    aplicarComSugestao({ modalidadeIds: novosIds })
+    onChange({ modalidadeIds: novosIds })
   }
 
   return (
@@ -777,7 +741,7 @@ function SetorFormInline({
           <Input
             label="Nome do setor *"
             value={form.nome}
-            onChange={e => aplicarComSugestao({ nome: e.target.value })}
+            onChange={e => onChange({ nome: e.target.value })}
             placeholder="ex: Emergência Cardiológica"
           />
         </div>
@@ -810,30 +774,11 @@ function SetorFormInline({
                   key={m.id}
                   checked={form.modalidadeIds.includes(m.id)}
                   onChange={() => toggleModalidade(m.id)}
-                  label={`${m.nome} (${m.tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'}${!m.ativo ? ' — inativa' : ''})`}
+                  label={`${m.nome} (${TIPO_ESCALA_LABEL[m.tipo]}${!m.ativo ? ' — inativa' : ''})`}
                 />
               ))}
             </div>
           )}
-        </div>
-        <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Texto no PDF (campo "Tipo de Escala") *
-            <span className="ml-1 text-xs font-normal text-ds-light">(sugerido automaticamente, mas pode ser alterado)</span>
-          </label>
-          <input
-            value={form.tipoEscalaLabel}
-            onChange={e => onChange({ tipoEscalaLabel: e.target.value })}
-            placeholder="ex: Plantonista - Emergência Cardiológica"
-            className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
-          />
-          <p className="mt-1 text-[11px] text-ds-light">
-            Use <code className="px-1 py-0.5 rounded bg-gray-100 text-gray-700">{PLACEHOLDER_TIPO_ESCALA}</code> pra
-            o texto se ajustar automaticamente ao Tipo de Escala (Plantonista/Diarista) escolhido em cada
-            frequência — sugerido sozinho quando o setor tem modalidades dos dois tipos. Use{' '}
-            <code className="px-1 py-0.5 rounded bg-gray-100 text-gray-700">{PLACEHOLDER_MODALIDADE}</code> pra
-            entrar o nome da modalidade selecionada na frequência.
-          </p>
         </div>
         <div className="col-span-2">
           <Switch checked={form.ativo} onChange={v => onChange({ ativo: v })} label="Setor ativo" />
@@ -1094,7 +1039,6 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       categoria: s.categoria ?? '',
       ativo: s.ativo,
       modalidadeIds: s.modalidades.map(m => m.id),
-      tipoEscalaLabel: s.tipoEscalaLabel ?? '',
     })
     setEditingSetorId(s.id)
     setSetorErr(null)
@@ -1116,16 +1060,11 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       setSetorErr('Selecione ao menos uma modalidade do setor')
       return
     }
-    if (!setorForm.tipoEscalaLabel.trim()) {
-      setSetorErr('Preencha o texto exibido no PDF (campo "Tipo de Escala")')
-      return
-    }
     const req: TomadorServicoOperacionalRequest = {
       nome: setorForm.nome.trim(),
       categoria: setorForm.categoria.trim() || null,
       ativo: setorForm.ativo,
       modalidadeIds: setorForm.modalidadeIds,
-      tipoEscalaLabel: setorForm.tipoEscalaLabel.trim(),
     }
     setSetorSaving(true)
     setSetorErr(null)
@@ -1192,7 +1131,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   async function salvarModalidade() {
     if (!modForm) return
     const modo = modForm.tipo
-    const isPlantao = modo === 'PLANTONISTA'
+    const isPorLancamento = !isTipoModalidadeFixa(modo)
     const valorCentavos = parseCentavos(modForm.valorStr)
 
     if (!modForm.nome.trim() || valorCentavos <= 0) {
@@ -1200,8 +1139,10 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       return
     }
 
-    // Monta o request no contrato do backend (tipo PLANTONISTA/DIARISTA — mapeamento 1:1, sem
-    // heurística de conversão). Validação espelha TomadorService.aplicarCamposPorTipo (backend).
+    // Monta o request no contrato do backend (tipo PLANTONISTA/DIARISTA/EVOLUCIONISTA/
+    // EVOLUCIONISTA_FDS — mapeamento 1:1, sem heurística de conversão). Validação espelha
+    // TomadorService.aplicarCamposPorTipo (backend) — EVOLUCIONISTA_FDS reaproveita as mesmas
+    // regras de campo do Plantonista (não do Diarista/Evolucionista, apesar do nome parecido).
     let req: TomadorModalidadeRequest
     const base = {
       nome: modForm.nome.trim(),
@@ -1214,14 +1155,14 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       horasSemanais: null as number | null,
     }
 
-    if (isPlantao) {
+    if (isPorLancamento) {
       const horas = parseFloat(modForm.horasStr.replace(',', '.'))
       if (!modForm.turno) {
-        setModErr('Turno é obrigatório para modalidade Plantonista')
+        setModErr(`Turno é obrigatório para modalidade do tipo ${TIPO_ESCALA_LABEL[modo]}`)
         return
       }
       if (!modForm.horario.trim()) {
-        setModErr('Horário é obrigatório para modalidade Plantonista')
+        setModErr(`Horário é obrigatório para modalidade do tipo ${TIPO_ESCALA_LABEL[modo]}`)
         return
       }
       if (isNaN(horas) || horas <= 0) {
@@ -1229,7 +1170,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
         return
       }
       req = {
-        ...base, tipo: 'PLANTONISTA', horas,
+        ...base, tipo: modo, horas,
         turno: modForm.turno,
         horario: modForm.horario.trim(),
       }
@@ -1239,7 +1180,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
         setModErr('Preencha as horas semanais corretamente')
         return
       }
-      req = { ...base, tipo: 'DIARISTA', horasSemanais }
+      req = { ...base, tipo: modo, horasSemanais }
     }
 
     setModSaving(true)
@@ -1718,7 +1659,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                           </div>
                           {s.modalidades.length > 0 ? (
                             <p className="text-[10px] text-ds-light mt-0.5">
-                              {s.modalidades.map(m => `${m.nome} (${m.tipo === 'DIARISTA' ? 'Diarista' : 'Plantonista'})`).join(' · ')}
+                              {s.modalidades.map(m => `${m.nome} (${TIPO_ESCALA_LABEL[m.tipo]})`).join(' · ')}
                             </p>
                           ) : (
                             <p className="text-[10px] text-amber-600 mt-0.5">Sem modalidade configurada</p>
@@ -1852,7 +1793,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                       </td>
                       <td className="px-3 py-2 text-ds-mid">{m.horario ?? '—'}</td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {m.tipo === 'DIARISTA' ? (m.horasSemanais != null ? `${m.horasSemanais}h/sem` : '—') : (m.horas != null ? `${m.horas}h` : '—')}
+                        {isTipoModalidadeFixa(m.tipo) ? (m.horasSemanais != null ? `${m.horasSemanais}h/sem` : '—') : (m.horas != null ? `${m.horas}h` : '—')}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-ds-text">
                         {formatBRL(m.valorCentavos)}
