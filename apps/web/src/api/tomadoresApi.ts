@@ -545,11 +545,18 @@ export interface TomadorGrupoFaturamentoRequest {
 // (PLANTONISTA/DIARISTA); depois estendido pra 4 (EVOLUCIONISTA/EVOLUCIONISTA_FDS reaproveitam
 // exatamente as mesmas regras de campos/valor do DIARISTA — ver TIPOS_MODALIDADE_FIXA em
 // utils/tipoEscala.ts), unificando o vocabulário com o Tipo de Escala da Frequência.
+//
+// tipos (pedido do cliente, pós-EPIC-13.26): uma modalidade pode ter mais de um Tipo de Escala,
+// desde que todos pertençam à mesma família de comportamento (nunca mistura fixa com
+// por-lançamento) — evita cadastrar a mesma modalidade 2x só pra rotulá-la sob 2 tipos idênticos
+// em campos/comportamento (ex: Diarista + Evolucionista). Ao vincular ao Setor Operacional, cada
+// tipo suportado vira uma opção selecionável separada (ver SetorModalidadeResumo, que continua
+// com `tipo` singular — o tipo resolvido daquele vínculo específico).
 export interface TomadorModalidade {
   id: string
   tomadorId: string
   nome: string
-  tipo: TipoEscala
+  tipos: TipoEscala[]
   turno: 'DIURNO' | 'NOTURNO' | null
   horario: string | null
   horas: number | null
@@ -562,7 +569,7 @@ export interface TomadorModalidade {
 
 export interface TomadorModalidadeRequest {
   nome: string
-  tipo: TipoEscala
+  tipos: TipoEscala[]
   turno: 'DIURNO' | 'NOTURNO' | null
   horario: string | null
   horas: number | null
@@ -572,11 +579,19 @@ export interface TomadorModalidadeRequest {
   horasSemanais: number | null
 }
 
+// Cada par (modalidadeId, tipo) é um vínculo independente — uma modalidade que suporta 2 Tipos
+// de Escala pode aparecer 2x aqui, uma vez por tipo, quando o operador quiser oferecer os dois
+// nesse setor.
+export interface TomadorVinculoModalidade {
+  modalidadeId: string
+  tipo: TipoEscala
+}
+
 export interface TomadorServicoOperacionalRequest {
   nome: string
   categoria: string | null
   ativo: boolean
-  modalidadeIds: string[]
+  vinculos: TomadorVinculoModalidade[]
 }
 
 export interface TomadorOcorrencia {

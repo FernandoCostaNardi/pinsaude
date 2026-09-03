@@ -3,13 +3,14 @@ package br.com.pinsaude.faturamento.dto;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 public record TomadorModalidadeResponse(
     UUID id,
     UUID tomadorId,
     String nome,
-    String tipo,
+    List<String> tipos,
     String turno,
     String horario,
     BigDecimal horas,
@@ -23,7 +24,7 @@ public record TomadorModalidadeResponse(
             m.getId(),
             m.getTomadorId(),
             m.getNome(),
-            m.getTipo(),
+            List.of(m.getTipos()),
             m.getTurno(),
             m.getHorario(),
             m.getHoras(),

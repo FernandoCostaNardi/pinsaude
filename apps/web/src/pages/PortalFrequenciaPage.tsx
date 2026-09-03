@@ -46,9 +46,15 @@ function formatDate(iso: string): string {
 // PINSAUDE-13.22: turno/horário são ambos obrigatórios nos tipos "por lançamento"
 // (Plantonista/Evolucionista FDS) — sempre mostra os dois. Tipos "fixos" (Diarista/Evolucionista)
 // não usam turno/horário/horas, mostram a carga horária semanal cadastrada.
-function detalheModalidade(m: TomadorModalidade): string {
-  if (isTipoModalidadeFixa(m.tipo)) {
-    const label = labelTipoEscala(m.tipo)
+//
+// `tipo`: uma modalidade agora pode suportar mais de um Tipo de Escala (pedido do cliente) — o
+// chamador passa o tipo já resolvido da frequência aberta quando disponível (elimina qualquer
+// ambiguidade); sem esse contexto, cai no primeiro tipo da modalidade (família é sempre
+// homogênea dentro do array).
+function detalheModalidade(m: TomadorModalidade, tipo?: TipoEscala | null): string {
+  const t = tipo ?? m.tipos[0]
+  if (isTipoModalidadeFixa(t)) {
+    const label = labelTipoEscala(t)
     return m.horasSemanais != null ? `${label} — ${m.horasSemanais}h/semana` : label
   }
   const partes = [m.turno, m.horario].filter(Boolean)
@@ -57,8 +63,8 @@ function detalheModalidade(m: TomadorModalidade): string {
 
 // Tipos de modalidade fixa também exigem horas trabalhadas por lançamento (usadas no
 // acompanhamento semanal, PINSAUDE-13.23) — mesma exigência que Plantonista nunca teve.
-function precisaHorasTrabalhadas(m: TomadorModalidade | null): boolean {
-  return isTipoModalidadeFixa(m?.tipo)
+function precisaHorasTrabalhadas(m: TomadorModalidade | null, tipo?: TipoEscala | null): boolean {
+  return isTipoModalidadeFixa(tipo ?? m?.tipos[0])
 }
 
 function fmtQtd(n: number): string {
@@ -682,7 +688,7 @@ function PlantaoFormPanel({
     // PINSAUDE-13.25: só oferece modalidades do mesmo Tipo de Escala da frequência aberta.
     tomadoresApi.listarModalidades(tomadorId)
       .then(ms => {
-        const doTipo = tipoMedico ? ms.filter(m => m.tipo === tipoMedico) : ms
+        const doTipo = tipoMedico ? ms.filter(m => m.tipos.includes(tipoMedico)) : ms
         setModalidades(doTipo.filter(m => m.ativo))
       })
       .catch(() => {})
@@ -695,7 +701,7 @@ function PlantaoFormPanel({
       .catch(() => {})
   }, [tomadorId, modalidadeFixa])
 
-  const precisaHoras = precisaHorasTrabalhadas(modalidade)
+  const precisaHoras = precisaHorasTrabalhadas(modalidade, tipoMedico)
 
   async function handleSave() {
     if (!modalidade) return
@@ -751,7 +757,7 @@ function PlantaoFormPanel({
           <div>
             <label className="block text-xs font-bold text-ds-mid mb-1">Modalidade</label>
             <div className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text bg-ds-input/40 min-h-[44px] flex items-center truncate">
-              {modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa)}
+              {modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa, tipoMedico)}
             </div>
           </div>
         ) : (
@@ -761,7 +767,7 @@ function PlantaoFormPanel({
             items={modalidades}
             value={modalidade}
             onChange={setModalidade}
-            getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
+            getLabel={m => `${m.nome} — ${detalheModalidade(m, tipoMedico)}`}
             disabled={modalidades.length === 0}
           />
         )}
@@ -792,7 +798,7 @@ function PlantaoFormPanel({
       {/* Detalhe da modalidade — sem valores financeiros na visão do médico (Portal) */}
       {modalidade && (
         <div className="bg-white rounded-lg px-3 py-2.5 mb-3 text-xs border border-ds-border/60">
-          <span className="text-ds-light">{detalheModalidade(modalidade)}</span>
+          <span className="text-ds-light">{detalheModalidade(modalidade, tipoMedico)}</span>
         </div>
       )}
 
@@ -890,7 +896,7 @@ function FrequenciaItensPanel({
     id: freq.modalidadeId,
     tomadorId: freq.tomadorId,
     nome: freq.modalidadeNome ?? '',
-    tipo: freq.modalidadeTipo ?? 'PLANTONISTA',
+    tipos: [freq.modalidadeTipo ?? 'PLANTONISTA'],
     turno: (freq.modalidadeTurno as 'DIURNO' | 'NOTURNO' | null) ?? null,
     horario: freq.modalidadeHorario,
     horas: freq.modalidadeHoras,

@@ -4,7 +4,6 @@ import br.com.pinsaude.faturamento.domain.FrequenciaMedica;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
-import br.com.pinsaude.faturamento.domain.TipoEscala;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -106,7 +105,7 @@ public record FrequenciaMedicaResponse(
             calcularProgressoSemanal(itens, modalidadesMap),
             f.getModalidadeId(),
             modalidadeFreq != null ? modalidadeFreq.getNome() : null,
-            modalidadeFreq != null ? modalidadeFreq.getTipo() : null,
+            modalidadeFreq != null ? f.getTipoMedico() : null,
             modalidadeFreq != null ? modalidadeFreq.getTurno() : null,
             modalidadeFreq != null ? modalidadeFreq.getHorario() : null,
             modalidadeFreq != null ? modalidadeFreq.getHoras() : null,
@@ -152,13 +151,13 @@ public record FrequenciaMedicaResponse(
     private static long valorMensalDiaristaUnico(TomadorModalidade modalidadeFreq,
             List<FrequenciaItemResponse> itens, Map<UUID, TomadorModalidade> modalidadesMap) {
         if (modalidadeFreq != null) {
-            return TipoEscala.isModalidadeFixa(modalidadeFreq.getTipo()) ? modalidadeFreq.getValorCentavos() : 0L;
+            return modalidadeFreq.isFixa() ? modalidadeFreq.getValorCentavos() : 0L;
         }
         return itens.stream()
             .map(FrequenciaItemResponse::modalidadeId)
             .distinct()
             .map(modalidadesMap::get)
-            .filter(m -> m != null && TipoEscala.isModalidadeFixa(m.getTipo()))
+            .filter(m -> m != null && m.isFixa())
             .mapToLong(TomadorModalidade::getValorCentavos)
             .sum();
     }
@@ -173,7 +172,7 @@ public record FrequenciaMedicaResponse(
         Map<UUID, List<FrequenciaItemResponse>> porModalidade = itens.stream()
             .filter(i -> {
                 TomadorModalidade m = modalidadesMap.get(i.modalidadeId());
-                return m != null && TipoEscala.isModalidadeFixa(m.getTipo());
+                return m != null && m.isFixa();
             })
             .collect(Collectors.groupingBy(FrequenciaItemResponse::modalidadeId));
 

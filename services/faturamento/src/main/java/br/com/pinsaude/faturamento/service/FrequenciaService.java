@@ -154,9 +154,9 @@ public class FrequenciaService {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Modalidade não pertence ao tomador informado");
             }
-            if (!modalidade.getTipo().equals(req.tipoMedico())) {
+            if (!modalidade.suportaTipo(req.tipoMedico())) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Modalidade do tipo " + modalidade.getTipo() + " não pode ser usada numa "
+                    "Modalidade do tipo " + String.join("/", modalidade.getTipos()) + " não pode ser usada numa "
                         + "frequência com Tipo de Escala " + req.tipoMedico());
             }
             ocorrencia = resolverOcorrencia(req.ocorrenciaId());
@@ -319,7 +319,7 @@ public class FrequenciaService {
         TomadorOcorrencia ocorrencia = f.getModalidadeId() == null ? resolverOcorrencia(req.ocorrenciaId()) : null;
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
-        boolean modalidadeFixa = TipoEscala.isModalidadeFixa(modalidade.getTipo());
+        boolean modalidadeFixa = modalidade.isFixa();
 
         FrequenciaItem item = new FrequenciaItem();
         item.setFrequenciaId(frequenciaId);
@@ -362,7 +362,7 @@ public class FrequenciaService {
         TomadorOcorrencia ocorrencia = f.getModalidadeId() == null ? resolverOcorrencia(req.ocorrenciaId()) : null;
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
-        boolean modalidadeFixa = TipoEscala.isModalidadeFixa(modalidade.getTipo());
+        boolean modalidadeFixa = modalidade.isFixa();
 
         item.setModalidadeId(modalidadeId);
         item.setDataExecucao(req.dataExecucao());
@@ -465,7 +465,7 @@ public class FrequenciaService {
     // vale R$0 e serve só pra registrar presença/horas trabalhadas naquele dia, usadas no
     // acompanhamento semanal (FrequenciaMedicaResponse.calcularProgressoSemanal).
     private long calcularValorItem(TomadorModalidade modalidade) {
-        if (TipoEscala.isModalidadeFixa(modalidade.getTipo())) return 0L;
+        if (modalidade.isFixa()) return 0L;
         return modalidade.getValorCentavos();
     }
 
@@ -476,10 +476,10 @@ public class FrequenciaService {
     // são detectados quando horaFim <= horaInicio, somando 24h à duração. Tipos "por lançamento"
     // (PLANTONISTA, EVOLUCIONISTA_FDS) nunca precisam desse cálculo (retorna null).
     private BigDecimal calcularHorasTrabalhadas(TomadorModalidade modalidade, FrequenciaItemRequest req) {
-        if (!TipoEscala.isModalidadeFixa(modalidade.getTipo())) return null;
+        if (!modalidade.isFixa()) return null;
         if (req.horaInicio() == null || req.horaFim() == null) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Informe o horário de entrada e saída para lançar um item desta modalidade (" + TipoEscala.label(modalidade.getTipo()) + ")");
+                "Informe o horário de entrada e saída para lançar um item desta modalidade (" + TipoEscala.label(modalidade.getTipos()[0]) + ")");
         }
         if (req.horaInicio().equals(req.horaFim())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -497,9 +497,9 @@ public class FrequenciaService {
     // dados antigos que nunca tiveram esse campo preenchido.
     private void validarCouplingTipoEscala(FrequenciaMedica f, TomadorModalidade modalidade) {
         if (f.getTipoMedico() == null) return;
-        if (!f.getTipoMedico().equals(modalidade.getTipo())) {
+        if (!modalidade.suportaTipo(f.getTipoMedico())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Modalidade do tipo " + modalidade.getTipo() + " não pode ser lançada numa "
+                "Modalidade do tipo " + String.join("/", modalidade.getTipos()) + " não pode ser lançada numa "
                     + "frequência com Tipo de Escala " + f.getTipoMedico());
         }
     }

@@ -99,14 +99,21 @@ function TabelaModalidades({ modalidades, catalogo }: { modalidades: ModalidadeD
             // somado uma única vez (ver FechamentoService, PINSAUDE-13.23) —
             // cada item individual vale R$0, então o "valor médio apurado" (totalCentavos ÷
             // quantidade) representa o custo diário amortizado.
-            const isTipoFixo = isTipoModalidadeFixa(cat?.tipo)
+            //
+            // Pedido do cliente: a modalidade pode suportar mais de um Tipo de Escala — como a
+            // agregação do Fechamento é por modalidadeId (não por tipoMedico da frequência), uma
+            // modalidade usada sob os 2 tipos em frequências diferentes dentro do mesmo
+            // fechamento fica ambígua aqui — mostra os dois rótulos ("DIARISTA/EVOLUCIONISTA").
+            // Só afeta a exibição do badge, nunca os valores agregados.
+            const isTipoFixo = isTipoModalidadeFixa(cat?.tipos?.[0])
+            const tipoLabel = cat?.tipos?.map(labelTipoEscala).join('/') ?? ''
             const valorMedioApurado = m.quantidade > 0 ? Math.round(m.totalCentavos / m.quantidade) : 0
             return (
               <tr key={m.modalidadeId} className={`border-b border-gray-200 ${rowCls}`}>
                 <td className="px-3 py-1.5 font-medium">{m.nome}</td>
                 <td className="px-2 py-1.5 text-center tabular-nums">
                   {isTipoFixo
-                    ? <span className="inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700">{labelTipoEscala(cat?.tipo).toUpperCase()}</span>
+                    ? <span className="inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700">{tipoLabel.toUpperCase()}</span>
                     : fmtHoras(m.horas)}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">

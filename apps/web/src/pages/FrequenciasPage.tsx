@@ -40,9 +40,15 @@ function formatDate(iso: string): string {
 // PINSAUDE-13.22: turno/horário são ambos obrigatórios nos tipos "por lançamento"
 // (Plantonista/Evolucionista FDS) — sempre mostra os dois. Tipos "fixos" (Diarista/Evolucionista)
 // não usam turno/horário/horas, mostram a carga horária semanal cadastrada.
-function detalheModalidade(m: TomadorModalidade): string {
-  if (isTipoModalidadeFixa(m.tipo)) {
-    const tipoTexto = labelTipoEscala(m.tipo)
+//
+// `tipo`: uma modalidade agora pode suportar mais de um Tipo de Escala (pedido do cliente) — o
+// chamador passa o tipo já resolvido da frequência aberta quando disponível (elimina qualquer
+// ambiguidade); sem esse contexto, cai no primeiro tipo da modalidade (família é sempre
+// homogênea dentro do array).
+function detalheModalidade(m: TomadorModalidade, tipo?: TipoEscala | null): string {
+  const t = tipo ?? m.tipos[0]
+  if (isTipoModalidadeFixa(t)) {
+    const tipoTexto = labelTipoEscala(t)
     return m.horasSemanais != null ? `${tipoTexto} — ${m.horasSemanais}h/semana` : tipoTexto
   }
   const partes = [m.turno, m.horario].filter(Boolean)
@@ -53,15 +59,15 @@ function detalheModalidade(m: TomadorModalidade): string {
 // antes de salvar — o valor real que fica gravado é sempre recalculado no servidor. Tipos
 // "fixos" pagam um valor mensal fixo somado uma única vez pela frequência (não por lançamento)
 // — cada item individual vale R$0, então não há um "valor deste lançamento" pra mostrar aqui.
-function calcularValorPreview(m: TomadorModalidade): number | null {
-  if (isTipoModalidadeFixa(m.tipo)) return 0
+function calcularValorPreview(m: TomadorModalidade, tipo?: TipoEscala | null): number | null {
+  if (isTipoModalidadeFixa(tipo ?? m.tipos[0])) return 0
   return m.valorCentavos + m.deslocamentoCentavos
 }
 
 // Tipos "fixos" também exigem horas trabalhadas por lançamento (usadas no acompanhamento
 // semanal, PINSAUDE-13.23) — mesma exigência que Plantonista nunca teve.
-function precisaHorasTrabalhadas(m: TomadorModalidade | null): boolean {
-  return isTipoModalidadeFixa(m?.tipo)
+function precisaHorasTrabalhadas(m: TomadorModalidade | null, tipo?: TipoEscala | null): boolean {
+  return isTipoModalidadeFixa(tipo ?? m?.tipos[0])
 }
 
 // Pedido do cliente: o lançamento individual dentro de uma frequência é chamado de "plantão"
@@ -693,7 +699,7 @@ function PlantaoFormPanel({
       .then(ms => {
         // PINSAUDE-13.25: só oferece modalidades do mesmo Tipo de Escala da frequência aberta —
         // uma frequência Plantonista nunca deve lançar uma modalidade Diarista e vice-versa.
-        const doTipo = tipoMedico ? ms.filter(m => m.tipo === tipoMedico) : ms
+        const doTipo = tipoMedico ? ms.filter(m => m.tipos.includes(tipoMedico)) : ms
         const ativas = doTipo.filter(m => m.ativo)
         setModalidades(ativas)
         if (item) {
@@ -710,7 +716,7 @@ function PlantaoFormPanel({
     tomadoresApi.listarOcorrencias(tomadorId).then(setOcorrenciasTodas).catch(() => {})
   }, [tomadorId, modalidadeFixa])
 
-  const precisaHoras = precisaHorasTrabalhadas(modalidade)
+  const precisaHoras = precisaHorasTrabalhadas(modalidade, tipoMedico)
 
   // Se a ocorrência selecionada foi desativada depois do lançamento, ainda precisa aparecer
   // como opção (senão o <select> mostra em branco) — igual ao tratamento de modalidade inativa.
@@ -750,7 +756,7 @@ function PlantaoFormPanel({
   }
 
   const horasPreview = precisaHoras ? calcularHorasEntrePeriodo(horaInicio, horaFim) : null
-  const totalModalidade = modalidade ? calcularValorPreview(modalidade) : null
+  const totalModalidade = modalidade ? calcularValorPreview(modalidade, tipoMedico) : null
   const ocorrenciaValor = modalidade ? calcularValorOcorrenciaPreview(ocorrenciaSelecionada, modalidade.valorCentavos) : 0
   const total = totalModalidade != null ? totalModalidade + ocorrenciaValor : null
 
@@ -780,7 +786,7 @@ function PlantaoFormPanel({
           <div>
             <label className="block text-xs font-bold text-ds-mid mb-1">Modalidade</label>
             <div className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text bg-ds-input/40 truncate">
-              {modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa)}
+              {modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa, tipoMedico)}
             </div>
           </div>
         ) : (
@@ -790,7 +796,7 @@ function PlantaoFormPanel({
             items={modalidades}
             value={modalidade}
             onChange={setModalidade}
-            getLabel={m => `${m.nome} — ${detalheModalidade(m)}`}
+            getLabel={m => `${m.nome} — ${detalheModalidade(m, tipoMedico)}`}
             disabled={modalidades.length === 0}
           />
         )}
@@ -821,8 +827,8 @@ function PlantaoFormPanel({
       {/* Preview de valores */}
       {modalidade && (
         <div className="bg-white rounded-lg px-4 py-2.5 mb-3 flex items-center gap-5 text-xs border border-ds-border/60">
-          <span className="text-ds-light">{detalheModalidade(modalidade)}</span>
-          {!isTipoModalidadeFixa(modalidade.tipo) && (
+          <span className="text-ds-light">{detalheModalidade(modalidade, tipoMedico)}</span>
+          {!isTipoModalidadeFixa(tipoMedico ?? modalidade.tipos[0]) && (
             <span className="text-ds-mid">Valor: <span className="font-bold text-ds-text">{formatBRL(modalidade.valorCentavos)}</span></span>
           )}
           {modalidade.deslocamentoCentavos > 0 && (
@@ -832,7 +838,7 @@ function PlantaoFormPanel({
             <span className="text-ds-mid">Ocorrência: <span className="font-bold text-ds-text">{formatBRL(ocorrenciaValor)}</span></span>
           )}
           <span className="ml-auto text-sm font-black text-primary">
-            {isTipoModalidadeFixa(modalidade.tipo)
+            {isTipoModalidadeFixa(tipoMedico ?? modalidade.tipos[0])
               ? 'Contabilizado no valor mensal'
               : total != null ? `Total: ${formatBRL(total)}` : 'Informe as horas para calcular'}
           </span>
@@ -940,8 +946,8 @@ function PlantaoGridPanel({
   const focarProximaLinha = useRef<number | null>(null)
 
   function precisaHorasRow(modalidadeId: string): boolean {
-    if (modalidadeFixa) return precisaHorasTrabalhadas(modalidadeFixa)
-    return precisaHorasTrabalhadas(modalidades.find(m => m.id === modalidadeId) ?? null)
+    if (modalidadeFixa) return precisaHorasTrabalhadas(modalidadeFixa, tipoMedico)
+    return precisaHorasTrabalhadas(modalidades.find(m => m.id === modalidadeId) ?? null, tipoMedico)
   }
 
   useEffect(() => {
@@ -949,7 +955,7 @@ function PlantaoGridPanel({
     // PINSAUDE-13.25: só oferece modalidades do mesmo Tipo de Escala da frequência aberta.
     tomadoresApi.listarModalidades(tomadorId)
       .then(ms => {
-        const doTipo = tipoMedico ? ms.filter(m => m.tipo === tipoMedico) : ms
+        const doTipo = tipoMedico ? ms.filter(m => m.tipos.includes(tipoMedico)) : ms
         setModalidades(doTipo.filter(m => m.ativo))
       })
       .catch(() => {})
@@ -1107,7 +1113,7 @@ function PlantaoGridPanel({
           só um aviso informativo com o que será aplicado a todo plantão lançado abaixo. */}
       {modalidadeFixa && (
         <div className="mb-3 px-3 py-2 rounded-lg bg-white border border-ds-border/60 text-xs text-ds-mid">
-          Modalidade: <span className="font-semibold text-ds-text">{modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa)}</span>
+          Modalidade: <span className="font-semibold text-ds-text">{modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa, tipoMedico)}</span>
           {ocorrenciaFixaNome && (
             <> · Ocorrência (aplicada uma única vez, não por lançamento): <span className="font-semibold text-ds-text">{ocorrenciaFixaNome}</span>
               {!!ocorrenciaFixaValorCentavos && <span className="text-green-600 font-bold"> +{formatBRL(ocorrenciaFixaValorCentavos)}</span>}
@@ -1157,7 +1163,7 @@ function PlantaoGridPanel({
                       }`}>
                       <option value="">{modalidades.length === 0 ? 'Sem modalidades' : 'Selecione...'}</option>
                       {modalidades.map(m => (
-                        <option key={m.id} value={m.id}>{m.nome} — {detalheModalidade(m)}</option>
+                        <option key={m.id} value={m.id}>{m.nome} — {detalheModalidade(m, tipoMedico)}</option>
                       ))}
                     </select>
                   </td>
@@ -1283,7 +1289,7 @@ function PainelFrequencia({
     id: freq.modalidadeId,
     tomadorId: freq.tomadorId,
     nome: freq.modalidadeNome ?? '',
-    tipo: freq.modalidadeTipo ?? 'PLANTONISTA',
+    tipos: [freq.modalidadeTipo ?? 'PLANTONISTA'],
     turno: (freq.modalidadeTurno as 'DIURNO' | 'NOTURNO' | null) ?? null,
     horario: freq.modalidadeHorario,
     horas: freq.modalidadeHoras,

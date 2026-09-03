@@ -1,9 +1,12 @@
 package br.com.pinsaude.faturamento.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.UUID;
 
 @Entity
@@ -20,8 +23,15 @@ public class TomadorModalidade {
     @Column(name = "nome", nullable = false, length = 120)
     private String nome;
 
-    @Column(name = "tipo", nullable = false, length = 20)
-    private String tipo = "PLANTONISTA";
+    // Pedido do cliente (pós-EPIC-13.26): uma modalidade pode servir a mais de um Tipo de Escala,
+    // desde que todos pertençam à mesma família de comportamento (nunca mistura fixa com
+    // por-lançamento — ver TipoEscala.isModalidadeFixa). Evita cadastrar a mesma modalidade
+    // (mesmo turno/horas ou horas_semanais, mesmo valor) uma vez por tipo quando os tipos têm
+    // exatamente o mesmo formato de campos (ex: Diarista + Evolucionista). Ver
+    // V42__tomador_modalidade_multiplos_tipos.sql.
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "tipos", columnDefinition = "text[]", nullable = false)
+    private String[] tipos = new String[]{"PLANTONISTA"};
 
     @Column(name = "turno", length = 10)
     private String turno;
@@ -58,8 +68,8 @@ public class TomadorModalidade {
     public void setTomadorId(UUID v)              { this.tomadorId = v; }
     public String getNome()                       { return nome; }
     public void setNome(String v)                 { this.nome = v; }
-    public String getTipo()                       { return tipo; }
-    public void setTipo(String v)                 { this.tipo = v; }
+    public String[] getTipos()                    { return tipos; }
+    public void setTipos(String... v)             { this.tipos = v; }
     public String getTurno()                      { return turno; }
     public void setTurno(String v)                { this.turno = v; }
     public String getHorario()                    { return horario; }
@@ -75,4 +85,14 @@ public class TomadorModalidade {
     public boolean isAtivo()                     { return ativo; }
     public void setAtivo(boolean v)              { this.ativo = v; }
     public OffsetDateTime getCreatedAt()          { return createdAt; }
+
+    // Família de comportamento é homogênea dentro do array (garantido na validação de escrita,
+    // TomadorService.aplicarCamposPorTipo) — qualquer elemento serve como representante.
+    public boolean isFixa() {
+        return tipos != null && tipos.length > 0 && TipoEscala.isModalidadeFixa(tipos[0]);
+    }
+
+    public boolean suportaTipo(String tipo) {
+        return tipos != null && Arrays.asList(tipos).contains(tipo);
+    }
 }
