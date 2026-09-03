@@ -18,7 +18,7 @@ import {
   TomadorServicoOperacionalRequest,
   tomadoresApi,
 } from '../api/tomadoresApi'
-import { TIPO_ESCALA_LABEL, isTipoModalidadeFixa, type TipoEscala } from '../utils/tipoEscala'
+import { TIPO_ESCALA_LABEL, TODOS_TIPOS_ESCALA, isTipoModalidadeFixa, type TipoEscala } from '../utils/tipoEscala'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -52,8 +52,10 @@ const TIPO_BADGE_CLS: Record<TipoEscala, string> = {
   EVOLUCIONISTA: 'bg-green-50 text-green-700',
   EVOLUCIONISTA_FDS: 'bg-orange-50 text-orange-700',
 }
-function tipoBadgeInfo(m: TomadorModalidade): { label: string; cls: string } {
-  return { label: m.tipo, cls: TIPO_BADGE_CLS[m.tipo] ?? 'bg-gray-50 text-gray-700' }
+// Recebe um único tipo (não a modalidade inteira) — desde que uma modalidade possa suportar mais
+// de um Tipo de Escala (pedido do cliente), a listagem renderiza 1 badge por tipo em vez de 1 só.
+function tipoBadgeInfo(tipo: TipoEscala): { label: string; cls: string } {
+  return { label: tipo, cls: TIPO_BADGE_CLS[tipo] ?? 'bg-gray-50 text-gray-700' }
 }
 
 // Badge do tipo de valor na tabela de ocorrências.
@@ -85,9 +87,12 @@ interface GrupoForm {
 // as mesmas regras de campos/valor do DIARISTA (tipo "fixo"); EVOLUCIONISTA_FDS reaproveita as
 // mesmas regras do PLANTONISTA (tipo "por lançamento") — apesar do nome parecido com
 // EVOLUCIONISTA, o comportamento é o oposto (correção pós-implantação, ver TipoEscala).
+// tipos: pedido do cliente — uma modalidade pode ter mais de um Tipo de Escala, desde que todos
+// pertençam à mesma família de comportamento (validado no backend; a UI trava a seleção pra nunca
+// deixar misturar as 2 famílias — ver ModalidadeFormInline).
 interface ModalidadeForm {
   nome: string
-  tipo: TipoEscala
+  tipos: TipoEscala[]
   turno: 'DIURNO' | 'NOTURNO' | ''
   horario: string
   horasStr: string
@@ -104,7 +109,7 @@ function emptyGrupoForm(): GrupoForm {
 
 function emptyModalidadeForm(): ModalidadeForm {
   return {
-    nome: '', tipo: 'PLANTONISTA', turno: '', horario: '',
+    nome: '', tipos: [], turno: '', horario: '',
     horasStr: '', valorStr: '', deslocamentoStr: '', ativo: true,
     horasSemanaisStr: '',
   }
@@ -138,20 +143,27 @@ function emptyHorarioPadraoForm(): HorarioPadraoForm {
 // Cadastro dedicado de Setores Operacionais (catálogo por tomador, com categoria própria) —
 // separado do fluxo de Grupos, que passa a só selecionar entre os setores já cadastrados aqui.
 //
-// modalidadeIds: pedido do cliente — o setor define explicitamente qual(is) Modalidade(s)
-// daquele setor (pode ter mais de uma — usadas pra derivar o Tipo de Escala da Frequência
+// vinculos: pedido do cliente — o setor define explicitamente qual(is) Modalidade(s) daquele
+// setor (pode ter mais de uma — usadas pra derivar o Tipo de Escala da Frequência
 // automaticamente quando só há 1, ou oferecer a escolha quando há mais de 1, sem precisar
-// recadastrar nada). O campo "Tipo de Escala" do PDF é 100% calculado a partir do Tipo de Escala
-// da frequência + nome do setor — sem texto customizável (campo "Texto no PDF" removido).
+// recadastrar nada). Cada elemento é uma chave composta `${modalidadeId}:${tipo}` — uma
+// modalidade que suporta 2 Tipos de Escala aparece 2x no picker (uma linha por tipo), então o
+// Set precisa distinguir por par, não só por modalidadeId. O campo "Tipo de Escala" do PDF é
+// 100% calculado a partir do Tipo de Escala da frequência + nome do setor — sem texto
+// customizável (campo "Texto no PDF" removido).
 interface SetorForm {
   nome: string
   categoria: string
   ativo: boolean
-  modalidadeIds: string[]
+  vinculos: Set<string>
 }
 
 function emptySetorForm(): SetorForm {
-  return { nome: '', categoria: '', ativo: true, modalidadeIds: [] }
+  return { nome: '', categoria: '', ativo: true, vinculos: new Set() }
+}
+
+function chaveVinculo(modalidadeId: string, tipo: string): string {
+  return `${modalidadeId}:${tipo}`
 }
 
 // Categoria "Sem categoria" agrupa setores sem esse campo preenchido — usado tanto no cadastro
@@ -260,10 +272,15 @@ function ModalidadeFormInline({
   horariosPadrao: TomadorHorarioPadrao[]
 }) {
   const SELECT_CLS = 'w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white'
-  const isTipoFixo = isTipoModalidadeFixa(form.tipo)
+  const isTipoFixo = form.tipos.length > 0 && isTipoModalidadeFixa(form.tipos[0])
   // "por lançamento" (turno/horário/horas) = PLANTONISTA e EVOLUCIONISTA_FDS
-  const isPorLancamento = !isTipoFixo
+  const isPorLancamento = form.tipos.length > 0 && !isTipoFixo
   const valorLabel = isTipoFixo ? 'Valor Mensal *' : 'Valor *'
+  // Família do(s) tipo(s) já marcado(s) — null enquanto nenhum tipo foi escolhido ainda, caso em
+  // que qualquer botão pode ser o primeiro clique. Trava os botões da OUTRA família (nunca é
+  // possível combinar fixa + por-lançamento na mesma modalidade — ver TomadorService.
+  // aplicarCamposPorTipo, que rejeita a mistura com 422).
+  const familiaAtual = form.tipos.length > 0 ? isTipoModalidadeFixa(form.tipos[0]) : null
 
   return (
     <div className="space-y-3">
@@ -277,24 +294,41 @@ function ModalidadeFormInline({
           />
         </div>
 
-        {/* Tipo de Escala — decide quais campos aparecem abaixo (mesmo vocabulário da Frequência) */}
+        {/* Tipo de Escala — decide quais campos aparecem abaixo (mesmo vocabulário da Frequência).
+            Multi-seleção (pedido do cliente): a modalidade pode servir a mais de um tipo, desde
+            que todos sejam do mesmo formato de campos — marcar um tipo trava os 2 da outra
+            família até todos os tipos marcados serem desmarcados. */}
         <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Escala *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Tipo(s) de Escala *
+            <span className="ml-1 text-xs font-normal text-ds-light">(marque mais de um se forem do mesmo formato de campos)</span>
+          </label>
           <div className="grid grid-cols-2 gap-2">
-            {MODALIDADE_TIPOS.map(t => (
-              <button
-                key={t.modo}
-                type="button"
-                onClick={() => onChange({ tipo: t.modo })}
-                className={[
-                  'px-3 py-2 rounded-lg border text-xs font-semibold text-left transition-colors',
-                  form.tipo === t.modo ? 'border-primary bg-primary-50 text-primary' : 'border-gray-300 text-gray-600 hover:border-primary/40',
-                ].join(' ')}
-              >
-                {t.titulo}
-                <span className="block font-normal text-[10px] text-ds-light mt-0.5">{t.sub}</span>
-              </button>
-            ))}
+            {MODALIDADE_TIPOS.map(t => {
+              const marcado = form.tipos.includes(t.modo)
+              const bloqueado = familiaAtual !== null && isTipoModalidadeFixa(t.modo) !== familiaAtual && !marcado
+              return (
+                <button
+                  key={t.modo}
+                  type="button"
+                  disabled={bloqueado}
+                  onClick={() => onChange({
+                    tipos: marcado ? form.tipos.filter(x => x !== t.modo) : [...form.tipos, t.modo],
+                  })}
+                  className={[
+                    'px-3 py-2 rounded-lg border text-xs font-semibold text-left transition-colors',
+                    marcado
+                      ? 'border-primary bg-primary-50 text-primary'
+                      : bloqueado
+                        ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                        : 'border-gray-300 text-gray-600 hover:border-primary/40',
+                  ].join(' ')}
+                >
+                  {t.titulo}
+                  <span className="block font-normal text-[10px] text-ds-light mt-0.5">{t.sub}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
 
@@ -721,17 +755,25 @@ function SetorFormInline({
   categoriasExistentes: string[]
   modalidades: TomadorModalidade[]
 }) {
-  // Modalidade(s) já selecionadas mas hoje inativas (ex: setor cadastrado antes de uma delas ser
-  // desativada) — injetadas no topo da lista pra não sumirem dos checkboxes (mesmo padrão já
-  // usado em outros formulários deste componente para modalidade/ocorrência inativa).
-  const modalidadesSelecionadasInativas = modalidades.filter(m => form.modalidadeIds.includes(m.id) && !m.ativo)
-  const modalidadeOptions = [...modalidadesSelecionadasInativas, ...modalidades.filter(m => m.ativo)]
+  // Pedido do cliente: uma modalidade que suporta mais de um Tipo de Escala vira 1 linha por
+  // tipo aqui — cada (modalidade, tipo) é um vínculo independente. Ordenado por nome e depois
+  // pela ordem de TODOS_TIPOS_ESCALA, pra manter as linhas da mesma modalidade adjacentes.
+  const opcoes = modalidades
+    .flatMap(m => m.tipos.map(tipo => ({ modalidadeId: m.id, nome: m.nome, tipo, ativo: m.ativo })))
+    .sort((a, b) => a.nome.localeCompare(b.nome) || TODOS_TIPOS_ESCALA.indexOf(a.tipo) - TODOS_TIPOS_ESCALA.indexOf(b.tipo))
 
-  function toggleModalidade(modalidadeId: string) {
-    const novosIds = form.modalidadeIds.includes(modalidadeId)
-      ? form.modalidadeIds.filter(id => id !== modalidadeId)
-      : [...form.modalidadeIds, modalidadeId]
-    onChange({ modalidadeIds: novosIds })
+  // Vínculos já selecionados mas hoje com a modalidade inativa (ex: setor cadastrado antes de
+  // uma delas ser desativada) — injetados no topo da lista pra não sumirem dos switches (mesmo
+  // padrão já usado em outros formulários deste componente para modalidade/ocorrência inativa).
+  const opcoesSelecionadasInativas = opcoes.filter(o => form.vinculos.has(chaveVinculo(o.modalidadeId, o.tipo)) && !o.ativo)
+  const modalidadeOptions = [...opcoesSelecionadasInativas, ...opcoes.filter(o => o.ativo)]
+
+  function toggleVinculo(modalidadeId: string, tipo: string) {
+    const chave = chaveVinculo(modalidadeId, tipo)
+    const novos = new Set(form.vinculos)
+    if (novos.has(chave)) novos.delete(chave)
+    else novos.add(chave)
+    onChange({ vinculos: novos })
   }
 
   return (
@@ -769,12 +811,12 @@ function SetorFormInline({
             </p>
           ) : (
             <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2.5">
-              {modalidadeOptions.map(m => (
+              {modalidadeOptions.map(o => (
                 <Switch
-                  key={m.id}
-                  checked={form.modalidadeIds.includes(m.id)}
-                  onChange={() => toggleModalidade(m.id)}
-                  label={`${m.nome} (${TIPO_ESCALA_LABEL[m.tipo]}${!m.ativo ? ' — inativa' : ''})`}
+                  key={chaveVinculo(o.modalidadeId, o.tipo)}
+                  checked={form.vinculos.has(chaveVinculo(o.modalidadeId, o.tipo))}
+                  onChange={() => toggleVinculo(o.modalidadeId, o.tipo)}
+                  label={`${o.nome} (${TIPO_ESCALA_LABEL[o.tipo]}${!o.ativo ? ' — inativa' : ''})`}
                 />
               ))}
             </div>
@@ -1038,7 +1080,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       nome: s.nome,
       categoria: s.categoria ?? '',
       ativo: s.ativo,
-      modalidadeIds: s.modalidades.map(m => m.id),
+      vinculos: new Set(s.modalidades.map(m => chaveVinculo(m.id, m.tipo))),
     })
     setEditingSetorId(s.id)
     setSetorErr(null)
@@ -1056,7 +1098,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       setSetorErr('Preencha o nome do setor')
       return
     }
-    if (setorForm.modalidadeIds.length === 0) {
+    if (setorForm.vinculos.size === 0) {
       setSetorErr('Selecione ao menos uma modalidade do setor')
       return
     }
@@ -1064,7 +1106,10 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       nome: setorForm.nome.trim(),
       categoria: setorForm.categoria.trim() || null,
       ativo: setorForm.ativo,
-      modalidadeIds: setorForm.modalidadeIds,
+      vinculos: Array.from(setorForm.vinculos).map(chave => {
+        const [modalidadeId, tipo] = chave.split(':')
+        return { modalidadeId, tipo: tipo as TipoEscala }
+      }),
     }
     setSetorSaving(true)
     setSetorErr(null)
@@ -1109,7 +1154,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     // PINSAUDE-13.24: tipo do backend mapeia 1:1 no modo do form — sem mais heurística de conversão.
     setModForm({
       nome: m.nome,
-      tipo: m.tipo,
+      tipos: m.tipos,
       turno: m.turno ?? '',
       horario: m.horario ?? '',
       horasStr: m.horas != null ? String(m.horas) : '',
@@ -1130,8 +1175,14 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
 
   async function salvarModalidade() {
     if (!modForm) return
-    const modo = modForm.tipo
-    const isPorLancamento = !isTipoModalidadeFixa(modo)
+    if (modForm.tipos.length === 0) {
+      setModErr('Selecione ao menos um Tipo de Escala')
+      return
+    }
+    // Família é garantida homogênea pela trava de UI em ModalidadeFormInline — qualquer elemento
+    // serve de representante pra decidir quais campos são obrigatórios e pras mensagens de erro.
+    const tipoRepresentante = modForm.tipos[0]
+    const isPorLancamento = !isTipoModalidadeFixa(tipoRepresentante)
     const valorCentavos = parseCentavos(modForm.valorStr)
 
     if (!modForm.nome.trim() || valorCentavos <= 0) {
@@ -1139,13 +1190,15 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       return
     }
 
-    // Monta o request no contrato do backend (tipo PLANTONISTA/DIARISTA/EVOLUCIONISTA/
-    // EVOLUCIONISTA_FDS — mapeamento 1:1, sem heurística de conversão). Validação espelha
-    // TomadorService.aplicarCamposPorTipo (backend) — EVOLUCIONISTA_FDS reaproveita as mesmas
-    // regras de campo do Plantonista (não do Diarista/Evolucionista, apesar do nome parecido).
+    // Monta o request no contrato do backend (tipos: PLANTONISTA/DIARISTA/EVOLUCIONISTA/
+    // EVOLUCIONISTA_FDS — pedido do cliente: uma modalidade pode ter mais de um, desde que todos
+    // da mesma família). Validação espelha TomadorService.aplicarCamposPorTipo (backend) —
+    // EVOLUCIONISTA_FDS reaproveita as mesmas regras de campo do Plantonista (não do
+    // Diarista/Evolucionista, apesar do nome parecido).
     let req: TomadorModalidadeRequest
     const base = {
       nome: modForm.nome.trim(),
+      tipos: modForm.tipos,
       valorCentavos,
       deslocamentoCentavos: parseCentavos(modForm.deslocamentoStr),
       ativo: modForm.ativo,
@@ -1158,11 +1211,11 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     if (isPorLancamento) {
       const horas = parseFloat(modForm.horasStr.replace(',', '.'))
       if (!modForm.turno) {
-        setModErr(`Turno é obrigatório para modalidade do tipo ${TIPO_ESCALA_LABEL[modo]}`)
+        setModErr(`Turno é obrigatório para modalidade do tipo ${TIPO_ESCALA_LABEL[tipoRepresentante]}`)
         return
       }
       if (!modForm.horario.trim()) {
-        setModErr(`Horário é obrigatório para modalidade do tipo ${TIPO_ESCALA_LABEL[modo]}`)
+        setModErr(`Horário é obrigatório para modalidade do tipo ${TIPO_ESCALA_LABEL[tipoRepresentante]}`)
         return
       }
       if (isNaN(horas) || horas <= 0) {
@@ -1170,7 +1223,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
         return
       }
       req = {
-        ...base, tipo: modo, horas,
+        ...base, horas,
         turno: modForm.turno,
         horario: modForm.horario.trim(),
       }
@@ -1180,7 +1233,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
         setModErr('Preencha as horas semanais corretamente')
         return
       }
-      req = { ...base, tipo: modo, horasSemanais }
+      req = { ...base, horasSemanais }
     }
 
     setModSaving(true)
@@ -1769,14 +1822,16 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                     <tr key={m.id} className="hover:bg-ds-surface/50">
                       <td className="px-3 py-2 font-medium text-ds-text">{m.nome}</td>
                       <td className="px-3 py-2">
-                        {(() => {
-                          const b = tipoBadgeInfo(m)
-                          return (
-                            <span className={['px-1.5 py-0.5 rounded text-[10px] font-bold', b.cls].join(' ')}>
-                              {b.label}
-                            </span>
-                          )
-                        })()}
+                        <div className="flex flex-wrap gap-1">
+                          {m.tipos.map(t => {
+                            const b = tipoBadgeInfo(t)
+                            return (
+                              <span key={t} className={['px-1.5 py-0.5 rounded text-[10px] font-bold', b.cls].join(' ')}>
+                                {b.label}
+                              </span>
+                            )
+                          })}
+                        </div>
                       </td>
                       <td className="px-3 py-2">
                         {m.turno ? (
@@ -1793,7 +1848,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                       </td>
                       <td className="px-3 py-2 text-ds-mid">{m.horario ?? '—'}</td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {isTipoModalidadeFixa(m.tipo) ? (m.horasSemanais != null ? `${m.horasSemanais}h/sem` : '—') : (m.horas != null ? `${m.horas}h` : '—')}
+                        {isTipoModalidadeFixa(m.tipos[0]) ? (m.horasSemanais != null ? `${m.horasSemanais}h/sem` : '—') : (m.horas != null ? `${m.horas}h` : '—')}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-ds-text">
                         {formatBRL(m.valorCentavos)}

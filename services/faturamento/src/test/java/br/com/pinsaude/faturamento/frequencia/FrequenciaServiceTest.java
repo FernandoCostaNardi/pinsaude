@@ -98,7 +98,7 @@ class FrequenciaServiceTest {
         setId(modalidade, modalidadeId);
         modalidade.setTomadorId(tomadorId);
         modalidade.setNome("Plantão 12h Noturno");
-        modalidade.setTipo("PLANTONISTA");
+        modalidade.setTipos("PLANTONISTA");
         modalidade.setTurno("NOTURNO");
         modalidade.setHorario("19:00 as 07:00");
         modalidade.setHoras(new BigDecimal("12"));
@@ -700,7 +700,7 @@ class FrequenciaServiceTest {
         setId(outraModalidade, outraModalidadeId);
         outraModalidade.setTomadorId(tomadorId);
         outraModalidade.setNome("Plantão 6h Diurno");
-        outraModalidade.setTipo("PLANTONISTA");
+        outraModalidade.setTipos("PLANTONISTA");
         outraModalidade.setValorCentavos(90000L);
         outraModalidade.setDeslocamentoCentavos(0L);
         when(modalidadeRepo.findById(outraModalidadeId)).thenReturn(Optional.of(outraModalidade));
@@ -1819,7 +1819,7 @@ class FrequenciaServiceTest {
         setId(m, id);
         m.setTomadorId(tomadorId);
         m.setNome("Diarista 20h/semana");
-        m.setTipo("DIARISTA");
+        m.setTipos("DIARISTA");
         m.setHorasSemanais(new BigDecimal(horasSemanais));
         m.setValorCentavos(valorCentavos);
         m.setDeslocamentoCentavos(0L);
@@ -1834,7 +1834,7 @@ class FrequenciaServiceTest {
         setId(m, id);
         m.setTomadorId(tomadorId);
         m.setNome("Evolucionista 30h/semana");
-        m.setTipo("EVOLUCIONISTA");
+        m.setTipos("EVOLUCIONISTA");
         m.setHorasSemanais(new BigDecimal(horasSemanais));
         m.setValorCentavos(valorCentavos);
         m.setDeslocamentoCentavos(0L);
@@ -1850,7 +1850,7 @@ class FrequenciaServiceTest {
         setId(m, id);
         m.setTomadorId(tomadorId);
         m.setNome("Evolucionista FDS 12h");
-        m.setTipo("EVOLUCIONISTA_FDS");
+        m.setTipos("EVOLUCIONISTA_FDS");
         m.setTurno("DIURNO");
         m.setHorario("07:00 as 19:00");
         m.setHoras(new BigDecimal(horas));

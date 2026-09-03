@@ -386,7 +386,7 @@ class FechamentoServiceTest {
         TomadorModalidade modalidade = new TomadorModalidade();
         setId(modalidade, modalidadeIdLocal);
         modalidade.setTomadorId(tomadorId);
-        modalidade.setTipo("PLANTONISTA");
+        modalidade.setTipos("PLANTONISTA");
         modalidade.setValorCentavos(150_000L);
         modalidade.setDeslocamentoCentavos(0L);
 
@@ -429,7 +429,7 @@ class FechamentoServiceTest {
         TomadorModalidade modalidade = new TomadorModalidade();
         setId(modalidade, modalidadeIdLocal);
         modalidade.setTomadorId(tomadorId);
-        modalidade.setTipo("PLANTONISTA");
+        modalidade.setTipos("PLANTONISTA");
         modalidade.setValorCentavos(150_000L);
 
         UUID ocorrenciaIdLocal = UUID.randomUUID();
@@ -608,7 +608,7 @@ class FechamentoServiceTest {
         setId(m, id);
         m.setTomadorId(tomadorId);
         m.setNome("Diarista 20h/semana");
-        m.setTipo("DIARISTA");
+        m.setTipos("DIARISTA");
         m.setHorasSemanais(new BigDecimal("20"));
         m.setValorCentavos(valorCentavos);
         m.setDeslocamentoCentavos(0L);

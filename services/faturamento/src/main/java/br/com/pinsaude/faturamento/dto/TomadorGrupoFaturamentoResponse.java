@@ -2,7 +2,6 @@ package br.com.pinsaude.faturamento.dto;
 
 import br.com.pinsaude.faturamento.domain.Servico;
 import br.com.pinsaude.faturamento.domain.TomadorGrupoFaturamento;
-import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorServicoOperacional;
 
 import java.util.Collections;
@@ -26,7 +25,7 @@ public record TomadorGrupoFaturamentoResponse(
             TomadorGrupoFaturamento g,
             Servico servico,
             List<TomadorServicoOperacional> setores,
-            Map<UUID, List<TomadorModalidade>> modalidadesPorSetor) {
+            Map<UUID, List<ModalidadeVinculoResolvido>> modalidadesPorSetor) {
         List<TomadorServicoOperacionalResponse> setoresResp = setores.stream()
             .map(s -> TomadorServicoOperacionalResponse.from(s, modalidadesPorSetor.getOrDefault(s.getId(), List.of())))
             .toList();

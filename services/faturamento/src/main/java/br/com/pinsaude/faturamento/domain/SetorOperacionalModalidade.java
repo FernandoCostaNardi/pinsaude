@@ -23,6 +23,12 @@ public class SetorOperacionalModalidade {
     @Column(name = "modalidade_id", nullable = false)
     private UUID modalidadeId;
 
+    // Qual dos tipos suportados pela modalidade (ver TomadorModalidade.tipos) vale para este
+    // setor — quando a modalidade suporta 2 tipos da mesma família, ela pode ser vinculada 2x ao
+    // mesmo setor (uma linha por tipo). Ver V43__setor_operacional_modalidade_tipo.sql.
+    @Column(name = "tipo", nullable = false, length = 20)
+    private String tipo;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -36,5 +42,7 @@ public class SetorOperacionalModalidade {
     public void setSetorId(UUID v)       { this.setorId = v; }
     public UUID getModalidadeId()        { return modalidadeId; }
     public void setModalidadeId(UUID v)  { this.modalidadeId = v; }
+    public String getTipo()              { return tipo; }
+    public void setTipo(String v)        { this.tipo = v; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

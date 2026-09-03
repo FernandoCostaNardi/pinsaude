@@ -344,7 +344,7 @@ public class FechamentoService {
             if (freq.getGrupoId() == null || freq.getModalidadeId() == null) continue;
             if (!TipoEscala.isModalidadeFixa(freq.getTipoMedico())) continue;
             TomadorModalidade modalidade = modalidadesMap.get(freq.getModalidadeId());
-            if (modalidade == null || !TipoEscala.isModalidadeFixa(modalidade.getTipo())) continue;
+            if (modalidade == null || !modalidade.isFixa()) continue;
 
             long valorMensal = modalidade.getValorCentavos();
             modalidadeAgg.computeIfAbsent(freq.getModalidadeId(), k -> new long[]{0L, 0L});
@@ -365,7 +365,7 @@ public class FechamentoService {
                 FrequenciaMedica freq = freqMap.get(item.getFrequenciaId());
                 if (freq == null || freq.getModalidadeId() != null) return false;
                 TomadorModalidade m = modalidadesMap.get(item.getModalidadeId());
-                return m != null && TipoEscala.isModalidadeFixa(m.getTipo());
+                return m != null && m.isFixa();
             })
             .collect(Collectors.groupingBy(FrequenciaItem::getFrequenciaId,
                 Collectors.mapping(FrequenciaItem::getModalidadeId, Collectors.toSet())));

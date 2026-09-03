@@ -21,6 +21,7 @@ import br.com.pinsaude.faturamento.domain.TomadorEmpresa;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorRequest;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorResponse;
 import br.com.pinsaude.faturamento.dto.MedicoTomadorSetorRequest;
+import br.com.pinsaude.faturamento.dto.ModalidadeVinculoResolvido;
 import br.com.pinsaude.faturamento.dto.ReceitaFederalResponse;
 import br.com.pinsaude.faturamento.dto.TomadorEmpresaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorEmpresaResponse;
@@ -67,6 +68,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -366,7 +368,7 @@ public class TomadorService {
         Map<UUID, Servico> servicosPorId = servicosPorGrupoIds(grupos);
         Map<UUID, List<TomadorServicoOperacional>> setoresPorGrupo = setoresPorGrupoIds(
             grupos.stream().map(TomadorGrupoFaturamento::getId).toList());
-        Map<UUID, List<TomadorModalidade>> modalidadesPorSetor = modalidadesPorSetorId(
+        Map<UUID, List<ModalidadeVinculoResolvido>> modalidadesPorSetor = modalidadesPorSetorId(
             setoresPorGrupo.values().stream().flatMap(List::stream).toList());
         return grupos.stream()
             .map(g -> TomadorGrupoFaturamentoResponse.from(
@@ -470,13 +472,27 @@ public class TomadorService {
     // turno + horário + horas (todos obrigatórios — o preenchimento rápido por tomador,
     // EPIC-13.20, existe justamente para agilizar o preenchimento dos 3 juntos). Campos que não
     // pertencem ao tipo são sempre zerados para manter a tabela consistente com o CHECK do banco.
+    //
+    // Pedido do cliente: uma modalidade pode ter mais de um tipo, desde que todos pertençam à
+    // mesma família (fixa ou por-lançamento) — os campos obrigatórios (turno/horário/horas vs
+    // horas_semanais) só fazem sentido quando a família é homogênea dentro do array, por isso a
+    // checagem de mistura vem antes de qualquer outra validação.
     private void aplicarCamposPorTipo(TomadorModalidade m, TomadorModalidadeRequest req) {
-        if (TipoEscala.isModalidadeFixa(req.tipo())) {
+        boolean algumFixo = req.tipos().stream().anyMatch(TipoEscala::isModalidadeFixa);
+        boolean algumPorLancamento = req.tipos().stream().anyMatch(t -> !TipoEscala.isModalidadeFixa(t));
+        if (algumFixo && algumPorLancamento) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Não é possível combinar tipos de famílias diferentes na mesma modalidade "
+                    + "(ex: Plantonista com Diarista) — escolha só tipos com o mesmo formato de campos.");
+        }
+        String tipoRepresentante = req.tipos().get(0);
+
+        if (algumFixo) {
             if (req.horasSemanais() == null) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Horas semanais são obrigatórias para modalidade do tipo " + TipoEscala.label(req.tipo()));
+                    "Horas semanais são obrigatórias para modalidade do tipo " + TipoEscala.label(tipoRepresentante));
             }
-            m.setTipo(req.tipo());
+            m.setTipos(req.tipos().toArray(new String[0]));
             m.setTurno(null);
             m.setHorario(null);
             m.setHoras(null);
@@ -485,17 +501,17 @@ public class TomadorService {
         }
         if (req.turno() == null || req.turno().isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Turno é obrigatório para modalidade do tipo " + TipoEscala.label(req.tipo()));
+                "Turno é obrigatório para modalidade do tipo " + TipoEscala.label(tipoRepresentante));
         }
         if (req.horario() == null || req.horario().isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Horário é obrigatório para modalidade do tipo " + TipoEscala.label(req.tipo()));
+                "Horário é obrigatório para modalidade do tipo " + TipoEscala.label(tipoRepresentante));
         }
         if (req.horas() == null) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Horas são obrigatórias para modalidade do tipo " + TipoEscala.label(req.tipo()));
+                "Horas são obrigatórias para modalidade do tipo " + TipoEscala.label(tipoRepresentante));
         }
-        m.setTipo(req.tipo());
+        m.setTipos(req.tipos().toArray(new String[0]));
         m.setTurno(req.turno());
         m.setHorario(req.horario());
         m.setHoras(req.horas());
@@ -523,7 +539,7 @@ public class TomadorService {
     public List<TomadorServicoOperacionalResponse> listarServicosOperacionais(UUID tomadorId) {
         findOrThrow(tomadorId);
         List<TomadorServicoOperacional> setores = servicoOperacionalRepo.findByTomadorIdOrderByNomeAsc(tomadorId);
-        Map<UUID, List<TomadorModalidade>> modalidadesPorSetor = modalidadesPorSetorId(setores);
+        Map<UUID, List<ModalidadeVinculoResolvido>> modalidadesPorSetor = modalidadesPorSetorId(setores);
         return setores.stream()
             .map(s -> TomadorServicoOperacionalResponse.from(s, modalidadesPorSetor.getOrDefault(s.getId(), List.of())))
             .toList();
@@ -533,15 +549,15 @@ public class TomadorService {
     public TomadorServicoOperacionalResponse criarServicoOperacional(UUID tomadorId,
                                                                       TomadorServicoOperacionalRequest req) {
         findOrThrow(tomadorId);
-        List<TomadorModalidade> modalidades = resolverModalidadesDoSetor(tomadorId, req.modalidadeIds());
+        List<ModalidadeVinculoResolvido> vinculos = resolverModalidadesDoSetor(tomadorId, req.vinculos());
         TomadorServicoOperacional s = new TomadorServicoOperacional();
         s.setTomadorId(tomadorId);
         s.setNome(req.nome());
         s.setCategoria(normalizarCategoria(req.categoria()));
         s.setAtivo(req.ativo());
         TomadorServicoOperacional salvo = servicoOperacionalRepo.save(s);
-        salvarVinculosModalidade(salvo.getId(), req.modalidadeIds());
-        return TomadorServicoOperacionalResponse.from(salvo, modalidades);
+        salvarVinculosModalidade(salvo.getId(), req.vinculos());
+        return TomadorServicoOperacionalResponse.from(salvo, vinculos);
     }
 
     @Transactional
@@ -553,7 +569,7 @@ public class TomadorService {
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Serviço operacional não encontrado"));
-        List<TomadorModalidade> modalidades = resolverModalidadesDoSetor(tomadorId, req.modalidadeIds());
+        List<ModalidadeVinculoResolvido> vinculos = resolverModalidadesDoSetor(tomadorId, req.vinculos());
         s.setNome(req.nome());
         s.setCategoria(normalizarCategoria(req.categoria()));
         s.setAtivo(req.ativo());
@@ -566,39 +582,56 @@ public class TomadorService {
         // persistence context, sem emitir o DELETE na hora. Como a ordem de flush padrão do
         // Hibernate executa INSERTs antes de DELETEs, salvar de novo uma modalidade que já
         // estava vinculada (ex: usuário mantém a mesma + adiciona outra) faz o INSERT da linha
-        // nova colidir com o UNIQUE (setor_id, modalidade_id) da linha antiga que ainda não foi
-        // fisicamente removida — 409 "Registro duplicado". flush() força o DELETE a sair antes.
+        // nova colidir com o UNIQUE (setor_id, modalidade_id, tipo) da linha antiga que ainda não
+        // foi fisicamente removida — 409 "Registro duplicado". flush() força o DELETE a sair antes.
         setorModalidadeRepo.deleteBySetorId(servicoOperacionalId);
         setorModalidadeRepo.flush();
-        salvarVinculosModalidade(servicoOperacionalId, req.modalidadeIds());
-        return TomadorServicoOperacionalResponse.from(salvo, modalidades);
+        salvarVinculosModalidade(servicoOperacionalId, req.vinculos());
+        return TomadorServicoOperacionalResponse.from(salvo, vinculos);
     }
 
-    // LinkedHashSet: dedup defensivo (o form do frontend, checkboxes, nunca manda duplicata, mas
-    // salvar o mesmo par duas vezes violaria o UNIQUE (setor_id, modalidade_id) da tabela).
-    private void salvarVinculosModalidade(UUID setorId, List<UUID> modalidadeIds) {
-        for (UUID modalidadeId : new LinkedHashSet<>(modalidadeIds)) {
+    // LinkedHashSet: dedup defensivo (o form do frontend, switches, nunca manda duplicata, mas
+    // salvar o mesmo par duas vezes violaria o UNIQUE (setor_id, modalidade_id, tipo) da tabela).
+    // VinculoModalidade é um record — equals/hashCode por valor, então o dedup funciona por
+    // (modalidadeId, tipo), não só por modalidadeId.
+    private void salvarVinculosModalidade(UUID setorId, List<TomadorServicoOperacionalRequest.VinculoModalidade> vinculos) {
+        for (TomadorServicoOperacionalRequest.VinculoModalidade v : new LinkedHashSet<>(vinculos)) {
             SetorOperacionalModalidade link = new SetorOperacionalModalidade();
             link.setSetorId(setorId);
-            link.setModalidadeId(modalidadeId);
+            link.setModalidadeId(v.modalidadeId());
+            link.setTipo(v.tipo());
             setorModalidadeRepo.save(link);
         }
     }
 
-    // Todas as modalidades de referência do setor precisam existir e pertencer ao mesmo tomador —
-    // mesmo padrão de validação já usado para modalidade fixa da Frequência (FrequenciaService).
-    private List<TomadorModalidade> resolverModalidadesDoSetor(UUID tomadorId, List<UUID> modalidadeIds) {
-        List<TomadorModalidade> modalidades = modalidadeRepo.findAllById(modalidadeIds);
-        if (modalidades.size() != new HashSet<>(modalidadeIds).size()) {
+    // Todas as modalidades de referência do setor precisam existir, pertencer ao mesmo tomador e
+    // suportar o tipo pedido para aquele vínculo (uma modalidade pode ter mais de um tipo — ver
+    // TomadorModalidade.tipos — mas o vínculo com o setor precisa escolher um deles). Mesmo
+    // padrão de validação já usado para modalidade fixa da Frequência (FrequenciaService).
+    private List<ModalidadeVinculoResolvido> resolverModalidadesDoSetor(
+            UUID tomadorId, List<TomadorServicoOperacionalRequest.VinculoModalidade> vinculos) {
+        Set<UUID> modalidadeIdsUnicos = vinculos.stream()
+            .map(TomadorServicoOperacionalRequest.VinculoModalidade::modalidadeId)
+            .collect(Collectors.toSet());
+        Map<UUID, TomadorModalidade> modalidadesMap = modalidadeRepo.findAllById(modalidadeIdsUnicos).stream()
+            .collect(Collectors.toMap(TomadorModalidade::getId, Function.identity()));
+        if (modalidadesMap.size() != modalidadeIdsUnicos.size()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Uma ou mais modalidades não foram encontradas");
         }
-        for (TomadorModalidade m : modalidades) {
+        List<ModalidadeVinculoResolvido> resolvidos = new ArrayList<>();
+        for (TomadorServicoOperacionalRequest.VinculoModalidade v : new LinkedHashSet<>(vinculos)) {
+            TomadorModalidade m = modalidadesMap.get(v.modalidadeId());
             if (!m.getTomadorId().equals(tomadorId)) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Modalidade não pertence ao tomador informado: " + m.getId());
             }
+            if (!m.suportaTipo(v.tipo())) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Modalidade " + m.getNome() + " não suporta o tipo " + TipoEscala.label(v.tipo()));
+            }
+            resolvidos.add(new ModalidadeVinculoResolvido(m, v.tipo()));
         }
-        return modalidades;
+        return resolvidos;
     }
 
     // Categoria é texto livre e opcional — string em branco vira null pra não poluir o
@@ -629,7 +662,7 @@ public class TomadorService {
             .filter(g -> tomadorId.equals(g.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado"));
         List<TomadorServicoOperacional> setores = setoresPorGrupoIds(List.of(grupoId)).getOrDefault(grupoId, List.of());
-        Map<UUID, List<TomadorModalidade>> modalidadesPorSetor = modalidadesPorSetorId(setores);
+        Map<UUID, List<ModalidadeVinculoResolvido>> modalidadesPorSetor = modalidadesPorSetorId(setores);
         return setores.stream()
             .map(s -> TomadorServicoOperacionalResponse.from(s, modalidadesPorSetor.getOrDefault(s.getId(), List.of())))
             .toList();
@@ -653,10 +686,8 @@ public class TomadorService {
         link.setGrupoId(grupoId);
         link.setSetorId(req.setorId());
         grupoSetorRepo.save(link);
-        List<TomadorModalidade> modalidades = modalidadeRepo.findAllById(
-            setorModalidadeRepo.findBySetorId(setor.getId()).stream()
-                .map(SetorOperacionalModalidade::getModalidadeId).toList());
-        return TomadorServicoOperacionalResponse.from(setor, modalidades);
+        List<ModalidadeVinculoResolvido> vinculos = modalidadesPorSetorId(List.of(setor)).getOrDefault(setor.getId(), List.of());
+        return TomadorServicoOperacionalResponse.from(setor, vinculos);
     }
 
     @Transactional
@@ -719,7 +750,7 @@ public class TomadorService {
         Map<UUID, TomadorServicoOperacional> setoresPorId = servicoOperacionalRepo
             .findAllById(vinculos.stream().map(MedicoTomadorSetor::getSetorId).toList()).stream()
             .collect(Collectors.toMap(TomadorServicoOperacional::getId, Function.identity()));
-        Map<UUID, List<TomadorModalidade>> modalidadesPorSetor = modalidadesPorSetorId(List.copyOf(setoresPorId.values()));
+        Map<UUID, List<ModalidadeVinculoResolvido>> modalidadesPorSetor = modalidadesPorSetorId(List.copyOf(setoresPorId.values()));
         return vinculos.stream()
             .map(v -> setoresPorId.get(v.getSetorId()))
             .filter(Objects::nonNull)
@@ -745,10 +776,8 @@ public class TomadorService {
         vinculo.setMedicoTomadorId(mt.getId());
         vinculo.setSetorId(req.setorId());
         medicoTomadorSetorRepo.save(vinculo);
-        List<TomadorModalidade> modalidades = modalidadeRepo.findAllById(
-            setorModalidadeRepo.findBySetorId(setor.getId()).stream()
-                .map(SetorOperacionalModalidade::getModalidadeId).toList());
-        return TomadorServicoOperacionalResponse.from(setor, modalidades);
+        List<ModalidadeVinculoResolvido> vinculos = modalidadesPorSetorId(List.of(setor)).getOrDefault(setor.getId(), List.of());
+        return TomadorServicoOperacionalResponse.from(setor, vinculos);
     }
 
     @Transactional
@@ -779,11 +808,13 @@ public class TomadorService {
             .collect(Collectors.toMap(Servico::getId, Function.identity()));
     }
 
-    // Batch: setorId → modalidades vinculadas (nome asc), via setor_operacional_modalidades
-    // (N:N — pedido do cliente, um setor pode ter mais de uma modalidade de referência). Mesmo
-    // padrão de setoresPorGrupoIds abaixo: um único par de queries (findBySetorIdIn +
-    // findAllById) independente de quantos setores forem enriquecidos de uma vez.
-    private Map<UUID, List<TomadorModalidade>> modalidadesPorSetorId(List<TomadorServicoOperacional> setores) {
+    // Batch: setorId → vínculos (modalidade + tipo resolvido daquele vínculo, nome asc), via
+    // setor_operacional_modalidades (N:N — pedido do cliente, um setor pode ter mais de uma
+    // modalidade de referência, inclusive a MESMA modalidade 2x sob tipos diferentes quando ela
+    // suporta mais de um — ver TomadorModalidade.tipos). Mesmo padrão de setoresPorGrupoIds
+    // abaixo: um único par de queries (findBySetorIdIn + findAllById) independente de quantos
+    // setores forem enriquecidos de uma vez.
+    private Map<UUID, List<ModalidadeVinculoResolvido>> modalidadesPorSetorId(List<TomadorServicoOperacional> setores) {
         List<UUID> setorIds = setores.stream().map(TomadorServicoOperacional::getId).distinct().toList();
         if (setorIds.isEmpty()) return Map.of();
         List<SetorOperacionalModalidade> links = setorModalidadeRepo.findBySetorIdIn(setorIds);
@@ -793,11 +824,14 @@ public class TomadorService {
             .collect(Collectors.toMap(TomadorModalidade::getId, Function.identity()));
         return links.stream()
             .collect(Collectors.groupingBy(SetorOperacionalModalidade::getSetorId,
-                Collectors.mapping(l -> modalidadesMap.get(l.getModalidadeId()), Collectors.toList())))
+                Collectors.mapping(l -> {
+                    TomadorModalidade m = modalidadesMap.get(l.getModalidadeId());
+                    return m != null ? new ModalidadeVinculoResolvido(m, l.getTipo()) : null;
+                }, Collectors.toList())))
             .entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().stream()
                 .filter(Objects::nonNull)
-                .sorted(Comparator.comparing(TomadorModalidade::getNome))
+                .sorted(Comparator.comparing(v -> v.modalidade().getNome()))
                 .toList()));
     }
 
