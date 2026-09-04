@@ -452,6 +452,47 @@ class TomadorGruposModalidadesServiceTest {
             .hasMessageContaining("Não é possível combinar tipos de famílias diferentes");
     }
 
+    // ─── Modalidade Serviços (3ª família — pago por quantidade, sem turno/horário/horas) ──────
+
+    @Test
+    void criarModalidade_servicos_salva() {
+        stubSaveComId();
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Consulta Avulsa", List.of("SERVICOS"), null, null, null, 5_000L, 0L, true, null);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.tipos()).containsExactly("SERVICOS");
+        assertThat(resp.valorCentavos()).isEqualTo(5_000L);
+        assertThat(resp.turno()).isNull();
+        assertThat(resp.horario()).isNull();
+        assertThat(resp.horas()).isNull();
+        assertThat(resp.horasSemanais()).isNull();
+    }
+
+    @Test
+    void criarModalidade_misturaServicosComFixa_lanca422() {
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Mistura inválida", List.of("SERVICOS", "DIARISTA"), null, null, null, 5_000L, 0L, true,
+            BigDecimal.valueOf(20));
+
+        assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Não é possível combinar tipos de famílias diferentes");
+    }
+
+    @Test
+    void criarModalidade_misturaServicosComPorLancamento_lanca422() {
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Mistura inválida", List.of("SERVICOS", "PLANTONISTA"), "DIURNO", "07:00 as 19:00",
+            BigDecimal.valueOf(12), 5_000L, 0L, true, null);
+
+        assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Não é possível combinar tipos de famílias diferentes");
+    }
+
     @Test
     void criarModalidade_tipoInvalido_rejeitadoPeloDto() {
         // @Pattern do TomadorModalidadeRequest só aceita os 4 valores válidos — não é

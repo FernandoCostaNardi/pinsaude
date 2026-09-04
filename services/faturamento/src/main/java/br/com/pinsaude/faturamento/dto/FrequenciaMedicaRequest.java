@@ -22,7 +22,7 @@ public record FrequenciaMedicaRequest(
     @NotNull UUID grupoId,
     @NotNull UUID servicoOperacionalId,
     @NotBlank @Pattern(regexp = "\\d{4}-\\d{2}") String competencia,       // YYYY-MM
-    @NotBlank @Pattern(regexp = "PLANTONISTA|DIARISTA|EVOLUCIONISTA|EVOLUCIONISTA_FDS") String tipoMedico, // tipo de escala
+    @NotBlank @Pattern(regexp = "PLANTONISTA|DIARISTA|EVOLUCIONISTA|EVOLUCIONISTA_FDS|SERVICOS") String tipoMedico, // tipo de escala
     UUID modalidadeId,
     UUID ocorrenciaId
 ) {}

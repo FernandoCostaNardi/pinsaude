@@ -470,20 +470,26 @@ public class TomadorService {
     // Tipos "por lançamento" (PLANTONISTA, EVOLUCIONISTA_FDS — reaproveita exatamente as mesmas
     // regras do PLANTONISTA, não do DIARISTA/EVOLUCIONISTA, apesar do nome parecido) exigem
     // turno + horário + horas (todos obrigatórios — o preenchimento rápido por tomador,
-    // EPIC-13.20, existe justamente para agilizar o preenchimento dos 3 juntos). Campos que não
-    // pertencem ao tipo são sempre zerados para manter a tabela consistente com o CHECK do banco.
+    // EPIC-13.20, existe justamente para agilizar o preenchimento dos 3 juntos). Tipo "por
+    // serviço" (SERVICOS) não exige nenhum campo extra além do que já é comum a toda modalidade
+    // (nome/valor, setados fora deste método) — a quantidade é informada por lançamento, não no
+    // cadastro. Campos que não pertencem ao tipo são sempre zerados para manter a tabela
+    // consistente com o CHECK do banco.
     //
     // Pedido do cliente: uma modalidade pode ter mais de um tipo, desde que todos pertençam à
-    // mesma família (fixa ou por-lançamento) — os campos obrigatórios (turno/horário/horas vs
-    // horas_semanais) só fazem sentido quando a família é homogênea dentro do array, por isso a
-    // checagem de mistura vem antes de qualquer outra validação.
+    // mesma família (fixa, por-lançamento ou por-serviço) — os campos obrigatórios (turno/
+    // horário/horas vs horas_semanais vs nenhum) só fazem sentido quando a família é homogênea
+    // dentro do array, por isso a checagem de mistura vem antes de qualquer outra validação.
     private void aplicarCamposPorTipo(TomadorModalidade m, TomadorModalidadeRequest req) {
         boolean algumFixo = req.tipos().stream().anyMatch(TipoEscala::isModalidadeFixa);
-        boolean algumPorLancamento = req.tipos().stream().anyMatch(t -> !TipoEscala.isModalidadeFixa(t));
-        if (algumFixo && algumPorLancamento) {
+        boolean algumServico = req.tipos().stream().anyMatch(TipoEscala::isModalidadeServico);
+        boolean algumPorLancamento = req.tipos().stream()
+            .anyMatch(t -> !TipoEscala.isModalidadeFixa(t) && !TipoEscala.isModalidadeServico(t));
+        int familias = (algumFixo ? 1 : 0) + (algumServico ? 1 : 0) + (algumPorLancamento ? 1 : 0);
+        if (familias > 1) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "Não é possível combinar tipos de famílias diferentes na mesma modalidade "
-                    + "(ex: Plantonista com Diarista) — escolha só tipos com o mesmo formato de campos.");
+                    + "(ex: Plantonista com Diarista, ou Serviços com qualquer outro tipo) — escolha só tipos com o mesmo formato de campos.");
         }
         String tipoRepresentante = req.tipos().get(0);
 
@@ -497,6 +503,14 @@ public class TomadorService {
             m.setHorario(null);
             m.setHoras(null);
             m.setHorasSemanais(req.horasSemanais());
+            return;
+        }
+        if (algumServico) {
+            m.setTipos(req.tipos().toArray(new String[0]));
+            m.setTurno(null);
+            m.setHorario(null);
+            m.setHoras(null);
+            m.setHorasSemanais(null);
             return;
         }
         if (req.turno() == null || req.turno().isBlank()) {

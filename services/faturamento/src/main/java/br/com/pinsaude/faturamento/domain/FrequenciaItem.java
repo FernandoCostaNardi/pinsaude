@@ -51,6 +51,13 @@ public class FrequenciaItem {
     @Column(name = "hora_fim")
     private LocalTime horaFim;
 
+    // Quantidade de serviços realizados neste lançamento — só modalidade SERVICOS (ver
+    // TipoEscala.isModalidadeServico). NULL para as outras famílias. valorUnitarioCentavos abaixo
+    // já é o snapshot de quantidade × valorCentavos da modalidade (ver
+    // FrequenciaService.calcularValorItem).
+    @Column(name = "quantidade")
+    private Integer quantidade;
+
     // Snapshot dos preços da modalidade no momento do lançamento
     @Column(name = "valor_unitario_centavos", nullable = false)
     private long valorUnitarioCentavos;
@@ -85,6 +92,8 @@ public class FrequenciaItem {
     public void setHoraInicio(LocalTime v)      { this.horaInicio = v; }
     public LocalTime getHoraFim()                { return horaFim; }
     public void setHoraFim(LocalTime v)         { this.horaFim = v; }
+    public Integer getQuantidade()               { return quantidade; }
+    public void setQuantidade(Integer v)        { this.quantidade = v; }
     public long getValorUnitarioCentavos()       { return valorUnitarioCentavos; }
     public void setValorUnitarioCentavos(long v){ this.valorUnitarioCentavos = v; }
     public long getDeslocamentoCentavos()        { return deslocamentoCentavos; }

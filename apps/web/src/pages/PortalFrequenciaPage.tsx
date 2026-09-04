@@ -17,7 +17,7 @@ import {
 } from '../api/frequenciasApi'
 import { useAuth } from '../auth/AuthContext'
 import { abrirPdfFrequencia } from '../utils/frequenciaPdf'
-import { TipoEscala, labelTipoEscala, isTipoModalidadeFixa } from '../utils/tipoEscala'
+import { TipoEscala, labelTipoEscala, isTipoModalidadeFixa, isTipoModalidadeServico } from '../utils/tipoEscala'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +57,7 @@ function detalheModalidade(m: TomadorModalidade, tipo?: TipoEscala | null): stri
     const label = labelTipoEscala(t)
     return m.horasSemanais != null ? `${label} — ${m.horasSemanais}h/semana` : label
   }
+  if (isTipoModalidadeServico(t)) return 'Por serviço realizado'
   const partes = [m.turno, m.horario].filter(Boolean)
   return partes.length > 0 ? partes.join(' · ') : `${m.horas}h`
 }
@@ -67,19 +68,25 @@ function precisaHorasTrabalhadas(m: TomadorModalidade | null, tipo?: TipoEscala 
   return isTipoModalidadeFixa(tipo ?? m?.tipos[0])
 }
 
+// Tipo "Serviços" pede uma quantidade de serviços realizados por lançamento, em vez de
+// turno/horário/horas ou horaInicio/horaFim.
+function precisaQuantidade(m: TomadorModalidade | null, tipo?: TipoEscala | null): boolean {
+  return isTipoModalidadeServico(tipo ?? m?.tipos[0])
+}
+
 function fmtQtd(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1).replace('.', ',')
 }
 
 // Pedido do cliente: o lançamento individual dentro de "Minhas Frequências" é chamado de
-// "plantão" pros tipos "por lançamento" (Plantonista/Evolucionista FDS), mas de "frequência"
-// pros tipos "fixos" (Diarista/Evolucionista) — vocabulário mais próximo do dia a dia de cada
-// tipo de médico. `tipoMedico === null` (frequência legada, sem Tipo de Escala definido) mantém
-// o rótulo antigo ("plantão").
+// "plantão" pros tipos "por lançamento" (Plantonista/Evolucionista FDS), de "frequência" pros
+// tipos "fixos" (Diarista/Evolucionista), e de "serviço" pro tipo Serviços — vocabulário mais
+// próximo do dia a dia de cada tipo de médico. `tipoMedico === null` (frequência legada, sem
+// Tipo de Escala definido) mantém o rótulo antigo ("plantão").
 function itemLabel(tipoMedico: TipoEscala | null, count: number): string {
-  const singular = isTipoModalidadeFixa(tipoMedico) ? 'frequência' : 'plantão'
-  const plural = isTipoModalidadeFixa(tipoMedico) ? 'frequências' : 'plantões'
-  return count === 1 ? singular : plural
+  if (isTipoModalidadeFixa(tipoMedico)) return count === 1 ? 'frequência' : 'frequências'
+  if (isTipoModalidadeServico(tipoMedico)) return count === 1 ? 'serviço' : 'serviços'
+  return count === 1 ? 'plantão' : 'plantões'
 }
 
 // "plantão" é masculino, "frequência" é feminino — qualquer adjetivo/particípio que acompanhe
@@ -680,6 +687,7 @@ function PlantaoFormPanel({
   const [ocorrenciaId, setOcorrenciaId] = useState('')
   const [horaInicio,  setHoraInicio]  = useState('')
   const [horaFim,     setHoraFim]     = useState('')
+  const [quantidade,  setQuantidade]  = useState('')
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
 
@@ -702,6 +710,7 @@ function PlantaoFormPanel({
   }, [tomadorId, modalidadeFixa])
 
   const precisaHoras = precisaHorasTrabalhadas(modalidade, tipoMedico)
+  const precisaQtd   = precisaQuantidade(modalidade, tipoMedico)
 
   async function handleSave() {
     if (!modalidade) return
@@ -715,6 +724,11 @@ function PlantaoFormPanel({
         return
       }
     }
+    const qtd = precisaQtd ? parseInt(quantidade, 10) : undefined
+    if (precisaQtd && (!qtd || qtd <= 0)) {
+      setErr('Informe a quantidade de serviços realizados')
+      return
+    }
     setSaving(true); setErr(null)
     try {
       await onSave({
@@ -726,6 +740,7 @@ function PlantaoFormPanel({
         ocorrenciaId: modalidadeFixa ? undefined : (ocorrenciaId || undefined),
         horaInicio: precisaHoras ? horaInicio : undefined,
         horaFim: precisaHoras ? horaFim : undefined,
+        quantidade: qtd,
       })
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erro ao adicionar')
@@ -738,7 +753,7 @@ function PlantaoFormPanel({
     <div className="mx-3 sm:mx-4 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-bold text-primary flex items-center gap-1.5">
-          <Plus size={12} /> {isTipoModalidadeFixa(tipoMedico) ? 'Nova Frequência' : 'Novo Plantão'}
+          <Plus size={12} /> Nov{itemAgree(tipoMedico, 1, '')} {itemLabel(tipoMedico, 1)}
         </p>
         <button type="button" onClick={onCancel}
           className="p-2 rounded-lg text-ds-light hover:bg-white/70 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">
@@ -795,6 +810,17 @@ function PlantaoFormPanel({
         </div>
       )}
 
+      {/* Quantidade — só para modalidade Serviços. Pode ser lançado dia a dia (várias datas, 1
+          serviço cada) ou tudo de uma vez (1 data, quantidade maior) — a critério do médico. */}
+      {precisaQtd && (
+        <div className="mb-3">
+          <label className="block text-xs font-bold text-ds-mid mb-1">Quantidade de serviços realizados *</label>
+          <input type="number" min={1} step={1} value={quantidade} onChange={e => setQuantidade(e.target.value)}
+            placeholder="Ex.: 1"
+            className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]" />
+        </div>
+      )}
+
       {/* Detalhe da modalidade — sem valores financeiros na visão do médico (Portal) */}
       {modalidade && (
         <div className="bg-white rounded-lg px-3 py-2.5 mb-3 text-xs border border-ds-border/60">
@@ -846,7 +872,7 @@ function PlantaoFormPanel({
           className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-white text-xs font-bold disabled:opacity-50 hover:bg-primary-700 transition-colors flex items-center justify-center gap-1.5 min-h-[44px]">
           {saving
             ? <><Loader2 size={12} className="animate-spin" />Adicionando...</>
-            : <><Plus size={12} />{isTipoModalidadeFixa(tipoMedico) ? 'Adicionar Frequência' : 'Adicionar Plantão'}</>}
+            : <><Plus size={12} />Adicionar {itemLabel(tipoMedico, 1)}</>}
         </button>
       </div>
     </div>
@@ -1009,20 +1035,20 @@ function FrequenciaItensPanel({
               <span className="hidden sm:inline">Excluir</span>
             </button>
           )}
-          <button onClick={handleGerarPdf} disabled={gerandoPdf}
-            title="Gerar PDF do Relatório de Frequência"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs font-semibold hover:border-primary hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-50 min-h-[40px]">
-            {gerandoPdf ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
-            <span>PDF</span>
-          </button>
+          {freq.tipoMedico !== 'SERVICOS' && (
+            <button onClick={handleGerarPdf} disabled={gerandoPdf}
+              title="Gerar PDF do Relatório de Frequência"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs font-semibold hover:border-primary hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-50 min-h-[40px]">
+              {gerandoPdf ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
+              <span>PDF</span>
+            </button>
+          )}
           {!isFaturada && !adicionando && (
             <button onClick={() => setAdicionando(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-700 transition-colors min-h-[40px]">
               <Plus size={12} />
               <span className="sm:hidden">Adicionar</span>
-              <span className="hidden sm:inline">
-                {isTipoModalidadeFixa(freq.tipoMedico) ? 'Adicionar Frequência' : 'Adicionar Plantão'}
-              </span>
+              <span className="hidden sm:inline">Adicionar {itemLabel(freq.tipoMedico, 1)}</span>
             </button>
           )}
         </div>
@@ -1164,6 +1190,11 @@ function FrequenciaItensPanel({
                         {item.horaInicio && item.horaFim && ` (${item.horaInicio.slice(0, 5)} às ${item.horaFim.slice(0, 5)})`}
                       </p>
                     )}
+                    {item.quantidade != null && (
+                      <p className="text-[11px] text-teal-600 font-medium mt-0.5">
+                        {item.quantidade} {item.quantidade === 1 ? 'serviço realizado' : 'serviços realizados'}
+                      </p>
+                    )}
                     {item.ocorrenciaNome && (
                       <p className="text-[11px] text-teal-600 font-medium mt-0.5">
                         {item.ocorrenciaNome}
@@ -1215,6 +1246,11 @@ function FrequenciaItensPanel({
                         <p className="text-[10px] text-teal-600 font-medium">
                           {fmtQtd(item.horasTrabalhadas)}h lançadas
                           {item.horaInicio && item.horaFim && ` (${item.horaInicio.slice(0, 5)} às ${item.horaFim.slice(0, 5)})`}
+                        </p>
+                      )}
+                      {item.quantidade != null && (
+                        <p className="text-[10px] text-teal-600 font-medium">
+                          {item.quantidade} {item.quantidade === 1 ? 'serviço realizado' : 'serviços realizados'}
                         </p>
                       )}
                     </td>

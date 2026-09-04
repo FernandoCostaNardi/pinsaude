@@ -95,9 +95,11 @@ public class FrequenciaService {
 
         // Modalidade (e ocorrência) só são fixadas na frequência pros tipos "fixos" (DIARISTA,
         // EVOLUCIONISTA — ver TipoEscala.TIPOS_MODALIDADE_FIXA, PINSAUDE-13.26). Tipos "por
-        // lançamento" (PLANTONISTA, EVOLUCIONISTA_FDS) continuam escolhendo modalidade/ocorrência
-        // a cada plantão (ajuste pós-13.26, ver CLAUDE.md) — não faz sentido receber nenhum dos
-        // dois aqui nesse caso.
+        // lançamento" (PLANTONISTA, EVOLUCIONISTA_FDS) e "por serviço" (SERVICOS) continuam
+        // escolhendo modalidade/ocorrência a cada lançamento (ajuste pós-13.26, ver CLAUDE.md) —
+        // não faz sentido receber nenhum dos dois aqui nesse caso. `modalidadeFixa` já é `false`
+        // pra SERVICOS (não está em TIPOS_MODALIDADE_FIXA), então cai neste ramo sem precisar de
+        // nenhuma ramificação extra.
         if (modalidadeFixa) {
             if (req.modalidadeId() == null) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -320,6 +322,7 @@ public class FrequenciaService {
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
         boolean modalidadeFixa = modalidade.isFixa();
+        Integer quantidade = modalidade.isServico() ? validarQuantidade(req.quantidade(), modalidade) : null;
 
         FrequenciaItem item = new FrequenciaItem();
         item.setFrequenciaId(frequenciaId);
@@ -330,8 +333,9 @@ public class FrequenciaService {
         item.setHorasTrabalhadas(horasTrabalhadas);
         item.setHoraInicio(modalidadeFixa ? req.horaInicio() : null);
         item.setHoraFim(modalidadeFixa ? req.horaFim() : null);
+        item.setQuantidade(quantidade);
         // Snapshot de preço no momento do lançamento
-        item.setValorUnitarioCentavos(calcularValorItem(modalidade));
+        item.setValorUnitarioCentavos(calcularValorItem(modalidade, quantidade));
         item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
         item.setOcorrenciaValorCentavos(calcularValorOcorrencia(ocorrencia, modalidade.getValorCentavos()));
         itemRepo.save(item);
@@ -363,6 +367,7 @@ public class FrequenciaService {
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
         boolean modalidadeFixa = modalidade.isFixa();
+        Integer quantidade = modalidade.isServico() ? validarQuantidade(req.quantidade(), modalidade) : null;
 
         item.setModalidadeId(modalidadeId);
         item.setDataExecucao(req.dataExecucao());
@@ -371,7 +376,8 @@ public class FrequenciaService {
         item.setHorasTrabalhadas(horasTrabalhadas);
         item.setHoraInicio(modalidadeFixa ? req.horaInicio() : null);
         item.setHoraFim(modalidadeFixa ? req.horaFim() : null);
-        item.setValorUnitarioCentavos(calcularValorItem(modalidade));
+        item.setQuantidade(quantidade);
+        item.setValorUnitarioCentavos(calcularValorItem(modalidade, quantidade));
         item.setDeslocamentoCentavos(modalidade.getDeslocamentoCentavos());
         item.setOcorrenciaValorCentavos(calcularValorOcorrencia(ocorrencia, modalidade.getValorCentavos()));
         itemRepo.save(item);
@@ -463,10 +469,25 @@ public class FrequenciaService {
     // antes do EPIC-13.19). Diarista paga um valor mensal fixo somado uma única vez pela
     // frequência (ver FrequenciaMedicaResponse.valorMensalDiaristaUnico) — cada item individual
     // vale R$0 e serve só pra registrar presença/horas trabalhadas naquele dia, usadas no
-    // acompanhamento semanal (FrequenciaMedicaResponse.calcularProgressoSemanal).
-    private long calcularValorItem(TomadorModalidade modalidade) {
+    // acompanhamento semanal (FrequenciaMedicaResponse.calcularProgressoSemanal). Serviços paga
+    // quantidade × valorCentavos por lançamento — quantidade já validada (> 0) em
+    // validarQuantidade antes desta chamada. Math.multiplyExact evita overflow silencioso (a
+    // quantidade vem do usuário sem teto explícito).
+    private long calcularValorItem(TomadorModalidade modalidade, Integer quantidade) {
         if (modalidade.isFixa()) return 0L;
+        if (modalidade.isServico()) return Math.multiplyExact(modalidade.getValorCentavos(), quantidade.longValue());
         return modalidade.getValorCentavos();
+    }
+
+    // Modalidade SERVICOS exige uma quantidade > 0 de serviços realizados naquele lançamento —
+    // análogo a horaInicio/horaFim exigidos por calcularHorasTrabalhadas para a família fixa.
+    private Integer validarQuantidade(Integer quantidade, TomadorModalidade modalidade) {
+        if (quantidade == null || quantidade <= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Informe a quantidade de serviços realizados para lançar um item desta modalidade ("
+                    + TipoEscala.label(modalidade.getTipos()[0]) + ")");
+        }
+        return quantidade;
     }
 
     // PINSAUDE-13.25: modalidades de tipo fixo (DIARISTA, EVOLUCIONISTA — ver TipoEscala) não

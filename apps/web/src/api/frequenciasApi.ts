@@ -44,6 +44,7 @@ export interface FrequenciaItemResp {
   horasTrabalhadas: number | null
   horaInicio: string | null
   horaFim: string | null
+  quantidade: number | null
   valorUnitarioCentavos: number
   deslocamentoCentavos: number
   totalItemCentavos: number
@@ -161,6 +162,8 @@ export interface FrequenciaItemRequest {
   horaInicio?: string
   horaFim?: string
   ocorrenciaId?: string
+  // Só modalidade SERVICOS — quantidade de serviços realizados neste lançamento.
+  quantidade?: number
 }
 
 // Garante que os campos de lista de FrequenciaMedicaResp sejam sempre arrays. Sem isso, um

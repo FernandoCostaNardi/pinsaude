@@ -11,8 +11,8 @@ public record TomadorModalidadeRequest(
     // pertençam à mesma família de comportamento (validado em
     // TomadorService.aplicarCamposPorTipo — não dá pra expressar "mesma família" via anotação
     // Bean Validation simples).
-    @NotEmpty List<@NotBlank @Pattern(regexp = "PLANTONISTA|DIARISTA|EVOLUCIONISTA|EVOLUCIONISTA_FDS",
-        message = "cada tipo deve ser PLANTONISTA, DIARISTA, EVOLUCIONISTA ou EVOLUCIONISTA_FDS") String> tipos,
+    @NotEmpty List<@NotBlank @Pattern(regexp = "PLANTONISTA|DIARISTA|EVOLUCIONISTA|EVOLUCIONISTA_FDS|SERVICOS",
+        message = "cada tipo deve ser PLANTONISTA, DIARISTA, EVOLUCIONISTA, EVOLUCIONISTA_FDS ou SERVICOS") String> tipos,
     @Pattern(regexp = "DIURNO|NOTURNO", message = "turno deve ser DIURNO ou NOTURNO") String turno,
     @Size(max = 30) String horario,
     @DecimalMin("0.5") BigDecimal horas,

@@ -18,7 +18,7 @@ import {
   TomadorServicoOperacionalRequest,
   tomadoresApi,
 } from '../api/tomadoresApi'
-import { TIPO_ESCALA_LABEL, TODOS_TIPOS_ESCALA, isTipoModalidadeFixa, type TipoEscala } from '../utils/tipoEscala'
+import { TIPO_ESCALA_LABEL, TODOS_TIPOS_ESCALA, isTipoModalidadeFixa, isTipoModalidadeServico, type TipoEscala } from '../utils/tipoEscala'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -44,13 +44,14 @@ function maskValor(e: React.ChangeEvent<HTMLInputElement>): string {
 }
 
 // PINSAUDE-13.24: Tipo de Escala colapsado de 3 tipos (PLANTAO/MENSAL/META) para 2
-// (PLANTONISTA/DIARISTA), depois estendido pra 4 (EVOLUCIONISTA/EVOLUCIONISTA_FDS) — mesmo
-// vocabulário já usado no campo "Tipo de Escala" da Frequência.
+// (PLANTONISTA/DIARISTA), depois estendido pra 4 (EVOLUCIONISTA/EVOLUCIONISTA_FDS) e depois pra
+// 5 (SERVICOS) — mesmo vocabulário já usado no campo "Tipo de Escala" da Frequência.
 const TIPO_BADGE_CLS: Record<TipoEscala, string> = {
   PLANTONISTA: 'bg-blue-50 text-blue-700',
   DIARISTA: 'bg-purple-50 text-purple-700',
   EVOLUCIONISTA: 'bg-green-50 text-green-700',
   EVOLUCIONISTA_FDS: 'bg-orange-50 text-orange-700',
+  SERVICOS: 'bg-teal-50 text-teal-700',
 }
 // Recebe um único tipo (não a modalidade inteira) — desde que uma modalidade possa suportar mais
 // de um Tipo de Escala (pedido do cliente), a listagem renderiza 1 badge por tipo em vez de 1 só.
@@ -187,13 +188,26 @@ function agruparPorCategoria(setores: TomadorServicoOperacional[]): [string, Tom
 
 // EVOLUCIONISTA se comporta como DIARISTA por trás dos panos (modalidade fixa, horas semanais);
 // EVOLUCIONISTA_FDS se comporta como PLANTONISTA (modalidade por lançamento, turno/horas) —
-// apesar do nome parecido com EVOLUCIONISTA, o comportamento é o oposto. Ver isTipoModalidadeFixa.
+// apesar do nome parecido com EVOLUCIONISTA, o comportamento é o oposto. SERVICOS é uma 3ª
+// família (nem fixa nem por-lançamento): modalidade escolhida a cada lançamento igual
+// Plantonista, mas paga quantidade × valor unitário em vez de valor flat — sem turno/horário/
+// horas. Ver isTipoModalidadeFixa/isTipoModalidadeServico.
 const MODALIDADE_TIPOS: { modo: TipoEscala; titulo: string; sub: string }[] = [
   { modo: 'PLANTONISTA', titulo: TIPO_ESCALA_LABEL.PLANTONISTA, sub: 'valor por plantão; turno, horário e horas obrigatórios' },
   { modo: 'DIARISTA', titulo: TIPO_ESCALA_LABEL.DIARISTA, sub: 'valor mensal fixo; carga horária semanal obrigatória' },
   { modo: 'EVOLUCIONISTA', titulo: TIPO_ESCALA_LABEL.EVOLUCIONISTA, sub: 'valor mensal fixo; carga horária semanal obrigatória' },
   { modo: 'EVOLUCIONISTA_FDS', titulo: TIPO_ESCALA_LABEL.EVOLUCIONISTA_FDS, sub: 'valor por plantão; turno, horário e horas obrigatórios' },
+  { modo: 'SERVICOS', titulo: TIPO_ESCALA_LABEL.SERVICOS, sub: 'valor por serviço realizado; sem turno, horário ou horas' },
 ]
+
+// Família de comportamento do tipo — 3 vias, usada pra travar a multi-seleção de tipos no
+// cadastro da modalidade (nunca misturar tipos de famílias diferentes na mesma modalidade).
+type FamiliaModalidade = 'FIXA' | 'SERVICO' | 'LANCAMENTO'
+function familiaDoTipo(tipo: TipoEscala): FamiliaModalidade {
+  if (isTipoModalidadeFixa(tipo)) return 'FIXA'
+  if (isTipoModalidadeServico(tipo)) return 'SERVICO'
+  return 'LANCAMENTO'
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -272,15 +286,16 @@ function ModalidadeFormInline({
   horariosPadrao: TomadorHorarioPadrao[]
 }) {
   const SELECT_CLS = 'w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary bg-white'
-  const isTipoFixo = form.tipos.length > 0 && isTipoModalidadeFixa(form.tipos[0])
-  // "por lançamento" (turno/horário/horas) = PLANTONISTA e EVOLUCIONISTA_FDS
-  const isPorLancamento = form.tipos.length > 0 && !isTipoFixo
-  const valorLabel = isTipoFixo ? 'Valor Mensal *' : 'Valor *'
   // Família do(s) tipo(s) já marcado(s) — null enquanto nenhum tipo foi escolhido ainda, caso em
-  // que qualquer botão pode ser o primeiro clique. Trava os botões da OUTRA família (nunca é
-  // possível combinar fixa + por-lançamento na mesma modalidade — ver TomadorService.
+  // que qualquer botão pode ser o primeiro clique. Trava os botões das OUTRAS famílias (nunca é
+  // possível combinar tipos de famílias diferentes na mesma modalidade — ver TomadorService.
   // aplicarCamposPorTipo, que rejeita a mistura com 422).
-  const familiaAtual = form.tipos.length > 0 ? isTipoModalidadeFixa(form.tipos[0]) : null
+  const familiaAtual: FamiliaModalidade | null = form.tipos.length > 0 ? familiaDoTipo(form.tipos[0]) : null
+  const isTipoFixo = familiaAtual === 'FIXA'
+  const isServico = familiaAtual === 'SERVICO'
+  // "por lançamento" (turno/horário/horas) = PLANTONISTA e EVOLUCIONISTA_FDS
+  const isPorLancamento = familiaAtual === 'LANCAMENTO'
+  const valorLabel = isTipoFixo ? 'Valor Mensal *' : isServico ? 'Valor por Serviço *' : 'Valor *'
 
   return (
     <div className="space-y-3">
@@ -306,7 +321,7 @@ function ModalidadeFormInline({
           <div className="grid grid-cols-2 gap-2">
             {MODALIDADE_TIPOS.map(t => {
               const marcado = form.tipos.includes(t.modo)
-              const bloqueado = familiaAtual !== null && isTipoModalidadeFixa(t.modo) !== familiaAtual && !marcado
+              const bloqueado = familiaAtual !== null && familiaDoTipo(t.modo) !== familiaAtual && !marcado
               return (
                 <button
                   key={t.modo}
@@ -414,6 +429,18 @@ function ModalidadeFormInline({
             <p className="text-[11px] text-ds-light mt-1">
               O valor mensal é pago uma única vez por frequência, independente de quantos dias forem lançados. O acompanhamento
               semanal de horas trabalhadas aparece no lançamento da frequência.
+            </p>
+          </div>
+        )}
+
+        {/* ── Tipo "Serviços": sem turno/horário/horas/horas semanais — só o valor unitário
+             abaixo. A quantidade de serviços realizados é informada a cada lançamento. ── */}
+        {isServico && (
+          <div className="col-span-2">
+            <p className="text-[11px] text-ds-light">
+              Modalidade de Serviços: sem turno, horário, horas ou horas semanais. O médico informa a
+              quantidade de serviços realizados a cada lançamento — o valor do lançamento é
+              quantidade × valor do serviço abaixo.
             </p>
           </div>
         )}
@@ -1182,7 +1209,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     // Família é garantida homogênea pela trava de UI em ModalidadeFormInline — qualquer elemento
     // serve de representante pra decidir quais campos são obrigatórios e pras mensagens de erro.
     const tipoRepresentante = modForm.tipos[0]
-    const isPorLancamento = !isTipoModalidadeFixa(tipoRepresentante)
+    const familia = familiaDoTipo(tipoRepresentante)
     const valorCentavos = parseCentavos(modForm.valorStr)
 
     if (!modForm.nome.trim() || valorCentavos <= 0) {
@@ -1191,10 +1218,11 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
     }
 
     // Monta o request no contrato do backend (tipos: PLANTONISTA/DIARISTA/EVOLUCIONISTA/
-    // EVOLUCIONISTA_FDS — pedido do cliente: uma modalidade pode ter mais de um, desde que todos
-    // da mesma família). Validação espelha TomadorService.aplicarCamposPorTipo (backend) —
-    // EVOLUCIONISTA_FDS reaproveita as mesmas regras de campo do Plantonista (não do
-    // Diarista/Evolucionista, apesar do nome parecido).
+    // EVOLUCIONISTA_FDS/SERVICOS — pedido do cliente: uma modalidade pode ter mais de um, desde
+    // que todos da mesma família). Validação espelha TomadorService.aplicarCamposPorTipo
+    // (backend) — EVOLUCIONISTA_FDS reaproveita as mesmas regras de campo do Plantonista (não do
+    // Diarista/Evolucionista, apesar do nome parecido); SERVICOS não exige nenhum campo extra
+    // além do que já é comum a toda modalidade (nome/valor).
     let req: TomadorModalidadeRequest
     const base = {
       nome: modForm.nome.trim(),
@@ -1208,7 +1236,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       horasSemanais: null as number | null,
     }
 
-    if (isPorLancamento) {
+    if (familia === 'LANCAMENTO') {
       const horas = parseFloat(modForm.horasStr.replace(',', '.'))
       if (!modForm.turno) {
         setModErr(`Turno é obrigatório para modalidade do tipo ${TIPO_ESCALA_LABEL[tipoRepresentante]}`)
@@ -1227,13 +1255,16 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
         turno: modForm.turno,
         horario: modForm.horario.trim(),
       }
-    } else {
+    } else if (familia === 'FIXA') {
       const horasSemanais = modForm.horasSemanaisStr.trim() ? parseFloat(modForm.horasSemanaisStr.replace(',', '.')) : null
       if (horasSemanais == null || isNaN(horasSemanais) || horasSemanais <= 0) {
         setModErr('Preencha as horas semanais corretamente')
         return
       }
       req = { ...base, horasSemanais }
+    } else {
+      // SERVICOS: nenhum campo extra — nome/valor já validados acima.
+      req = { ...base }
     }
 
     setModSaving(true)
