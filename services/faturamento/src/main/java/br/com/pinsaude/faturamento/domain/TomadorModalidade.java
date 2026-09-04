@@ -92,6 +92,10 @@ public class TomadorModalidade {
         return tipos != null && tipos.length > 0 && TipoEscala.isModalidadeFixa(tipos[0]);
     }
 
+    public boolean isServico() {
+        return tipos != null && tipos.length > 0 && TipoEscala.isModalidadeServico(tipos[0]);
+    }
+
     public boolean suportaTipo(String tipo) {
         return tipos != null && Arrays.asList(tipos).contains(tipo);
     }

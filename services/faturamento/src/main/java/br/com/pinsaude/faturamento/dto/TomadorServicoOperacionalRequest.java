@@ -30,7 +30,7 @@ public record TomadorServicoOperacionalRequest(
 ) {
     public record VinculoModalidade(
         @NotNull UUID modalidadeId,
-        @NotBlank @Pattern(regexp = "PLANTONISTA|DIARISTA|EVOLUCIONISTA|EVOLUCIONISTA_FDS",
-            message = "tipo deve ser PLANTONISTA, DIARISTA, EVOLUCIONISTA ou EVOLUCIONISTA_FDS") String tipo
+        @NotBlank @Pattern(regexp = "PLANTONISTA|DIARISTA|EVOLUCIONISTA|EVOLUCIONISTA_FDS|SERVICOS",
+            message = "tipo deve ser PLANTONISTA, DIARISTA, EVOLUCIONISTA, EVOLUCIONISTA_FDS ou SERVICOS") String tipo
     ) {}
 }

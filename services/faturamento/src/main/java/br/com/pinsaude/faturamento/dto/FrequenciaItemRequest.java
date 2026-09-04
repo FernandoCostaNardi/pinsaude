@@ -16,11 +16,17 @@ import java.util.UUID;
 // frequência tem modalidade fixa (escolhida na criação), o service ignora estes dois campos e
 // usa sempre os valores da frequência. Só frequências legadas sem modalidade fixa (dado
 // anterior a esta mudança) continuam exigindo modalidadeId aqui, validado no service.
+//
+// quantidade: só modalidade SERVICOS (ver TipoEscala.isModalidadeServico) — quantidade de
+// serviços realizados neste lançamento, validada em FrequenciaService (obrigatória e > 0 pra
+// essa família). Último campo do record de propósito — minimiza o diff em construtores
+// posicionais de teste já existentes.
 public record FrequenciaItemRequest(
     UUID modalidadeId,
     @NotNull LocalDate dataExecucao,
     @Size(max = 120) String ocorrencia,
     LocalTime horaInicio,
     LocalTime horaFim,
-    UUID ocorrenciaId
+    UUID ocorrenciaId,
+    Integer quantidade
 ) {}

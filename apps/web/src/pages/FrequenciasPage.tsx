@@ -17,7 +17,7 @@ import {
 } from '../api/frequenciasApi'
 import { useAuth } from '../auth/AuthContext'
 import { abrirPdfFrequencia } from '../utils/frequenciaPdf'
-import { TipoEscala, labelTipoEscala, isTipoModalidadeFixa } from '../utils/tipoEscala'
+import { TipoEscala, labelTipoEscala, isTipoModalidadeFixa, isTipoModalidadeServico } from '../utils/tipoEscala'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,6 +37,10 @@ function formatDate(iso: string): string {
   return `${d}/${m}/${y}`
 }
 
+function hojeISO(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
 // PINSAUDE-13.22: turno/horário são ambos obrigatórios nos tipos "por lançamento"
 // (Plantonista/Evolucionista FDS) — sempre mostra os dois. Tipos "fixos" (Diarista/Evolucionista)
 // não usam turno/horário/horas, mostram a carga horária semanal cadastrada.
@@ -51,6 +55,7 @@ function detalheModalidade(m: TomadorModalidade, tipo?: TipoEscala | null): stri
     const tipoTexto = labelTipoEscala(t)
     return m.horasSemanais != null ? `${tipoTexto} — ${m.horasSemanais}h/semana` : tipoTexto
   }
+  if (isTipoModalidadeServico(t)) return 'Por serviço realizado'
   const partes = [m.turno, m.horario].filter(Boolean)
   return partes.length > 0 ? partes.join(' · ') : `${m.horas}h`
 }
@@ -59,8 +64,13 @@ function detalheModalidade(m: TomadorModalidade, tipo?: TipoEscala | null): stri
 // antes de salvar — o valor real que fica gravado é sempre recalculado no servidor. Tipos
 // "fixos" pagam um valor mensal fixo somado uma única vez pela frequência (não por lançamento)
 // — cada item individual vale R$0, então não há um "valor deste lançamento" pra mostrar aqui.
-function calcularValorPreview(m: TomadorModalidade, tipo?: TipoEscala | null): number | null {
-  if (isTipoModalidadeFixa(tipo ?? m.tipos[0])) return 0
+// Serviços paga quantidade × valor unitário — sem quantidade ainda digitada, não dá pra prever.
+function calcularValorPreview(m: TomadorModalidade, tipo?: TipoEscala | null, quantidade?: number | null): number | null {
+  const t = tipo ?? m.tipos[0]
+  if (isTipoModalidadeFixa(t)) return 0
+  if (isTipoModalidadeServico(t)) {
+    return quantidade && quantidade > 0 ? m.valorCentavos * quantidade + m.deslocamentoCentavos : null
+  }
   return m.valorCentavos + m.deslocamentoCentavos
 }
 
@@ -70,19 +80,25 @@ function precisaHorasTrabalhadas(m: TomadorModalidade | null, tipo?: TipoEscala 
   return isTipoModalidadeFixa(tipo ?? m?.tipos[0])
 }
 
-// Pedido do cliente: o lançamento individual dentro de uma frequência é chamado de "plantão"
-// pros tipos "por lançamento" (Plantonista/Evolucionista FDS), mas de "frequência" pros tipos
-// "fixos" (Diarista/Evolucionista) — vocabulário mais próximo do dia a dia de cada tipo de
-// médico. `tipoMedico === null` (frequência legada, sem Tipo de Escala definido) mantém o
-// rótulo antigo ("plantão"). Réplica de PortalFrequenciaPage.tsx.
-function itemLabel(tipoMedico: TipoEscala | null, count: number): string {
-  const singular = isTipoModalidadeFixa(tipoMedico) ? 'frequência' : 'plantão'
-  const plural = isTipoModalidadeFixa(tipoMedico) ? 'frequências' : 'plantões'
-  return count === 1 ? singular : plural
+// Tipo "Serviços" pede uma quantidade de serviços realizados por lançamento, em vez de
+// turno/horário/horas ou horaInicio/horaFim.
+function precisaQuantidade(m: TomadorModalidade | null, tipo?: TipoEscala | null): boolean {
+  return isTipoModalidadeServico(tipo ?? m?.tipos[0])
 }
 
-// "plantão" é masculino, "frequência" é feminino — qualquer adjetivo/particípio que acompanhe
-// o rótulo (lançado/apagado etc.) precisa concordar em gênero e número.
+// Pedido do cliente: o lançamento individual dentro de uma frequência é chamado de "plantão"
+// pros tipos "por lançamento" (Plantonista/Evolucionista FDS), de "frequência" pros tipos
+// "fixos" (Diarista/Evolucionista), e de "serviço" pro tipo Serviços — vocabulário mais próximo
+// do dia a dia de cada tipo de médico. `tipoMedico === null` (frequência legada, sem Tipo de
+// Escala definido) mantém o rótulo antigo ("plantão"). Réplica de PortalFrequenciaPage.tsx.
+function itemLabel(tipoMedico: TipoEscala | null, count: number): string {
+  if (isTipoModalidadeFixa(tipoMedico)) return count === 1 ? 'frequência' : 'frequências'
+  if (isTipoModalidadeServico(tipoMedico)) return count === 1 ? 'serviço' : 'serviços'
+  return count === 1 ? 'plantão' : 'plantões'
+}
+
+// "plantão" e "serviço" são masculinos, "frequência" é feminina — qualquer adjetivo/particípio
+// que acompanhe o rótulo (lançado/apagado etc.) precisa concordar em gênero e número.
 function itemAgree(tipoMedico: TipoEscala | null, count: number, stem: string): string {
   const fem = isTipoModalidadeFixa(tipoMedico)
   return stem + (fem ? (count === 1 ? 'a' : 'as') : (count === 1 ? 'o' : 'os'))
@@ -682,14 +698,16 @@ function PlantaoFormPanel({
   onCancel: () => void
 }) {
   const isEdit = !!item
+  const isServicos = isTipoModalidadeServico(tipoMedico)
   const [modalidades, setModalidades] = useState<TomadorModalidade[]>([])
   const [modalidade,  setModalidade]  = useState<TomadorModalidade | null>(modalidadeFixa)
-  const [data,        setData]        = useState(item?.dataExecucao ?? new Date().toISOString().slice(0, 10))
+  const [data,        setData]        = useState(item?.dataExecucao ?? hojeISO())
   const [ocorrencia,  setOcorrencia]  = useState(item?.ocorrencia ?? '')
   const [ocorrenciasTodas, setOcorrenciasTodas] = useState<TomadorOcorrencia[]>([])
   const [ocorrenciaId, setOcorrenciaId] = useState(item?.ocorrenciaId ?? '')
   const [horaInicio,  setHoraInicio]  = useState(item?.horaInicio?.slice(0, 5) ?? '')
   const [horaFim,     setHoraFim]     = useState(item?.horaFim?.slice(0, 5) ?? '')
+  const [quantidade,  setQuantidade]  = useState(item?.quantidade != null ? String(item.quantidade) : '')
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
 
@@ -712,11 +730,14 @@ function PlantaoFormPanel({
   }, [tomadorId, tipoMedico, item?.modalidadeId, modalidadeFixa])
 
   useEffect(() => {
-    if (modalidadeFixa) return // PINSAUDE-13.26: ocorrência também fixa — nada pra buscar
+    // PINSAUDE-13.26: ocorrência fixa — nada pra buscar. Modalidade Serviços também não pergunta
+    // ocorrência do catálogo — idem.
+    if (modalidadeFixa || isServicos) return
     tomadoresApi.listarOcorrencias(tomadorId).then(setOcorrenciasTodas).catch(() => {})
-  }, [tomadorId, modalidadeFixa])
+  }, [tomadorId, modalidadeFixa, isServicos])
 
   const precisaHoras = precisaHorasTrabalhadas(modalidade, tipoMedico)
+  const precisaQtd = precisaQuantidade(modalidade, tipoMedico)
 
   // Se a ocorrência selecionada foi desativada depois do lançamento, ainda precisa aparecer
   // como opção (senão o <select> mostra em branco) — igual ao tratamento de modalidade inativa.
@@ -738,6 +759,11 @@ function PlantaoFormPanel({
         return
       }
     }
+    const quantidadeNum = parseInt(quantidade, 10)
+    if (precisaQtd && (isNaN(quantidadeNum) || quantidadeNum <= 0)) {
+      setErr('Informe a quantidade de serviços realizados')
+      return
+    }
     setSaving(true); setErr(null)
     try {
       await onSave({
@@ -749,6 +775,7 @@ function PlantaoFormPanel({
         ocorrenciaId: modalidadeFixa ? undefined : (ocorrenciaId || undefined),
         horaInicio: precisaHoras ? horaInicio : undefined,
         horaFim: precisaHoras ? horaFim : undefined,
+        quantidade: precisaQtd ? quantidadeNum : undefined,
       })
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Erro ao salvar')
@@ -756,7 +783,7 @@ function PlantaoFormPanel({
   }
 
   const horasPreview = precisaHoras ? calcularHorasEntrePeriodo(horaInicio, horaFim) : null
-  const totalModalidade = modalidade ? calcularValorPreview(modalidade, tipoMedico) : null
+  const totalModalidade = modalidade ? calcularValorPreview(modalidade, tipoMedico, parseInt(quantidade, 10) || null) : null
   const ocorrenciaValor = modalidade ? calcularValorOcorrenciaPreview(ocorrenciaSelecionada, modalidade.valorCentavos) : 0
   const total = totalModalidade != null ? totalModalidade + ocorrenciaValor : null
 
@@ -765,9 +792,7 @@ function PlantaoFormPanel({
       <div className="flex items-center justify-between mb-3">
         <p className={`text-xs font-bold flex items-center gap-1.5 ${isEdit ? 'text-yellow-700' : 'text-primary'}`}>
           {isEdit ? <Pencil size={12} /> : <Plus size={12} />}
-          {isEdit
-            ? (isTipoModalidadeFixa(tipoMedico) ? 'Editar Frequência' : 'Editar Plantão')
-            : (isTipoModalidadeFixa(tipoMedico) ? 'Nova Frequência' : 'Novo Plantão')}
+          {isEdit ? 'Editar' : (isTipoModalidadeFixa(tipoMedico) ? 'Nova' : 'Novo')} {itemLabel(tipoMedico, 1)}
         </p>
         <button type="button" onClick={onCancel}
           className="p-1 rounded-lg text-ds-light hover:bg-white/70 transition-colors">
@@ -775,21 +800,10 @@ function PlantaoFormPanel({
         </button>
       </div>
 
-      {/* Data + Modalidade */}
-      <div className="grid grid-cols-[160px_1fr] gap-3 mb-3">
-        <div>
-          <label className="block text-xs font-bold text-ds-mid mb-1">Data *</label>
-          <input type="date" value={data} onChange={e => setData(e.target.value)}
-            className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white" />
-        </div>
-        {modalidadeFixa ? (
-          <div>
-            <label className="block text-xs font-bold text-ds-mid mb-1">Modalidade</label>
-            <div className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text bg-ds-input/40 truncate">
-              {modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa, tipoMedico)}
-            </div>
-          </div>
-        ) : (
+      {/* Data + Modalidade — modalidade Serviços não pede data (não é lançada por dia, só por
+          quantidade total): usa sempre a data de hoje por baixo dos panos, sem perguntar. */}
+      {isServicos ? (
+        <div className="mb-3">
           <Dropdown
             label="Modalidade *"
             placeholder={modalidades.length === 0 ? 'Sem modalidades cadastradas' : 'Selecione a modalidade...'}
@@ -799,8 +813,34 @@ function PlantaoFormPanel({
             getLabel={m => `${m.nome} — ${detalheModalidade(m, tipoMedico)}`}
             disabled={modalidades.length === 0}
           />
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-[160px_1fr] gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-bold text-ds-mid mb-1">Data *</label>
+            <input type="date" value={data} onChange={e => setData(e.target.value)}
+              className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white" />
+          </div>
+          {modalidadeFixa ? (
+            <div>
+              <label className="block text-xs font-bold text-ds-mid mb-1">Modalidade</label>
+              <div className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text bg-ds-input/40 truncate">
+                {modalidadeFixa.nome} — {detalheModalidade(modalidadeFixa, tipoMedico)}
+              </div>
+            </div>
+          ) : (
+            <Dropdown
+              label="Modalidade *"
+              placeholder={modalidades.length === 0 ? 'Sem modalidades cadastradas' : 'Selecione a modalidade...'}
+              items={modalidades}
+              value={modalidade}
+              onChange={setModalidade}
+              getLabel={m => `${m.nome} — ${detalheModalidade(m, tipoMedico)}`}
+              disabled={modalidades.length === 0}
+            />
+          )}
+        </div>
+      )}
 
       {/* Horário trabalhado — só para modalidade Diarista. O médico digita entrada/saída, não a
           quantidade de horas — o backend deriva a duração (também impressa no PDF, ver frequenciaPdf.ts) */}
@@ -824,12 +864,22 @@ function PlantaoFormPanel({
         </div>
       )}
 
+      {/* Quantidade de serviços realizados — só modalidade Serviços */}
+      {precisaQtd && (
+        <div className="mb-3">
+          <label className="block text-xs font-bold text-ds-mid mb-1">Quantidade de serviços realizados *</label>
+          <input type="number" min={1} step={1} value={quantidade} onChange={e => setQuantidade(e.target.value)}
+            placeholder="ex: 3"
+            className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white" />
+        </div>
+      )}
+
       {/* Preview de valores */}
       {modalidade && (
         <div className="bg-white rounded-lg px-4 py-2.5 mb-3 flex items-center gap-5 text-xs border border-ds-border/60">
           <span className="text-ds-light">{detalheModalidade(modalidade, tipoMedico)}</span>
           {!isTipoModalidadeFixa(tipoMedico ?? modalidade.tipos[0]) && (
-            <span className="text-ds-mid">Valor: <span className="font-bold text-ds-text">{formatBRL(modalidade.valorCentavos)}</span></span>
+            <span className="text-ds-mid">{precisaQtd ? 'Valor unitário' : 'Valor'}: <span className="font-bold text-ds-text">{formatBRL(modalidade.valorCentavos)}</span></span>
           )}
           {modalidade.deslocamentoCentavos > 0 && (
             <span className="text-ds-mid">Deslocamento: <span className="font-bold text-ds-text">{formatBRL(modalidade.deslocamentoCentavos)}</span></span>
@@ -840,13 +890,14 @@ function PlantaoFormPanel({
           <span className="ml-auto text-sm font-black text-primary">
             {isTipoModalidadeFixa(tipoMedico ?? modalidade.tipos[0])
               ? 'Contabilizado no valor mensal'
-              : total != null ? `Total: ${formatBRL(total)}` : 'Informe as horas para calcular'}
+              : total != null ? `Total: ${formatBRL(total)}` : precisaQtd ? 'Informe a quantidade para calcular' : 'Informe as horas para calcular'}
           </span>
         </div>
       )}
 
       {/* Ocorrência do catálogo — PINSAUDE-13.26: fixa na frequência (escolhida na criação),
-          nunca mais perguntada por lançamento. Sem seletor aqui; só um aviso informativo. */}
+          nunca mais perguntada por lançamento. Sem seletor aqui; só um aviso informativo.
+          Modalidade Serviços também não pergunta ocorrência do catálogo — só quantidade. */}
       {modalidadeFixa ? (
         ocorrenciaFixaNome && (
           <p className="mb-3 text-xs text-ds-mid">
@@ -854,7 +905,7 @@ function PlantaoFormPanel({
             {!!ocorrenciaFixaValorCentavos && <span className="text-green-600 font-bold"> +{formatBRL(ocorrenciaFixaValorCentavos)}</span>}
           </p>
         )
-      ) : (
+      ) : !isServicos && (
         <div className="mb-3">
           <label className="block text-xs font-bold text-ds-mid mb-1">
             Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
@@ -875,7 +926,7 @@ function PlantaoFormPanel({
           Observação <span className="font-normal text-ds-light">(opcional, texto livre sem valor)</span>
         </label>
         <input type="text" value={ocorrencia} onChange={e => setOcorrencia(e.target.value)}
-          placeholder={`Descreva alguma ocorrência especial ${isTipoModalidadeFixa(tipoMedico) ? 'nesta frequência' : 'neste plantão'}...`}
+          placeholder={`Descreva alguma ocorrência especial n${itemArtigo(tipoMedico, 1) === 'A' ? 'esta' : 'este'} ${itemLabel(tipoMedico, 1)}...`}
           className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white" />
       </div>
 
@@ -892,7 +943,7 @@ function PlantaoFormPanel({
           }`}>
           {saving
             ? <><Loader2 size={12} className="animate-spin" />{isEdit ? 'Salvando...' : 'Adicionando...'}</>
-            : isEdit ? 'Salvar Alterações' : (isTipoModalidadeFixa(tipoMedico) ? 'Adicionar Frequência' : 'Adicionar Plantão')
+            : isEdit ? 'Salvar Alterações' : `Adicionar ${itemLabel(tipoMedico, 1)}`
           }
         </button>
       </div>
@@ -910,13 +961,16 @@ interface PlantaoRow {
   ocorrenciaId: string
   horaInicio: string
   horaFim: string
+  quantidade: string
 }
 
 let plantaoRowKey = 1
 
-function criarLinhasVazias(qtd: number): PlantaoRow[] {
+// dataExecucaoDefault: modalidade Serviços não pergunta data (não é lançada por dia) — a linha já
+// nasce com a data de hoje preenchida por baixo dos panos, sem mostrar o campo.
+function criarLinhasVazias(qtd: number, dataExecucaoDefault = ''): PlantaoRow[] {
   return Array.from({ length: qtd }, () => ({
-    key: plantaoRowKey++, dataExecucao: '', modalidadeId: '', ocorrencia: '', ocorrenciaId: '', horaInicio: '', horaFim: '',
+    key: plantaoRowKey++, dataExecucao: dataExecucaoDefault, modalidadeId: '', ocorrencia: '', ocorrenciaId: '', horaInicio: '', horaFim: '', quantidade: '',
   }))
 }
 
@@ -935,19 +989,26 @@ function PlantaoGridPanel({
   onSaved: () => void | Promise<void>
   onCancel: () => void
 }) {
+  const isServicos = isTipoModalidadeServico(tipoMedico)
   const [modalidades, setModalidades] = useState<TomadorModalidade[]>([])
   const [ocorrencias, setOcorrencias] = useState<TomadorOcorrencia[]>([])
-  const [rows,        setRows]        = useState<PlantaoRow[]>(() => criarLinhasVazias(6))
+  const [rows,        setRows]        = useState<PlantaoRow[]>(() => criarLinhasVazias(6, isServicos ? hojeISO() : ''))
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
   const [linhasSemModalidade, setLinhasSemModalidade] = useState<Set<number>>(new Set())
   const [linhasSemHoras, setLinhasSemHoras] = useState<Set<number>>(new Set())
+  const [linhasSemQuantidade, setLinhasSemQuantidade] = useState<Set<number>>(new Set())
   const gridRef        = useRef<HTMLDivElement>(null)
   const focarProximaLinha = useRef<number | null>(null)
 
   function precisaHorasRow(modalidadeId: string): boolean {
     if (modalidadeFixa) return precisaHorasTrabalhadas(modalidadeFixa, tipoMedico)
     return precisaHorasTrabalhadas(modalidades.find(m => m.id === modalidadeId) ?? null, tipoMedico)
+  }
+
+  function precisaQuantidadeRow(modalidadeId: string): boolean {
+    if (modalidadeFixa) return precisaQuantidade(modalidadeFixa, tipoMedico)
+    return precisaQuantidade(modalidades.find(m => m.id === modalidadeId) ?? null, tipoMedico)
   }
 
   useEffect(() => {
@@ -959,20 +1020,23 @@ function PlantaoGridPanel({
         setModalidades(doTipo.filter(m => m.ativo))
       })
       .catch(() => {})
+    // Modalidade Serviços não pergunta ocorrência do catálogo — não precisa buscar.
+    if (isServicos) return
     tomadoresApi.listarOcorrencias(tomadorId)
       .then(os => setOcorrencias(os.filter(o => o.ativo)))
       .catch(() => {})
-  }, [tomadorId, tipoMedico, modalidadeFixa])
+  }, [tomadorId, tipoMedico, modalidadeFixa, isServicos])
 
-  // Foca o campo "Dia" da linha recém-adicionada (via botão ou Tab na última linha)
+  // Foca o campo "Dia" da linha recém-adicionada (via botão ou Tab na última linha) — modalidade
+  // Serviços não tem coluna "Dia", então foca a Modalidade direto nesse caso.
   useEffect(() => {
     if (focarProximaLinha.current == null) return
-    const el = gridRef.current?.querySelector<HTMLInputElement>(
-      `input[data-row-key="${focarProximaLinha.current}"][data-field="dia"]`
+    const el = gridRef.current?.querySelector<HTMLInputElement | HTMLSelectElement>(
+      `[data-row-key="${focarProximaLinha.current}"][data-field="${isServicos ? 'modalidade' : 'dia'}"]`
     )
     el?.focus()
     focarProximaLinha.current = null
-  }, [rows])
+  }, [rows, isServicos])
 
   function updateRow(key: number, patch: Partial<PlantaoRow>) {
     setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r))
@@ -984,9 +1048,17 @@ function PlantaoGridPanel({
         next.delete(key)
         return next
       })
-      // troca de modalidade pode tornar as horas desnecessárias — reavalia o destaque
+      // troca de modalidade pode tornar as horas/quantidade desnecessárias — reavalia o destaque
       if (!precisaHorasRow(patch.modalidadeId)) {
         setLinhasSemHoras(prev => {
+          if (!prev.has(key)) return prev
+          const next = new Set(prev)
+          next.delete(key)
+          return next
+        })
+      }
+      if (!precisaQuantidadeRow(patch.modalidadeId)) {
+        setLinhasSemQuantidade(prev => {
           if (!prev.has(key)) return prev
           const next = new Set(prev)
           next.delete(key)
@@ -1002,12 +1074,36 @@ function PlantaoGridPanel({
         return next
       })
     }
+    if (patch.quantidade) {
+      setLinhasSemQuantidade(prev => {
+        if (!prev.has(key)) return prev
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    }
   }
 
   function addRow(foco = false) {
-    const [nova] = criarLinhasVazias(1)
+    const [nova] = criarLinhasVazias(1, isServicos ? hojeISO() : '')
     if (foco) focarProximaLinha.current = nova.key
     setRows(prev => [...prev, nova])
+  }
+
+  // "Em uso" = o usuário claramente começou a preencher esta linha. Modalidade Serviços não tem
+  // coluna "Dia" (a data já vem preenchida por baixo dos panos, então não serve mais de sinal) —
+  // usa modalidade/nota escolhidas como sinal de que a linha está em uso.
+  function linhaEmUso(r: PlantaoRow): boolean {
+    if (modalidadeFixa) return !!r.dataExecucao || !!r.ocorrencia.trim()
+    if (isServicos) return !!r.modalidadeId || !!r.ocorrencia.trim()
+    return !!r.dataExecucao || !!r.modalidadeId || !!r.ocorrencia.trim()
+  }
+
+  // "Válida pra enviar" — dataExecucao sempre preenchida quando modalidadeFixa ou isServicos
+  // (nesses casos nunca fica vazia), então a fórmula geral já cobre os 3 casos sem branch extra.
+  function linhaValida(r: PlantaoRow): boolean {
+    if (modalidadeFixa) return !!r.dataExecucao
+    return !!r.dataExecucao && !!r.modalidadeId
   }
 
   function removeRow(key: number) {
@@ -1019,6 +1115,12 @@ function PlantaoGridPanel({
       return next
     })
     setLinhasSemHoras(prev => {
+      if (!prev.has(key)) return prev
+      const next = new Set(prev)
+      next.delete(key)
+      return next
+    })
+    setLinhasSemQuantidade(prev => {
       if (!prev.has(key)) return prev
       const next = new Set(prev)
       next.delete(key)
@@ -1040,9 +1142,9 @@ function PlantaoGridPanel({
     // PINSAUDE-13.26: com modalidade fixa não há coluna de modalidade por linha — pula direto
     // pra validação de dia preenchido.
     if (!modalidadeFixa) {
-      // Linha "em uso" = tem dia ou ocorrência preenchidos — se estiver sem modalidade,
-      // não pode ser silenciosamente ignorada (o usuário claramente começou a preencher essa linha).
-      const emUsoSemModalidade = rows.filter(r => (r.dataExecucao || r.ocorrencia.trim()) && !r.modalidadeId)
+      // Linha "em uso" sem modalidade selecionada não pode ser silenciosamente ignorada (o
+      // usuário claramente começou a preencher essa linha).
+      const emUsoSemModalidade = rows.filter(r => linhaEmUso(r) && !r.modalidadeId)
       if (emUsoSemModalidade.length > 0) {
         setLinhasSemModalidade(new Set(emUsoSemModalidade.map(r => r.key)))
         setErr(`Selecione a modalidade em ${emUsoSemModalidade.length === 1 ? 'linha' : `${emUsoSemModalidade.length} linhas`} destacada${emUsoSemModalidade.length === 1 ? '' : 's'} antes de continuar`)
@@ -1051,10 +1153,11 @@ function PlantaoGridPanel({
       setLinhasSemModalidade(new Set())
     }
 
-    const validas = modalidadeFixa
-      ? rows.filter(r => r.dataExecucao)
-      : rows.filter(r => r.dataExecucao && r.modalidadeId)
-    if (validas.length === 0) { setErr('Preencha ao menos uma linha com a data'); return }
+    const validas = rows.filter(linhaValida)
+    if (validas.length === 0) {
+      setErr(isServicos ? 'Preencha ao menos uma linha com a modalidade' : 'Preencha ao menos uma linha com a data')
+      return
+    }
 
     // Linhas de modalidade Diarista exigem entrada e saída preenchidas (o backend deriva as horas)
     const semHoras = validas.filter(r => precisaHorasRow(r.modalidadeId) && (!r.horaInicio || !r.horaFim || r.horaInicio === r.horaFim))
@@ -1064,6 +1167,15 @@ function PlantaoGridPanel({
       return
     }
     setLinhasSemHoras(new Set())
+
+    // Linhas de modalidade Serviços exigem quantidade > 0
+    const semQuantidade = validas.filter(r => precisaQuantidadeRow(r.modalidadeId) && (!r.quantidade || parseInt(r.quantidade, 10) <= 0))
+    if (semQuantidade.length > 0) {
+      setLinhasSemQuantidade(new Set(semQuantidade.map(r => r.key)))
+      setErr(`Informe a quantidade de serviços em ${semQuantidade.length === 1 ? 'linha' : `${semQuantidade.length} linhas`} destacada${semQuantidade.length === 1 ? '' : 's'} antes de continuar`)
+      return
+    }
+    setLinhasSemQuantidade(new Set())
 
     setSaving(true); setErr(null)
     const restantes = [...rows]
@@ -1076,6 +1188,7 @@ function PlantaoGridPanel({
           ocorrenciaId: modalidadeFixa ? undefined : (r.ocorrenciaId || undefined),
           horaInicio: precisaHorasRow(r.modalidadeId) ? r.horaInicio : undefined,
           horaFim: precisaHorasRow(r.modalidadeId) ? r.horaFim : undefined,
+          quantidade: precisaQuantidadeRow(r.modalidadeId) ? parseInt(r.quantidade, 10) : undefined,
         })
         const idx = restantes.findIndex(x => x.key === r.key)
         if (idx >= 0) restantes.splice(idx, 1)
@@ -1084,24 +1197,20 @@ function PlantaoGridPanel({
     } catch (e) {
       // mantém no grid só as linhas ainda não salvas (inclusive a que falhou), pra não duplicar no retry
       setRows(restantes)
-      setErr(e instanceof Error ? e.message : `Erro ao salvar um${isTipoModalidadeFixa(tipoMedico) ? 'a das frequências' : ' dos plantões'}`)
+      setErr(e instanceof Error ? e.message : `Erro ao salvar um${isTipoModalidadeFixa(tipoMedico) ? 'a das' : ' dos'} ${itemLabel(tipoMedico, 2)}`)
     } finally {
       setSaving(false)
     }
   }
 
-  const qtdPreenchidas = modalidadeFixa
-    ? rows.filter(r => r.dataExecucao).length
-    : rows.filter(r => r.dataExecucao && r.modalidadeId).length
-  const linhasEmUso = modalidadeFixa
-    ? rows.filter(r => r.dataExecucao || r.ocorrencia.trim()).length
-    : rows.filter(r => r.dataExecucao || r.modalidadeId || r.ocorrencia.trim()).length
+  const qtdPreenchidas = rows.filter(linhaValida).length
+  const linhasEmUso = rows.filter(linhaEmUso).length
 
   return (
     <div className="mx-5 mb-3 rounded-xl border border-primary/20 bg-primary-50/40 p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-bold text-primary flex items-center gap-1.5">
-          <Plus size={12} /> {isTipoModalidadeFixa(tipoMedico) ? 'Nova(s) Frequência(s)' : 'Novo(s) Plantão(ões)'}
+          <Plus size={12} /> {isTipoModalidadeFixa(tipoMedico) ? 'Nova(s)' : 'Novo(s)'} {itemLabel(tipoMedico, 2)}
         </p>
         <button type="button" onClick={onCancel}
           className="p-1 rounded-lg text-ds-light hover:bg-white/70 transition-colors">
@@ -1130,12 +1239,18 @@ function PlantaoGridPanel({
         <table className="w-full">
           <thead>
             <tr>
-              <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Dia</th>
+              {/* Modalidade Serviços não pergunta dia (não é lançada por dia) — coluna some. */}
+              {!isServicos && (
+                <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Dia</th>
+              )}
               {!modalidadeFixa && (
                 <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Modalidade</th>
               )}
-              <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Horário</th>
-              {!modalidadeFixa && (
+              <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">
+                {isServicos ? 'Qtd' : 'Horário/Qtd'}
+              </th>
+              {/* Modalidade Serviços não pergunta ocorrência do catálogo — coluna some. */}
+              {!modalidadeFixa && !isServicos && (
                 <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left w-40">Ocorrência</th>
               )}
               <th className="sticky top-0 z-10 bg-white border-b border-ds-border px-3 py-2 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">Nota</th>
@@ -1145,15 +1260,18 @@ function PlantaoGridPanel({
           <tbody className="divide-y divide-ds-border">
             {rows.map(r => (
               <tr key={r.key}>
-                <td className="px-2 py-1.5">
-                  <input type="date" value={r.dataExecucao}
-                    data-row-key={r.key} data-field="dia"
-                    onChange={e => updateRow(r.key, { dataExecucao: e.target.value })}
-                    className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30" />
-                </td>
+                {!isServicos && (
+                  <td className="px-2 py-1.5">
+                    <input type="date" value={r.dataExecucao}
+                      data-row-key={r.key} data-field="dia"
+                      onChange={e => updateRow(r.key, { dataExecucao: e.target.value })}
+                      className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  </td>
+                )}
                 {!modalidadeFixa && (
                   <td className="px-2 py-1.5">
                     <select value={r.modalidadeId}
+                      data-row-key={r.key} data-field="modalidade"
                       onChange={e => updateRow(r.key, { modalidadeId: e.target.value })}
                       disabled={modalidades.length === 0}
                       className={`w-full border rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 disabled:opacity-50 ${
@@ -1169,29 +1287,41 @@ function PlantaoGridPanel({
                   </td>
                 )}
                 <td className="px-2 py-1.5">
-                  <div className="flex items-center gap-1">
-                    <input type="time" value={r.horaInicio}
-                      disabled={!precisaHorasRow(r.modalidadeId)}
-                      onChange={e => updateRow(r.key, { horaInicio: e.target.value })}
-                      title="Entrada"
-                      className={`w-full border rounded-md px-1.5 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 disabled:opacity-40 disabled:cursor-not-allowed ${
-                        linhasSemHoras.has(r.key)
+                  {precisaQuantidadeRow(r.modalidadeId) ? (
+                    <input type="number" min={1} step={1} value={r.quantidade}
+                      onChange={e => updateRow(r.key, { quantidade: e.target.value })}
+                      placeholder="Qtd"
+                      title="Quantidade de serviços realizados"
+                      className={`w-full border rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 ${
+                        linhasSemQuantidade.has(r.key)
                           ? 'border-red-400 focus:border-red-500 focus:ring-red-300'
                           : 'border-transparent hover:border-ds-border focus:border-primary focus:ring-primary/30'
                       }`} />
-                    <span className="text-ds-light text-xs shrink-0">às</span>
-                    <input type="time" value={r.horaFim}
-                      disabled={!precisaHorasRow(r.modalidadeId)}
-                      onChange={e => updateRow(r.key, { horaFim: e.target.value })}
-                      title="Saída"
-                      className={`w-full border rounded-md px-1.5 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 disabled:opacity-40 disabled:cursor-not-allowed ${
-                        linhasSemHoras.has(r.key)
-                          ? 'border-red-400 focus:border-red-500 focus:ring-red-300'
-                          : 'border-transparent hover:border-ds-border focus:border-primary focus:ring-primary/30'
-                      }`} />
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <input type="time" value={r.horaInicio}
+                        disabled={!precisaHorasRow(r.modalidadeId)}
+                        onChange={e => updateRow(r.key, { horaInicio: e.target.value })}
+                        title="Entrada"
+                        className={`w-full border rounded-md px-1.5 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 disabled:opacity-40 disabled:cursor-not-allowed ${
+                          linhasSemHoras.has(r.key)
+                            ? 'border-red-400 focus:border-red-500 focus:ring-red-300'
+                            : 'border-transparent hover:border-ds-border focus:border-primary focus:ring-primary/30'
+                        }`} />
+                      <span className="text-ds-light text-xs shrink-0">às</span>
+                      <input type="time" value={r.horaFim}
+                        disabled={!precisaHorasRow(r.modalidadeId)}
+                        onChange={e => updateRow(r.key, { horaFim: e.target.value })}
+                        title="Saída"
+                        className={`w-full border rounded-md px-1.5 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 disabled:opacity-40 disabled:cursor-not-allowed ${
+                          linhasSemHoras.has(r.key)
+                            ? 'border-red-400 focus:border-red-500 focus:ring-red-300'
+                            : 'border-transparent hover:border-ds-border focus:border-primary focus:ring-primary/30'
+                        }`} />
+                    </div>
+                  )}
                 </td>
-                {!modalidadeFixa && (
+                {!modalidadeFixa && !isServicos && (
                   <td className="px-2 py-1.5">
                     <select value={r.ocorrenciaId}
                       onChange={e => updateRow(r.key, { ocorrenciaId: e.target.value })}
@@ -1242,10 +1372,8 @@ function PlantaoGridPanel({
           {saving
             ? <><Loader2 size={12} className="animate-spin" />Adicionando...</>
             : qtdPreenchidas === 0
-              ? (isTipoModalidadeFixa(tipoMedico) ? 'Adicionar Frequências' : 'Adicionar Plantões')
-              : `Adicionar ${qtdPreenchidas} ${isTipoModalidadeFixa(tipoMedico)
-                  ? (qtdPreenchidas === 1 ? 'Frequência' : 'Frequências')
-                  : (qtdPreenchidas === 1 ? 'Plantão' : 'Plantões')}`
+              ? `Adicionar ${itemLabel(tipoMedico, 2)}`
+              : `Adicionar ${qtdPreenchidas} ${itemLabel(tipoMedico, qtdPreenchidas)}`
           }
         </button>
       </div>
@@ -1441,13 +1569,18 @@ function PainelFrequencia({
                 Excluir
               </button>
             )}
-            <button
-              onClick={handleGerarPdf}
-              disabled={gerandoPdf}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-700 transition-colors disabled:opacity-50 shadow-sm">
-              {gerandoPdf ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
-              Gerar PDF
-            </button>
+            {/* Pedido do cliente: modalidade Serviços não precisa gerar PDF nem passar por
+                assinatura — a frequência continua existindo e alimentando o Fechamento
+                normalmente (o backend não exige nenhum dos dois pra agregar). */}
+            {freq.tipoMedico !== 'SERVICOS' && (
+              <button
+                onClick={handleGerarPdf}
+                disabled={gerandoPdf}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-700 transition-colors disabled:opacity-50 shadow-sm">
+                {gerandoPdf ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+                Gerar PDF
+              </button>
+            )}
             <button onClick={onClose}
               className="p-2 rounded-xl text-ds-light hover:bg-ds-input hover:text-ds-text transition-colors ml-1">
               <X size={20} />
@@ -1568,7 +1701,7 @@ function PainelFrequencia({
             <button
               onClick={() => setAdicionando(true)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-700 transition-colors">
-              <Plus size={13} /> {isTipoModalidadeFixa(freq.tipoMedico) ? 'Adicionar Frequência' : 'Adicionar Plantão'}
+              <Plus size={13} /> Adicionar {itemLabel(freq.tipoMedico, 1)}
             </button>
           )}
         </div>
@@ -1645,6 +1778,9 @@ function PainelFrequencia({
                           {item.horaInicio && item.horaFim && ` (${item.horaInicio.slice(0, 5)} às ${item.horaFim.slice(0, 5)})`}
                         </p>
                       )}
+                      {item.quantidade != null && (
+                        <p className="text-xs text-teal-600 font-medium">{item.quantidade} serviço{item.quantidade === 1 ? '' : 's'}</p>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-sm text-ds-mid">
                       {item.ocorrenciaNome && (
@@ -1669,14 +1805,14 @@ function PainelFrequencia({
                           <button
                             onClick={() => { setEditandoId(item.id); setAdicionando(false) }}
                             disabled={adicionando}
-                            title={isTipoModalidadeFixa(freq.tipoMedico) ? 'Editar frequência' : 'Editar plantão'}
+                            title={`Editar ${itemLabel(freq.tipoMedico, 1)}`}
                             className="p-1.5 rounded-lg text-ds-light hover:text-primary hover:bg-primary-50 transition-colors disabled:opacity-30">
                             <Pencil size={14} />
                           </button>
                           <button
                             onClick={() => handleRemove(item.id)}
                             disabled={removendo === item.id}
-                            title={isTipoModalidadeFixa(freq.tipoMedico) ? 'Remover frequência' : 'Remover plantão'}
+                            title={`Remover ${itemLabel(freq.tipoMedico, 1)}`}
                             className="p-1.5 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors">
                             {removendo === item.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                           </button>
@@ -1695,7 +1831,7 @@ function PainelFrequencia({
                       </p>
                       {!isFaturada && (
                         <p className="text-xs text-ds-light mt-1">
-                          Clique em "{isTipoModalidadeFixa(freq.tipoMedico) ? 'Adicionar Frequência' : 'Adicionar Plantão'}" para começar.
+                          Clique em "Adicionar {itemLabel(freq.tipoMedico, 1)}" para começar.
                         </p>
                       )}
                     </td>
