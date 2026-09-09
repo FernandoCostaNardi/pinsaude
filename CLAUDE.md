@@ -6486,7 +6486,7 @@ final; não gastar tempo esperando "propagação" antes de descartar essa hipót
 
 ---
 
-## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03/04/05)
+## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03/04/05/06)
 
 ### Projeto GCP e Service Account — só em `pingestao.com.br`
 O backup automático (dump dos bancos + upload pro Google Drive) é escopo exclusivo do
@@ -6676,6 +6676,49 @@ Confirmado visualmente no Drive: os 2 arquivos aparecem na pasta `DB_Pinsaude`
 armazenamento da conta subiu de fato — prova de que estão contando na cota pessoal, não na da
 Service Account. **Esses são backups reais de produção, não foram apagados** (diferente das tasks
 anteriores desse EPIC, que usavam dado sintético de teste).
+
+### ⚠️⚠️ E-mail de "FALHA" com header vermelho + emoji ⚠️ é engolido silenciosamente (BACKUP-06)
+Achado mais custoso de investigar deste EPIC inteiro. O e-mail de falha, no design original da
+task (header vermelho `#b91c1c` + emoji ⚠️ + assunto em CAIXA ALTA "⚠️ FALHA no backup diário do
+banco - Pin Saúde" + bloco de erro cru em fonte monoespaçada), foi enviado **3 vezes** via SMTP —
+`smtplib` nunca lançou nenhuma exceção, `server.sendmail(...)` sempre retornou normalmente — mas
+**nenhuma das 3 tentativas chegou**, nem na Caixa de Entrada, nem na aba Spam, nem em "Todos os
+e-mails" do Gmail. Diagnóstico por eliminação (todos os testes abaixo enviados com o mesmo
+domínio/rota SMTP que o e-mail de sucesso, que sempre entregou normalmente):
+
+| Teste | Conteúdo | Resultado |
+|---|---|---|
+| Assunto real exato + corpo HTML trivial | `⚠️ FALHA no backup diário do banco - Pin Saúde` | ❌ nunca chegou |
+| Corpo HTML real (header vermelho + bloco de erro) + assunto neutro | sem "FALHA" no assunto | ❌ nunca chegou |
+| Assunto com "FALHA" só em texto, sem emoji/acento | variação solta | ✅ chegou |
+| Assunto com emoji ⚠️ isolado, sem o resto | variação solta | ✅ chegou |
+| Versão tonalizada (sem CAPS, header âmbar em vez de vermelho, "Aviso" em vez de "FALHA") | conteúdo equivalente | ✅ chegou |
+
+**Nenhum sinal isolado (emoji sozinho, palavra "FALHA" sozinha, acentuação) reproduz o problema —
+só a combinação completa (header vermelho forte + "FALHA" em caixa alta + emoji de alerta + bloco
+de erro em texto cru) falha.** Tudo aponta pra um filtro anti-phishing silencioso — muito comum
+esse padrão visual (banner vermelho de urgência + aviso de "sua conta/serviço falhou") ser
+justamente a assinatura visual clássica de phishing, então algum ponto da cadeia (mais provável: o
+próprio Hostgator, na saída — o SMTP aceita com 250 OK mas descarta antes de rotear) aplica
+descarte silencioso sem devolver erro NENHUM pro cliente SMTP. **Não foi possível confirmar a causa
+exata** (sem acesso a logs do Hostgator nem ao Postmaster Tools do Gmail) — só o comportamento
+empírico, reproduzido de forma consistente e depois corrigido.
+
+**Correção aplicada** em `enviar_email_falha()`: assunto trocado pra `"Aviso: backup do banco não
+concluído - Pin Saúde"` (sem "FALHA" em caixa alta, sem emoji no assunto) e header trocado de
+vermelho (`#b91c1c`) pra âmbar (`#b45309` — mesma cor já usada nos e-mails de alerta do tema
+Keycloak deste projeto, ver seção "Tema Customizado de E-mail do Keycloak"). Testado e confirmado
+entregue. **Lição geral pra qualquer e-mail transacional futuro deste projeto:** evitar a
+combinação "vermelho + CAIXA ALTA + emoji de alerta + assunto de urgência" — o padrão de alerta
+âmbar/laranja já estabelecido no projeto pra warnings (reservando vermelho só pro mínimo
+indispensável, se algum dia for realmente necessário) é mais seguro contra esse tipo de filtro.
+
+### Entrega de e-mail pode atrasar 1-2 minutos — não concluir "não chegou" cedo demais
+Ao investigar o achado acima, alguns e-mails que pareciam "nunca terem chegado" (checados ~10-20s
+após o envio) na verdade chegaram normalmente **1-2 minutos depois**. Só ficou provado que um
+e-mail específico realmente nunca chega quando, mesmo depois de vários minutos e do recebimento de
+e-mails enviados *depois* dele, ele continua ausente — nunca concluir "falhou" só por não aparecer
+nos primeiros segundos.
 
 ---
 
