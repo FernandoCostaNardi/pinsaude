@@ -6486,7 +6486,7 @@ final; não gastar tempo esperando "propagação" antes de descartar essa hipót
 
 ---
 
-## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03/04/05/06/07)
+## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03/04/05/06/07/08)
 
 ### Projeto GCP e Service Account — só em `pingestao.com.br`
 O backup automático (dump dos bancos + upload pro Google Drive) é escopo exclusivo do
@@ -6730,6 +6730,26 @@ foi mantido — confirma que o corte é estritamente `> 30 dias`, não `>= 30`. 
 **Google Drive nunca é tocado** pela limpeza (nenhuma chamada de delete na Drive API em nenhum
 lugar do script) — os 6 arquivos de teste acumulados no Drive ao longo do EPIC continuam lá,
 como esperado pela decisão de retenção infinita no Drive (BACKUP-01).
+
+### Crontab configurado e validado com disparo real (BACKUP-08)
+Entrada definitiva no crontab do **root** (`crontab -e` como root) em `pingestao.com.br`:
+```
+0 1 * * * /usr/bin/python3 /home/pinsaude/scripts/backup-db-drive.py >> /home/pinsaude/logs/backup-db.log 2>&1
+```
+`212.85.12.228` e qualquer ambiente local **nunca** devem ter essa entrada (decisão BACKUP-01).
+
+**Validação não foi só "rodar manual via SSH interativo como root"** (já feito nas tasks
+anteriores) — isso não prova que o mecanismo de **cron** funciona, já que cron roda num ambiente
+bem mais restrito (sem TTY, `PATH` mínimo, sem as variáveis de um shell de login). Testado de
+verdade: adicionada uma entrada temporária pro minuto seguinte (`crontab -e` com o horário atual
++1min), aguardado o disparo real, confirmado no log (`/home/pinsaude/logs/backup-db.log`) que o
+dump + upload dos 2 bancos rodaram com sucesso **através do cron**, e confirmado que o e-mail de
+sucesso também chegou normalmente. Só depois disso a entrada temporária foi substituída pela
+definitiva (`0 1 * * *`). Funcionou de primeira — os pacotes pip instalados sem `--user` (BACKUP-04)
+e os arquivos de credencial com caminho absoluto (`/home/pinsaude/infra/...`) não dependem de
+nenhuma variável de ambiente específica de shell interativo, então o `PATH` mínimo do cron não foi
+um problema aqui — mas vale testar assim (disparo real, não só shell manual) sempre que outro script
+crítico for agendado via cron neste projeto.
 
 ---
 
