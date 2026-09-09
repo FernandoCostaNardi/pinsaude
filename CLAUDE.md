@@ -6486,6 +6486,41 @@ final; não gastar tempo esperando "propagação" antes de descartar essa hipót
 
 ---
 
+## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02)
+
+### Projeto GCP e Service Account — só em `pingestao.com.br`
+O backup automático (dump dos bancos + upload pro Google Drive) é escopo exclusivo do
+`pingestao.com.br` (produção real) — **não** se aplica ao `212.85.12.228`. Recursos criados:
+
+| Recurso | Valor |
+|---|---|
+| Projeto GCP | `pin-saude-backups` |
+| Service Account | `pin-saude@pin-saude-backups.iam.gserviceaccount.com` |
+| Chave JSON | `/home/pinsaude/infra/gdrive-service-account.json` (só em `pingestao.com.br`, `chmod 600`, dono `pinsaude:pinsaude`) |
+
+A Service Account não tem nenhuma role de projeto especial — o acesso real à pasta do Drive vem do
+compartilhamento da pasta (`Meu Drive/Olicode/backups/DB_Pinsaude`) com o e-mail da Service Account,
+não de permissão no GCP.
+
+**A chave JSON nunca deve ir pro git** — é uma credencial sensível (chave privada RSA). Vive apenas
+no VPS, nunca commitada, nunca colada em chat/PR/comentário do Notion.
+
+### ⚠️ Sempre checar recursos GCP já existentes antes de criar novos
+Ao executar esta task, o projeto `pin-saude-backups`, a Service Account e até uma chave JSON já
+existiam — criados manualmente em 01/09/2026, mas a Google Drive API ainda não estava ativada e a
+task no Notion continuava com status "Não iniciada" (o trabalho parcial nunca foi registrado). A
+chave JSON baixada nessa tentativa anterior também não tinha sido copiada pro VPS — ficou só no
+`Downloads/` local.
+
+**Lição:** antes de criar um projeto/Service Account/chave novos no Google Cloud Console, sempre
+checar `console.cloud.google.com/projectselector2` (projetos recentes) e
+`iam-admin/serviceaccounts?project=<id>` (contas de serviço já existentes) — um trabalho manual
+anterior pode já ter avançado parte da task sem que o status no Notion reflita isso. Gerar uma
+chave nova sem necessidade cria uma segunda credencial órfã (a antiga continua válida no GCP, mas
+sem ninguém sabendo onde está o arquivo).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
