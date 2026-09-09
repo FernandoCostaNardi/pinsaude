@@ -6486,7 +6486,7 @@ final; não gastar tempo esperando "propagação" antes de descartar essa hipót
 
 ---
 
-## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03/04/05/06)
+## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03/04/05/06/07)
 
 ### Projeto GCP e Service Account — só em `pingestao.com.br`
 O backup automático (dump dos bancos + upload pro Google Drive) é escopo exclusivo do
@@ -6719,6 +6719,17 @@ após o envio) na verdade chegaram normalmente **1-2 minutos depois**. Só ficou
 e-mail específico realmente nunca chega quando, mesmo depois de vários minutos e do recebimento de
 e-mails enviados *depois* dele, ele continua ausente — nunca concluir "falhou" só por não aparecer
 nos primeiros segundos.
+
+### Retenção local (BACKUP-07) — já vinha pronta desde o BACKUP-05, só validada
+`cleanup_old_backups()` já existia no esqueleto original (apaga `.dump` do `BACKUP_DIR` com mais
+de `RETENTION_DAYS` de idade por `mtime`) e já era chamada **depois** do loop de upload de todos os
+bancos, nunca antes — nenhuma mudança de código foi necessária nesta task, só validação real.
+Testado criando dois arquivos sintéticos com `touch -d` (`35 dias atrás` e `29 dias atrás`, o caso
+de borda) e rodando o script de verdade: o de 35 dias foi removido, o de 29 dias (dentro do limite)
+foi mantido — confirma que o corte é estritamente `> 30 dias`, não `>= 30`. Confirmado também que o
+**Google Drive nunca é tocado** pela limpeza (nenhuma chamada de delete na Drive API em nenhum
+lugar do script) — os 6 arquivos de teste acumulados no Drive ao longo do EPIC continuam lá,
+como esperado pela decisão de retenção infinita no Drive (BACKUP-01).
 
 ---
 
