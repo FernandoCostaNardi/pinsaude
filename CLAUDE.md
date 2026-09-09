@@ -6486,7 +6486,7 @@ final; não gastar tempo esperando "propagação" antes de descartar essa hipót
 
 ---
 
-## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03/04/05/06/07/08)
+## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02 a 10)
 
 ### Projeto GCP e Service Account — só em `pingestao.com.br`
 O backup automático (dump dos bancos + upload pro Google Drive) é escopo exclusivo do
@@ -6750,6 +6750,34 @@ e os arquivos de credencial com caminho absoluto (`/home/pinsaude/infra/...`) n�
 nenhuma variável de ambiente específica de shell interativo, então o `PATH` mínimo do cron não foi
 um problema aqui — mas vale testar assim (disparo real, não só shell manual) sempre que outro script
 crítico for agendado via cron neste projeto.
+
+### Teste de restauração real confirma que os backups são de fato restauráveis (BACKUP-10)
+Um backup nunca testado não é garantia de nada — validado de ponta a ponta com os dumps mais
+recentes (`pinsaude_2026-09-09_16h04.dump`, `keycloak_2026-09-09_16h04.dump`, gerados pelo disparo
+real de cron da BACKUP-08):
+```bash
+sudo -u postgres createdb pinsaude_restore_test
+sudo -u postgres createdb keycloak_restore_test
+sudo -u postgres pg_restore -d pinsaude_restore_test /home/pinsaude/backups/pinsaude_....dump
+sudo -u postgres pg_restore -d keycloak_restore_test /home/pinsaude/backups/keycloak_....dump
+```
+Ambos `pg_restore` terminaram com **exit code 0**, sem nenhum warning real (só o
+`could not change directory to "/root"` já conhecido e inofensivo, do `sudo -u postgres` tentando
+entrar no home do usuário `postgres`). Validação por comparação direta banco restaurado vs. banco
+de produção real:
+
+| Verificação | Restaurado | Produção real |
+|---|---|---|
+| `pinsaude`: tabelas por schema (`faturamento`/`fiscal`/`ledger`/`onboarding`) | 24/8/5/18 | 24/8/5/18 ✅ |
+| `onboarding.medicos` (linhas) | 1 | 1 ✅ |
+| `faturamento.producoes` / `fiscal.notas_fiscais` (linhas) | 0 / 0 | 0 / 0 ✅ |
+| `keycloak`: tabelas no schema `public` | 92 | 92 ✅ |
+| `keycloak.user_entity` (linhas + usernames reais) | 8, mesma lista | 8, mesma lista ✅ |
+
+Todos os números batem exatamente — confirma que o `pg_dump -Fc` gerado pelo script produz um dump
+íntegro e realmente restaurável, não só "um arquivo que existe". Bancos de teste removidos ao final
+(`dropdb pinsaude_restore_test keycloak_restore_test`) — nenhum resíduo na instância real do
+PostgreSQL.
 
 ---
 
