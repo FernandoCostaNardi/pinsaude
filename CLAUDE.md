@@ -6486,7 +6486,7 @@ final; não gastar tempo esperando "propagação" antes de descartar essa hipót
 
 ---
 
-## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02)
+## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03)
 
 ### Projeto GCP e Service Account — só em `pingestao.com.br`
 O backup automático (dump dos bancos + upload pro Google Drive) é escopo exclusivo do
@@ -6518,6 +6518,30 @@ checar `console.cloud.google.com/projectselector2` (projetos recentes) e
 anterior pode já ter avançado parte da task sem que o status no Notion reflita isso. Gerar uma
 chave nova sem necessidade cria uma segunda credencial órfã (a antiga continua válida no GCP, mas
 sem ninguém sabendo onde está o arquivo).
+
+### Pasta do Drive compartilhada com a Service Account (BACKUP-03)
+A estrutura de pastas `Meu Drive/Olicode/Backups/DB_Pinsaude` também já existia (criada na mesma
+sessão manual de 01/09), mas **sem** nenhum compartilhamento com a Service Account — mesmo padrão
+de trabalho parcial não registrado já visto na BACKUP-02. Compartilhada com
+`pin-saude@pin-saude-backups.iam.gserviceaccount.com`, permissão **Editor**, sem notificar por
+e-mail (Service Account não tem caixa de entrada).
+
+| Recurso | Valor |
+|---|---|
+| Pasta no Drive | `Meu Drive/Olicode/Backups/DB_Pinsaude` |
+| ID da pasta | `1KiVDuglnZ78gPK0BeoeRfbUrSDG-Ujd3` |
+| Permissão da Service Account | Editor |
+
+O arquivo de backup fica de verdade dentro dessa pasta do Drive pessoal — a Service Account só tem
+permissão de escrita nela (compartilhamento de pasta), não é uma cópia nem um Drive separado "da
+automação". O script (BACKUP-05) vai usar o **ID da pasta** diretamente na chamada da Drive API
+(`parents: [ID]` no upload), não o caminho por nome.
+
+### ⚠️ Diálogo "Compartilhar" do Google Drive pode falhar de forma transiente
+Ao tentar compartilhar a pasta pela primeira vez, o diálogo retornou
+`"O compartilhamento não está disponível no momento. Tente de novo mais tarde."` mesmo com a sessão
+válida e a pasta acessível normalmente. Não é erro de permissão nem de UI — só fechar o diálogo,
+recarregar a página (ou reabrir via `Ctrl+Alt+A` / menu "Compartilhar") e tentar de novo resolve.
 
 ---
 
