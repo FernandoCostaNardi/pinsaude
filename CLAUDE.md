@@ -6486,7 +6486,7 @@ final; não gastar tempo esperando "propagação" antes de descartar essa hipót
 
 ---
 
-## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03/04)
+## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03/04/05)
 
 ### Projeto GCP e Service Account — só em `pingestao.com.br`
 O backup automático (dump dos bancos + upload pro Google Drive) é escopo exclusivo do
@@ -6585,6 +6585,97 @@ Validado com uma chamada real à Drive API (não só import): carregar a chave J
 pelo ID (`1KiVDuglnZ78gPK0BeoeRfbUrSDG-Ujd3`, BACKUP-03) — retornou `[]` (pasta vazia, esperado, o
 script de upload ainda não existe). Confirma que a autenticação e o compartilhamento estão
 realmente funcionais de ponta a ponta, não só configurados na UI.
+
+### ⚠️⚠️ Service Account NÃO consegue fazer upload pro Drive pessoal (mudança de arquitetura, BACKUP-05)
+Ao rodar o script de verdade (`tools/backup/backup-db-drive.py`), o upload falhou com:
+```
+403 storageQuotaExceeded — "Service Accounts do not have storage quota.
+Leverage shared drives, or use OAuth delegation instead."
+```
+**Causa raiz:** Service Accounts não têm cota de armazenamento própria no Google Drive — mesmo com
+Editor na pasta (BACKUP-03), o arquivo criado seria de propriedade da própria Service Account, que
+tem 0 bytes de cota. Isso só se resolve com **Shared Drives** (Drives Compartilhados) ou
+**domain-wide delegation** — ambos exigem **Google Workspace**, indisponível numa conta Gmail
+pessoal como a usada neste projeto (confirmado: `drive.google.com/drive/shared-drives` não oferece
+opção de criar um Drive Compartilhado nesta conta).
+
+**Solução adotada: OAuth 2.0 com a conta pessoal do usuário**, não mais Service Account, para a
+etapa de upload. O arquivo passa a contar na cota pessoal (400GB) do dono do Drive, não na da
+Service Account. A Service Account e a chave gerada na BACKUP-02 **continuam existindo** (não
+foram removidas), mas não são mais usadas nesta automação — ficam documentadas aqui só como
+histórico, caso o projeto evolua pra Google Workspace no futuro (aí sim Shared Drive + Service
+Account voltaria a ser a opção recomendada pela Google).
+
+| Recurso novo | Valor |
+|---|---|
+| OAuth Client (tipo "App para computador") | `backup-db-drive-script`, projeto `pin-saude-backups` |
+| Client ID | `839662367103-0pbbgis6md4c445nqkula4rm0b8b9t35.apps.googleusercontent.com` |
+| Tela de consentimento OAuth | Tipo **Externo**, status **Testando** (limite de 100 usuários, sem verificação necessária) |
+| Usuário de teste | `fcostanardi@gmail.com` (obrigatório enquanto o app estiver em "Testando") |
+| Credencial (token + refresh_token) | `/home/pinsaude/infra/gdrive-oauth-token.json` (só no VPS, `chmod 600`, nunca no git) |
+| Escopo OAuth | `https://www.googleapis.com/auth/drive.file` (mesmo escopo mínimo já usado na Service Account) |
+
+### Como gerar/regenerar o refresh_token do OAuth (fluxo local, uma única vez)
+O `refresh_token` foi obtido localmente (não no VPS — precisa de um navegador pra completar o
+consentimento) via `google-auth-oauthlib`, com o servidor de callback rodando na máquina local:
+```python
+from google_auth_oauthlib.flow import InstalledAppFlow
+flow = InstalledAppFlow.from_client_secrets_file("client_secret_....json", ["https://www.googleapis.com/auth/drive.file"])
+creds = flow.run_local_server(port=8765, open_browser=False, access_type="offline", prompt="consent")
+# creds.to_json() → salvar como gdrive-oauth-token.json, copiar pro VPS
+```
+`access_type="offline"` + `prompt="consent"` são obrigatórios pra garantir que um `refresh_token`
+seja retornado (sem isso, em reautorizações subsequentes o Google só devolve um `access_token` de
+curta duração, sem refresh). O script imprime a URL de autorização — abrir no navegador já logado
+com a conta certa, escolher a conta, clicar "Continuar" na tela "O Google não verificou este app"
+(esperado — app em modo Testando, não precisa de verificação pra uso pessoal) e aprovar o escopo.
+O navegador redireciona pra `http://localhost:8765/?code=...`, que o servidor local captura e troca
+pelo token automaticamente.
+
+**Reautorização só é necessária se** o refresh_token for revogado manualmente, ficar 6 meses sem uso,
+ou a senha da conta Google mudar seriamente as credenciais de sessão. Não expira por tempo normal.
+
+### ⚠️ SSL corporativo também afeta bibliotecas OAuth Python rodando localmente (Windows)
+A troca do código de autorização pelo token (`flow.fetch_token`, via `requests`) falhou na primeira
+tentativa com `SSLCertVerificationError: unable to get local issuer certificate` — mesma inspeção
+SSL corporativa já documentada pro `pip`/Maven, agora afetando uma chamada HTTPS real de dentro de
+um script Python local (não só a instalação de pacotes). Resolvido com um monkeypatch pontual,
+local, **nunca usado no script de produção do VPS** (que não tem esse problema — confirmado, rodou
+sem nenhum bypass):
+```python
+import requests
+_orig = requests.Session.request
+def _no_verify(self, *a, **kw):
+    kw["verify"] = False
+    return _orig(self, *a, **kw)
+requests.Session.request = _no_verify
+```
+
+### `os.makedirs` como root + `pg_dump` como `postgres` — bug real encontrado testando ao vivo
+O esqueleto original do BACKUP-05 (`os.makedirs(BACKUP_DIR, exist_ok=True)` sem chmod) falha em
+produção: o script roda como root (`sudo python3 ...`), então o diretório nasce `root:root` modo
+`755` — e o `pg_dump` roda como usuário `postgres` (subprocesso `sudo -u postgres pg_dump ...`),
+que não consegue escrever nele. Erro reproduzido manualmente antes de escrever o fix:
+```
+pg_dump: error: could not open output file "/home/pinsaude/backups/teste.dump": Permission denied
+```
+Corrigido com `os.chmod(BACKUP_DIR, 0o777)` logo após o `makedirs` — `/home/pinsaude` já é
+`drwxr-x--x` (só root e grupo `pinsaude` entram), então abrir esse subdiretório específico pra
+escrita não expõe nada a mais externamente.
+
+### Teste real end-to-end (BACKUP-05) — dump + upload de verdade, não simulado
+`tools/backup/backup-db-drive.py` rodado manualmente em `pingestao.com.br` gerou e enviou os dois
+dumps reais com sucesso:
+```
+[backup] 'pinsaude' enviado com sucesso: https://drive.google.com/file/d/1b_Bbj3f1o-o_WMlj0byya7RcLr-mm4yD/view
+[backup] 'keycloak' enviado com sucesso: https://drive.google.com/file/d/19spdNdboYSNovhpXJRLZk3QnLBh_TF6V/view
+[backup] Concluído. 2/2 bancos enviados.
+```
+Confirmado visualmente no Drive: os 2 arquivos aparecem na pasta `DB_Pinsaude`
+(`pinsaude_2026-09-09_15h34.dump` 219KB, `keycloak_2026-09-09_15h34.dump` 210KB) e o uso de
+armazenamento da conta subiu de fato — prova de que estão contando na cota pessoal, não na da
+Service Account. **Esses são backups reais de produção, não foram apagados** (diferente das tasks
+anteriores desse EPIC, que usavam dado sintético de teste).
 
 ---
 
