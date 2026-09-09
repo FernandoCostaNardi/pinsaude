@@ -172,6 +172,7 @@ export function MedicoPerfilPage() {
   const [activating,       setActivating]       = useState(false)
   const [enviandoConvite,  setEnviandoConvite]  = useState(false)
   const [enviandoContrato, setEnviandoContrato] = useState(false)
+  const [assinandoContrato, setAssinandoContrato] = useState(false)
   const [novoStatusJunta,  setNovoStatusJunta]  = useState<StatusJuntaComercial | ''>('')
   const [obsJunta,         setObsJunta]         = useState('')
   const [atualizandoJunta, setAtualizandoJunta] = useState(false)
@@ -250,6 +251,25 @@ export function MedicoPerfilPage() {
       setError(e instanceof Error ? e.message : 'Erro ao enviar contrato ao Clicksign')
     } finally {
       setEnviandoContrato(false)
+    }
+  }
+
+  async function handleAssinarContrato() {
+    if (!medico) return
+    setAssinandoContrato(true)
+    setError(null)
+    try {
+      await medicosApi.assinarContratoManual(medico.id)
+      // Reconsulta o médico inteiro: marcar como assinado pode disparar ativação automática
+      // (verificarAtivacaoAutomatica no backend), mudando status/demais campos além do contrato.
+      const updated = await medicosApi.buscarPorId(medico.id)
+      setMedico(updated)
+      const h = await medicosApi.listarHistorico(medico.id).catch(() => [] as HistoricoMedico[])
+      setHistorico(h)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao marcar contrato como assinado')
+    } finally {
+      setAssinandoContrato(false)
     }
   }
 
@@ -814,15 +834,27 @@ export function MedicoPerfilPage() {
                 <p className="text-xs text-ds-light mb-3">Contrato ainda não enviado ao Clicksign.</p>
               )}
               {canEdit && medico.contratoAssinatura?.status !== 'ASSINADO' && (
-                <div className="mt-3">
+                <div className="mt-3 flex gap-2 flex-wrap">
                   <Button
                     size="sm"
+                    variant="outline"
                     onClick={handleEnviarContrato}
                     disabled={enviandoContrato}
                   >
                     <Send size={13} />
                     {enviandoContrato ? 'Enviando...' : medico.contratoAssinatura ? 'Reenviar ao Clicksign' : 'Enviar ao Clicksign'}
                   </Button>
+                  {medico.contratoAssinatura && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleAssinarContrato}
+                      disabled={assinandoContrato}
+                    >
+                      <CheckCircle2 size={13} />
+                      {assinandoContrato ? 'Salvando...' : 'Marcar como assinado'}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
