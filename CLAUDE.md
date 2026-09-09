@@ -6486,7 +6486,7 @@ final; não gastar tempo esperando "propagação" antes de descartar essa hipót
 
 ---
 
-## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03)
+## Backup Automático do Banco — Google Cloud / Drive (BACKUP-02/03/04)
 
 ### Projeto GCP e Service Account — só em `pingestao.com.br`
 O backup automático (dump dos bancos + upload pro Google Drive) é escopo exclusivo do
@@ -6542,6 +6542,49 @@ Ao tentar compartilhar a pasta pela primeira vez, o diálogo retornou
 `"O compartilhamento não está disponível no momento. Tente de novo mais tarde."` mesmo com a sessão
 válida e a pasta acessível normalmente. Não é erro de permissão nem de UI — só fechar o diálogo,
 recarregar a página (ou reabrir via `Ctrl+Alt+A` / menu "Compartilhar") e tentar de novo resolve.
+
+### ⚠️ `pip3` não vem instalado por padrão no Ubuntu 22.04 do `pingestao.com.br` (BACKUP-04)
+O host tem Python 3.10.12 (confirmado pela task), mas **nenhum `pip3`** — nem o binário, nem o
+módulo (`python3 -m pip` → `No module named pip`). Precisou instalar o pacote `python3-pip` via
+apt antes de rodar o `pip3 install` que a task pedia:
+```bash
+apt-get install -y python3-pip
+pip3 install google-api-python-client google-auth
+```
+Versões instaladas: `google-api-python-client==2.200.0`, `google-auth==2.57.1` (mais
+`google-auth-httplib2`, `cryptography`, `requests` etc. como dependências transitivas).
+
+**Cuidado ao rodar `apt-get install` num host de produção com muitos serviços systemd**: o
+`needrestart` (hook do apt/dpkg) lista todos os serviços "afetados" por bibliotecas atualizadas —
+inclusive todos os `pinsaude-*`, mesmo sem nenhuma dependência real com `python3-pip` — mas
+**apenas lista, não reinicia** por padrão (mesmo com `DEBIAN_FRONTEND=noninteractive`). Confirmado
+via `ps -eo pid,etime,cmd | grep java`: uptime de cada processo intacto (5 a 26 dias) depois do
+`apt-get install`. Se essa lista aparecer, não é motivo de alarme — mas **sempre confirmar via
+uptime dos processos**, nunca assumir que "listar" significa "reiniciar".
+
+**`pip install` como root mistura pacotes pip com pacotes apt** — o pip avisa
+(`WARNING: Running pip as the 'root' user...`) e não consegue desinstalar versões antigas
+gerenciadas pelo apt (`certifi`/`requests`/`cryptography` já vinham do sistema em
+`/usr/lib/python3/dist-packages`); as novas versões do pip vão para
+`/usr/local/lib/python3.10/dist-packages`, que tem prioridade no `sys.path` — funciona
+normalmente (confirmado no teste funcional abaixo), só vale saber que ficam duas versões
+coexistindo no disco. Não usamos `venv` aqui porque o script de backup (BACKUP-05) vai rodar via
+cron como root, direto com `python3 script.py` — mesmo padrão simples já usado em scripts de
+sistema deste VPS.
+
+**⚠️ Aviso futuro**: `google.api_core` emitiu `FutureWarning` dizendo que vai parar de suportar
+Python 3.10 em novas releases a partir de **04/10/2026**. A versão instalada agora continua
+funcionando normalmente — só significa que um `pip install --upgrade` feito depois dessa data pode
+trazer uma versão que exige Python 3.11+, ou será preciso fixar a versão atual no `requirements.txt`
+do BACKUP-05.
+
+### Teste ponta a ponta confirma toda a cadeia BACKUP-02→03→04 funcionando junta
+Validado com uma chamada real à Drive API (não só import): carregar a chave JSON
+(`/home/pinsaude/infra/gdrive-service-account.json`, BACKUP-02), construir o client
+(`googleapiclient.discovery.build('drive', 'v3', credentials=...)`) e listar os arquivos da pasta
+pelo ID (`1KiVDuglnZ78gPK0BeoeRfbUrSDG-Ujd3`, BACKUP-03) — retornou `[]` (pasta vazia, esperado, o
+script de upload ainda não existe). Confirma que a autenticação e o compartilhamento estão
+realmente funcionais de ponta a ponta, não só configurados na UI.
 
 ---
 
