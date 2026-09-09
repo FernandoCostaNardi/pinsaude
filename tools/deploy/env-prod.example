@@ -6,6 +6,16 @@ KC_ADMIN_USER=admin
 KC_ADMIN_PASS=TROCAR_POR_SENHA_FORTE
 KC_DB_PASS=TROCAR_POR_SENHA_FORTE
 
+# URLs públicas usadas para montar links em e-mails (onboarding + fiscal).
+# ATENÇÃO: sem essas duas variáveis, o app cai no default de application.yml
+# (http://localhost:8080 / http://localhost:3000) — o e-mail de "cadastro aprovado"
+# (link "Definir minha senha") e os e-mails de nota emitida/repasse/alerta de teto
+# saem com link quebrado apontando para localhost. Ajustar por host:
+#   KEYCLOAK_URL  = URL pública do Keycloak (ex: https://SEU_DOMINIO:8443)
+#   APP_BASE_URL  = URL pública do frontend (ex: https://SEU_DOMINIO)
+KEYCLOAK_URL=https://TROCAR_PELO_DOMINIO_OU_IP:8443
+APP_BASE_URL=https://TROCAR_PELO_DOMINIO_OU_IP
+
 # Onboarding service
 DB_PASSWORD_ONBOARDING=TROCAR_POR_SENHA_FORTE
 
