@@ -182,6 +182,7 @@ interface MedicoLinha {
   crm: string | null
   totalCentavos: number
   status: StatusMedicoFechamento | undefined
+  alocado: boolean
 }
 
 function TabelaMedicos({
@@ -195,7 +196,7 @@ function TabelaMedicos({
   if (linhas.length === 0) {
     return (
       <div className="p-8 text-center text-sm text-ds-light">
-        Nenhum médico alocado a este tomador.
+        Nenhum médico alocado a este tomador nem com frequência lançada nesta competência.
       </div>
     )
   }
@@ -242,6 +243,14 @@ function TabelaMedicos({
               <td className="px-3 py-1.5 font-medium text-ds-text">
                 {l.nome}
                 {l.crm && <span className="text-ds-light font-normal"> · CRM {l.crm}</span>}
+                {!l.alocado && (
+                  <span
+                    className="ml-2 inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-700 align-middle"
+                    title="Este médico lançou frequência para este tomador na competência, mas não está mais na lista de médicos alocados a ele."
+                  >
+                    NÃO ALOCADO
+                  </span>
+                )}
               </td>
               <td className="px-3 py-1.5 text-right tabular-nums font-medium">
                 {formatBRL(l.totalCentavos)}
@@ -449,20 +458,30 @@ export function FechamentoPage() {
 
   // Merge: médicos alocados ao tomador (faturamento.medico_tomadores) + nome/CRM do catálogo do
   // onboarding + valor total apurado na competência (preview.totaisPorMedico) + status manual.
+  //
+  // A lista de linhas é a UNIÃO entre "alocados" e "com valor apurado" — nunca só os alocados.
+  // Um médico pode ter lançado frequência com valor num tomador do qual já foi desalocado depois
+  // (vínculo removido em medico_tomadores após o lançamento) — se a aba mostrasse só os alocados,
+  // esse valor desapareceria silenciosamente da aba Médicos, embora continuasse contando no total
+  // da aba Tipo de Serviço (o preview nunca filtra por alocação, só por tomador+competência).
   const medicosLinhas: MedicoLinha[] = useMemo(() => {
     const medicoPorId = new Map(medicosCatalogo.map(m => [m.id, m]))
     const totalPorMedico: Record<string, number> = {}
     preview?.totaisPorMedico.forEach(m => { totalPorMedico[m.medicoId] = m.totalCentavos })
 
-    return medicosAlocados
-      .map(a => {
-        const m = medicoPorId.get(a.medicoId)
+    const idsAlocados = new Set(medicosAlocados.map(a => a.medicoId))
+    const todosIds = new Set([...idsAlocados, ...Object.keys(totalPorMedico)])
+
+    return Array.from(todosIds)
+      .map(medicoId => {
+        const m = medicoPorId.get(medicoId)
         return {
-          medicoId: a.medicoId,
-          nome: m?.nome ?? a.medicoId,
+          medicoId,
+          nome: m?.nome ?? medicoId,
           crm: m ? `${m.crm}/${m.crmUf}` : null,
-          totalCentavos: totalPorMedico[a.medicoId] ?? 0,
-          status: statusMedicos[a.medicoId]?.status,
+          totalCentavos: totalPorMedico[medicoId] ?? 0,
+          status: statusMedicos[medicoId]?.status,
+          alocado: idsAlocados.has(medicoId),
         }
       })
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
