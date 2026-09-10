@@ -6,13 +6,16 @@ import {
   ReceiptText, History, TriangleAlert,
 } from 'lucide-react'
 import { Button, Alert } from '@pinsaude/ui'
-import { tomadoresApi, Tomador, TomadorModalidade } from '../api/tomadoresApi'
+import { tomadoresApi, Tomador, TomadorModalidade, MedicoTomador } from '../api/tomadoresApi'
 import {
   fechamentosApi,
   FechamentoPreviewResp,
   FechamentoResp,
   ModalidadeDetalhe,
+  FechamentoMedicoStatusResp,
+  StatusMedicoFechamento,
 } from '../api/fechamentosApi'
+import { medicosApi, Medico } from '../api/medicosApi'
 import { useAuth } from '../auth/AuthContext'
 import { labelTipoEscala, isTipoModalidadeFixa } from '../utils/tipoEscala'
 
@@ -150,6 +153,115 @@ function TabelaModalidades({ modalidades, catalogo }: { modalidades: ModalidadeD
   )
 }
 
+// ─── Tabela de Médicos ─────────────────────────────────────────────────────────
+
+// Réplica digital da coluna "Status" da planilha (ver img/medicos.png): classificação manual do
+// gestor, sem nenhum efeito no cálculo do fechamento — puramente informativo.
+const STATUS_MEDICO_OPTIONS: { value: StatusMedicoFechamento; label: string }[] = [
+  { value: 'OK', label: 'Ok' },
+  { value: 'SEM_FATURAR', label: 'Sem Faturar' },
+  { value: 'NAO_TEVE', label: 'Não Teve' },
+]
+
+function statusMedicoLabel(status: StatusMedicoFechamento | undefined): string {
+  return STATUS_MEDICO_OPTIONS.find(o => o.value === status)?.label ?? '—'
+}
+
+function statusMedicoCls(status: StatusMedicoFechamento | undefined): string {
+  switch (status) {
+    case 'OK': return 'bg-green-600 border-green-700 text-white'
+    case 'SEM_FATURAR': return 'bg-amber-300 border-amber-400 text-amber-900'
+    case 'NAO_TEVE': return 'bg-stone-800 border-stone-900 text-white'
+    default: return 'bg-white border-ds-border text-ds-light'
+  }
+}
+
+interface MedicoLinha {
+  medicoId: string
+  nome: string
+  crm: string | null
+  totalCentavos: number
+  status: StatusMedicoFechamento | undefined
+}
+
+function TabelaMedicos({
+  linhas, canEdit, savingId, onChangeStatus,
+}: {
+  linhas: MedicoLinha[]
+  canEdit: boolean
+  savingId: string | null
+  onChangeStatus: (medicoId: string, status: StatusMedicoFechamento) => void
+}) {
+  if (linhas.length === 0) {
+    return (
+      <div className="p-8 text-center text-sm text-ds-light">
+        Nenhum médico alocado a este tomador.
+      </div>
+    )
+  }
+
+  const totalGeral = linhas.reduce((s, l) => s + l.totalCentavos, 0)
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="bg-gray-800 text-white">
+            <th className="px-3 py-2 text-left font-semibold w-36">STATUS</th>
+            <th className="px-3 py-2 text-left font-semibold">PROFISSIONAL</th>
+            <th className="px-3 py-2 text-right font-semibold w-32">RESULTADO</th>
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map((l, i) => (
+            <tr key={l.medicoId} className={`border-b border-gray-200 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+              <td className="px-3 py-1.5">
+                {canEdit ? (
+                  <div className="relative inline-flex items-center">
+                    <select
+                      value={l.status ?? ''}
+                      disabled={savingId === l.medicoId}
+                      onChange={e => onChangeStatus(l.medicoId, e.target.value as StatusMedicoFechamento)}
+                      className={`text-[11px] font-bold rounded px-2 py-1 border cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30 ${statusMedicoCls(l.status)}`}
+                    >
+                      <option value="" disabled>— Selecionar —</option>
+                      {STATUS_MEDICO_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                    {savingId === l.medicoId && (
+                      <Loader2 size={11} className="animate-spin absolute right-1.5 text-ds-light pointer-events-none" />
+                    )}
+                  </div>
+                ) : (
+                  <span className={`inline-block text-[11px] font-bold rounded px-2 py-1 border ${statusMedicoCls(l.status)}`}>
+                    {statusMedicoLabel(l.status)}
+                  </span>
+                )}
+              </td>
+              <td className="px-3 py-1.5 font-medium text-ds-text">
+                {l.nome}
+                {l.crm && <span className="text-ds-light font-normal"> · CRM {l.crm}</span>}
+              </td>
+              <td className="px-3 py-1.5 text-right tabular-nums font-medium">
+                {formatBRL(l.totalCentavos)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-gray-400">
+            <td colSpan={2} />
+            <td className="px-3 py-2 text-right font-bold tabular-nums text-sm">
+              {formatBRL(totalGeral)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  )
+}
+
 // ─── Totalizador por Grupo → Setor ────────────────────────────────────────────
 
 function TotalizadorPorGrupo({ preview }: { preview: FechamentoPreviewResp }) {
@@ -243,6 +355,13 @@ export function FechamentoPage() {
   const [loadingHist, setLoadingHist] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // ── Aba "Médicos" ──────────────────────────────────────────────────────────
+  const [aba, setAba] = useState<'servicos' | 'medicos'>('servicos')
+  const [medicosAlocados, setMedicosAlocados] = useState<MedicoTomador[]>([])
+  const [medicosCatalogo, setMedicosCatalogo] = useState<Medico[]>([])
+  const [statusMedicos, setStatusMedicos] = useState<Record<string, FechamentoMedicoStatusResp>>({})
+  const [savingStatusId, setSavingStatusId] = useState<string | null>(null)
+
   // Carrega tomadores e histórico ao montar
   useEffect(() => {
     tomadoresApi.listar().then(ts => {
@@ -271,12 +390,22 @@ export function FechamentoPage() {
     setPreview(null)
     setResultado(null)
     try {
-      const [data, modalidades] = await Promise.all([
+      const [data, modalidades, medicosDoTomador, statusList, todosMedicos] = await Promise.all([
         fechamentosApi.preview(tomadorId, competencia),
         tomadoresApi.listarModalidades(tomadorId).catch(() => []),
+        tomadoresApi.listarMedicos(tomadorId).catch(() => []),
+        fechamentosApi.listarStatusMedicos(tomadorId, competencia).catch(() => []),
+        // Fallback silencioso: papéis sem acesso a GET /api/medicos (ex.: financeiro/contabil)
+        // continuam vendo a aba Médicos, só que com o UUID no lugar do nome.
+        medicosApi.listar(0, 1000).then(p => p.content).catch(() => [] as Medico[]),
       ])
       setPreview(data)
       setModalidadesCatalogo(modalidades)
+      setMedicosAlocados(medicosDoTomador)
+      setMedicosCatalogo(todosMedicos)
+      const statusMap: Record<string, FechamentoMedicoStatusResp> = {}
+      statusList.forEach(s => { statusMap[s.medicoId] = s })
+      setStatusMedicos(statusMap)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar preview')
     } finally {
@@ -300,9 +429,44 @@ export function FechamentoPage() {
     }
   }
 
+  const handleChangeStatusMedico = async (medicoId: string, status: StatusMedicoFechamento) => {
+    if (!tomadorId || !competencia) return
+    setSavingStatusId(medicoId)
+    setError(null)
+    try {
+      const resp = await fechamentosApi.salvarStatusMedico({ tomadorId, medicoId, competencia, status })
+      setStatusMedicos(prev => ({ ...prev, [medicoId]: resp }))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao salvar status do médico')
+    } finally {
+      setSavingStatusId(null)
+    }
+  }
+
   const tomadorSelecionado = tomadores.find(t => t.id === tomadorId)
   const totalGrupos = preview?.grupos.length ?? 0
   const totalFrequencias = preview?.totalFrequencias ?? 0
+
+  // Merge: médicos alocados ao tomador (faturamento.medico_tomadores) + nome/CRM do catálogo do
+  // onboarding + valor total apurado na competência (preview.totaisPorMedico) + status manual.
+  const medicosLinhas: MedicoLinha[] = useMemo(() => {
+    const medicoPorId = new Map(medicosCatalogo.map(m => [m.id, m]))
+    const totalPorMedico: Record<string, number> = {}
+    preview?.totaisPorMedico.forEach(m => { totalPorMedico[m.medicoId] = m.totalCentavos })
+
+    return medicosAlocados
+      .map(a => {
+        const m = medicoPorId.get(a.medicoId)
+        return {
+          medicoId: a.medicoId,
+          nome: m?.nome ?? a.medicoId,
+          crm: m ? `${m.crm}/${m.crmUf}` : null,
+          totalCentavos: totalPorMedico[a.medicoId] ?? 0,
+          status: statusMedicos[a.medicoId]?.status,
+        }
+      })
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  }, [medicosAlocados, medicosCatalogo, preview, statusMedicos])
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-ds-bg">
@@ -329,7 +493,7 @@ export function FechamentoPage() {
             <div className="relative">
               <select
                 value={tomadorId}
-                onChange={e => { setTomadorId(e.target.value); setPreview(null); setResultado(null); setError(null) }}
+                onChange={e => { setTomadorId(e.target.value); setPreview(null); setResultado(null); setError(null); setAba('servicos') }}
                 className="w-full h-10 pl-3 pr-8 text-sm border border-ds-border rounded-lg bg-white text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none"
               >
                 <option value="">— Selecione o tomador —</option>
@@ -346,7 +510,7 @@ export function FechamentoPage() {
             <div className="relative">
               <select
                 value={competencia}
-                onChange={e => { setCompetencia(e.target.value); setPreview(null); setResultado(null); setError(null) }}
+                onChange={e => { setCompetencia(e.target.value); setPreview(null); setResultado(null); setError(null); setAba('servicos') }}
                 className="w-full h-10 pl-3 pr-8 text-sm border border-ds-border rounded-lg bg-white text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 appearance-none"
               >
                 {COMPETENCIAS.map(c => (
@@ -433,22 +597,62 @@ export function FechamentoPage() {
               </div>
             )}
 
-            {/* ── Totalizador detalhado (igual à imagem) ──────────── */}
-            {preview.grupos.length > 0 && (
-              <div className="bg-white rounded-xl border border-ds-border overflow-hidden">
-                {/* Tabela de modalidades (top) */}
-                {preview.modalidades.length > 0 && (
-                  <div className="border-b border-ds-border">
-                    <TabelaModalidades modalidades={preview.modalidades} catalogo={modalidadesCatalogo} />
-                  </div>
-                )}
-
-                {/* Totalizador por grupo → setor + Fechamento */}
-                <div className="p-5">
-                  <TotalizadorPorGrupo preview={preview} />
+            {/* ── Totalizador detalhado (Tipo de Serviço / Médicos) ─── */}
+            <div className="bg-white rounded-xl border border-ds-border overflow-hidden">
+              {/* Tab bar */}
+              <div className="px-4 pt-4 pb-2 border-b border-ds-border bg-ds-surface">
+                <div className="flex gap-1 p-1 bg-ds-input rounded-xl border border-ds-border w-fit">
+                  {([
+                    ['servicos', 'Tipo de Serviço'],
+                    ['medicos', `Médicos${medicosLinhas.length > 0 ? ` (${medicosLinhas.length})` : ''}`],
+                  ] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setAba(key)}
+                      className={[
+                        'px-4 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                        aba === key
+                          ? 'bg-white text-primary shadow-sm border border-ds-border'
+                          : 'text-ds-mid hover:text-ds-text',
+                      ].join(' ')}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
-            )}
+
+              {/* ── Aba: Tipo de Serviço ── */}
+              {aba === 'servicos' && (
+                preview.grupos.length > 0 ? (
+                  <>
+                    {preview.modalidades.length > 0 && (
+                      <div className="border-b border-ds-border">
+                        <TabelaModalidades modalidades={preview.modalidades} catalogo={modalidadesCatalogo} />
+                      </div>
+                    )}
+                    <div className="p-5">
+                      <TotalizadorPorGrupo preview={preview} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-8 text-center text-sm text-ds-light">
+                    Nenhuma frequência encontrada nesta competência.
+                  </div>
+                )
+              )}
+
+              {/* ── Aba: Médicos ── */}
+              {aba === 'medicos' && (
+                <TabelaMedicos
+                  linhas={medicosLinhas}
+                  canEdit={canExecute}
+                  savingId={savingStatusId}
+                  onChangeStatus={handleChangeStatusMedico}
+                />
+              )}
+            </div>
 
             {/* Ação de fechar */}
             {preview.grupos.length > 0 && canExecute && (

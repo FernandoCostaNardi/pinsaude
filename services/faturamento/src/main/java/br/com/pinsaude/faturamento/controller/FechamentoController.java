@@ -1,5 +1,7 @@
 package br.com.pinsaude.faturamento.controller;
 
+import br.com.pinsaude.faturamento.dto.FechamentoMedicoStatusRequest;
+import br.com.pinsaude.faturamento.dto.FechamentoMedicoStatusResponse;
 import br.com.pinsaude.faturamento.dto.FechamentoPreviewResponse;
 import br.com.pinsaude.faturamento.dto.FechamentoRequest;
 import br.com.pinsaude.faturamento.dto.FechamentoResponse;
@@ -49,5 +51,22 @@ public class FechamentoController {
     @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
     public ResponseEntity<FechamentoResponse> buscarPorId(@PathVariable UUID id) {
         return ResponseEntity.ok(service.buscarPorId(id));
+    }
+
+    // ─── Status manual por médico (aba "Médicos" do Fechamento) ────────────────
+
+    @GetMapping("/status-medicos")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    public ResponseEntity<List<FechamentoMedicoStatusResponse>> listarStatusMedicos(
+            @RequestParam UUID tomadorId,
+            @RequestParam String competencia) {
+        return ResponseEntity.ok(service.listarStatusMedicos(tomadorId, competencia));
+    }
+
+    @PutMapping("/status-medicos")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<FechamentoMedicoStatusResponse> salvarStatusMedico(
+            @Valid @RequestBody FechamentoMedicoStatusRequest req) {
+        return ResponseEntity.ok(service.salvarStatusMedico(req));
     }
 }

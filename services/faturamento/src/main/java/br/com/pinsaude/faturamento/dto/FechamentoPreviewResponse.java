@@ -10,7 +10,8 @@ public record FechamentoPreviewResponse(
     List<ModalidadeDetalhe> modalidades,
     List<GrupoPreview> grupos,
     long totalCentavos,
-    int totalFrequencias
+    int totalFrequencias,
+    List<MedicoParticipacao> totaisPorMedico
 ) {
     /** Uma linha da tabela global de tipos de serviço (top table) */
     public record ModalidadeDetalhe(

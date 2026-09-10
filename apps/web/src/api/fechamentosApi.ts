@@ -68,6 +68,26 @@ export interface FechamentoPreviewResp {
   grupos: GrupoPreview[]
   totalCentavos: number
   totalFrequencias: number
+  totaisPorMedico: MedicoParticipacaoPreview[]
+}
+
+// ─── Status manual por médico (aba "Médicos") ──────────────────────────────
+
+export type StatusMedicoFechamento = 'OK' | 'SEM_FATURAR' | 'NAO_TEVE'
+
+export interface FechamentoMedicoStatusResp {
+  medicoId: string
+  competencia: string
+  status: StatusMedicoFechamento
+  atualizadoPor: string | null
+  atualizadoEm: string
+}
+
+export interface FechamentoMedicoStatusRequest {
+  tomadorId: string
+  medicoId: string
+  competencia: string
+  status: StatusMedicoFechamento
 }
 
 export interface ProducaoRef {
@@ -119,5 +139,20 @@ export const fechamentosApi = {
   async buscarPorId(id: string): Promise<FechamentoResp> {
     const res = await fetch(`/api/fechamentos/${id}`, { headers: authHeaders() })
     return handleResponse<FechamentoResp>(res)
+  },
+
+  async listarStatusMedicos(tomadorId: string, competencia: string): Promise<FechamentoMedicoStatusResp[]> {
+    const q = new URLSearchParams({ tomadorId, competencia })
+    const res = await fetch(`/api/fechamentos/status-medicos?${q}`, { headers: authHeaders() })
+    return handleResponse<FechamentoMedicoStatusResp[]>(res)
+  },
+
+  async salvarStatusMedico(req: FechamentoMedicoStatusRequest): Promise<FechamentoMedicoStatusResp> {
+    const res = await fetch('/api/fechamentos/status-medicos', {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<FechamentoMedicoStatusResp>(res)
   },
 }

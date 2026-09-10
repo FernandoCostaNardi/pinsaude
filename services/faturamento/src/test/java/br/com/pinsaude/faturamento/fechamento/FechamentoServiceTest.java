@@ -46,6 +46,7 @@ class FechamentoServiceTest {
     @Mock ProducaoRepository producaoRepo;
     @Mock ParticipacaoRepository participacaoRepo;
     @Mock TomadorOcorrenciaRepository ocorrenciaRepo;
+    @Mock FechamentoMedicoStatusRepository statusRepo;
 
     @InjectMocks FechamentoService service;
 
@@ -255,6 +256,85 @@ class FechamentoServiceTest {
             .mapToLong(FechamentoPreviewResponse.MedicoParticipacao::totalCentavos)
             .sum();
         assertThat(totalMedico2).isEqualTo(205_000L);
+
+        // totaisPorMedico agrega por médico através de todos os grupos (aqui só há um grupo,
+        // então o total por médico bate exatamente com o total já verificado em g.medicos()).
+        assertThat(resp.totaisPorMedico()).hasSize(2);
+        assertThat(resp.totaisPorMedico())
+            .filteredOn(m -> m.medicoId().equals(medico1Id))
+            .extracting(FechamentoPreviewResponse.MedicoParticipacao::totalCentavos)
+            .containsExactly(100_000L);
+        assertThat(resp.totaisPorMedico())
+            .filteredOn(m -> m.medicoId().equals(medico2Id))
+            .extracting(FechamentoPreviewResponse.MedicoParticipacao::totalCentavos)
+            .containsExactly(205_000L);
+    }
+
+    @Test
+    void preview_semFrequencias_totaisPorMedicoVazio() {
+        when(frequenciaRepo.findByTomadorIdAndCompetencia(tomadorId, COMPETENCIA))
+            .thenReturn(List.of());
+
+        FechamentoPreviewResponse resp = service.preview(tomadorId, COMPETENCIA);
+
+        assertThat(resp.totaisPorMedico()).isEmpty();
+    }
+
+    // ─── Status manual por médico (aba "Médicos") ────────────────────────────
+
+    @Test
+    void listarStatusMedicos_delegaAoRepositorio() {
+        FechamentoMedicoStatus s = new FechamentoMedicoStatus();
+        s.setTomadorId(tomadorId);
+        s.setMedicoId(medico1Id);
+        s.setCompetencia(COMPETENCIA);
+        s.setStatus("OK");
+        when(statusRepo.findByTomadorIdAndCompetencia(tomadorId, COMPETENCIA))
+            .thenReturn(List.of(s));
+
+        List<br.com.pinsaude.faturamento.dto.FechamentoMedicoStatusResponse> resp =
+            service.listarStatusMedicos(tomadorId, COMPETENCIA);
+
+        assertThat(resp).hasSize(1);
+        assertThat(resp.get(0).medicoId()).isEqualTo(medico1Id);
+        assertThat(resp.get(0).status()).isEqualTo("OK");
+    }
+
+    @Test
+    void salvarStatusMedico_semRegistroExistente_cria() {
+        var req = new br.com.pinsaude.faturamento.dto.FechamentoMedicoStatusRequest(
+            tomadorId, medico1Id, COMPETENCIA, "SEM_FATURAR");
+        when(statusRepo.findByTomadorIdAndMedicoIdAndCompetencia(tomadorId, medico1Id, COMPETENCIA))
+            .thenReturn(Optional.empty());
+        when(statusRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var resp = service.salvarStatusMedico(req);
+
+        assertThat(resp.medicoId()).isEqualTo(medico1Id);
+        assertThat(resp.status()).isEqualTo("SEM_FATURAR");
+        verify(statusRepo).save(any());
+    }
+
+    @Test
+    void salvarStatusMedico_comRegistroExistente_atualizaEmVezDeDuplicar() {
+        FechamentoMedicoStatus existente = new FechamentoMedicoStatus();
+        existente.setTomadorId(tomadorId);
+        existente.setMedicoId(medico1Id);
+        existente.setCompetencia(COMPETENCIA);
+        existente.setStatus("NAO_TEVE");
+        when(statusRepo.findByTomadorIdAndMedicoIdAndCompetencia(tomadorId, medico1Id, COMPETENCIA))
+            .thenReturn(Optional.of(existente));
+        when(statusRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var req = new br.com.pinsaude.faturamento.dto.FechamentoMedicoStatusRequest(
+            tomadorId, medico1Id, COMPETENCIA, "OK");
+        var resp = service.salvarStatusMedico(req);
+
+        assertThat(resp.status()).isEqualTo("OK");
+        ArgumentCaptor<FechamentoMedicoStatus> captor = ArgumentCaptor.forClass(FechamentoMedicoStatus.class);
+        verify(statusRepo).save(captor.capture());
+        assertThat(captor.getValue()).isSameAs(existente);
+        assertThat(captor.getValue().getStatus()).isEqualTo("OK");
     }
 
     // ─── Executar ─────────────────────────────────────────────────────────────
