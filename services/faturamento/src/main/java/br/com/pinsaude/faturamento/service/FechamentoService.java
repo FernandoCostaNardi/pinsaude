@@ -2,12 +2,17 @@ package br.com.pinsaude.faturamento.service;
 
 import br.com.pinsaude.faturamento.config.SecurityUtils;
 import br.com.pinsaude.faturamento.domain.*;
+import br.com.pinsaude.faturamento.dto.FechamentoMedicoStatusRequest;
+import br.com.pinsaude.faturamento.dto.FechamentoMedicoStatusResponse;
 import br.com.pinsaude.faturamento.dto.FechamentoPreviewResponse;
 import br.com.pinsaude.faturamento.dto.FechamentoRequest;
 import br.com.pinsaude.faturamento.dto.FechamentoResponse;
 import br.com.pinsaude.faturamento.repository.*;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -41,6 +46,7 @@ public class FechamentoService {
     private final ProducaoRepository producaoRepo;
     private final ParticipacaoRepository participacaoRepo;
     private final TomadorOcorrenciaRepository ocorrenciaRepo;
+    private final FechamentoMedicoStatusRepository statusRepo;
 
     public FechamentoService(FechamentoRepository fechamentoRepo,
                              FrequenciaMedicaRepository frequenciaRepo,
@@ -52,7 +58,8 @@ public class FechamentoService {
                              ServicoRepository servicoRepo,
                              ProducaoRepository producaoRepo,
                              ParticipacaoRepository participacaoRepo,
-                             TomadorOcorrenciaRepository ocorrenciaRepo) {
+                             TomadorOcorrenciaRepository ocorrenciaRepo,
+                             FechamentoMedicoStatusRepository statusRepo) {
         this.fechamentoRepo  = fechamentoRepo;
         this.frequenciaRepo  = frequenciaRepo;
         this.itemRepo        = itemRepo;
@@ -64,6 +71,7 @@ public class FechamentoService {
         this.producaoRepo    = producaoRepo;
         this.participacaoRepo = participacaoRepo;
         this.ocorrenciaRepo  = ocorrenciaRepo;
+        this.statusRepo      = statusRepo;
     }
 
     // ── Preview (somente leitura, sem persistir) ─────────────────────────────
@@ -134,14 +142,60 @@ public class FechamentoService {
             totalGeral += totalGrupo;
         }
 
+        // Totais por médico, somados através de todos os grupos — alimenta a aba "Médicos" da
+        // tela (coluna "Resultado" da planilha original, ver img/medicos.png). Um médico raramente
+        // participa de mais de um grupo na mesma competência, mas quando participa o total exibido
+        // é a soma de todas as suas frequências no tomador, não só de um grupo isolado.
+        Map<UUID, Long> totalPorMedico = new LinkedHashMap<>();
+        for (Map<UUID, Long> medicoValores : agg.agrupado().values()) {
+            medicoValores.forEach((medicoId, valor) -> totalPorMedico.merge(medicoId, valor, Long::sum));
+        }
+        List<FechamentoPreviewResponse.MedicoParticipacao> totaisPorMedico = totalPorMedico.entrySet().stream()
+            .map(e -> new FechamentoPreviewResponse.MedicoParticipacao(e.getKey(), e.getValue()))
+            .toList();
+
         return new FechamentoPreviewResponse(
             tomadorId,
             competencia,
             modalidades,
             grupos,
             totalGeral,
-            agg.frequencias().size()
+            agg.frequencias().size(),
+            totaisPorMedico
         );
+    }
+
+    // ── Status manual por médico (aba "Médicos") ─────────────────────────────
+
+    @Transactional(readOnly = true)
+    public List<FechamentoMedicoStatusResponse> listarStatusMedicos(UUID tomadorId, String competencia) {
+        return statusRepo.findByTomadorIdAndCompetencia(tomadorId, competencia).stream()
+            .map(FechamentoMedicoStatusResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public FechamentoMedicoStatusResponse salvarStatusMedico(FechamentoMedicoStatusRequest req) {
+        FechamentoMedicoStatus s = statusRepo
+            .findByTomadorIdAndMedicoIdAndCompetencia(req.tomadorId(), req.medicoId(), req.competencia())
+            .orElseGet(FechamentoMedicoStatus::new);
+        s.setTomadorId(req.tomadorId());
+        s.setMedicoId(req.medicoId());
+        s.setCompetencia(req.competencia());
+        s.setStatus(req.status());
+        s.setAtualizadoPor(resolverEmail());
+        statusRepo.save(s);
+        return FechamentoMedicoStatusResponse.from(s);
+    }
+
+    private String resolverEmail() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth instanceof JwtAuthenticationToken jwt) {
+            String email = jwt.getToken().getClaimAsString("email");
+            if (email != null) return email;
+            return jwt.getToken().getClaimAsString("preferred_username");
+        }
+        return null;
     }
 
     // ── Executar fechamento ───────────────────────────────────────────────────
