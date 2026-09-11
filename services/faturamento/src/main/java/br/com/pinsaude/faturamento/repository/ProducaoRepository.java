@@ -21,6 +21,8 @@ public interface ProducaoRepository extends JpaRepository<Producao, UUID> {
 
     List<Producao> findByTomadorIdOrderByCreatedAtDesc(UUID tomadorId);
 
+    List<Producao> findByFechamentoId(UUID fechamentoId);
+
     // Native query com CAST(status AS varchar): evita conflito de :: com parser de parâmetros Spring Data
     // e o "operator does not exist: status_producao_enum = character varying" do Hibernate.
     // JOIN FETCH removido — tomador é lazy-loaded via @Transactional no caller.

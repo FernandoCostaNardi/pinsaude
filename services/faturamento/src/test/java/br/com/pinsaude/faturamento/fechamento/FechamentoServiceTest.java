@@ -401,6 +401,25 @@ class FechamentoServiceTest {
     }
 
     @Test
+    void executar_feliz_gravaFechamentoIdEGrupoIdNaProducao() {
+        // Bug corrigido: sem isso, listar()/buscarPorId() nunca conseguiam reconstruir
+        // producoes[] depois do momento da execução — ver buildProducaoRefs().
+        FrequenciaMedica freq = frequenciaFixture(medico1Id, setorId, COMPETENCIA, "RASCUNHO");
+        FrequenciaItem item = itemFixture(freq.getId(), 100_000L, 0L);
+
+        when(frequenciaRepo.findByTomadorIdAndCompetencia(tomadorId, COMPETENCIA))
+            .thenReturn(List.of(freq));
+        when(itemRepo.findByFrequenciaIdIn(any())).thenReturn(List.of(item));
+
+        FechamentoResponse resp = service.executar(new FechamentoRequest(tomadorId, COMPETENCIA));
+
+        ArgumentCaptor<Producao> captor = ArgumentCaptor.forClass(Producao.class);
+        verify(producaoRepo).save(captor.capture());
+        assertThat(captor.getValue().getFechamentoId()).isEqualTo(resp.id());
+        assertThat(captor.getValue().getGrupoId()).isEqualTo(grupoId);
+    }
+
+    @Test
     void executar_multiplosMedicos_criaParticipacoesSeparadas() {
         UUID medico2Id = UUID.randomUUID();
         FrequenciaMedica freq1 = frequenciaFixture(medico1Id, setorId, COMPETENCIA, "ASSINADA_RECEBIDA");
@@ -642,6 +661,103 @@ class FechamentoServiceTest {
         assertThat(resp.totalCentavos()).isEqualTo(1_500_000L);
         assertThat(resp.producoes()).hasSize(1);
         assertThat(freq.getStatus()).isEqualTo("FATURADA");
+    }
+
+    // ─── Listagem (bug corrigido: producoes[] sempre vinha vazio) ──────────────
+
+    @Test
+    void listar_reconstroiProducoesAPartirDoFechamentoIdGravado() {
+        UUID fechamentoId = UUID.randomUUID();
+        Fechamento f = new Fechamento();
+        setId(f, fechamentoId);
+        f.setTomadorId(tomadorId);
+        f.setCompetencia(COMPETENCIA);
+        f.setStatus("FECHADO");
+        f.setTotalCentavos(215_000L);
+
+        Producao p = new Producao();
+        setId(p, UUID.randomUUID());
+        p.setFechamentoId(fechamentoId);
+        p.setGrupoId(grupoId);
+        p.setValorBruto(215_000L);
+
+        when(fechamentoRepo.findByTomadorIdOrderByCompetenciaDesc(tomadorId)).thenReturn(List.of(f));
+        when(producaoRepo.findByFechamentoId(fechamentoId)).thenReturn(List.of(p));
+
+        List<FechamentoResponse> resp = service.listar(tomadorId);
+
+        assertThat(resp).hasSize(1);
+        assertThat(resp.get(0).producoes()).hasSize(1);
+        assertThat(resp.get(0).producoes().get(0).producaoId()).isEqualTo(p.getId());
+        assertThat(resp.get(0).producoes().get(0).grupoNome()).isEqualTo("Plantões e Diárias");
+        assertThat(resp.get(0).producoes().get(0).totalCentavos()).isEqualTo(215_000L);
+    }
+
+    @Test
+    void listar_semProducoesAssociadas_retornaListaDeProducoesVazia() {
+        UUID fechamentoId = UUID.randomUUID();
+        Fechamento f = new Fechamento();
+        setId(f, fechamentoId);
+        f.setTomadorId(tomadorId);
+        f.setCompetencia(COMPETENCIA);
+        f.setStatus("FECHADO");
+
+        when(fechamentoRepo.findByTomadorIdOrderByCompetenciaDesc(tomadorId)).thenReturn(List.of(f));
+        when(producaoRepo.findByFechamentoId(fechamentoId)).thenReturn(List.of());
+
+        List<FechamentoResponse> resp = service.listar(tomadorId);
+
+        assertThat(resp.get(0).producoes()).isEmpty();
+    }
+
+    @Test
+    void listar_grupoNaoEncontrado_naoLancaEUsaTracoComoNome() {
+        // Ex.: grupo de faturamento foi excluído depois do fechamento — não pode quebrar a listagem.
+        UUID fechamentoId = UUID.randomUUID();
+        Fechamento f = new Fechamento();
+        setId(f, fechamentoId);
+        f.setTomadorId(tomadorId);
+        f.setCompetencia(COMPETENCIA);
+        f.setStatus("FECHADO");
+
+        Producao p = new Producao();
+        setId(p, UUID.randomUUID());
+        p.setFechamentoId(fechamentoId);
+        p.setGrupoId(UUID.randomUUID()); // não existe no grupoRepo
+        p.setValorBruto(50_000L);
+
+        when(fechamentoRepo.findByTomadorIdOrderByCompetenciaDesc(tomadorId)).thenReturn(List.of(f));
+        when(producaoRepo.findByFechamentoId(fechamentoId)).thenReturn(List.of(p));
+        when(grupoRepo.findAllById(any())).thenReturn(List.of());
+
+        List<FechamentoResponse> resp = service.listar(tomadorId);
+
+        assertThat(resp.get(0).producoes().get(0).grupoNome()).isEqualTo("—");
+    }
+
+    @Test
+    void buscarPorId_reconstroiProducoes() {
+        UUID fechamentoId = UUID.randomUUID();
+        Fechamento f = new Fechamento();
+        setId(f, fechamentoId);
+        f.setTomadorId(tomadorId);
+        f.setCompetencia(COMPETENCIA);
+        f.setStatus("FECHADO");
+
+        Producao p = new Producao();
+        setId(p, UUID.randomUUID());
+        p.setFechamentoId(fechamentoId);
+        p.setGrupoId(grupoId);
+        p.setValorBruto(100_000L);
+
+        when(fechamentoRepo.findById(fechamentoId)).thenReturn(Optional.of(f));
+        when(producaoRepo.findByFechamentoId(fechamentoId)).thenReturn(List.of(p));
+
+        FechamentoResponse resp = service.buscarPorId(fechamentoId);
+
+        assertThat(resp.producoes()).hasSize(1);
+        assertThat(resp.producoes().get(0).producaoId()).isEqualTo(p.getId());
+        assertThat(resp.producoes().get(0).grupoNome()).isEqualTo("Plantões e Diárias");
     }
 
     // ─── Fixtures ─────────────────────────────────────────────────────────────

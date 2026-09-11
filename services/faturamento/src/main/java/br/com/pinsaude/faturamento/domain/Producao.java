@@ -48,6 +48,15 @@ public class Producao {
     @Column(name = "cnae_codigo", length = 10)
     private String cnaeCodigo;
 
+    // Origem no Fechamento por Grupo (EPIC-13.8) — nulos para produções lançadas manualmente
+    // (Nova Produção). Permitem reconstruir FechamentoResponse.producoes[] a qualquer momento,
+    // não só na resposta síncrona do POST /api/fechamentos.
+    @Column(name = "fechamento_id")
+    private UUID fechamentoId;
+
+    @Column(name = "grupo_id")
+    private UUID grupoId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -79,5 +88,9 @@ public class Producao {
     public void setStatus(StatusProducao status) { this.status = status; }
     public String getCnaeCodigo() { return cnaeCodigo; }
     public void setCnaeCodigo(String cnaeCodigo) { this.cnaeCodigo = cnaeCodigo; }
+    public UUID getFechamentoId() { return fechamentoId; }
+    public void setFechamentoId(UUID fechamentoId) { this.fechamentoId = fechamentoId; }
+    public UUID getGrupoId() { return grupoId; }
+    public void setGrupoId(UUID grupoId) { this.grupoId = grupoId; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }
