@@ -57,6 +57,9 @@ const STATUS_META: Record<StatusNota, { label: string; cls: string; Icon: React.
   REJEITADA:               { label: 'Rejeitada',            cls: 'text-red-600',    Icon: XCircle,        isTerminal: true  },
   AGUARDANDO_EMISSAO_MANUAL: { label: 'Emissão Manual',    cls: 'text-orange-600', Icon: AlertTriangle,  isTerminal: true  },
   AGUARDANDO_VALIDACAO:    { label: 'Aguardando validação', cls: 'text-yellow-600', Icon: ShieldCheck,    isTerminal: false },
+  // Pseudo-status só de frontend (ver nfseApi.ts) — getNotaStatus() sempre retorna um status real
+  // do backend, nunca este; entrada só existe para satisfazer o Record<StatusNota, ...> exaustivo.
+  AGUARDANDO_EMISSAO:      { label: 'Aguardando emissão',   cls: 'text-slate-600',  Icon: Clock,          isTerminal: false },
 }
 
 function getStepStatus(step: StepDef, current: StatusNota): StepStatus {

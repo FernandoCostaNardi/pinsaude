@@ -11,7 +11,42 @@ import {
   downloadComAuth, downloadXmlUrl, downloadPdfUrl,
   NotaFiscal, StatusNota,
 } from '../api/nfseApi'
+import { producoesApi } from '../api/producoesApi'
 import { useAuth } from '../auth/useAuth'
+
+// Produção fechada/confirmada sem nenhuma NotaFiscal criada ainda vira uma linha sintética
+// "Aguardando Emissão" — nunca existiu no backend do fiscal, só no faturamento (Producao).
+// Isso é o que faz o menu de Notas ser a fonte única de verdade (fechamento e produções são
+// só atalhos de apoio): sem essa junção, uma produção fechada nunca aparecia em lugar nenhum
+// até alguém clicar "Emitir NFS-e" manualmente em outra tela.
+function producaoParaNotaPendente(p: {
+  id: string
+  medicoId: string | null
+  tomador: { id: string; razaoSocialNome: string }
+  competencia: string
+  valorBruto: number
+  descricaoComplementar?: string
+  createdAt: string
+}): NotaFiscal {
+  return {
+    notaId: `producao:${p.id}`, // sintético — nunca existe de verdade, só pra key/seleção local
+    producaoId: p.id,
+    medicoId: p.medicoId ?? '',
+    tomadorId: p.tomador.id,
+    tomadorNome: p.tomador.razaoSocialNome,
+    competencia: p.competencia,
+    status: 'AGUARDANDO_EMISSAO',
+    numeroNota: null,
+    protocolo: null,
+    observacoes: null,
+    valorBruto: p.valorBruto,
+    taxaPin: null,
+    valorLiquidoMedico: null,
+    emitidaAt: null,
+    createdAt: p.createdAt,
+    discriminacao: p.descricaoComplementar ?? null,
+  }
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -71,6 +106,7 @@ const STATUS_CFG: Record<StatusNota, { label: string; cls: string; Icon: React.E
   REJEITADA:                 { label: 'Rejeitada',          cls: 'bg-red-50 text-red-700',        Icon: XCircle        },
   AGUARDANDO_EMISSAO_MANUAL: { label: 'Emissão Manual',    cls: 'bg-orange-50 text-orange-700',  Icon: AlertTriangle  },
   AGUARDANDO_VALIDACAO:      { label: 'Aguard. Validação', cls: 'bg-yellow-50 text-yellow-700',  Icon: ShieldCheck    },
+  AGUARDANDO_EMISSAO:        { label: 'Aguardando Emissão', cls: 'bg-slate-100 text-slate-600',  Icon: Send           },
 }
 
 function StatusBadge({ status }: { status: StatusNota }) {
@@ -384,7 +420,25 @@ export function NotasPage() {
     setLoading(true)
     setErro(null)
     try {
-      const [todas, exc] = await Promise.all([listarNotas(), listarExcecoes()])
+      const [notasReais, exc, confirmadas] = await Promise.all([
+        listarNotas(),
+        listarExcecoes(),
+        // Produções fechadas/confirmadas — a fonte da lacuna reportada: uma produção pode
+        // existir (fechamento executado ou "Nova Produção") sem nenhuma NotaFiscal criada até
+        // alguém clicar "Emitir NFS-e" em outra tela. Sem isso, ela nunca aparecia em Notas.
+        producoesApi.listar({ status: 'CONFIRMADA' }).catch(() => []),
+      ])
+
+      // Nunca duplicar: uma produção com nota real (mesmo ERRO/CANCELADA/REJEITADA, que também
+      // deixam Producao em CONFIRMADA) não vira linha sintética — a nota real já a representa.
+      const producaoIdsComNota = new Set(notasReais.map(n => n.producaoId))
+      const pendentes = confirmadas
+        .filter(p => !producaoIdsComNota.has(p.id))
+        .map(producaoParaNotaPendente)
+
+      const todas = [...pendentes, ...notasReais]
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
       setNotas(todas)
       setExcecoes(exc)
     } catch (e: unknown) {
@@ -422,10 +476,11 @@ export function NotasPage() {
   // ─── Stats ────────────────────────────────────────────────────────────────────
 
   const stats = {
-    total:    notas.length,
-    emitidas: notas.filter(n => n.status === 'EMITIDA').length,
-    fila:     notas.filter(n => n.status === 'PENDENTE' || n.status === 'PROCESSANDO').length,
-    atencao:  notas.filter(n => ['ERRO','REJEITADA','AGUARDANDO_VALIDACAO','AGUARDANDO_EMISSAO_MANUAL'].includes(n.status)).length,
+    total:      notas.length,
+    aEmitir:    notas.filter(n => n.status === 'AGUARDANDO_EMISSAO').length,
+    emitidas:   notas.filter(n => n.status === 'EMITIDA').length,
+    fila:       notas.filter(n => n.status === 'PENDENTE' || n.status === 'PROCESSANDO').length,
+    atencao:    notas.filter(n => ['ERRO','REJEITADA','AGUARDANDO_VALIDACAO','AGUARDANDO_EMISSAO_MANUAL'].includes(n.status)).length,
   }
 
   // ─── Ações ────────────────────────────────────────────────────────────────────
@@ -489,14 +544,22 @@ export function NotasPage() {
         <div className="flex-1 overflow-auto p-5 space-y-5">
 
           {/* Stats cards */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
             <StatCard
               icon={FileText}
               label="Total de Notas"
               value={stats.total}
-              sub="registradas no sistema"
+              sub="registradas + a emitir"
               iconBg="bg-primary-50"
               iconColor="text-primary"
+            />
+            <StatCard
+              icon={Send}
+              label="Aguardando Emissão"
+              value={stats.aEmitir}
+              sub="produção fechada, sem nota"
+              iconBg="bg-slate-100"
+              iconColor="text-slate-600"
             />
             <StatCard
               icon={CheckCircle2}
@@ -641,30 +704,41 @@ export function NotasPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-ds-border">
-                        {filtradas.map(nota => (
-                          <tr
-                            key={nota.notaId}
-                            onClick={() => setNotaSelecionada(prev => prev?.notaId === nota.notaId ? null : nota)}
-                            className={`cursor-pointer transition-colors ${
-                              notaSelecionada?.notaId === nota.notaId
-                                ? 'bg-primary-50'
-                                : 'hover:bg-ds-surface'
-                            }`}
-                          >
-                            <td className="px-3 py-2.5 font-medium text-ds-text max-w-[200px] truncate" title={nota.tomadorNome ?? ''}>
-                              {nota.tomadorNome ?? <span className="text-ds-light italic">—</span>}
-                            </td>
-                            <td className="px-3 py-2.5 text-xs text-ds-mid whitespace-nowrap">{formatCompetencia(nota.competencia)}</td>
-                            <td className="px-3 py-2.5 text-sm font-medium text-ds-mid">{formatBRL(nota.valorBruto)}</td>
-                            <td className="px-3 py-2.5 text-sm font-semibold text-green-700">{formatBRL(nota.valorLiquidoMedico)}</td>
-                            <td className="px-3 py-2.5"><StatusBadge status={nota.status} /></td>
-                            <td className="px-3 py-2.5 text-xs text-ds-light whitespace-nowrap">{formatDate(nota.emitidaAt)}</td>
-                            <td className="px-3 py-2.5 font-mono text-xs font-semibold text-ds-mid">{nota.numeroNota ?? '—'}</td>
-                            <td className="px-3 py-2.5">
-                              <ChevronRight size={14} className={`text-ds-light transition-transform ${notaSelecionada?.notaId === nota.notaId ? 'rotate-90 text-primary' : ''}`} />
-                            </td>
-                          </tr>
-                        ))}
+                        {filtradas.map(nota => {
+                          const aguardandoEmissao = nota.status === 'AGUARDANDO_EMISSAO'
+                          return (
+                            <tr
+                              key={nota.notaId}
+                              onClick={() => aguardandoEmissao
+                                ? navigate(`/notas/emitir/${nota.producaoId}`)
+                                : setNotaSelecionada(prev => prev?.notaId === nota.notaId ? null : nota)}
+                              className={`cursor-pointer transition-colors ${
+                                notaSelecionada?.notaId === nota.notaId
+                                  ? 'bg-primary-50'
+                                  : 'hover:bg-ds-surface'
+                              }`}
+                            >
+                              <td className="px-3 py-2.5 font-medium text-ds-text max-w-[200px] truncate" title={nota.tomadorNome ?? ''}>
+                                {nota.tomadorNome ?? <span className="text-ds-light italic">—</span>}
+                              </td>
+                              <td className="px-3 py-2.5 text-xs text-ds-mid whitespace-nowrap">{formatCompetencia(nota.competencia)}</td>
+                              <td className="px-3 py-2.5 text-sm font-medium text-ds-mid">{formatBRL(nota.valorBruto)}</td>
+                              <td className="px-3 py-2.5 text-sm font-semibold text-green-700">{formatBRL(nota.valorLiquidoMedico)}</td>
+                              <td className="px-3 py-2.5"><StatusBadge status={nota.status} /></td>
+                              <td className="px-3 py-2.5 text-xs text-ds-light whitespace-nowrap">{formatDate(nota.emitidaAt)}</td>
+                              <td className="px-3 py-2.5 font-mono text-xs font-semibold text-ds-mid">{nota.numeroNota ?? '—'}</td>
+                              <td className="px-3 py-2.5">
+                                {aguardandoEmissao ? (
+                                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary whitespace-nowrap">
+                                    <Send size={12} /> Emitir
+                                  </span>
+                                ) : (
+                                  <ChevronRight size={14} className={`text-ds-light transition-transform ${notaSelecionada?.notaId === nota.notaId ? 'rotate-90 text-primary' : ''}`} />
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
