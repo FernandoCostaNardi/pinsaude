@@ -19,6 +19,9 @@ export type StatusNota =
   | 'REJEITADA'
   | 'AGUARDANDO_EMISSAO_MANUAL'
   | 'AGUARDANDO_VALIDACAO'
+  // Pseudo-status só de frontend (nunca vem do backend) — produção fechada/confirmada que ainda
+  // não tem nenhuma NotaFiscal criada. Ver NotasPage.tsx: "quem manda em Notas é o menu de Notas".
+  | 'AGUARDANDO_EMISSAO'
 
 export interface NotaFiscal {
   notaId: string
