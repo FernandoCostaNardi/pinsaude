@@ -256,6 +256,8 @@ public class FechamentoService {
             p.setCompetencia(req.competencia());
             p.setDescricaoComplementar(interpolarDescricao(grupo.getDescricaoNota(), req.competencia()));
             p.setStatus(StatusProducao.CONFIRMADA);
+            p.setFechamentoId(fechamento.getId());
+            p.setGrupoId(grupoId);
             producaoRepo.save(p);
 
             List<ParticipacaoProducao> participacoes = medicoValores.entrySet().stream()
@@ -302,7 +304,7 @@ public class FechamentoService {
             ? fechamentoRepo.findByTomadorIdOrderByCompetenciaDesc(tomadorId)
             : fechamentoRepo.findAll();
         return lista.stream()
-            .map(f -> FechamentoResponse.from(f, List.of()))
+            .map(f -> FechamentoResponse.from(f, buildProducaoRefs(f.getId())))
             .toList();
     }
 
@@ -310,7 +312,35 @@ public class FechamentoService {
     public FechamentoResponse buscarPorId(UUID id) {
         Fechamento f = fechamentoRepo.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Fechamento não encontrado: " + id));
-        return FechamentoResponse.from(f, List.of());
+        return FechamentoResponse.from(f, buildProducaoRefs(f.getId()));
+    }
+
+    // Bug corrigido (pós-implantação): listar()/buscarPorId() sempre devolviam producoes: [] —
+    // só a resposta síncrona de executar() (construída em memória, nunca persistida) tinha a
+    // lista real. Reconstrói a partir de Producao.fechamentoId/grupoId (ver migration V46), que
+    // agora é gravado no momento do fechamento e também backfillado para fechamentos antigos.
+    private List<FechamentoResponse.ProducaoRef> buildProducaoRefs(UUID fechamentoId) {
+        List<Producao> producoes = producaoRepo.findByFechamentoId(fechamentoId);
+        if (producoes.isEmpty()) return List.of();
+
+        Set<UUID> grupoIds = producoes.stream()
+            .map(Producao::getGrupoId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        Map<UUID, TomadorGrupoFaturamento> gruposMap = grupoRepo.findAllById(grupoIds).stream()
+            .collect(Collectors.toMap(TomadorGrupoFaturamento::getId, Function.identity()));
+
+        return producoes.stream()
+            .map(p -> {
+                TomadorGrupoFaturamento grupo = p.getGrupoId() != null ? gruposMap.get(p.getGrupoId()) : null;
+                return new FechamentoResponse.ProducaoRef(
+                    p.getGrupoId(),
+                    grupo != null ? grupo.getNome() : "—",
+                    p.getId(),
+                    p.getValorBruto()
+                );
+            })
+            .toList();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
