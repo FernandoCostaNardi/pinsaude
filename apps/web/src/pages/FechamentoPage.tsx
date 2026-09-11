@@ -487,6 +487,13 @@ export function FechamentoPage() {
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
   }, [medicosAlocados, medicosCatalogo, preview, statusMedicos])
 
+  // Trava de negócio: só libera "Fechar Competência" depois que o gestor classificou o status de
+  // TODOS os médicos da aba (inclusive os "NÃO ALOCADO") — garante que ninguém feche a competência
+  // sem ter revisado cada médico pelo menos uma vez. Lista vazia (sem nenhum médico com valor ou
+  // alocado) não bloqueia — não há nada pra classificar.
+  const todosStatusPreenchidos = medicosLinhas.length === 0
+    || medicosLinhas.every(l => l.status !== undefined)
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-ds-bg">
       {/* Header */}
@@ -682,11 +689,22 @@ export function FechamentoPage() {
                     Serão criadas <strong>{totalGrupos} produção{totalGrupos !== 1 ? 'ões' : ''}</strong> e as
                     frequências serão marcadas como <em>Faturadas</em>.
                   </p>
+                  {!todosStatusPreenchidos && (
+                    <p className="text-sm text-amber-700 mt-1.5 flex items-center gap-1.5">
+                      <AlertCircle size={13} className="shrink-0" />
+                      Classifique o status de todos os médicos na aba{' '}
+                      <button type="button" onClick={() => setAba('medicos')} className="font-semibold underline hover:text-amber-900">
+                        Médicos
+                      </button>
+                      {' '}antes de fechar.
+                    </p>
+                  )}
                 </div>
                 <Button
                   onClick={handleExecutar}
-                  disabled={loadingExec}
+                  disabled={loadingExec || !todosStatusPreenchidos}
                   className="bg-green-600 hover:bg-green-700 text-white shrink-0"
+                  title={!todosStatusPreenchidos ? 'Classifique o status de todos os médicos na aba Médicos antes de fechar' : undefined}
                 >
                   {loadingExec
                     ? <><Loader2 size={15} className="animate-spin mr-2" /> Fechando...</>
