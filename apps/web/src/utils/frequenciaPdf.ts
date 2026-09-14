@@ -94,6 +94,59 @@ function gerarOcorrencia(item: FrequenciaItemResp): string {
   return [prefixo, diaSemana, turno, horasStr].filter(Boolean).join(' - ')
 }
 
+// ─── Ajuste de fonte da coluna Ocorrência ───────────────────────────────────
+// Pedido do cliente: o formulário é oficial e a altura de cada linha da tabela de plantões
+// (table.plantoes td, 17px) não pode mudar — nunca podemos deixar uma Ocorrência grande quebrar
+// linha. Quando o texto não cabe em uma linha na largura da coluna, reduzimos só o font-size
+// daquela célula (nunca o espaçamento entre linhas) até caber, ou até um piso mínimo legível.
+
+const PLANTOES_FONT_PT_PADRAO = 8.5
+const PLANTOES_FONT_PT_MINIMO = 5.5
+const PT_TO_PX = 96 / 72 // CSS: 1pt = 1/72in, 1in = 96px — vale igual na tela e na impressão
+const MM_TO_PX = 96 / 25.4 // idem para mm — CSS px é sempre 1/96in, independe de zoom/DPI
+
+// Largura útil (px CSS) da coluna Ocorrência impressa: largura da página A4 menos o padding
+// horizontal de `.page` em @media print (10mm + 10mm, abaixo) menos as 3 colunas de largura
+// fixa, dividido por 2 (Rubrica + Ocorrência dividem igualmente o restante — table-layout:fixed
+// sem largura explícita nessas 2 colunas). SAFETY_MARGIN_PX cobre bordas colapsadas e pequenas
+// diferenças de arredondamento entre o canvas de medição e o motor de impressão real.
+const PAGE_WIDTH_MM = 210
+const PAGE_PADDING_H_MM = 20 // 10mm esquerda + 10mm direita, valor usado em @media print .page
+const COL_DATA_PX = 55
+const COL_TURNO_PX = 95
+const COL_HORARIO_PX = 105
+const CELL_PADDING_H_PX = 8 // 4px + 4px (table.plantoes td { padding: 2.5px 4px })
+const SAFETY_MARGIN_PX = 10
+
+const LARGURA_OCORRENCIA_PX = (() => {
+  const larguraPagina = PAGE_WIDTH_MM * MM_TO_PX
+  const larguraConteudo = larguraPagina - PAGE_PADDING_H_MM * MM_TO_PX
+  const larguraFlexivel = larguraConteudo - COL_DATA_PX - COL_TURNO_PX - COL_HORARIO_PX
+  return larguraFlexivel / 2 - CELL_PADDING_H_PX - SAFETY_MARGIN_PX
+})()
+
+let medidorCanvas: CanvasRenderingContext2D | null | undefined
+function medirLargura(texto: string, tamanhoPt: number): number {
+  if (medidorCanvas === undefined) {
+    medidorCanvas = document.createElement('canvas').getContext('2d')
+  }
+  if (!medidorCanvas) return 0 // sem canvas no ambiente (não esperado no browser) — assume que cabe
+  medidorCanvas.font = `${tamanhoPt * PT_TO_PX}px Arial, Helvetica, sans-serif`
+  return medidorCanvas.measureText(texto).width
+}
+
+// Menor tamanho (pt), entre os candidatos, que faz o texto caber em uma linha só — nunca
+// aumenta o tamanho padrão (8.5pt), só reduz quando necessário.
+function fontSizeParaCaber(texto: string): number {
+  if (medirLargura(texto, PLANTOES_FONT_PT_PADRAO) <= LARGURA_OCORRENCIA_PX) {
+    return PLANTOES_FONT_PT_PADRAO
+  }
+  for (let pt = PLANTOES_FONT_PT_PADRAO - 0.5; pt >= PLANTOES_FONT_PT_MINIMO; pt -= 0.5) {
+    if (medirLargura(texto, pt) <= LARGURA_OCORRENCIA_PX) return pt
+  }
+  return PLANTOES_FONT_PT_MINIMO
+}
+
 // ─── Geração do HTML ──────────────────────────────────────────────────────────
 
 function buildHtml(p: FrequenciaPdfParams): string {
@@ -108,15 +161,20 @@ function buildHtml(p: FrequenciaPdfParams): string {
   const linhasPreenchidas = freq.itens
     .slice()
     .sort((a, b) => a.dataExecucao < b.dataExecucao ? -1 : 1)
-    .map(item => `
+    .map(item => {
+      const ocorrenciaTexto = gerarOcorrencia(item)
+      const fontSize = fontSizeParaCaber(ocorrenciaTexto)
+      const ocorrenciaStyle = fontSize < PLANTOES_FONT_PT_PADRAO ? ` style="font-size:${fontSize}pt"` : ''
+      return `
       <tr>
         <td style="text-align:center">${formatDataCurta(item.dataExecucao)}</td>
         <td style="text-align:center">${inferirTurno(item)}</td>
         <td style="text-align:center">${formatHorarioItem(item) ?? item.modalidadeHorario ?? ''}</td>
         <td></td>
-        <td>${gerarOcorrencia(item)}</td>
+        <td class="plantao-ocorrencia"${ocorrenciaStyle}>${ocorrenciaTexto}</td>
       </tr>
-    `).join('')
+    `
+    }).join('')
 
   // Linhas em branco calculadas para preencher uma página A4 completa (~35 linhas totais)
   const totalLinhas = Math.max(35, freq.itens.length + 5)
@@ -262,6 +320,16 @@ function buildHtml(p: FrequenciaPdfParams): string {
     .col-turno   { width: 95px; }
     .col-horario { width: 105px; }
     /* RUBRICA e OCORRÊNCIA dividem igualmente o restante (~33% cada) — sem largura fixa */
+
+    /* Formulário oficial: a altura da linha (17px acima) não pode aumentar. Texto de Ocorrência
+       muito longo NUNCA quebra linha — o font-size da célula é reduzido em JS (ver
+       fontSizeParaCaber) até caber em uma linha só; nowrap/ellipsis aqui são só o backstop pra
+       um texto tão extremo que nem o tamanho mínimo caiba (nunca esperado na prática). */
+    .plantao-ocorrencia {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
     /* === Assinaturas — mesmas colunas da tabela de plantões via colspan === */
     .sig-table {
