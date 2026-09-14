@@ -17,7 +17,8 @@ public record TomadorModalidadeResponse(
     long valorCentavos,
     long deslocamentoCentavos,
     boolean ativo,
-    BigDecimal horasSemanais
+    BigDecimal horasSemanais,
+    int ordem
 ) {
     public static TomadorModalidadeResponse from(TomadorModalidade m) {
         return new TomadorModalidadeResponse(
@@ -31,7 +32,8 @@ public record TomadorModalidadeResponse(
             m.getValorCentavos(),
             m.getDeslocamentoCentavos(),
             m.isAtivo(),
-            m.getHorasSemanais()
+            m.getHorasSemanais(),
+            m.getOrdem()
         );
     }
 }

@@ -52,6 +52,13 @@ public class TomadorModalidade {
     @Column(name = "deslocamento_centavos", nullable = false)
     private long deslocamentoCentavos;
 
+    // Ordem de exibição definida por drag-and-drop na aba Modalidades do modal de Faturamento
+    // por Grupo — reflete direto no seletor de modalidade das telas de Frequência Médica, que
+    // só consomem a ordem já vinda do GET, sem reordenar no cliente (ver TomadorService.
+    // reordenarModalidades).
+    @Column(name = "ordem", nullable = false)
+    private int ordem;
+
     @Column(name = "ativo", nullable = false)
     private boolean ativo = true;
 
@@ -82,6 +89,8 @@ public class TomadorModalidade {
     public void setValorCentavos(long v)          { this.valorCentavos = v; }
     public long getDeslocamentoCentavos()         { return deslocamentoCentavos; }
     public void setDeslocamentoCentavos(long v)   { this.deslocamentoCentavos = v; }
+    public int getOrdem()                         { return ordem; }
+    public void setOrdem(int v)                   { this.ordem = v; }
     public boolean isAtivo()                     { return ativo; }
     public void setAtivo(boolean v)              { this.ativo = v; }
     public OffsetDateTime getCreatedAt()          { return createdAt; }

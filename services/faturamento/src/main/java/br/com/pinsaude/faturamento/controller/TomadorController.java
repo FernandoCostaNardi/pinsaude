@@ -14,6 +14,7 @@ import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoResponse;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeRequest;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeResponse;
+import br.com.pinsaude.faturamento.dto.TomadorModalidadesReordenarRequest;
 import br.com.pinsaude.faturamento.dto.TomadorHorarioPadraoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorHorarioPadraoResponse;
 import br.com.pinsaude.faturamento.dto.TomadorOcorrenciaRequest;
@@ -260,6 +261,17 @@ public class TomadorController {
             @PathVariable UUID modalidadeId) {
         service.removerModalidade(id, modalidadeId);
         return ResponseEntity.noContent().build();
+    }
+
+    // Drag-and-drop na aba Modalidades do modal de Faturamento por Grupo — o frontend manda a
+    // lista completa de ids na nova ordem; a mesma ordem é refletida no seletor de modalidade
+    // das telas de Frequência Médica.
+    @PutMapping("/{id}/modalidades/reordenar")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<List<TomadorModalidadeResponse>> reordenarModalidades(
+            @PathVariable UUID id,
+            @Valid @RequestBody TomadorModalidadesReordenarRequest req) {
+        return ResponseEntity.ok(service.reordenarModalidades(id, req.modalidadeIds()));
     }
 
     // ─── Serviços operacionais (setores) ──────────────────────────────────────
