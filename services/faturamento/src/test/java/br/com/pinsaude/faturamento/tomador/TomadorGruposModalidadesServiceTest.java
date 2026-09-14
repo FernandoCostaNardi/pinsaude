@@ -227,7 +227,7 @@ class TomadorGruposModalidadesServiceTest {
     @Test
     void listarModalidades_tomadorExistente_retornaLista() {
         TomadorModalidade m = modalidadeFixture(tomadorId);
-        when(modalidadeRepo.findByTomadorIdOrderByNomeAsc(tomadorId)).thenReturn(List.of(m));
+        when(modalidadeRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId)).thenReturn(List.of(m));
 
         List<TomadorModalidadeResponse> result = service.listarModalidades(tomadorId);
 
@@ -579,6 +579,85 @@ class TomadorGruposModalidadesServiceTest {
             .isInstanceOf(ResponseStatusException.class)
             .hasMessageContaining("existem plantões ou frequências lançados");
         verify(modalidadeRepo, never()).delete(any());
+    }
+
+    @Test
+    void criarModalidade_semNenhumaExistente_ordemComecaEmZero() {
+        stubSaveComId();
+        when(modalidadeRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId)).thenReturn(List.of());
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "plantão 12h noturno", List.of("PLANTONISTA"), "NOTURNO", "19:00 as 07:00",
+            BigDecimal.valueOf(12), 1_000_000L, 0L, true, null);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.ordem()).isEqualTo(0);
+    }
+
+    @Test
+    void criarModalidade_comExistentes_entraNoFimDaLista() {
+        stubSaveComId();
+        TomadorModalidade existente1 = modalidadeFixture(tomadorId);
+        existente1.setOrdem(0);
+        TomadorModalidade existente2 = modalidadeFixture(tomadorId);
+        existente2.setOrdem(3); // ordens não precisam ser contíguas
+        when(modalidadeRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId))
+            .thenReturn(List.of(existente1, existente2));
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "plantão 12h noturno", List.of("PLANTONISTA"), "NOTURNO", "19:00 as 07:00",
+            BigDecimal.valueOf(12), 1_000_000L, 0L, true, null);
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.ordem()).isEqualTo(4);
+    }
+
+    @Test
+    void reordenarModalidades_listaCompleta_reindexaNaOrdemInformada() {
+        TomadorModalidade a = modalidadeFixture(tomadorId);
+        a.setOrdem(0);
+        TomadorModalidade b = modalidadeFixture(tomadorId);
+        b.setOrdem(1);
+        TomadorModalidade c = modalidadeFixture(tomadorId);
+        c.setOrdem(2);
+        when(modalidadeRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId)).thenReturn(List.of(a, b, c));
+
+        List<TomadorModalidadeResponse> result = service.reordenarModalidades(
+            tomadorId, List.of(c.getId(), a.getId(), b.getId()));
+
+        assertThat(result).extracting(TomadorModalidadeResponse::id)
+            .containsExactly(c.getId(), a.getId(), b.getId());
+        assertThat(c.getOrdem()).isEqualTo(0);
+        assertThat(a.getOrdem()).isEqualTo(1);
+        assertThat(b.getOrdem()).isEqualTo(2);
+        verify(modalidadeRepo).saveAll(any());
+    }
+
+    @Test
+    void reordenarModalidades_faltandoUmId_lanca422() {
+        TomadorModalidade a = modalidadeFixture(tomadorId);
+        TomadorModalidade b = modalidadeFixture(tomadorId);
+        when(modalidadeRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId)).thenReturn(List.of(a, b));
+
+        assertThatThrownBy(() -> service.reordenarModalidades(tomadorId, List.of(a.getId())))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("exatamente as modalidades já cadastradas");
+        verify(modalidadeRepo, never()).saveAll(any());
+    }
+
+    @Test
+    void reordenarModalidades_comIdDeOutroTomador_lanca422() {
+        TomadorModalidade a = modalidadeFixture(tomadorId);
+        TomadorModalidade deOutroTomador = modalidadeFixture(UUID.randomUUID());
+        when(modalidadeRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId)).thenReturn(List.of(a));
+
+        assertThatThrownBy(() -> service.reordenarModalidades(
+                tomadorId, List.of(a.getId(), deOutroTomador.getId())))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("exatamente as modalidades já cadastradas");
+        verify(modalidadeRepo, never()).saveAll(any());
     }
 
     // ─── Serviços operacionais (catálogo por tomador) ─────────────────────────

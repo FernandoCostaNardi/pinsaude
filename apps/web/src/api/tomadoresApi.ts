@@ -297,6 +297,18 @@ export const tomadoresApi = {
     return handleResponse<void>(res)
   },
 
+  // Drag-and-drop na aba Modalidades: manda a lista COMPLETA de ids na nova ordem (posição no
+  // array = nova ordem) — a mesma ordem é refletida no seletor de modalidade das telas de
+  // Frequência Médica, que consomem listarModalidades já ordenado, sem reordenar no cliente.
+  async reordenarModalidades(tomadorId: string, modalidadeIds: string[]): Promise<TomadorModalidade[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/modalidades/reordenar`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ modalidadeIds }),
+    })
+    return handleResponse<TomadorModalidade[]>(res)
+  },
+
   // ─── Ocorrências pré-cadastradas com valor ───────────────────────────────
 
   async listarOcorrencias(tomadorId: string): Promise<TomadorOcorrencia[]> {
@@ -565,6 +577,9 @@ export interface TomadorModalidade {
   ativo: boolean
   // Campo dos tipos "fixos" (Diarista/Evolucionista) — carga horária semanal obrigatória
   horasSemanais: number | null
+  // Ordem de exibição, definida por drag-and-drop na aba Modalidades — reflete no seletor de
+  // modalidade das telas de Frequência Médica.
+  ordem: number
 }
 
 export interface TomadorModalidadeRequest {

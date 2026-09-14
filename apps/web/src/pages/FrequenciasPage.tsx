@@ -1425,6 +1425,7 @@ function PainelFrequencia({
     deslocamentoCentavos: freq.modalidadeDeslocamentoCentavos,
     ativo: true,
     horasSemanais: freq.modalidadeHorasSemanais,
+    ordem: 0, // sintético, só para exibição — nunca enviado pra reordenação
   } : null
   const ocorrenciaFixaNome = freq.ocorrenciaId ? freq.ocorrenciaNome : null
   // Ajuste pós-implantação: valor aplicado uma única vez pela frequência (não por lançamento).

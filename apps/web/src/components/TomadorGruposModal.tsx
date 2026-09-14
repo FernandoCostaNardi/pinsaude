@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { DragEvent } from 'react'
 import {
   Plus, Pencil, Trash2, Layers, ChevronDown, ChevronRight,
-  Moon, Sun, Loader2, FolderOpen, Tag, Clock,
+  Moon, Sun, Loader2, FolderOpen, Tag, Clock, GripVertical,
 } from 'lucide-react'
 import { Modal, Button, Input, Alert, Spinner } from '@pinsaude/ui'
 import {
@@ -907,6 +908,13 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
   const [editingModId, setEditingModId] = useState<string | null>(null)
   const [modSaving, setModSaving] = useState(false)
 
+  // Drag-and-drop de reordenação (arrastar linha da tabela) — `dragModId` guarda a modalidade
+  // sendo arrastada, `overModId` a linha sobre a qual o cursor está no momento (só usada para o
+  // destaque visual de onde a linha vai cair).
+  const [dragModId, setDragModId] = useState<string | null>(null)
+  const [overModId, setOverModId] = useState<string | null>(null)
+  const [modReordering, setModReordering] = useState(false)
+
   // ── Ocorrências ───────────────────────────────────────────────────────────
   const [ocorrencias, setOcorrencias] = useState<TomadorOcorrencia[]>([])
   const [ocLoading, setOcLoading] = useState(false)
@@ -1292,6 +1300,56 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       await carregarModalidades()
     } catch (e) {
       setModErr(e instanceof Error ? e.message : 'Erro ao remover modalidade')
+    }
+  }
+
+  // ── Modalidades: reordenar por drag-and-drop ────────────────────────────────
+  // Atualiza a lista otimisticamente (a UI já reflete a nova ordem no solte) e persiste em
+  // seguida — em caso de erro, desfaz recarregando do servidor. A mesma ordem é o que o seletor
+  // de modalidade das telas de Frequência Médica (admin e Portal) passa a exibir, já que elas só
+  // consomem listarModalidades sem reordenar no cliente.
+  function handleDragStartMod(e: DragEvent<HTMLTableRowElement>, id: string) {
+    setDragModId(id)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function handleDragOverMod(e: DragEvent<HTMLTableRowElement>, id: string) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (id !== overModId) setOverModId(id)
+  }
+
+  function handleDragEndMod() {
+    setDragModId(null)
+    setOverModId(null)
+  }
+
+  async function handleDropMod(e: DragEvent<HTMLTableRowElement>, targetId: string) {
+    e.preventDefault()
+    const sourceId = dragModId
+    setDragModId(null)
+    setOverModId(null)
+    if (!sourceId || sourceId === targetId) return
+
+    const sourceIdx = modalidades.findIndex(m => m.id === sourceId)
+    const targetIdx = modalidades.findIndex(m => m.id === targetId)
+    if (sourceIdx === -1 || targetIdx === -1) return
+
+    const reordenadas = [...modalidades]
+    const [movida] = reordenadas.splice(sourceIdx, 1)
+    reordenadas.splice(targetIdx, 0, movida)
+
+    const anterior = modalidades
+    setModalidades(reordenadas) // otimista — some do lugar antigo e aparece no novo já no drop
+    setModReordering(true)
+    setModErr(null)
+    try {
+      await tomadoresApi.reordenarModalidades(tomador.id, reordenadas.map(m => m.id))
+    } catch (e) {
+      setModalidades(anterior) // desfaz — o servidor recusou (ex: lista mudou em outra aba)
+      setModErr(e instanceof Error ? e.message : 'Erro ao reordenar modalidades')
+    } finally {
+      setModReordering(false)
     }
   }
 
@@ -1833,94 +1891,125 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-ds-border">
-              <table className="w-full text-xs min-w-[600px]">
-                <thead>
-                  <tr className="bg-ds-surface border-b border-ds-border">
-                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Nome</th>
-                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Tipo</th>
-                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Turno</th>
-                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Horário</th>
-                    <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Horas/Semana</th>
-                    <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Valor</th>
-                    <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Deslocamento</th>
-                    <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-ds-light">Status</th>
-                    {canWrite && <th className="px-3 py-2.5 w-16" />}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-ds-border">
-                  {modalidades.map(m => (
-                    <tr key={m.id} className="hover:bg-ds-surface/50">
-                      <td className="px-3 py-2 font-medium text-ds-text">{m.nome}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1">
-                          {m.tipos.map(t => {
-                            const b = tipoBadgeInfo(t)
-                            return (
-                              <span key={t} className={['px-1.5 py-0.5 rounded text-[10px] font-bold', b.cls].join(' ')}>
-                                {b.label}
-                              </span>
-                            )
-                          })}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        {m.turno ? (
-                          <span className={[
-                            'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold',
-                            m.turno === 'DIURNO'
-                              ? 'bg-yellow-50 text-yellow-700'
-                              : 'bg-indigo-50 text-indigo-700',
-                          ].join(' ')}>
-                            {m.turno === 'DIURNO' ? <Sun size={10} /> : <Moon size={10} />}
-                            {m.turno}
-                          </span>
-                        ) : <span className="text-ds-light">—</span>}
-                      </td>
-                      <td className="px-3 py-2 text-ds-mid">{m.horario ?? '—'}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {isTipoModalidadeFixa(m.tipos[0]) ? (m.horasSemanais != null ? `${m.horasSemanais}h/sem` : '—') : (m.horas != null ? `${m.horas}h` : '—')}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-ds-text">
-                        {formatBRL(m.valorCentavos)}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-ds-mid">
-                        {m.deslocamentoCentavos > 0 ? formatBRL(m.deslocamentoCentavos) : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <span className={[
-                          'px-1.5 py-0.5 rounded text-[10px] font-bold',
-                          m.ativo ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500',
-                        ].join(' ')}>
-                          {m.ativo ? 'ATIVO' : 'INATIVO'}
-                        </span>
-                      </td>
-                      {canWrite && (
+            <div className="flex flex-col gap-1.5">
+              {canWrite && modalidades.length > 1 && (
+                <p className="text-[11px] text-ds-light flex items-center gap-1">
+                  <GripVertical size={12} /> Arraste pelo ícone para reordenar — a mesma ordem aparece no seletor de modalidade das Frequências.
+                </p>
+              )}
+              <div className="overflow-x-auto rounded-xl border border-ds-border">
+                <table className="w-full text-xs min-w-[600px]">
+                  <thead>
+                    <tr className="bg-ds-surface border-b border-ds-border">
+                      {canWrite && <th className="px-2 py-2.5 w-8" />}
+                      <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Nome</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Tipo</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Turno</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Horário</th>
+                      <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Horas/Semana</th>
+                      <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Valor</th>
+                      <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Deslocamento</th>
+                      <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-ds-light">Status</th>
+                      {canWrite && <th className="px-3 py-2.5 w-16" />}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ds-border">
+                    {modalidades.map(m => (
+                      <tr
+                        key={m.id}
+                        draggable={canWrite}
+                        onDragStart={canWrite ? e => handleDragStartMod(e, m.id) : undefined}
+                        onDragOver={canWrite ? e => handleDragOverMod(e, m.id) : undefined}
+                        onDrop={canWrite ? e => handleDropMod(e, m.id) : undefined}
+                        onDragEnd={canWrite ? handleDragEndMod : undefined}
+                        className={[
+                          'hover:bg-ds-surface/50 transition-colors',
+                          dragModId === m.id ? 'opacity-40' : '',
+                          overModId === m.id && dragModId && dragModId !== m.id
+                            ? 'border-t-2 border-t-primary' : '',
+                        ].filter(Boolean).join(' ')}
+                      >
+                        {canWrite && (
+                          <td className="px-2 py-2 text-ds-light cursor-grab active:cursor-grabbing" title="Arraste para reordenar">
+                            <GripVertical size={14} />
+                          </td>
+                        )}
+                        <td className="px-3 py-2 font-medium text-ds-text">{m.nome}</td>
                         <td className="px-3 py-2">
-                          <div className="flex items-center gap-1 justify-end">
-                            <button
-                              type="button"
-                              onClick={() => abrirEditarModalidade(m)}
-                              className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
-                              title="Editar"
-                            >
-                              <Pencil size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removerModalidade(m.id, m.nome)}
-                              className="p-1 rounded text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors"
-                              title="Remover"
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                          <div className="flex flex-wrap gap-1">
+                            {m.tipos.map(t => {
+                              const b = tipoBadgeInfo(t)
+                              return (
+                                <span key={t} className={['px-1.5 py-0.5 rounded text-[10px] font-bold', b.cls].join(' ')}>
+                                  {b.label}
+                                </span>
+                              )
+                            })}
                           </div>
                         </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        <td className="px-3 py-2">
+                          {m.turno ? (
+                            <span className={[
+                              'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold',
+                              m.turno === 'DIURNO'
+                                ? 'bg-yellow-50 text-yellow-700'
+                                : 'bg-indigo-50 text-indigo-700',
+                            ].join(' ')}>
+                              {m.turno === 'DIURNO' ? <Sun size={10} /> : <Moon size={10} />}
+                              {m.turno}
+                            </span>
+                          ) : <span className="text-ds-light">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-ds-mid">{m.horario ?? '—'}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {isTipoModalidadeFixa(m.tipos[0]) ? (m.horasSemanais != null ? `${m.horasSemanais}h/sem` : '—') : (m.horas != null ? `${m.horas}h` : '—')}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-ds-text">
+                          {formatBRL(m.valorCentavos)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-ds-mid">
+                          {m.deslocamentoCentavos > 0 ? formatBRL(m.deslocamentoCentavos) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={[
+                            'px-1.5 py-0.5 rounded text-[10px] font-bold',
+                            m.ativo ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500',
+                          ].join(' ')}>
+                            {m.ativo ? 'ATIVO' : 'INATIVO'}
+                          </span>
+                        </td>
+                        {canWrite && (
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => abrirEditarModalidade(m)}
+                                className="p-1 rounded text-ds-light hover:text-primary hover:bg-primary-50 transition-colors"
+                                title="Editar"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removerModalidade(m.id, m.nome)}
+                                className="p-1 rounded text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors"
+                                title="Remover"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {modReordering && (
+                <p className="text-[11px] text-ds-light flex items-center gap-1">
+                  <Loader2 size={12} className="animate-spin" /> Salvando nova ordem…
+                </p>
+              )}
             </div>
           )}
 

@@ -432,7 +432,7 @@ public class TomadorService {
 
     public List<TomadorModalidadeResponse> listarModalidades(UUID tomadorId) {
         findOrThrow(tomadorId);
-        return modalidadeRepo.findByTomadorIdOrderByNomeAsc(tomadorId).stream()
+        return modalidadeRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId).stream()
             .map(TomadorModalidadeResponse::from)
             .toList();
     }
@@ -447,7 +447,41 @@ public class TomadorService {
         m.setValorCentavos(req.valorCentavos());
         m.setDeslocamentoCentavos(req.deslocamentoCentavos());
         m.setAtivo(req.ativo());
+        m.setOrdem(proximaOrdemModalidade(tomadorId)); // nova modalidade sempre entra no fim da lista
         return TomadorModalidadeResponse.from(modalidadeRepo.save(m));
+    }
+
+    private int proximaOrdemModalidade(UUID tomadorId) {
+        return modalidadeRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId).stream()
+            .mapToInt(TomadorModalidade::getOrdem)
+            .max()
+            .orElse(-1) + 1;
+    }
+
+    // Drag-and-drop na aba Modalidades do modal de Faturamento por Grupo (frontend manda a
+    // lista completa de ids na nova ordem) — a mesma ordem é refletida no seletor de modalidade
+    // das telas de Frequência Médica (admin e Portal), que só consomem listarModalidades sem
+    // reordenar no cliente.
+    @Transactional
+    public List<TomadorModalidadeResponse> reordenarModalidades(UUID tomadorId, List<UUID> modalidadeIds) {
+        findOrThrow(tomadorId);
+        List<TomadorModalidade> todas = modalidadeRepo.findByTomadorIdOrderByOrdemAscNomeAsc(tomadorId);
+        Map<UUID, TomadorModalidade> porId = todas.stream()
+            .collect(Collectors.toMap(TomadorModalidade::getId, Function.identity()));
+        // new HashSet<>(modalidadeIds) já descarta duplicatas — comparar com o keySet cobre tanto
+        // ids repetidos/faltantes quanto ids de outra modalidade/tomador numa única checagem.
+        if (!new HashSet<>(modalidadeIds).equals(porId.keySet())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "A lista de reordenação deve conter exatamente as modalidades já cadastradas para este tomador.");
+        }
+        for (int i = 0; i < modalidadeIds.size(); i++) {
+            porId.get(modalidadeIds.get(i)).setOrdem(i);
+        }
+        modalidadeRepo.saveAll(todas);
+        return todas.stream()
+            .sorted(Comparator.comparingInt(TomadorModalidade::getOrdem))
+            .map(TomadorModalidadeResponse::from)
+            .toList();
     }
 
     @Transactional

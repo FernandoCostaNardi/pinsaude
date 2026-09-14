@@ -7,6 +7,6 @@ import java.util.List;
 import java.util.UUID;
 
 public interface TomadorModalidadeRepository extends JpaRepository<TomadorModalidade, UUID> {
-    List<TomadorModalidade> findByTomadorIdOrderByNomeAsc(UUID tomadorId);
-    List<TomadorModalidade> findByTomadorIdAndAtivoTrueOrderByNomeAsc(UUID tomadorId);
+    List<TomadorModalidade> findByTomadorIdOrderByOrdemAscNomeAsc(UUID tomadorId);
+    List<TomadorModalidade> findByTomadorIdAndAtivoTrueOrderByOrdemAscNomeAsc(UUID tomadorId);
 }
