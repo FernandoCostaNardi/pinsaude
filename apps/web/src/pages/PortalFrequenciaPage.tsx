@@ -248,29 +248,73 @@ function Dropdown<T extends { id: string }>({
         <ChevronDown size={14} className={`shrink-0 ml-2 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
+      {/* id="dropdown-portal-active" fica só no wrapper — o listener de clique-fora (useEffect
+          acima) usa esse id pra saber se o clique caiu dentro de QUALQUER uma das duas variantes
+          abaixo, não importa qual delas está visível no viewport atual. */}
       {open && createPortal(
-        <div id="dropdown-portal-active"
-          style={{
+        <div id="dropdown-portal-active">
+          {/* Desktop (sm+) — popover ancorado no botão via coordenadas calculadas, inalterado. */}
+          <div className="hidden sm:block" style={{
             position: 'fixed',
             ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }),
             left: pos.left, width: pos.width, zIndex: 9999,
-          }}
-          className="bg-white border border-ds-border rounded-xl shadow-2xl overflow-hidden">
-          <div className="p-2 border-b border-ds-border">
-            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar..."
-              className="w-full text-xs px-2 py-2 border border-ds-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          }}>
+            <div className="bg-white border border-ds-border rounded-xl shadow-2xl overflow-hidden">
+              <div className="p-2 border-b border-ds-border">
+                <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar..."
+                  className="w-full text-xs px-2 py-2 border border-ds-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div className="overflow-y-auto divide-y divide-ds-border" style={{ maxHeight: pos.maxListHeight }}>
+                {filtered.length === 0
+                  ? <p className="px-3 py-3 text-xs text-ds-light text-center">Sem resultados</p>
+                  : filtered.map(item => (
+                    <button key={item.id} type="button"
+                      onClick={() => { onChange(item); setOpen(false); setQ('') }}
+                      className="w-full text-left px-3 py-3 text-sm hover:bg-ds-surface transition-colors">
+                      {getLabel(item)}
+                    </button>
+                  ))
+                }
+              </div>
+            </div>
           </div>
-          <div className="overflow-y-auto divide-y divide-ds-border" style={{ maxHeight: pos.maxListHeight }}>
-            {filtered.length === 0
-              ? <p className="px-3 py-3 text-xs text-ds-light text-center">Sem resultados</p>
-              : filtered.map(item => (
-                <button key={item.id} type="button"
-                  onClick={() => { onChange(item); setOpen(false); setQ('') }}
-                  className="w-full text-left px-3 py-3 text-sm hover:bg-ds-surface transition-colors">
-                  {getLabel(item)}
+
+          {/* Mobile (<sm) — bottom-sheet de tela cheia, sem nenhuma coordenada calculada. Um
+              popover "ancorado" (posição fixa via getBoundingClientRect) quebra no celular
+              quando o teclado virtual abre (o cálculo de altura/posição é feito ANTES do teclado
+              aparecer e nunca se ajusta depois) — o sheet evita o problema por completo, além de
+              dar muito mais espaço vertical (até 75vh) pras opções. Sem autoFocus no campo de
+              busca: focar automaticamente já abriria o teclado no instante em que o sheet sobe,
+              empurrando a lista pra cima de forma abrupta — o médico toca no campo só se quiser
+              buscar. */}
+          <div className="sm:hidden fixed inset-0 z-[100] flex items-end bg-black/40"
+            onClick={() => { setOpen(false); setQ('') }}>
+            <div onClick={e => e.stopPropagation()}
+              className="w-full max-h-[75vh] bg-white rounded-t-2xl shadow-2xl flex flex-col">
+              <div className="flex items-center justify-between px-4 py-3.5 border-b border-ds-border shrink-0">
+                <p className="text-sm font-bold text-ds-text truncate pr-2">{label || placeholder}</p>
+                <button type="button" onClick={() => { setOpen(false); setQ('') }}
+                  className="p-2 -mr-2 rounded-lg text-ds-light hover:bg-ds-input transition-colors shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center">
+                  <X size={16} />
                 </button>
-              ))
-            }
+              </div>
+              <div className="p-3 border-b border-ds-border shrink-0">
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar..."
+                  className="w-full text-sm px-3 py-2.5 border border-ds-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div className="overflow-y-auto flex-1 divide-y divide-ds-border">
+                {filtered.length === 0
+                  ? <p className="px-4 py-6 text-sm text-ds-light text-center">Sem resultados</p>
+                  : filtered.map(item => (
+                    <button key={item.id} type="button"
+                      onClick={() => { onChange(item); setOpen(false); setQ('') }}
+                      className="w-full text-left px-4 py-3.5 text-sm active:bg-ds-surface transition-colors line-clamp-2">
+                      {getLabel(item)}
+                    </button>
+                  ))
+                }
+              </div>
+            </div>
           </div>
         </div>,
         document.body
@@ -799,7 +843,10 @@ function PlantaoFormPanel({
           </div>
           <div>
             <label className="block text-xs font-bold text-ds-mid mb-1">
-              Saída * <span className="font-normal text-ds-light">(meta: {modalidade?.horasSemanais}h/sem)</span>
+              Saída *{' '}
+              {/* Bloco próprio no mobile (2 colunas estreitas quebrariam "(meta: Xh/sem)" no
+                  meio) — volta a ficar na mesma linha do label a partir do sm, igual sempre foi. */}
+              <span className="block sm:inline font-normal text-ds-light">(meta: {modalidade?.horasSemanais}h/sem)</span>
             </label>
             <input type="time" value={horaFim} onChange={e => setHoraFim(e.target.value)}
               className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]" />
@@ -1166,43 +1213,50 @@ function FrequenciaItensPanel({
 
       {freq.itens.length > 0 && (
         <>
-          {/* ── Mobile: cards de plantão (telas < sm) — paginados, mais atual primeiro ── */}
+          {/* ── Mobile: cards de plantão (telas < sm) — paginados, mais atual primeiro ──
+              Redesenho: cabeçalho (data + modalidade) + UMA linha de chips que quebram sozinhos
+              (flex-wrap) pras informações variáveis (turno/horário, horas ou quantidade,
+              ocorrência do catálogo) — antes eram até 6 parágrafos empilhados um embaixo do
+              outro, cada um sempre ocupando a largura toda mesmo quando o texto era curto. Chips
+              preenchem só o espaço que precisam e se reorganizam em 1-2 linhas compactas. */}
           <div className="sm:hidden divide-y divide-ds-border">
-            {itensPaginados.map(item => (
+            {itensPaginados.map(item => {
+              const temChips = item.modalidadeTurno || item.horasTrabalhadas != null || item.quantidade != null || item.ocorrenciaNome
+              return (
               <div key={item.id} className="p-4">
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="text-sm font-bold text-ds-text whitespace-nowrap">
-                        {formatDate(item.dataExecucao)}
-                      </span>
-                      {item.modalidadeNome && (
-                        <span className="text-xs font-semibold text-ds-mid">{item.modalidadeNome}</span>
-                      )}
-                    </div>
-                    {item.modalidadeTurno && (
-                      <p className="text-[11px] text-ds-light mt-0.5">
-                        {item.modalidadeTurno} · {item.modalidadeHorario}
-                      </p>
+                    <p className="text-sm font-bold text-ds-text">{formatDate(item.dataExecucao)}</p>
+                    {item.modalidadeNome && (
+                      <p className="text-xs font-semibold text-ds-mid mt-0.5 truncate">{item.modalidadeNome}</p>
                     )}
-                    {item.horasTrabalhadas != null && (
-                      <p className="text-[11px] text-teal-600 font-medium mt-0.5">
-                        {fmtQtd(item.horasTrabalhadas)}h lançadas
-                        {item.horaInicio && item.horaFim && ` (${item.horaInicio.slice(0, 5)} às ${item.horaFim.slice(0, 5)})`}
-                      </p>
-                    )}
-                    {item.quantidade != null && (
-                      <p className="text-[11px] text-teal-600 font-medium mt-0.5">
-                        {item.quantidade} {item.quantidade === 1 ? 'serviço realizado' : 'serviços realizados'}
-                      </p>
-                    )}
-                    {item.ocorrenciaNome && (
-                      <p className="text-[11px] text-teal-600 font-medium mt-0.5">
-                        {item.ocorrenciaNome}
-                      </p>
+                    {temChips && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {item.modalidadeTurno && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-md bg-ds-input text-[11px] font-medium text-ds-mid">
+                            {item.modalidadeTurno} · {item.modalidadeHorario}
+                          </span>
+                        )}
+                        {item.horasTrabalhadas != null && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-md bg-teal-50 text-[11px] font-semibold text-teal-700">
+                            {fmtQtd(item.horasTrabalhadas)}h
+                            {item.horaInicio && item.horaFim && ` (${item.horaInicio.slice(0, 5)}–${item.horaFim.slice(0, 5)})`}
+                          </span>
+                        )}
+                        {item.quantidade != null && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-md bg-teal-50 text-[11px] font-semibold text-teal-700">
+                            {item.quantidade} {item.quantidade === 1 ? 'serviço' : 'serviços'}
+                          </span>
+                        )}
+                        {item.ocorrenciaNome && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-50 text-[11px] font-semibold text-purple-700">
+                            {item.ocorrenciaNome}
+                          </span>
+                        )}
+                      </div>
                     )}
                     {item.ocorrencia && (
-                      <p className="text-[11px] text-ds-mid italic mt-1">"{item.ocorrencia}"</p>
+                      <p className="text-[11px] text-ds-mid italic mt-1.5">"{item.ocorrencia}"</p>
                     )}
                   </div>
                   {!isFaturada && (
@@ -1216,7 +1270,8 @@ function FrequenciaItensPanel({
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* ── Desktop: tabela (sm+) — sem colunas de valor (visão do médico não exibe
@@ -1465,12 +1520,19 @@ function FrequenciaCard({
               {STATUS_LABEL[freq.status] ?? freq.status}
             </span>
           </div>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            <p className="text-xs text-ds-mid truncate max-w-[160px] sm:max-w-xs">{tomadorNome}</p>
+          {/* Desktop (sm+): tomador e setor como dois fragmentos flex-wrap, igual sempre foi.
+              Mobile: mesma informação, mas como UMA string só com truncate — os dois fragmentos
+              independentes quebravam pro setor cair numa 3ª linha sempre que o nome do tomador
+              já ocupava a largura toda do card. */}
+          <div className="hidden sm:flex items-center gap-2 mt-0.5 flex-wrap">
+            <p className="text-xs text-ds-mid truncate sm:max-w-xs">{tomadorNome}</p>
             {freq.servicoOperacionalNome && (
               <p className="text-xs text-ds-light truncate">· {freq.servicoOperacionalNome}</p>
             )}
           </div>
+          <p className="sm:hidden text-xs text-ds-mid truncate mt-0.5">
+            {tomadorNome}{freq.servicoOperacionalNome ? ` · ${freq.servicoOperacionalNome}` : ''}
+          </p>
         </div>
         <div className="text-right shrink-0 ml-1">
           <p className="text-sm font-bold text-ds-text tabular-nums">{freq.itens.length} {itemLabel(freq.tipoMedico, freq.itens.length)}</p>
