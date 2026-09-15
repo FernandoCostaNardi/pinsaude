@@ -207,7 +207,7 @@ public class PortalService {
     public List<SetorOperacionalPortalResponse> getSetoresDoMedicoNoTomador(UUID medicoId, UUID tomadorId) {
         return jdbc.query("""
                 SELECT s.id AS setor_id, s.nome AS setor_nome, s.categoria,
-                       m.id AS modalidade_id, m.nome AS modalidade_nome, m.tipo AS modalidade_tipo
+                       m.id AS modalidade_id, m.nome AS modalidade_nome, som.tipo AS modalidade_tipo
                 FROM faturamento.medico_tomador_setores mts
                 JOIN faturamento.medico_tomadores mt ON mt.id = mts.medico_tomador_id
                 JOIN faturamento.tomador_servicos_operacionais s ON s.id = mts.setor_id
