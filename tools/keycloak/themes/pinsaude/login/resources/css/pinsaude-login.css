@@ -1,0 +1,173 @@
+/*
+ * Reskin visual do Keycloak (login, esqueci senha, definir nova senha, verificar e-mail) pra
+ * ficar com a cara das telas do Pin Saúde — mesma paleta/fonte/raio de borda de
+ * apps/web/tailwind.config.js e dos componentes Button/Input de libs/frontend.
+ *
+ * Duas famílias de classes CSS coexistem no fluxo de login do Keycloak 24: "pf-v5-c-*"
+ * (PatternFly 5, tema padrão keycloak.v2) e "pf-c-*" (PatternFly 4, algumas páginas legadas que
+ * o keycloak.v2 não reimplementou, ex.: login-reset-password.ftl). Como as duas famílias
+ * resolvem os MESMOS nomes de classe via `${properties.kcInputClass!}` etc. — e o keycloak.v2
+ * sobrescreve essas properties pra "pf-v5-c-*" pra toda a cadeia de herança — a prática é que
+ * só "pf-v5-c-*" aparece de fato renderizado; os seletores "pf-c-*" abaixo são só um reforço de
+ * segurança caso alguma página específica não siga esse padrão.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700;900&display=swap');
+
+:root {
+  --pin-primary: #00AEEF;
+  --pin-primary-dark: #0090C8;
+  --pin-primary-darker: #0072A0;
+  --pin-bg: #DCE5F2;
+  --pin-border: #DDE4EE;
+  --pin-text: #172033;
+  --pin-mid: #4B5E78;
+  --pin-light: #8A9BB0;
+}
+
+/* === Fundo da página — substitui a imagem de splash padrão do Keycloak === */
+html.login-pf,
+html.login-pf body,
+body#keycloak-bg {
+  background: var(--pin-bg) !important;
+  background-image: none !important;
+  min-height: 100vh;
+}
+
+html, body, .pf-v5-c-login, .pf-v5-c-form, .pf-v5-c-title,
+input, button, a, label, p, span, div {
+  font-family: 'Source Sans Pro', system-ui, -apple-system, sans-serif;
+}
+
+/* === Cabeçalho / logo (ver template.ftl — troca o logo do Keycloak pelo do Pin Saúde) === */
+#kc-header {
+  background: transparent !important;
+}
+#kc-header-wrapper {
+  position: static !important;
+  left: auto !important;
+  transform: none !important;
+  padding: 40px 0 12px !important;
+  text-align: center;
+}
+#kc-header-wrapper .pin-header-logo {
+  height: 44px;
+  width: auto;
+}
+/* Sprite antigo do Keycloak (realm.displayNameHtml) — não é mais usado pelo template.ftl
+   customizado, mas escondido por segurança caso outra página ainda o referencie. */
+div.kc-logo-text {
+  display: none !important;
+}
+
+/* === Layout geral / card === */
+.pf-v5-c-login {
+  background: transparent !important;
+}
+.pf-v5-c-login__container {
+  padding: 8px 16px 56px;
+}
+.pf-v5-c-login__main {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 2px 20px rgba(23, 32, 51, 0.10);
+  padding: 40px 40px 32px;
+}
+@media (max-width: 480px) {
+  .pf-v5-c-login__main { padding: 28px 20px 24px; }
+}
+
+.pf-v5-c-login__main-header {
+  margin-bottom: 4px;
+}
+.pf-v5-c-title.pf-m-3xl,
+#kc-page-title {
+  color: var(--pin-text) !important;
+  font-weight: 700 !important;
+  font-size: 22px !important;
+  line-height: 1.3;
+}
+
+.pf-v5-c-login__main-body {
+  margin-top: 16px;
+}
+
+/* === Labels === */
+.pf-v5-c-form__label-text,
+.pf-c-form__label-text,
+label {
+  color: var(--pin-mid);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* === Inputs === */
+.pf-v5-c-form-control,
+.pf-c-form-control,
+input[type="text"],
+input[type="password"],
+input[type="email"] {
+  border-radius: 8px !important;
+  border: 1px solid #d1d5db !important;
+  background: #ffffff !important;
+  padding: 10px 12px !important;
+  color: var(--pin-text) !important;
+  box-shadow: none !important;
+  font-size: 15px !important;
+}
+.pf-v5-c-form-control:focus,
+.pf-c-form-control:focus,
+input:focus {
+  border-color: var(--pin-primary) !important;
+  box-shadow: 0 0 0 3px rgba(0, 174, 239, 0.25) !important;
+  outline: none !important;
+}
+
+/* === Botões === */
+.pf-v5-c-button.pf-m-primary,
+.pf-c-button.pf-m-primary {
+  background-color: var(--pin-primary) !important;
+  border-color: var(--pin-primary) !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+  padding: 10px 24px !important;
+}
+.pf-v5-c-button.pf-m-primary:hover,
+.pf-v5-c-button.pf-m-primary:focus,
+.pf-c-button.pf-m-primary:hover,
+.pf-c-button.pf-m-primary:focus {
+  background-color: var(--pin-primary-dark) !important;
+  border-color: var(--pin-primary-dark) !important;
+}
+.pf-v5-c-button.pf-m-block,
+.pf-c-button.pf-m-block {
+  width: 100%;
+}
+
+/* === Links === */
+a, a:visited {
+  color: var(--pin-primary);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--pin-primary-darker);
+  text-decoration: underline;
+}
+
+/* === Alertas (erro/sucesso/info) === */
+.pf-v5-c-alert,
+.pf-c-alert {
+  border-radius: 10px !important;
+  font-size: 14px;
+}
+
+/* === Rodapé "voltar pro login" / links secundários === */
+.pf-v5-c-login__main-footer,
+#kc-info {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--pin-light);
+}
