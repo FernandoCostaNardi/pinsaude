@@ -4,9 +4,10 @@ import {
   ArrowLeft, CheckCircle2, Clock, XCircle, AlertTriangle,
   FileDown, FileText, RotateCcw, ShieldCheck, Loader2, Eye,
 } from 'lucide-react'
-import { Spinner, Alert } from '@pinsaude/ui'
+import { Button, Spinner, Alert } from '@pinsaude/ui'
 import { useAuth } from '../auth/useAuth'
 import { producoesApi, Producao } from '../api/producoesApi'
+import { servicosApi, Servico } from '../api/servicosApi'
 import {
   emitirNfse, getNotaStatus, aprovarNota, downloadComAuth, downloadXmlUrl, downloadPdfUrl,
   NotaFiscal, StatusNota,
@@ -122,6 +123,70 @@ function FiscalRow({ label, value, indent, negative, bold }: {
   )
 }
 
+// ─── Serviço pendente (V49) ─────────────────────────────────────────────────
+// Produções vindas do Portal do Médico nascem sem serviço (LC 116/2003) definido — o médico não
+// escolhe mais isso, é a operação quem define antes de emitir a NFS-e. Gate simples: enquanto
+// producao.servico for null, a página só mostra este painel; o resto (breakdown fiscal, emissão)
+// depende de servico e continua assumindo não-nulo, sem precisar de guardas espalhadas.
+function SelecionarServicoPanel({ producao, onResolvido }: {
+  producao: Producao
+  onResolvido: (p: Producao) => void
+}) {
+  const [servicos, setServicos] = useState<Servico[]>([])
+  const [servicoId, setServicoId] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    servicosApi.listar().then(setServicos).catch(() => {})
+  }, [])
+
+  async function confirmar() {
+    if (!servicoId) return
+    setSalvando(true)
+    setErro(null)
+    try {
+      const atualizado = await producoesApi.atualizarServico(producao.id, servicoId)
+      onResolvido(atualizado)
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao definir o serviço')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <div className="max-w-lg mx-auto px-6 py-10">
+      <div className="bg-white rounded-2xl border border-ds-border p-6 space-y-4">
+        <div>
+          <h2 className="text-sm font-bold text-ds-mid uppercase tracking-wider">Serviço ainda não definido</h2>
+          <p className="text-sm text-ds-light mt-1">
+            Esta produção veio do Portal do Médico sem o Serviço (LC 116/2003) — selecione qual se aplica
+            antes de revisar e emitir a NFS-e.
+          </p>
+        </div>
+        {erro && <Alert variant="error" onClose={() => setErro(null)}>{erro}</Alert>}
+        <div>
+          <label className="block text-xs font-bold text-ds-mid mb-1">Serviço (LC 116/2003) *</label>
+          <select
+            value={servicoId}
+            onChange={e => setServicoId(e.target.value)}
+            className="w-full h-10 rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 focus:outline-none focus:border-primary"
+          >
+            <option value="">Selecione o serviço...</option>
+            {servicos.map(s => (
+              <option key={s.id} value={s.id}>{s.codigoLc116} — {s.descricaoPadrao}</option>
+            ))}
+          </select>
+        </div>
+        <Button onClick={confirmar} disabled={!servicoId || salvando} className="w-full">
+          {salvando ? <><Loader2 size={15} className="animate-spin mr-2" /> Salvando...</> : 'Confirmar Serviço'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export function NfseEmissaoPage() {
@@ -219,7 +284,7 @@ export function NfseEmissaoPage() {
   }, [producaoId, atualizarStatus, pararPolling])
 
   const handleEmitir = async () => {
-    if (!producao || !producaoId) return
+    if (!producao || !producaoId || !producao.servico) return
     setEmitindo(true)
     setErro(null)
     try {
@@ -305,6 +370,10 @@ export function NfseEmissaoPage() {
         <Alert variant="error">Produção não encontrada.</Alert>
       </div>
     )
+  }
+
+  if (!producao.servico) {
+    return <SelecionarServicoPanel producao={producao} onResolvido={setProducao} />
   }
 
   const { tomador, servico, valorBruto } = producao
@@ -661,9 +730,11 @@ export function NfseEmissaoPage() {
       </div>
 
       {/* Modal de preview */}
+      {/* O botão que abre showPreview só existe depois do gate de servico não-nulo lá em cima —
+          o cast aqui só formaliza pro TypeScript o que o fluxo de render já garante em runtime. */}
       {showPreview && producao && (
         <NfsePreviewModal
-          producao={producao}
+          producao={producao as typeof producao & { servico: NonNullable<typeof producao.servico> }}
           cnpjPrestador={cnpjPrestador}
           empresaInfo={empresaInfo}
           medicoNomeMap={medicoNomeMap}

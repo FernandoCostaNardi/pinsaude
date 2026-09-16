@@ -2,6 +2,7 @@ package br.com.pinsaude.faturamento.producao;
 
 import br.com.pinsaude.faturamento.domain.Producao;
 import br.com.pinsaude.faturamento.domain.Servico;
+import br.com.pinsaude.faturamento.domain.StatusProducao;
 import br.com.pinsaude.faturamento.domain.Tomador;
 import br.com.pinsaude.faturamento.dto.ParticipacaoRequest;
 import br.com.pinsaude.faturamento.dto.ProducaoRequest;
@@ -31,6 +32,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -196,5 +198,74 @@ class ProducaoServiceTest {
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
             .hasMessageContaining("Valor total deve ser maior que zero");
+    }
+
+    // ─── criar — serviço opcional (V49, Portal do Médico não escolhe mais) ────
+
+    @Test
+    void criar_semServicoId_salvaComServicoNulo() {
+        when(tomadorRepo.findById(tomadorId)).thenReturn(Optional.of(tomador));
+        when(medicoTomadorRepo.existsByTomadorIdAndMedicoId(tomadorId, medicoId)).thenReturn(true);
+
+        ProducaoRequest req = new ProducaoRequest(tomadorId, null, "2026-07", null, null, null,
+            List.of(new ParticipacaoRequest(medicoId, 100000L, null)));
+
+        ProducaoResponse result = service.criar(req);
+
+        assertThat(result.servico()).isNull();
+        verifyNoInteractions(servicoRepo);
+    }
+
+    // ─── atualizarServico (V49) — operação completa a produção antes de emitir ─
+
+    @Test
+    void atualizarServico_producaoConfirmada_atualizaComSucesso() {
+        Producao p = new Producao();
+        p.setId(UUID.randomUUID());
+        p.setTomador(tomador);
+        p.setStatus(StatusProducao.CONFIRMADA);
+        when(producaoRepo.findById(p.getId())).thenReturn(Optional.of(p));
+        when(servicoRepo.findById(servicoId)).thenReturn(Optional.of(servico));
+
+        ProducaoResponse result = service.atualizarServico(p.getId(), servicoId);
+
+        assertThat(result.servico()).isNotNull();
+        assertThat(result.servico().id()).isEqualTo(servicoId);
+    }
+
+    @Test
+    void atualizarServico_producaoEmitida_lanca422() {
+        Producao p = new Producao();
+        p.setId(UUID.randomUUID());
+        p.setTomador(tomador);
+        p.setStatus(StatusProducao.EMITIDA);
+        when(producaoRepo.findById(p.getId())).thenReturn(Optional.of(p));
+
+        assertThatThrownBy(() -> service.atualizarServico(p.getId(), servicoId))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("já emitida");
+        verifyNoInteractions(servicoRepo);
+    }
+
+    @Test
+    void atualizarServico_servicoInexistente_lanca404() {
+        Producao p = new Producao();
+        p.setId(UUID.randomUUID());
+        p.setTomador(tomador);
+        p.setStatus(StatusProducao.CONFIRMADA);
+        when(producaoRepo.findById(p.getId())).thenReturn(Optional.of(p));
+        when(servicoRepo.findById(servicoId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.atualizarServico(p.getId(), servicoId))
+            .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    void atualizarServico_producaoInexistente_lanca404() {
+        UUID id = UUID.randomUUID();
+        when(producaoRepo.findById(id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.atualizarServico(id, servicoId))
+            .isInstanceOf(EntityNotFoundException.class);
     }
 }

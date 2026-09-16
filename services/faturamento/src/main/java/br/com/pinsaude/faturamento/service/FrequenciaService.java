@@ -16,6 +16,7 @@ import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
 import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
+import br.com.pinsaude.faturamento.repository.SetorOperacionalOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoSetorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
@@ -48,6 +49,7 @@ public class FrequenciaService {
     private final StorageService storageService;
     private final MedicoTomadorRepository medicoTomadorRepo;
     private final TomadorOcorrenciaRepository ocorrenciaRepo;
+    private final SetorOperacionalOcorrenciaRepository setorOcorrenciaRepo;
     private final TomadorGrupoFaturamentoRepository grupoRepo;
     private final TomadorGrupoSetorRepository grupoSetorRepo;
 
@@ -58,6 +60,7 @@ public class FrequenciaService {
                              StorageService storageService,
                              MedicoTomadorRepository medicoTomadorRepo,
                              TomadorOcorrenciaRepository ocorrenciaRepo,
+                             SetorOperacionalOcorrenciaRepository setorOcorrenciaRepo,
                              TomadorGrupoFaturamentoRepository grupoRepo,
                              TomadorGrupoSetorRepository grupoSetorRepo) {
         this.frequenciaRepo = frequenciaRepo;
@@ -67,6 +70,7 @@ public class FrequenciaService {
         this.storageService = storageService;
         this.medicoTomadorRepo = medicoTomadorRepo;
         this.ocorrenciaRepo = ocorrenciaRepo;
+        this.setorOcorrenciaRepo = setorOcorrenciaRepo;
         this.grupoRepo = grupoRepo;
         this.grupoSetorRepo = grupoSetorRepo;
     }
@@ -161,7 +165,7 @@ public class FrequenciaService {
                     "Modalidade do tipo " + String.join("/", modalidade.getTipos()) + " não pode ser usada numa "
                         + "frequência com Tipo de Escala " + req.tipoMedico());
             }
-            ocorrencia = resolverOcorrencia(req.ocorrenciaId());
+            ocorrencia = resolverOcorrencia(req.ocorrenciaId(), req.servicoOperacionalId());
             if (ocorrencia != null && !ocorrencia.getTomadorId().equals(req.tomadorId())) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Ocorrência não pertence ao tomador informado");
@@ -277,6 +281,13 @@ public class FrequenciaService {
 
         validarGrupoESetor(f.getTomadorId(), req.grupoId(), req.servicoOperacionalId());
 
+        // A ocorrência fixa da frequência (quando há) precisa continuar válida pro novo setor —
+        // o Setor pode mudar nesta edição, e uma ocorrência restrita a outro(s) setor(es) deixaria
+        // de fazer sentido aqui.
+        if (f.getOcorrenciaId() != null) {
+            validarOcorrenciaDoSetor(f.getOcorrenciaId(), req.servicoOperacionalId());
+        }
+
         // Conflito só é checado pros tipos "fixos" (chave inclui a modalidade fixa, que não muda
         // nesta edição) — Plantonista nunca teve checagem de duplicidade (ver criar()/V34).
         boolean chaveMudou = !req.competencia().equals(f.getCompetencia())
@@ -318,7 +329,8 @@ public class FrequenciaService {
         // fixa e seu valor é aplicado UMA ÚNICA VEZ sobre o valor da modalidade — não mais por
         // item (ver FrequenciaMedicaResponse.calcularValorOcorrenciaUnico). Só frequências
         // legadas (sem modalidade fixa) continuam com ocorrência escolhida por lançamento.
-        TomadorOcorrencia ocorrencia = f.getModalidadeId() == null ? resolverOcorrencia(req.ocorrenciaId()) : null;
+        TomadorOcorrencia ocorrencia = f.getModalidadeId() == null
+            ? resolverOcorrencia(req.ocorrenciaId(), f.getServicoOperacionalId()) : null;
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
         boolean modalidadeFixa = modalidade.isFixa();
@@ -363,7 +375,8 @@ public class FrequenciaService {
         validarCouplingTipoEscala(f, modalidade);
         // PINSAUDE-13.26 (ajuste): ver comentário equivalente em adicionarItem — ocorrência fixa
         // não é mais resolvida/valorada por item.
-        TomadorOcorrencia ocorrencia = f.getModalidadeId() == null ? resolverOcorrencia(req.ocorrenciaId()) : null;
+        TomadorOcorrencia ocorrencia = f.getModalidadeId() == null
+            ? resolverOcorrencia(req.ocorrenciaId(), f.getServicoOperacionalId()) : null;
 
         BigDecimal horasTrabalhadas = calcularHorasTrabalhadas(modalidade, req);
         boolean modalidadeFixa = modalidade.isFixa();
@@ -540,11 +553,25 @@ public class FrequenciaService {
         return reqModalidadeId;
     }
 
-    private TomadorOcorrencia resolverOcorrencia(UUID ocorrenciaId) {
+    private TomadorOcorrencia resolverOcorrencia(UUID ocorrenciaId, UUID setorId) {
         if (ocorrenciaId == null) return null;
-        return ocorrenciaRepo.findById(ocorrenciaId)
+        TomadorOcorrencia o = ocorrenciaRepo.findById(ocorrenciaId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Ocorrência não encontrada: " + ocorrenciaId));
+        validarOcorrenciaDoSetor(ocorrenciaId, setorId);
+        return o;
+    }
+
+    // Ocorrência sem NENHUM vínculo em setor_operacional_ocorrencias continua disponível para
+    // qualquer setor do tomador (bypass — mesmo espírito de tipoMedico nulo em FrequenciaMedica,
+    // preserva o comportamento de toda ocorrência cadastrada antes desta restrição existir). Só
+    // passa a ser restrita quando pelo menos 1 vínculo é configurado no cadastro da ocorrência.
+    private void validarOcorrenciaDoSetor(UUID ocorrenciaId, UUID setorId) {
+        if (!setorOcorrenciaRepo.existsByOcorrenciaId(ocorrenciaId)) return;
+        if (!setorOcorrenciaRepo.existsBySetorIdAndOcorrenciaId(setorId, ocorrenciaId)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ocorrência não está disponível para o setor operacional desta frequência");
+        }
     }
 
     // ocorrencia_valor = round(valorModalidadeCentavos × %/100) + valorFixo — soma os dois campos

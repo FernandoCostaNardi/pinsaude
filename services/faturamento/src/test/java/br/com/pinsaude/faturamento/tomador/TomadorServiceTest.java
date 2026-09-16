@@ -27,6 +27,7 @@ import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorEmpresaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.SetorOperacionalModalidadeRepository;
+import br.com.pinsaude.faturamento.repository.SetorOperacionalOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorHorarioPadraoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
@@ -79,6 +80,7 @@ class TomadorServiceTest {
     @Mock MedicoTomadorSetorRepository medicoTomadorSetorRepo;
     @Mock TomadorEmpresaRepository empresaTomadorRepo;
     @Mock TomadorOcorrenciaRepository ocorrenciaRepo;
+    @Mock SetorOperacionalOcorrenciaRepository ocorrenciaSetorRepo;
     @Mock TomadorHorarioPadraoRepository horarioPadraoRepo;
     @Mock FrequenciaMedicaRepository frequenciaMedicaRepo;
     @Mock FrequenciaItemRepository frequenciaItemRepo;
@@ -816,7 +818,7 @@ class TomadorServiceTest {
         when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
         when(ocorrenciaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        var req = new TomadorOcorrenciaRequest("Feriado", "PERCENTUAL", new java.math.BigDecimal("10"), null, true);
+        var req = new TomadorOcorrenciaRequest("Feriado", "PERCENTUAL", new java.math.BigDecimal("10"), null, true, List.of());
         var result = service.criarOcorrencia(tomadorId, req);
 
         assertThat(result.tipoValor()).isEqualTo("PERCENTUAL");
@@ -829,7 +831,7 @@ class TomadorServiceTest {
         UUID tomadorId = UUID.randomUUID();
         when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
 
-        var req = new TomadorOcorrenciaRequest("Feriado", "PERCENTUAL", null, null, true);
+        var req = new TomadorOcorrenciaRequest("Feriado", "PERCENTUAL", null, null, true, List.of());
 
         assertThatThrownBy(() -> service.criarOcorrencia(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -842,7 +844,7 @@ class TomadorServiceTest {
         when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
         when(ocorrenciaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        var req = new TomadorOcorrenciaRequest("Ajuda de custo", "FIXO", null, 5000L, true);
+        var req = new TomadorOcorrenciaRequest("Ajuda de custo", "FIXO", null, 5000L, true, List.of());
         var result = service.criarOcorrencia(tomadorId, req);
 
         assertThat(result.tipoValor()).isEqualTo("FIXO");
@@ -854,7 +856,7 @@ class TomadorServiceTest {
         UUID tomadorId = UUID.randomUUID();
         when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
 
-        var req = new TomadorOcorrenciaRequest("Ajuda de custo", "FIXO", null, null, true);
+        var req = new TomadorOcorrenciaRequest("Ajuda de custo", "FIXO", null, null, true, List.of());
 
         assertThatThrownBy(() -> service.criarOcorrencia(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -868,7 +870,7 @@ class TomadorServiceTest {
         when(ocorrenciaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         // "e/ou": PERCENTUAL pode ter um valor fixo extra combinado
-        var req = new TomadorOcorrenciaRequest("Feriado + ajuda", "PERCENTUAL", new java.math.BigDecimal("10"), 5000L, true);
+        var req = new TomadorOcorrenciaRequest("Feriado + ajuda", "PERCENTUAL", new java.math.BigDecimal("10"), 5000L, true, List.of());
         var result = service.criarOcorrencia(tomadorId, req);
 
         assertThat(result.valorPercentual()).isEqualByComparingTo("10");
@@ -881,12 +883,62 @@ class TomadorServiceTest {
         when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
         when(ocorrenciaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        var req = new TomadorOcorrenciaRequest("Observação livre", "SEM_VALOR", new java.math.BigDecimal("10"), 5000L, true);
+        var req = new TomadorOcorrenciaRequest("Observação livre", "SEM_VALOR", new java.math.BigDecimal("10"), 5000L, true, List.of());
         var result = service.criarOcorrencia(tomadorId, req);
 
         assertThat(result.tipoValor()).isEqualTo("SEM_VALOR");
         assertThat(result.valorPercentual()).isNull();
         assertThat(result.valorCentavos()).isNull();
+    }
+
+    @Test
+    void criarOcorrencia_comSetorInexistente_lanca404() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID setorId = UUID.randomUUID();
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(servicoOperacionalRepo.findAllById(any())).thenReturn(List.of());
+
+        var req = new TomadorOcorrenciaRequest("Feriado", "SEM_VALOR", null, null, true, List.of(setorId));
+
+        assertThatThrownBy(() -> service.criarOcorrencia(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não foram encontrados");
+    }
+
+    @Test
+    void criarOcorrencia_comSetorDeOutroTomador_lanca422() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID outroTomadorId = UUID.randomUUID();
+        UUID setorId = UUID.randomUUID();
+        TomadorServicoOperacional setorDeOutroTomador = new TomadorServicoOperacional();
+        setId(setorDeOutroTomador, setorId);
+        setorDeOutroTomador.setTomadorId(outroTomadorId);
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(servicoOperacionalRepo.findAllById(any())).thenReturn(List.of(setorDeOutroTomador));
+
+        var req = new TomadorOcorrenciaRequest("Feriado", "SEM_VALOR", null, null, true, List.of(setorId));
+
+        assertThatThrownBy(() -> service.criarOcorrencia(tomadorId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não pertence ao tomador informado");
+    }
+
+    @Test
+    void criarOcorrencia_comSetoresValidos_salvaVinculosEDevolveNoResponse() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID setorId = UUID.randomUUID();
+        TomadorServicoOperacional setor = new TomadorServicoOperacional();
+        setId(setor, setorId);
+        setor.setTomadorId(tomadorId);
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(servicoOperacionalRepo.findAllById(any())).thenReturn(List.of(setor));
+        when(ocorrenciaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var req = new TomadorOcorrenciaRequest("Feriado", "SEM_VALOR", null, null, true, List.of(setorId));
+        var result = service.criarOcorrencia(tomadorId, req);
+
+        assertThat(result.setorIds()).containsExactly(setorId);
+        verify(ocorrenciaSetorRepo).save(argThat(link -> link.getSetorId().equals(setorId)));
     }
 
     @Test
@@ -896,11 +948,35 @@ class TomadorServiceTest {
         when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
         when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.empty());
 
-        var req = new TomadorOcorrenciaRequest("Feriado", "SEM_VALOR", null, null, true);
+        var req = new TomadorOcorrenciaRequest("Feriado", "SEM_VALOR", null, null, true, List.of());
 
         assertThatThrownBy(() -> service.atualizarOcorrencia(tomadorId, ocorrenciaId, req))
             .isInstanceOf(ResponseStatusException.class)
             .hasMessageContaining("não encontrada");
+    }
+
+    @Test
+    void atualizarOcorrencia_comSetores_reconstroiVinculoInteiro() {
+        UUID tomadorId = UUID.randomUUID();
+        UUID setorId = UUID.randomUUID();
+        TomadorOcorrencia o = ocorrenciaFixture(tomadorId, "SEM_VALOR", null, null);
+        TomadorServicoOperacional setor = new TomadorServicoOperacional();
+        setId(setor, setorId);
+        setor.setTomadorId(tomadorId);
+        when(repo.findById(tomadorId)).thenReturn(Optional.of(tomadorFixture(TENANT)));
+        when(ocorrenciaRepo.findById(o.getId())).thenReturn(Optional.of(o));
+        when(servicoOperacionalRepo.findAllById(any())).thenReturn(List.of(setor));
+        when(ocorrenciaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var req = new TomadorOcorrenciaRequest("Feriado", "SEM_VALOR", null, null, true, List.of(setorId));
+        var result = service.atualizarOcorrencia(tomadorId, o.getId(), req);
+
+        assertThat(result.setorIds()).containsExactly(setorId);
+        // Reconstrói o vínculo do zero a cada PUT — mesmo padrão de atualizarServicoOperacional.
+        var inOrder = inOrder(ocorrenciaSetorRepo);
+        inOrder.verify(ocorrenciaSetorRepo).deleteByOcorrenciaId(o.getId());
+        inOrder.verify(ocorrenciaSetorRepo).flush();
+        inOrder.verify(ocorrenciaSetorRepo).save(argThat(link -> link.getSetorId().equals(setorId)));
     }
 
     @Test

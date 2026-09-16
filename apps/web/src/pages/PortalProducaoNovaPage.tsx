@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Calculator, CheckCircle2, ChevronDown,
-  Plus, Loader2, ClipboardList, AlertCircle, Building2,
+  Plus, Loader2, ClipboardList, AlertCircle,
   TrendingDown, DollarSign,
 } from 'lucide-react'
-import { Button, Spinner, Alert } from '@pinsaude/ui'
-import { Servico, servicosApi } from '../api/servicosApi'
+import { Button, Spinner, Alert, Modal } from '@pinsaude/ui'
 import { Tomador, tomadoresApi } from '../api/tomadoresApi'
 import { producoesApi } from '../api/producoesApi'
-import { portalApi, PerfilMedico, EmpresaPortal, ProducaoPortal } from '../api/portalApi'
+import { portalApi, PerfilMedico, ProducaoPortal } from '../api/portalApi'
 import { formatCnae } from '../components/CnaeSelect'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -151,7 +150,7 @@ function PreviewCard({ valorBruto }: { valorBruto: number }) {
 
   if (valorBruto <= 0) {
     return (
-      <div className="bg-ds-surface rounded-xl border border-ds-border p-5 flex flex-col items-center justify-center h-full min-h-40 text-ds-light text-center">
+      <div className="bg-ds-surface rounded-xl border border-ds-border p-5 flex flex-col items-center justify-center min-h-40 text-ds-light text-center">
         <Calculator size={28} className="opacity-25 mb-2" />
         <p className="text-xs font-medium">Informe o valor dos honorários<br />para ver o preview</p>
       </div>
@@ -230,52 +229,284 @@ function HistoricoProducoes({ producoes, loading }: { producoes: ProducaoPortal[
   )
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm min-w-[500px]">
-        <thead>
-          <tr className="bg-ds-surface border-b border-ds-border">
-            {['Competência','Tomador','Serviço','Valor Bruto','Estimativa Líquida','Status','Data'].map(h => (
-              <th key={h} className="px-4 py-3 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-ds-border">
-          {producoes.map(p => (
-            <tr key={p.id} className="hover:bg-ds-surface/50 transition-colors">
-              <td className="px-4 py-3">
-                <span className="text-xs font-semibold text-ds-text">{formatCompetencia(p.competencia)}</span>
-              </td>
-              <td className="px-4 py-3">
-                <span className="text-xs text-ds-mid block max-w-[160px] truncate">{p.tomadorNome}</span>
-              </td>
-              <td className="px-4 py-3">
-                <span className="text-xs text-ds-light block max-w-[140px] truncate">{p.servicoDescricao}</span>
-              </td>
-              <td className="px-4 py-3">
-                <span className="text-xs tabular-nums font-semibold text-ds-text">
-                  {formatBRL(p.valorBrutoCentavos)}
-                </span>
-              </td>
-              <td className="px-4 py-3">
-                <span className="text-xs tabular-nums font-bold text-green-700">
-                  {formatBRL(p.valorLiquidoEstimadoCentavos)}
-                </span>
-              </td>
-              <td className="px-4 py-3">
-                <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold ${STATUS_CLS[p.status] ?? 'bg-gray-100 text-gray-500'}`}>
-                  {STATUS_LABELS[p.status] ?? p.status}
-                </span>
-              </td>
-              <td className="px-4 py-3">
-                <span className="text-xs text-ds-light">{formatDate(p.createdAt)}</span>
-              </td>
+    <>
+      {/* Desktop: tabela — nunca aparece no mobile, então nunca precisa de scroll horizontal */}
+      <div className="hidden sm:block overflow-x-auto">
+        <table className="w-full text-sm min-w-[500px]">
+          <thead>
+            <tr className="bg-ds-surface border-b border-ds-border">
+              {['Competência','Tomador','Serviço','Valor Bruto','Estimativa Líquida','Status','Data'].map(h => (
+                <th key={h} className="px-4 py-3 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">
+                  {h}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody className="divide-y divide-ds-border">
+            {producoes.map(p => (
+              <tr key={p.id} className="hover:bg-ds-surface/50 transition-colors">
+                <td className="px-4 py-3">
+                  <span className="text-xs font-semibold text-ds-text">{formatCompetencia(p.competencia)}</span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="text-xs text-ds-mid block max-w-[160px] truncate">{p.tomadorNome}</span>
+                </td>
+                <td className="px-4 py-3">
+                  {p.servicoDescricao ? (
+                    <span className="text-xs text-ds-light block max-w-[140px] truncate">{p.servicoDescricao}</span>
+                  ) : (
+                    <span className="text-xs text-orange-600">Aguardando definição</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <span className="text-xs tabular-nums font-semibold text-ds-text">
+                    {formatBRL(p.valorBrutoCentavos)}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="text-xs tabular-nums font-bold text-green-700">
+                    {formatBRL(p.valorLiquidoEstimadoCentavos)}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold ${STATUS_CLS[p.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                    {STATUS_LABELS[p.status] ?? p.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="text-xs text-ds-light">{formatDate(p.createdAt)}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile: cards empilhados — mesmo conteúdo da tabela, sem nenhuma coluna cortada/escondida */}
+      <div className="sm:hidden divide-y divide-ds-border">
+        {producoes.map(p => (
+          <div key={p.id} className="px-4 py-3 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-ds-text">{formatCompetencia(p.competencia)}</span>
+              <span className={`shrink-0 inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold ${STATUS_CLS[p.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                {STATUS_LABELS[p.status] ?? p.status}
+              </span>
+            </div>
+            <p className="text-xs text-ds-mid truncate">{p.tomadorNome}</p>
+            {p.servicoDescricao ? (
+              <p className="text-xs text-ds-light truncate">{p.servicoDescricao}</p>
+            ) : (
+              <p className="text-xs text-orange-600">Aguardando definição de serviço</p>
+            )}
+            <div className="flex items-center justify-between pt-0.5">
+              <div>
+                <span className="text-[10px] text-ds-light block">Valor Bruto</span>
+                <span className="text-xs tabular-nums font-semibold text-ds-text">{formatBRL(p.valorBrutoCentavos)}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-ds-light block">Estimativa Líquida</span>
+                <span className="text-xs tabular-nums font-bold text-green-700">{formatBRL(p.valorLiquidoEstimadoCentavos)}</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-ds-light text-right">{formatDate(p.createdAt)}</p>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+// ─── Modal: Nova Produção ───────────────────────────────────────────────────────
+// Facelift: o card "Dados da Produção" virou modal, aberto pelo botão "Nova Produção". Serviço
+// (LC 116/2003) e Empresa Emissora deixaram de ser escolhidos pelo médico: são resolvidos em
+// silêncio a partir do cadastro do tomador (tomador.servicos / tomador.empresas, EPIC-13.1/13.12)
+// quando há exatamente 1 configurado — sem UI nenhuma para isso. Quando o tomador não tem
+// exatamente 1 de cada, a produção é enviada assim mesmo (servicoId/empresaId nulos); a operação
+// completa o que faltar depois, antes de emitir a NFS-e (ver NfseEmissaoPage.tsx).
+
+function NovaProducaoModal({
+  perfil, tomadores, open, onClose, onCriada,
+}: {
+  perfil: PerfilMedico
+  tomadores: Tomador[]
+  open: boolean
+  onClose: () => void
+  onCriada: () => void
+}) {
+  const [tomador,     setTomador]     = useState<Tomador | null>(null)
+  const [cnaeCodigo,  setCnaeCodigo]  = useState('')
+  const [competencia, setCompetencia] = useState(COMPETENCIAS[0])
+  const [valorStr,    setValorStr]    = useState('')
+  const [descricao,   setDescricao]   = useState('')
+  const [submitting,  setSubmitting]  = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  const totalCentavos = parseBRL(valorStr)
+  const canConfirm = !!tomador && totalCentavos > 0
+
+  const servicosDoTomador = tomador?.servicos ?? []
+  const servicoIdResolvido = servicosDoTomador.length === 1 ? servicosDoTomador[0].servicoId : null
+  const empresasDoTomador = tomador?.empresas ?? []
+  const empresaIdResolvida = empresasDoTomador.length === 1 ? empresasDoTomador[0].empresaId : null
+
+  function fecharEResetar() {
+    setTomador(null)
+    setCnaeCodigo('')
+    setCompetencia(COMPETENCIAS[0])
+    setValorStr('')
+    setDescricao('')
+    setSubmitError(null)
+    onClose()
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canConfirm) return
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await producoesApi.criar({
+        tomadorId: tomador!.id,
+        servicoId: servicoIdResolvido,
+        competencia,
+        descricaoComplementar: descricao || undefined,
+        cnaeCodigo: cnaeCodigo || undefined,
+        empresaId: empresaIdResolvida,
+        participantes: [{ medicoId: perfil.id, valorBruto: totalCentavos }],
+      })
+      fecharEResetar()
+      onCriada()
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Erro ao registrar produção')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={fecharEResetar} title="Nova Produção" size="lg">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {submitError && (
+          <Alert variant="error" onClose={() => setSubmitError(null)}>{submitError}</Alert>
+        )}
+
+        {/* Tomador */}
+        {tomadores.length === 0 ? (
+          <div>
+            <label className="block text-xs font-bold text-ds-mid mb-1">
+              Tomador (Hospital / Clínica / Operadora) *
+            </label>
+            <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
+              <p className="text-xs text-orange-700">
+                Você ainda não está alocado a nenhum tomador. Entre em contato com o time
+                operacional para liberar o lançamento de produção.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <SearchDropdown
+            label="Tomador (Hospital / Clínica / Operadora) *"
+            placeholder="Selecione o tomador..."
+            items={tomadores}
+            selected={tomador}
+            onSelect={t => { setTomador(t); setCnaeCodigo('') }}
+            getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
+          />
+        )}
+
+        {/* CNAE do tomador — aparece quando o tomador tem CNAEs cadastrados */}
+        {tomador && tomador.cnaes && tomador.cnaes.length > 0 && (
+          <div>
+            <label className="block text-xs font-bold text-ds-mid mb-1">CNAE (atividade econômica da nota)</label>
+            <select
+              value={cnaeCodigo}
+              onChange={e => setCnaeCodigo(e.target.value)}
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">Selecione o CNAE...</option>
+              {tomador.cnaes.map(c => (
+                <option key={c.id} value={c.codigoCnae}>
+                  {formatCnae(c.codigoCnae)}{c.descricao ? ` — ${c.descricao.charAt(0) + c.descricao.slice(1).toLowerCase()}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Competência */}
+        <div>
+          <label className="block text-xs font-bold text-ds-mid mb-1">Competência *</label>
+          <select
+            value={competencia}
+            onChange={e => setCompetencia(e.target.value)}
+            className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            {COMPETENCIAS.map(c => (
+              <option key={c} value={c}>{formatCompetencia(c)}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Valor */}
+        <div>
+          <label className="block text-xs font-bold text-ds-mid mb-1">Valor dos Honorários Brutos *</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-ds-light">R$</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={valorStr}
+              onChange={e => {
+                const raw = e.target.value.replace(/\D/g, '')
+                const cents = parseInt(raw || '0', 10)
+                setValorStr(cents === 0 ? '' : maskBRL(cents))
+              }}
+              placeholder="0,00"
+              className="w-full pl-9 pr-3 py-2.5 border border-ds-border rounded-lg text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+        </div>
+
+        <PreviewCard valorBruto={totalCentavos} />
+
+        {/* Descrição */}
+        <div>
+          <label className="block text-xs font-bold text-ds-mid mb-1">
+            Descrição Complementar (opcional)
+          </label>
+          <textarea
+            value={descricao}
+            onChange={e => setDescricao(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder="Detalhes adicionais sobre o serviço prestado..."
+            className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+          />
+        </div>
+
+        {/* Botão */}
+        <div className="pt-1">
+          <Button
+            type="submit"
+            disabled={!canConfirm || submitting}
+            className="w-full"
+          >
+            {submitting
+              ? <><Loader2 size={15} className="animate-spin mr-2" /> Registrando...</>
+              : <><Plus size={15} className="mr-2" /> Solicitar Emissão</>}
+          </Button>
+          {!canConfirm && !submitting && (
+            <p className="text-xs text-ds-light text-center mt-2">
+              Faltam:{' '}
+              {[
+                !tomador && 'tomador',
+                totalCentavos <= 0 && 'valor',
+              ].filter(Boolean).join(', ')}
+            </p>
+          )}
+        </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -287,44 +518,13 @@ export function PortalProducaoNovaPage() {
   // dados carregados
   const [perfil,    setPerfil]    = useState<PerfilMedico | null>(null)
   const [tomadores, setTomadores] = useState<Tomador[]>([])
-  const [servicos,  setServicos]  = useState<Servico[]>([])
-  const [empresas,  setEmpresas]  = useState<EmpresaPortal[]>([])
   const [historico, setHistorico] = useState<ProducaoPortal[]>([])
   const [initLoading, setInitLoading] = useState(true)
   const [histLoading, setHistLoading] = useState(true)
   const [initError,   setInitError]   = useState<string | null>(null)
 
-  // seleções do formulário
-  const [tomador,      setTomador]      = useState<Tomador | null>(null)
-  const [cnaeCodigo,   setCnaeCodigo]   = useState<string>('')
-  const [servico,      setServico]      = useState<Servico | null>(null)
-  const [empresa,      setEmpresa]      = useState<EmpresaPortal | null>(null)
-  const [competencia,  setCompetencia]  = useState(COMPETENCIAS[0])
-  const [valorStr,     setValorStr]     = useState('')
-  const [descricao,    setDescricao]    = useState('')
-
-  // submissão
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [modalAberto, setModalAberto] = useState(false)
   const [sucesso, setSucesso] = useState(false)
-
-  const totalCentavos = parseBRL(valorStr)
-  const canConfirm = !!tomador && !!servico && !!empresa && totalCentavos > 0 && !!perfil
-
-  // Serviços do tomador: se houver vínculos, só eles aparecem; senão, catálogo completo.
-  const servicosDisponiveis: Servico[] = tomador && tomador.servicos && tomador.servicos.length > 0
-    ? servicos.filter(s => tomador.servicos.some(v => v.servicoId === s.id))
-    : servicos
-
-  // Auto-seleciona quando há exatamente 1 serviço; limpa seleção que deixou de ser válida.
-  useEffect(() => {
-    if (servicosDisponiveis.length === 1) {
-      const only = servicosDisponiveis[0]
-      setServico(prev => prev?.id === only.id ? prev : only)
-    } else if (servico && !servicosDisponiveis.some(s => s.id === servico.id)) {
-      setServico(null)
-    }
-  }, [tomador?.id, servicos])
 
   // ─── Carregamento inicial ──────────────────────────────────────────────────
 
@@ -340,25 +540,19 @@ export function PortalProducaoNovaPage() {
   useEffect(() => {
     async function init() {
       try {
-        const [p, t, s, e, alocados] = await Promise.all([
+        const [p, t, alocados] = await Promise.all([
           portalApi.getPerfil(),
           tomadoresApi.listar(),
-          servicosApi.listar(),
-          portalApi.getVinculosEmpresa(),
           portalApi.getTomadoresAlocados(),
         ])
         setPerfil(p)
         // Restringe aos tomadores alocados ao médico (EPIC-15.15), mantendo o shape completo
-        // de Tomador (cnaes/servicos) já usado pelo formulário — getTomadoresAlocados() só
-        // retorna { id, razaoSocial, municipio }, insuficiente para essa lógica.
+        // de Tomador (cnaes/servicos/empresas) já usado pelo formulário — getTomadoresAlocados()
+        // só retorna { id, razaoSocial, municipio }, insuficiente para essa lógica.
         const idsAlocados = new Set(alocados.map(a => a.id))
         // Tomadores com faturamento por grupo configurado não geram produção manual — a produção
         // deles é gerada pelo Fechamento por Grupo (PINSAUDE-13.11).
         setTomadores(t.filter(tom => idsAlocados.has(tom.id) && !tom.temGrupoFaturamento))
-        setServicos(s)
-        setEmpresas(e)
-        // Auto-seleciona empresa se única
-        if (e.length === 1) setEmpresa(e[0])
       } catch (err) {
         setInitError(err instanceof Error ? err.message : 'Erro ao carregar dados')
       } finally {
@@ -369,38 +563,9 @@ export function PortalProducaoNovaPage() {
     carregarHistorico()
   }, [carregarHistorico])
 
-  // ─── Submit ────────────────────────────────────────────────────────────────
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!canConfirm || !perfil) return
-    setSubmitting(true)
-    setSubmitError(null)
-    setSucesso(false)
-    try {
-      await producoesApi.criar({
-        tomadorId: tomador!.id,
-        servicoId: servico!.id,
-        competencia,
-        descricaoComplementar: descricao || undefined,
-        cnaeCodigo: cnaeCodigo || undefined,
-        empresaId: empresa!.id,
-        participantes: [{ medicoId: perfil.id, valorBruto: totalCentavos }],
-      })
-      setSucesso(true)
-      // Limpa formulário
-      setTomador(null)
-      setServico(null)
-      setValorStr('')
-      setDescricao('')
-      setCompetencia(COMPETENCIAS[0])
-      // Recarrega histórico
-      await carregarHistorico()
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Erro ao registrar produção')
-    } finally {
-      setSubmitting(false)
-    }
+  function handleCriada() {
+    setSucesso(true)
+    carregarHistorico()
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -417,41 +582,48 @@ export function PortalProducaoNovaPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate('/portal/dashboard')}
-          className="p-2 rounded-lg hover:bg-ds-input text-ds-light hover:text-ds-mid transition-colors"
-        >
-          <ArrowLeft size={18} />
-        </button>
-        <div>
-          <h1 className="text-xl font-black text-ds-text">Informar Produção</h1>
-          <p className="text-sm text-ds-light mt-0.5">
-            Solicite a emissão de uma nova nota fiscal em seu nome
-          </p>
+      {/* Header — empilha no mobile (título em cima, botão full-width embaixo) */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            onClick={() => navigate('/portal/dashboard')}
+            className="shrink-0 p-2 rounded-lg hover:bg-ds-input text-ds-light hover:text-ds-mid transition-colors"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div className="min-w-0">
+            <h1 className="text-xl font-black text-ds-text truncate">Informar Produção</h1>
+            <p className="text-sm text-ds-light mt-0.5 truncate">
+              Solicite a emissão de uma nova nota fiscal em seu nome
+            </p>
+          </div>
         </div>
+        <Button onClick={() => { setSucesso(false); setModalAberto(true) }} className="w-full sm:w-auto shrink-0">
+          <Plus size={15} className="mr-1.5" />
+          Nova Produção
+        </Button>
       </div>
 
-      {/* Identidade do médico */}
+      {/* Identidade do médico — flex-wrap pra o selo cair numa 2ª linha no mobile em vez de
+          espremer o nome/CRM ou vazar da tela */}
       {perfil && (
-        <div className="flex items-center gap-3 bg-primary-50 border border-primary/20 rounded-xl px-4 py-3">
-          <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-primary font-black text-sm">
+        <div className="flex flex-wrap items-center gap-3 bg-primary-50 border border-primary/20 rounded-xl px-4 py-3">
+          <div className="shrink-0 w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-primary font-black text-sm">
             {perfil.nome.charAt(0).toUpperCase()}
           </div>
-          <div>
-            <p className="text-sm font-bold text-primary-700">{perfil.nome}</p>
-            <p className="text-xs text-primary-600">CRM {perfil.crm}/{perfil.crmUf}
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-primary-700 truncate">{perfil.nome}</p>
+            <p className="text-xs text-primary-600 truncate">CRM {perfil.crm}/{perfil.crmUf}
               {perfil.especialidade ? ` · ${perfil.especialidade}` : ''}
             </p>
           </div>
-          <span className="ml-auto text-[10px] font-bold text-primary-600 bg-primary/10 px-2 py-1 rounded-md">
+          <span className="sm:ml-auto shrink-0 text-[10px] font-bold text-primary-600 bg-primary/10 px-2 py-1 rounded-md">
             Produção registrada para você
           </span>
         </div>
       )}
 
-      {/* Alertas */}
+      {/* Alerta de sucesso */}
       {sucesso && (
         <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-4">
           <CheckCircle2 size={20} className="text-green-600 shrink-0 mt-0.5" />
@@ -464,228 +636,25 @@ export function PortalProducaoNovaPage() {
           </div>
         </div>
       )}
-      {submitError && (
-        <Alert variant="error" onClose={() => setSubmitError(null)}>{submitError}</Alert>
-      )}
 
-      {/* Formulário + Preview */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Formulário */}
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-ds-border shadow-sm p-5 space-y-4">
-          <p className="text-sm font-bold text-ds-text border-b border-ds-border pb-3 -mx-5 px-5">
-            Dados da Produção
-          </p>
-
-          {/* Tomador */}
-          {tomadores.length === 0 ? (
-            <div>
-              <label className="block text-xs font-bold text-ds-mid mb-1">
-                Tomador (Hospital / Clínica / Operadora) *
-              </label>
-              <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
-                <p className="text-xs text-orange-700">
-                  Você ainda não está alocado a nenhum tomador. Entre em contato com o time
-                  operacional para liberar o lançamento de produção.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <SearchDropdown
-              label="Tomador (Hospital / Clínica / Operadora) *"
-              placeholder="Selecione o tomador..."
-              items={tomadores}
-              selected={tomador}
-              onSelect={t => { setTomador(t); setCnaeCodigo(''); setServico(null) }}
-              getLabel={t => t.razaoSocialNome + (t.municipio ? ` — ${t.municipio}` : '')}
-            />
-          )}
-
-          {/* CNAE do tomador — aparece quando o tomador tem CNAEs cadastrados */}
-          {tomador && tomador.cnaes && tomador.cnaes.length > 0 && (
-            <div>
-              <label className="block text-xs font-bold text-ds-mid mb-1">CNAE (atividade econômica da nota)</label>
-              <select
-                value={cnaeCodigo}
-                onChange={e => setCnaeCodigo(e.target.value)}
-                className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="">Selecione o CNAE...</option>
-                {tomador.cnaes.map(c => (
-                  <option key={c.id} value={c.codigoCnae}>
-                    {formatCnae(c.codigoCnae)}{c.descricao ? ` — ${c.descricao.charAt(0) + c.descricao.slice(1).toLowerCase()}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Serviço */}
-          <SearchDropdown
-            label="Serviço (LC 116/2003) *"
-            placeholder="Selecione o serviço..."
-            items={servicosDisponiveis}
-            selected={servico}
-            onSelect={setServico}
-            getLabel={s => `${s.codigoLc116} — ${s.descricaoPadrao}`}
-            disabled={servicosDisponiveis.length === 1}
-          />
-          {tomador && tomador.servicos && tomador.servicos.length > 0 && (
-            <p className="-mt-2 text-[11px] text-ds-light">
-              {servicosDisponiveis.length === 1
-                ? 'Serviço único do tomador — selecionado automaticamente.'
-                : 'Exibindo apenas os serviços cadastrados para este tomador.'}
-            </p>
-          )}
-
-          {/* Competência */}
-          <div>
-            <label className="block text-xs font-bold text-ds-mid mb-1">Competência *</label>
-            <select
-              value={competencia}
-              onChange={e => setCompetencia(e.target.value)}
-              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
-            >
-              {COMPETENCIAS.map(c => (
-                <option key={c} value={c}>{formatCompetencia(c)}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Valor */}
-          <div>
-            <label className="block text-xs font-bold text-ds-mid mb-1">Valor dos Honorários Brutos *</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-ds-light">R$</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={valorStr}
-                onChange={e => {
-                  const raw = e.target.value.replace(/\D/g, '')
-                  const cents = parseInt(raw || '0', 10)
-                  setValorStr(cents === 0 ? '' : maskBRL(cents))
-                }}
-                placeholder="0,00"
-                className="w-full pl-9 pr-3 py-2.5 border border-ds-border rounded-lg text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-          </div>
-
-          {/* Empresa emissora */}
-          <div>
-            <label className="block text-xs font-bold text-ds-mid mb-1">
-              <Building2 size={11} className="inline mr-1" />
-              Empresa Emissora *
-            </label>
-            {empresas.length === 0 ? (
-              <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
-                <p className="text-xs text-orange-700">
-                  Nenhuma empresa vinculada ao seu cadastro.
-                  Entre em contato com o time operacional.
-                </p>
-              </div>
-            ) : empresas.length === 1 ? (
-              <div className="flex items-center gap-2 rounded-lg bg-ds-surface border border-ds-border px-3 py-2.5">
-                <Building2 size={13} className="text-ds-light" />
-                <div>
-                  <p className="text-xs font-semibold text-ds-text">{empresa?.razaoSocial}</p>
-                  <p className="text-[10px] text-ds-light">{empresa?.cnpj}</p>
-                </div>
-              </div>
-            ) : (
-              <SearchDropdown
-                label=""
-                placeholder="Selecione a empresa emissora..."
-                items={empresas}
-                selected={empresa}
-                onSelect={setEmpresa}
-                getLabel={e => `${e.razaoSocial} — ${e.cnpj}`}
-              />
-            )}
-          </div>
-
-          {/* Descrição */}
-          <div>
-            <label className="block text-xs font-bold text-ds-mid mb-1">
-              Descrição Complementar (opcional)
-            </label>
-            <textarea
-              value={descricao}
-              onChange={e => setDescricao(e.target.value)}
-              rows={2}
-              maxLength={500}
-              placeholder="Detalhes adicionais sobre o serviço prestado..."
-              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-            />
-          </div>
-
-          {/* Botão */}
-          <div className="pt-1">
-            <Button
-              type="submit"
-              disabled={!canConfirm || submitting}
-              className="w-full"
-            >
-              {submitting
-                ? <><Loader2 size={15} className="animate-spin mr-2" /> Registrando...</>
-                : <><Plus size={15} className="mr-2" /> Solicitar Emissão</>}
-            </Button>
-            {!canConfirm && !submitting && (
-              <p className="text-xs text-ds-light text-center mt-2">
-                Faltam:{' '}
-                {[
-                  !tomador  && 'tomador',
-                  !servico  && 'serviço',
-                  !empresa  && 'empresa',
-                  totalCentavos <= 0 && 'valor',
-                ].filter(Boolean).join(', ')}
-              </p>
-            )}
-          </div>
-        </form>
-
-        {/* Preview */}
-        <div className="space-y-4">
-          <PreviewCard valorBruto={totalCentavos} />
-
-          {/* Informações adicionais */}
-          <div className="bg-ds-surface rounded-xl border border-ds-border p-4 space-y-2">
-            <p className="text-xs font-bold text-ds-mid">O que acontece após a solicitação?</p>
-            <ol className="space-y-1.5">
-              {[
-                'Sua solicitação é enviada ao time da Pin Saúde',
-                'A operação valida os dados e emite a NFS-e',
-                'Você recebe a nota em "Minhas Notas" quando emitida',
-                'O repasse é realizado conforme calendário Pin',
-              ].map((step, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs text-ds-mid">
-                  <span className="shrink-0 w-4 h-4 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
-                    {i + 1}
-                  </span>
-                  {step}
-                </li>
-              ))}
-            </ol>
-          </div>
-        </div>
-      </div>
-
-      {/* Histórico */}
+      {/* Minhas Solicitações */}
       <div className="bg-white rounded-xl border border-ds-border shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ds-border">
-          <div>
-            <p className="text-sm font-bold text-ds-text">Minhas Solicitações</p>
-            <p className="text-xs text-ds-light mt-0.5">Histórico de produções registradas</p>
-          </div>
-          <Link
-            to="/portal/notas"
-            className="text-xs font-semibold text-primary hover:text-primary-700 transition-colors"
-          >
-            Ver notas fiscais →
-          </Link>
+        <div className="px-5 py-4 border-b border-ds-border">
+          <p className="text-sm font-bold text-ds-text">Minhas Solicitações</p>
+          <p className="text-xs text-ds-light mt-0.5">Histórico de produções registradas</p>
         </div>
         <HistoricoProducoes producoes={historico} loading={histLoading} />
       </div>
+
+      {perfil && (
+        <NovaProducaoModal
+          perfil={perfil}
+          tomadores={tomadores}
+          open={modalAberto}
+          onClose={() => setModalAberto(false)}
+          onCriada={handleCriada}
+        />
+      )}
     </div>
   )
 }

@@ -14,6 +14,7 @@ import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.repository.FrequenciaItemRepository;
 import br.com.pinsaude.faturamento.repository.FrequenciaMedicaRepository;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
+import br.com.pinsaude.faturamento.repository.SetorOperacionalOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoSetorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
@@ -58,6 +59,7 @@ class FrequenciaServiceTest {
     @Mock StorageService storageService;
     @Mock MedicoTomadorRepository medicoTomadorRepo;
     @Mock TomadorOcorrenciaRepository ocorrenciaRepo;
+    @Mock SetorOperacionalOcorrenciaRepository setorOcorrenciaRepo;
     @Mock TomadorGrupoFaturamentoRepository grupoRepo;
     @Mock TomadorGrupoSetorRepository grupoSetorRepo;
 
@@ -619,6 +621,54 @@ class FrequenciaServiceTest {
 
         assertThat(resp.ocorrenciaId()).isEqualTo(ocorrenciaId);
         assertThat(resp.ocorrenciaNome()).isEqualTo("Feriado");
+    }
+
+    @Test
+    void criar_ocorrenciaRestritaAOutroSetor_lanca422() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID ocorrenciaId = UUID.randomUUID();
+        TomadorOcorrencia ocorrencia = ocorrenciaFixture(ocorrenciaId, "FIXO", null, 5000L);
+        when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.of(ocorrencia));
+        // Ocorrência tem pelo menos 1 vínculo de setor configurado, mas não com o setor desta frequência.
+        when(setorOcorrenciaRepo.existsByOcorrenciaId(ocorrenciaId)).thenReturn(true);
+        when(setorOcorrenciaRepo.existsBySetorIdAndOcorrenciaId(setorId, ocorrenciaId)).thenReturn(false);
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaId);
+
+        assertThatThrownBy(() -> service.criar(req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não está disponível para o setor operacional")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void criar_ocorrenciaVinculadaAoMesmoSetor_permiteNormalmente() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID ocorrenciaId = UUID.randomUUID();
+        TomadorOcorrencia ocorrencia = ocorrenciaFixture(ocorrenciaId, "FIXO", null, 5000L);
+        when(ocorrenciaRepo.findById(ocorrenciaId)).thenReturn(Optional.of(ocorrencia));
+        when(setorOcorrenciaRepo.existsByOcorrenciaId(ocorrenciaId)).thenReturn(true);
+        when(setorOcorrenciaRepo.existsBySetorIdAndOcorrenciaId(setorId, ocorrenciaId)).thenReturn(true);
+        when(frequenciaRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaMedica f = inv.getArgument(0);
+            setId(f, UUID.randomUUID());
+            return f;
+        });
+
+        FrequenciaMedicaRequest req = new FrequenciaMedicaRequest(
+            tomadorId, medicoId, grupoId, setorId, "2026-07", "DIARISTA", diaristaId, ocorrenciaId);
+
+        FrequenciaMedicaResponse resp = service.criar(req);
+
+        assertThat(resp.ocorrenciaId()).isEqualTo(ocorrenciaId);
     }
 
     // ─── Listar ───────────────────────────────────────────────────────────────

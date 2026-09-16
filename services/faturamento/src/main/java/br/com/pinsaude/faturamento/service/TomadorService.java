@@ -9,6 +9,7 @@ import br.com.pinsaude.faturamento.domain.TomadorCnae;
 import br.com.pinsaude.faturamento.domain.TomadorGrupoFaturamento;
 import br.com.pinsaude.faturamento.domain.TomadorGrupoSetor;
 import br.com.pinsaude.faturamento.domain.SetorOperacionalModalidade;
+import br.com.pinsaude.faturamento.domain.SetorOperacionalOcorrencia;
 import br.com.pinsaude.faturamento.domain.TomadorModalidade;
 import br.com.pinsaude.faturamento.domain.TomadorHorarioPadrao;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
@@ -56,6 +57,7 @@ import br.com.pinsaude.faturamento.repository.TomadorEmpresaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoSetorRepository;
 import br.com.pinsaude.faturamento.repository.SetorOperacionalModalidadeRepository;
+import br.com.pinsaude.faturamento.repository.SetorOperacionalOcorrenciaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorHorarioPadraoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
@@ -100,6 +102,7 @@ public class TomadorService {
     private final MedicoTomadorSetorRepository medicoTomadorSetorRepo;
     private final TomadorEmpresaRepository empresaTomadorRepo;
     private final TomadorOcorrenciaRepository ocorrenciaRepo;
+    private final SetorOperacionalOcorrenciaRepository ocorrenciaSetorRepo;
     private final TomadorHorarioPadraoRepository horarioPadraoRepo;
     private final FrequenciaMedicaRepository frequenciaMedicaRepo;
     private final FrequenciaItemRepository frequenciaItemRepo;
@@ -120,6 +123,7 @@ public class TomadorService {
                           MedicoTomadorSetorRepository medicoTomadorSetorRepo,
                           TomadorEmpresaRepository empresaTomadorRepo,
                           TomadorOcorrenciaRepository ocorrenciaRepo,
+                          SetorOperacionalOcorrenciaRepository ocorrenciaSetorRepo,
                           TomadorHorarioPadraoRepository horarioPadraoRepo,
                           FrequenciaMedicaRepository frequenciaMedicaRepo,
                           FrequenciaItemRepository frequenciaItemRepo) {
@@ -140,6 +144,7 @@ public class TomadorService {
         this.empresaTomadorRepo = empresaTomadorRepo;
         this.horarioPadraoRepo = horarioPadraoRepo;
         this.ocorrenciaRepo = ocorrenciaRepo;
+        this.ocorrenciaSetorRepo = ocorrenciaSetorRepo;
         this.frequenciaMedicaRepo = frequenciaMedicaRepo;
         this.frequenciaItemRepo = frequenciaItemRepo;
     }
@@ -1012,23 +1017,30 @@ public class TomadorService {
     }
 
     // ─── Ocorrências pré-cadastradas com valor (PINSAUDE-13.19.5) ──────────────
+    // setorIds (PINSAUDE): vínculo N:N com Setor Operacional, ver salvarVinculosSetorOcorrencia
+    // abaixo — segue o mesmo padrão "replace-all-on-PUT" já usado para setor↔modalidade.
 
     public List<TomadorOcorrenciaResponse> listarOcorrencias(UUID tomadorId) {
         findOrThrow(tomadorId);
-        return ocorrenciaRepo.findByTomadorIdOrderByNomeAsc(tomadorId).stream()
-            .map(TomadorOcorrenciaResponse::from)
+        List<TomadorOcorrencia> ocorrencias = ocorrenciaRepo.findByTomadorIdOrderByNomeAsc(tomadorId);
+        Map<UUID, List<UUID>> setoresPorOcorrencia = setorIdsPorOcorrenciaId(ocorrencias);
+        return ocorrencias.stream()
+            .map(o -> TomadorOcorrenciaResponse.from(o, setoresPorOcorrencia.getOrDefault(o.getId(), List.of())))
             .toList();
     }
 
     @Transactional
     public TomadorOcorrenciaResponse criarOcorrencia(UUID tomadorId, TomadorOcorrenciaRequest req) {
         findOrThrow(tomadorId);
+        List<UUID> setorIds = validarSetorIdsDaOcorrencia(tomadorId, req.setorIds());
         TomadorOcorrencia o = new TomadorOcorrencia();
         o.setTomadorId(tomadorId);
         o.setNome(req.nome());
         aplicarCamposOcorrencia(o, req);
         o.setAtivo(req.ativo());
-        return TomadorOcorrenciaResponse.from(ocorrenciaRepo.save(o));
+        TomadorOcorrencia salvo = ocorrenciaRepo.save(o);
+        salvarVinculosSetorOcorrencia(salvo.getId(), setorIds);
+        return TomadorOcorrenciaResponse.from(salvo, setorIds);
     }
 
     @Transactional
@@ -1038,10 +1050,61 @@ public class TomadorService {
         TomadorOcorrencia o = ocorrenciaRepo.findById(ocorrenciaId)
             .filter(x -> tomadorId.equals(x.getTomadorId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ocorrência não encontrada"));
+        List<UUID> setorIds = validarSetorIdsDaOcorrencia(tomadorId, req.setorIds());
         o.setNome(req.nome());
         aplicarCamposOcorrencia(o, req);
         o.setAtivo(req.ativo());
-        return TomadorOcorrenciaResponse.from(ocorrenciaRepo.save(o));
+        TomadorOcorrencia salvo = ocorrenciaRepo.save(o);
+        // Reconstrói o vínculo N:N inteiro a cada PUT — mesmo padrão de atualizarServicoOperacional
+        // (flush() obrigatório antes de reinserir: deleteByOcorrenciaId é uma query derivada, não
+        // @Modifying, então sem o flush o DELETE só sairia depois dos INSERTs seguintes e colidiria
+        // com o UNIQUE (setor_id, ocorrencia_id) de um setor mantido de uma edição para outra).
+        ocorrenciaSetorRepo.deleteByOcorrenciaId(ocorrenciaId);
+        ocorrenciaSetorRepo.flush();
+        salvarVinculosSetorOcorrencia(ocorrenciaId, setorIds);
+        return TomadorOcorrenciaResponse.from(salvo, setorIds);
+    }
+
+    // Todos os setores informados precisam existir e pertencer ao mesmo tomador da ocorrência —
+    // mesmo padrão de validação já usado para modalidades em resolverModalidadesDoSetor. Lista
+    // vazia é sempre válida (= nenhuma restrição, disponível em qualquer setor do tomador).
+    private List<UUID> validarSetorIdsDaOcorrencia(UUID tomadorId, List<UUID> setorIds) {
+        if (setorIds == null || setorIds.isEmpty()) return List.of();
+        Set<UUID> unicos = new LinkedHashSet<>(setorIds);
+        Map<UUID, TomadorServicoOperacional> setoresMap = servicoOperacionalRepo.findAllById(unicos).stream()
+            .collect(Collectors.toMap(TomadorServicoOperacional::getId, Function.identity()));
+        if (setoresMap.size() != unicos.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Um ou mais setores operacionais não foram encontrados");
+        }
+        for (UUID setorId : unicos) {
+            if (!setoresMap.get(setorId).getTomadorId().equals(tomadorId)) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Setor operacional não pertence ao tomador informado: " + setorId);
+            }
+        }
+        return List.copyOf(unicos);
+    }
+
+    private void salvarVinculosSetorOcorrencia(UUID ocorrenciaId, List<UUID> setorIds) {
+        for (UUID setorId : setorIds) {
+            SetorOperacionalOcorrencia link = new SetorOperacionalOcorrencia();
+            link.setSetorId(setorId);
+            link.setOcorrenciaId(ocorrenciaId);
+            ocorrenciaSetorRepo.save(link);
+        }
+    }
+
+    // Batch: ocorrenciaId → setorIds vinculados, via setor_operacional_ocorrencias (N:N). Um único
+    // par de queries (findByOcorrenciaIdIn) independente de quantas ocorrências forem enriquecidas
+    // de uma vez — mesmo padrão de modalidadesPorSetorId/setoresPorGrupoIds.
+    private Map<UUID, List<UUID>> setorIdsPorOcorrenciaId(List<TomadorOcorrencia> ocorrencias) {
+        List<UUID> ocorrenciaIds = ocorrencias.stream().map(TomadorOcorrencia::getId).distinct().toList();
+        if (ocorrenciaIds.isEmpty()) return Map.of();
+        List<SetorOperacionalOcorrencia> links = ocorrenciaSetorRepo.findByOcorrenciaIdIn(ocorrenciaIds);
+        if (links.isEmpty()) return Map.of();
+        return links.stream()
+            .collect(Collectors.groupingBy(SetorOperacionalOcorrencia::getOcorrenciaId,
+                Collectors.mapping(SetorOperacionalOcorrencia::getSetorId, Collectors.toList())));
     }
 
     // SEM_VALOR: os dois campos ficam vazios (texto/observação, sem impacto financeiro).

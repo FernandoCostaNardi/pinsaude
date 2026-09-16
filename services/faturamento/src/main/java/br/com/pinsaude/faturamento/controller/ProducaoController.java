@@ -1,5 +1,6 @@
 package br.com.pinsaude.faturamento.controller;
 
+import br.com.pinsaude.faturamento.dto.AtualizarServicoProducaoRequest;
 import br.com.pinsaude.faturamento.dto.PreviewCalculoRequest;
 import br.com.pinsaude.faturamento.dto.PreviewCalculoResponse;
 import br.com.pinsaude.faturamento.dto.ProducaoRequest;
@@ -46,6 +47,15 @@ public class ProducaoController {
     @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
     public ResponseEntity<ProducaoResponse> criar(@Valid @RequestBody ProducaoRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.criar(req));
+    }
+
+    // Operação atribui/troca o serviço (LC 116/2003) de uma produção já criada — completa
+    // produções vindas do Portal do Médico sem serviço definido (V49), antes de emitir a NFS-e.
+    @PutMapping("/{id}/servico")
+    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    public ResponseEntity<ProducaoResponse> atualizarServico(
+            @PathVariable UUID id, @Valid @RequestBody AtualizarServicoProducaoRequest req) {
+        return ResponseEntity.ok(service.atualizarServico(id, req.servicoId()));
     }
 
     @PostMapping("/preview-calculo")

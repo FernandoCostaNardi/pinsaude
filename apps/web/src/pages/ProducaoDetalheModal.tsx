@@ -73,12 +73,16 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
   const { tomador, servico, valorBruto, status } = producao
   const { label: statusLabel, cls: statusCls, Icon: StatusIcon } = STATUS_CFG[status]
 
+  // servico pode ser null — produções vindas do Portal do Médico nascem sem serviço (LC
+  // 116/2003) definido, a operação atribui depois (ver "Emitir NFS-e"). Sem serviço não dá
+  // pra calcular retenções ainda; os cálculos abaixo caem para 0 e a seção de composição
+  // fiscal mostra um aviso no lugar do breakdown.
   const taxaPin        = calcPct(valorBruto, 15)
-  const issRetido      = tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
-  const irRetido       = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
-  const csllRetido     = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
-  const pisRetido      = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
-  const cofinsRetido   = tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
+  const issRetido      = servico && tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
+  const irRetido       = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
+  const csllRetido     = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
+  const pisRetido      = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
+  const cofinsRetido   = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
   const totalRetencoes = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
   const valorLiquido   = valorBruto - taxaPin          // médico sempre recebe 85%
   const resultadoPin   = taxaPin - totalRetencoes      // lucro Pin após tributos
@@ -176,22 +180,33 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
               <Tag size={14} className="text-primary" />
               <SectionTitle>Serviço (LC 116/2003)</SectionTitle>
             </div>
-            <InfoRow label="Código" value={<span className="font-mono">{servico.codigoLc116}</span>} />
-            <InfoRow label="Descrição" value={servico.descricaoPadrao} />
-            <div className="mt-2 bg-ds-surface rounded-lg p-3 grid grid-cols-5 gap-2">
-              {[
-                { label: 'ISS', value: servico.aliquotaIss },
-                { label: 'IR', value: servico.aliquotaIr },
-                { label: 'CSLL', value: servico.aliquotaCsll },
-                { label: 'PIS', value: servico.aliquotaPis },
-                { label: 'COFINS', value: servico.aliquotaCofins },
-              ].map(({ label, value }) => (
-                <div key={label} className="text-center">
-                  <p className="text-[10px] text-ds-light font-medium">{label}</p>
-                  <p className="text-sm font-semibold text-ds-mid">{Number(value).toFixed(2)}%</p>
+            {servico ? (
+              <>
+                <InfoRow label="Código" value={<span className="font-mono">{servico.codigoLc116}</span>} />
+                <InfoRow label="Descrição" value={servico.descricaoPadrao} />
+                <div className="mt-2 bg-ds-surface rounded-lg p-3 grid grid-cols-5 gap-2">
+                  {[
+                    { label: 'ISS', value: servico.aliquotaIss },
+                    { label: 'IR', value: servico.aliquotaIr },
+                    { label: 'CSLL', value: servico.aliquotaCsll },
+                    { label: 'PIS', value: servico.aliquotaPis },
+                    { label: 'COFINS', value: servico.aliquotaCofins },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="text-center">
+                      <p className="text-[10px] text-ds-light font-medium">{label}</p>
+                      <p className="text-sm font-semibold text-ds-mid">{Number(value).toFixed(2)}%</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            ) : (
+              <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
+                <p className="text-xs text-orange-700">
+                  Ainda não definido — esta produção veio do Portal do Médico. Defina o serviço na
+                  tela de Emissão de NFS-e antes de emitir.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Competência */}
@@ -227,19 +242,19 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
             <div className="bg-ds-surface rounded-xl p-4">
               <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-3">Apuração Fiscal Pin Saúde</p>
               <FiscalRow label="Pin Saúde retém (15%)" value={taxaPin} />
-              {issRetido > 0 && (
+              {servico && issRetido > 0 && (
                 <FiscalRow label={`ISS (${Number(servico.aliquotaIss).toFixed(2)}%)`} value={issRetido} indent negative />
               )}
-              {irRetido > 0 && (
+              {servico && irRetido > 0 && (
                 <FiscalRow label={`IR (${Number(servico.aliquotaIr).toFixed(2)}%)`} value={irRetido} indent negative />
               )}
-              {csllRetido > 0 && (
+              {servico && csllRetido > 0 && (
                 <FiscalRow label={`CSLL (${Number(servico.aliquotaCsll).toFixed(2)}%)`} value={csllRetido} indent negative />
               )}
-              {pisRetido > 0 && (
+              {servico && pisRetido > 0 && (
                 <FiscalRow label={`PIS (${Number(servico.aliquotaPis).toFixed(2)}%)`} value={pisRetido} indent negative />
               )}
-              {cofinsRetido > 0 && (
+              {servico && cofinsRetido > 0 && (
                 <FiscalRow label={`COFINS (${Number(servico.aliquotaCofins).toFixed(2)}%)`} value={cofinsRetido} indent negative />
               )}
               <div className="border-t border-ds-border mt-2 pt-2.5 flex items-center justify-between">
@@ -248,7 +263,11 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
                   {formatBRL(resultadoPin)}
                 </span>
               </div>
-              {totalRetencoes === 0 && (
+              {!servico ? (
+                <p className="text-xs text-orange-600 mt-1">
+                  Serviço ainda não definido — retenções serão recalculadas quando a operação definir o serviço, antes da emissão.
+                </p>
+              ) : totalRetencoes === 0 && (
                 <p className="text-xs text-ds-light mt-1">Tomador não faz retenções — Pin fica com os 15% integrais</p>
               )}
             </div>

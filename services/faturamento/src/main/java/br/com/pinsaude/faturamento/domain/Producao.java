@@ -27,8 +27,10 @@ public class Producao {
     @JoinColumn(name = "tomador_id", nullable = false)
     private Tomador tomador;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "servico_id", nullable = false)
+    // Nullable (V49): no Portal do Médico o médico não escolhe mais o serviço — a operação
+    // atribui depois, antes de emitir a NFS-e (ver ProducaoService.atualizarServico).
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "servico_id", nullable = true)
     private Servico servico;
 
     @Column(name = "valor_bruto", nullable = false)

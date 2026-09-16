@@ -78,6 +78,14 @@ function fmtQtd(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1).replace('.', ',')
 }
 
+// PINSAUDE: ocorrência passa a poder ser restrita a Setores Operacionais específicos (cadastro em
+// TomadorGruposModal, aba Ocorrências) — uma ocorrência sem NENHUM setor vinculado (setorIds
+// vazio) continua sugerida em qualquer setor do tomador (bypass, mesmo espírito do backend); só
+// filtra de fato quando a ocorrência tem pelo menos 1 vínculo configurado.
+function ocorrenciasParaSetor(ocorrencias: TomadorOcorrencia[], setorId: string | null | undefined): TomadorOcorrencia[] {
+  return ocorrencias.filter(o => o.setorIds.length === 0 || (!!setorId && o.setorIds.includes(setorId)))
+}
+
 // Pedido do cliente: o lançamento individual dentro de "Minhas Frequências" é chamado de
 // "plantão" pros tipos "por lançamento" (Plantonista/Evolucionista FDS), de "frequência" pros
 // tipos "fixos" (Diarista/Evolucionista), e de "serviço" pro tipo Serviços — vocabulário mais
@@ -486,6 +494,12 @@ function NovaFrequenciaModal({
       .catch(() => setOcorrencias([]))
   }, [form.tomador?.id, tipoMedico])
 
+  // PINSAUDE: só sugere as ocorrências vinculadas ao setor selecionado (ou sem nenhum vínculo).
+  const ocorrenciasFiltradas = ocorrenciasParaSetor(ocorrencias, form.setor?.id)
+  useEffect(() => {
+    if (ocorrenciaId && !ocorrenciasFiltradas.some(o => o.id === ocorrenciaId)) setOcorrenciaId('')
+  }, [form.setor?.id])
+
   // Ajuste pós-implantação: modalidade (e ocorrência) só são fixadas na frequência pros tipos
   // "fixos" (Diarista/Evolucionista) — tipos "por lançamento" (Plantonista/Evolucionista FDS)
   // voltam a escolher isso a cada plantão lançado, podendo ter turnos/modalidades diferentes
@@ -698,16 +712,16 @@ function NovaFrequenciaModal({
                 Com uma única ocorrência cadastrada para o tomador, um checkbox simples substitui
                 o select (menos fricção que abrir um dropdown pra escolher a única opção
                 disponível); com 2+ opções, mantém o select de sempre. */}
-            {isTipoFixo && (ocorrencias.length === 1 ? (
+            {isTipoFixo && (ocorrenciasFiltradas.length === 1 ? (
               <label className="flex items-center gap-2.5 cursor-pointer group">
                 <input
                   type="checkbox"
-                  checked={ocorrenciaId === ocorrencias[0].id}
-                  onChange={e => setOcorrenciaId(e.target.checked ? ocorrencias[0].id : '')}
+                  checked={ocorrenciaId === ocorrenciasFiltradas[0].id}
+                  onChange={e => setOcorrenciaId(e.target.checked ? ocorrenciasFiltradas[0].id : '')}
                   className="w-4 h-4 rounded border-ds-border text-primary focus:ring-primary/30 cursor-pointer"
                 />
                 <span className="text-sm text-ds-text group-hover:text-primary transition-colors">
-                  Ocorrência: <span className="font-semibold">{ocorrencias[0].nome}</span>
+                  Ocorrência: <span className="font-semibold">{ocorrenciasFiltradas[0].nome}</span>
                 </span>
               </label>
             ) : (
@@ -716,10 +730,10 @@ function NovaFrequenciaModal({
                   Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
                 </label>
                 <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
-                  disabled={!form.tomador || ocorrencias.length === 0}
+                  disabled={!form.tomador || ocorrenciasFiltradas.length === 0}
                   className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px] disabled:opacity-50">
                   <option value="">Nenhuma</option>
-                  {ocorrencias.map(o => (
+                  {ocorrenciasFiltradas.map(o => (
                     <option key={o.id} value={o.id}>{o.nome}</option>
                   ))}
                 </select>
@@ -747,9 +761,10 @@ function NovaFrequenciaModal({
 // ─── Formulário de plantão — empilhado no mobile ──────────────────────────────
 
 function PlantaoFormPanel({
-  tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, onSave, onCancel,
+  tomadorId, setorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, onSave, onCancel,
 }: {
   tomadorId: string
+  setorId: string   // filtra a lista de ocorrências (PINSAUDE — ocorrência por setor)
   tipoMedico: TipoEscala | null   // filtra a lista de modalidades (PINSAUDE-13.25)
   // PINSAUDE-13.26: quando a frequência já tem modalidade/ocorrência fixa (escolhida na
   // criação), o formulário não pergunta mais nenhuma das duas. null = frequência legada.
@@ -787,6 +802,9 @@ function PlantaoFormPanel({
       .then(os => setOcorrencias(os.filter(o => o.ativo)))
       .catch(() => {})
   }, [tomadorId, modalidadeFixa])
+
+  // PINSAUDE: só sugere as ocorrências vinculadas ao setor desta frequência (ou sem nenhum vínculo).
+  const ocorrenciasFiltradas = ocorrenciasParaSetor(ocorrencias, setorId)
 
   const precisaHoras = precisaHorasTrabalhadas(modalidade, tipoMedico)
   const precisaQtd   = precisaQuantidade(modalidade, tipoMedico)
@@ -927,7 +945,7 @@ function PlantaoFormPanel({
           <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
             className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]">
             <option value="">Nenhuma</option>
-            {ocorrencias.map(o => (
+            {ocorrenciasFiltradas.map(o => (
               <option key={o.id} value={o.id}>{o.nome}</option>
             ))}
           </select>
@@ -1229,6 +1247,7 @@ function FrequenciaItensPanel({
       {adicionando && (
         <PlantaoFormPanel
           tomadorId={freq.tomadorId}
+          setorId={freq.servicoOperacionalId}
           tipoMedico={freq.tipoMedico}
           modalidadeFixa={modalidadeFixa}
           ocorrenciaFixaNome={ocorrenciaFixaNome}

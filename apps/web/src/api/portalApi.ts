@@ -125,7 +125,9 @@ export interface ProducaoPortal {
   id: string
   competencia: string
   tomadorNome: string
-  servicoDescricao: string
+  // Nullable — produções lançadas pelo Portal do Médico nascem sem serviço definido; a
+  // operação atribui depois, antes de emitir a NFS-e.
+  servicoDescricao: string | null
   valorBrutoCentavos: number
   valorLiquidoEstimadoCentavos: number
   status: string
