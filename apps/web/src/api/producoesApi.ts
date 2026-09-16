@@ -41,7 +41,9 @@ export interface Producao {
   empresaId: string | null
   participantes: Participacao[]
   tomador: TomadorResumo
-  servico: ServicoResumo
+  // Nullable — produções vindas do Portal do Médico nascem sem serviço definido; a operação
+  // atribui depois via atualizarServico(), antes de emitir a NFS-e.
+  servico: ServicoResumo | null
   valorBruto: number
   competencia: string
   descricaoComplementar?: string
@@ -58,7 +60,9 @@ export interface ParticipacaoRequest {
 
 export interface ProducaoRequest {
   tomadorId: string
-  servicoId: string
+  // Nullable — o Portal do Médico não escolhe mais o serviço (LC 116/2003); a operação atribui
+  // depois via atualizarServico(), antes de emitir a NFS-e.
+  servicoId: string | null
   competencia: string
   descricaoComplementar?: string
   cnaeCodigo?: string
@@ -144,4 +148,15 @@ async function previewCalculo(req: PreviewCalculoRequest): Promise<PreviewCalcul
   return handleResponse<PreviewCalculoResponse>(res)
 }
 
-export const producoesApi = { listar, buscarPorId, criar, previewCalculo }
+// Operação atribui/troca o serviço (LC 116/2003) de uma produção já criada — completa produções
+// vindas do Portal do Médico sem serviço definido, antes de emitir a NFS-e.
+async function atualizarServico(id: string, servicoId: string): Promise<Producao> {
+  const res = await fetch(`/api/producoes/${id}/servico`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify({ servicoId }),
+  })
+  return handleResponse<Producao>(res)
+}
+
+export const producoesApi = { listar, buscarPorId, criar, previewCalculo, atualizarServico }

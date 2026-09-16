@@ -125,6 +125,14 @@ function calcularValorOcorrenciaPreview(o: TomadorOcorrencia | null, valorModali
   return total
 }
 
+// PINSAUDE: ocorrência passa a poder ser restrita a Setores Operacionais específicos (cadastro em
+// TomadorGruposModal, aba Ocorrências) — uma ocorrência sem NENHUM setor vinculado (setorIds
+// vazio) continua sugerida em qualquer setor do tomador (bypass, mesmo espírito do backend); só
+// filtra de fato quando a ocorrência tem pelo menos 1 vínculo configurado.
+function ocorrenciasParaSetor(ocorrencias: TomadorOcorrencia[], setorId: string | null | undefined): TomadorOcorrencia[] {
+  return ocorrencias.filter(o => o.setorIds.length === 0 || (!!setorId && o.setorIds.includes(setorId)))
+}
+
 function fmtQtd(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1).replace('.', ',')
 }
@@ -445,6 +453,12 @@ function NovaFrequenciaModal({
       .catch(() => setOcorrencias([]))
   }, [tomador?.id, tipoMedico])
 
+  // PINSAUDE: só sugere as ocorrências vinculadas ao setor selecionado (ou sem nenhum vínculo).
+  const ocorrenciasFiltradas = ocorrenciasParaSetor(ocorrencias, setor?.id)
+  useEffect(() => {
+    if (ocorrenciaId && !ocorrenciasFiltradas.some(o => o.id === ocorrenciaId)) setOcorrenciaId('')
+  }, [setor?.id])
+
   // Ajuste pós-implantação: modalidade (e ocorrência) só são fixadas na frequência pros tipos
   // "fixos" (Diarista/Evolucionista) — tipos "por lançamento" (Plantonista/Evolucionista FDS)
   // voltam a escolher isso a cada plantão lançado, podendo ter turnos/modalidades diferentes
@@ -654,10 +668,10 @@ function NovaFrequenciaModal({
                 Ocorrência do catálogo <span className="font-normal text-ds-light">(opcional)</span>
               </label>
               <select value={ocorrenciaId} onChange={e => setOcorrenciaId(e.target.value)}
-                disabled={!tomador || ocorrencias.length === 0}
+                disabled={!tomador || ocorrenciasFiltradas.length === 0}
                 className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white disabled:opacity-50">
                 <option value="">Nenhuma</option>
-                {ocorrencias.map(o => (
+                {ocorrenciasFiltradas.map(o => (
                   <option key={o.id} value={o.id}>{o.nome}</option>
                 ))}
               </select>
@@ -681,9 +695,10 @@ function NovaFrequenciaModal({
 // ─── Panel de adicionar / editar plantão ──────────────────────────────────────
 
 function PlantaoFormPanel({
-  tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, ocorrenciaFixaValorCentavos, item, onSave, onCancel,
+  tomadorId, setorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, ocorrenciaFixaValorCentavos, item, onSave, onCancel,
 }: {
   tomadorId: string
+  setorId: string   // filtra a lista de ocorrências (PINSAUDE — ocorrência por setor)
   tipoMedico: TipoEscala | null   // filtra a lista de modalidades (PINSAUDE-13.25)
   // PINSAUDE-13.26: quando a frequência já tem modalidade/ocorrência fixa (escolhida na
   // criação), o formulário não pergunta mais nenhuma das duas — usa sempre estes valores.
@@ -742,7 +757,7 @@ function PlantaoFormPanel({
   // Se a ocorrência selecionada foi desativada depois do lançamento, ainda precisa aparecer
   // como opção (senão o <select> mostra em branco) — igual ao tratamento de modalidade inativa.
   const ocorrenciaSelecionada = ocorrenciasTodas.find(o => o.id === ocorrenciaId) ?? null
-  const ocorrenciasAtivas = ocorrenciasTodas.filter(o => o.ativo)
+  const ocorrenciasAtivas = ocorrenciasParaSetor(ocorrenciasTodas.filter(o => o.ativo), setorId)
   const ocorrenciaOptions = ocorrenciaSelecionada && !ocorrenciaSelecionada.ativo
     ? [ocorrenciaSelecionada, ...ocorrenciasAtivas]
     : ocorrenciasAtivas
@@ -975,10 +990,11 @@ function criarLinhasVazias(qtd: number, dataExecucaoDefault = ''): PlantaoRow[] 
 }
 
 function PlantaoGridPanel({
-  freqId, tomadorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, ocorrenciaFixaValorCentavos, onSaved, onCancel,
+  freqId, tomadorId, setorId, tipoMedico, modalidadeFixa, ocorrenciaFixaNome, ocorrenciaFixaValorCentavos, onSaved, onCancel,
 }: {
   freqId: string
   tomadorId: string
+  setorId: string   // filtra a lista de ocorrências (PINSAUDE — ocorrência por setor)
   tipoMedico: TipoEscala | null   // filtra a lista de modalidades (PINSAUDE-13.25)
   // PINSAUDE-13.26: com modalidade/ocorrência fixas na frequência, as colunas correspondentes
   // somem do grid inteiro — não faz mais sentido escolher por linha. null = frequência legada.
@@ -1026,6 +1042,9 @@ function PlantaoGridPanel({
       .then(os => setOcorrencias(os.filter(o => o.ativo)))
       .catch(() => {})
   }, [tomadorId, tipoMedico, modalidadeFixa, isServicos])
+
+  // PINSAUDE: só sugere as ocorrências vinculadas ao setor desta frequência (ou sem nenhum vínculo).
+  const ocorrenciasFiltradas = ocorrenciasParaSetor(ocorrencias, setorId)
 
   // Foca o campo "Dia" da linha recém-adicionada (via botão ou Tab na última linha) — modalidade
   // Serviços não tem coluna "Dia", então foca a Modalidade direto nesse caso.
@@ -1325,10 +1344,10 @@ function PlantaoGridPanel({
                   <td className="px-2 py-1.5">
                     <select value={r.ocorrenciaId}
                       onChange={e => updateRow(r.key, { ocorrenciaId: e.target.value })}
-                      disabled={ocorrencias.length === 0}
+                      disabled={ocorrenciasFiltradas.length === 0}
                       className="w-full border border-transparent hover:border-ds-border focus:border-primary rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 focus:ring-primary/30 disabled:opacity-50">
-                      <option value="">{ocorrencias.length === 0 ? 'Sem ocorrências' : 'Nenhuma'}</option>
-                      {ocorrencias.map(o => (
+                      <option value="">{ocorrenciasFiltradas.length === 0 ? 'Sem ocorrências' : 'Nenhuma'}</option>
+                      {ocorrenciasFiltradas.map(o => (
                         <option key={o.id} value={o.id}>{o.nome}</option>
                       ))}
                     </select>
@@ -1715,6 +1734,7 @@ function PainelFrequencia({
               <PlantaoGridPanel
                 freqId={freq.id}
                 tomadorId={freq.tomadorId}
+                setorId={freq.servicoOperacionalId}
                 tipoMedico={freq.tipoMedico}
                 modalidadeFixa={modalidadeFixa}
                 ocorrenciaFixaNome={ocorrenciaFixaNome}
@@ -1726,6 +1746,7 @@ function PainelFrequencia({
             <div className="sm:hidden">
               <PlantaoFormPanel
                 tomadorId={freq.tomadorId}
+                setorId={freq.servicoOperacionalId}
                 tipoMedico={freq.tipoMedico}
                 modalidadeFixa={modalidadeFixa}
                 ocorrenciaFixaNome={ocorrenciaFixaNome}
@@ -1742,6 +1763,7 @@ function PainelFrequencia({
           <div className="shrink-0 border-b border-ds-border bg-yellow-50/20 pt-3">
             <PlantaoFormPanel
               tomadorId={freq.tomadorId}
+              setorId={freq.servicoOperacionalId}
               tipoMedico={freq.tipoMedico}
               modalidadeFixa={modalidadeFixa}
               ocorrenciaFixaNome={ocorrenciaFixaNome}

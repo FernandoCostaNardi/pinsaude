@@ -6,7 +6,7 @@ interface ModalProps {
   onClose: () => void
   title?: ReactNode
   children: ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl'
 }
 
 const sizeClasses = {
@@ -15,6 +15,9 @@ const sizeClasses = {
   lg: 'max-w-lg',
   xl: 'max-w-2xl',
   '2xl': 'max-w-3xl',
+  // Pra modais com tabela larga (ex: aba Modalidades do Faturamento por Grupo, que tinha scroll
+  // horizontal mesmo no "2xl") — bem mais largo, mas ainda com folga em qualquer tela de desktop.
+  '3xl': 'max-w-6xl',
 }
 
 export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {

@@ -16,6 +16,8 @@ public record ProducaoResponse(
     UUID empresaId,
     List<ParticipacaoResponse> participantes,
     TomadorResumo tomador,
+    // Nullable (V49) — produções vindas do Portal do Médico nascem sem serviço definido; a
+    // operação atribui depois via PUT /api/producoes/{id}/servico, antes de emitir a NFS-e.
     ServicoResumo servico,
     long valorBruto,
     String competencia,
@@ -53,7 +55,7 @@ public record ProducaoResponse(
             p.getEmpresaId(),
             parts,
             TomadorResumo.from(p.getTomador()),
-            ServicoResumo.from(p.getServico()),
+            p.getServico() != null ? ServicoResumo.from(p.getServico()) : null,
             p.getValorBruto(),
             p.getCompetencia(),
             p.getDescricaoComplementar(),

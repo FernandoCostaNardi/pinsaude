@@ -103,8 +103,12 @@ public class ProducaoService {
 
         Tomador tomador = tomadorRepo.findById(req.tomadorId())
             .orElseThrow(() -> new EntityNotFoundException("Tomador não encontrado: " + req.tomadorId()));
-        Servico servico = servicoRepo.findById(req.servicoId())
-            .orElseThrow(() -> new EntityNotFoundException("Serviço não encontrado: " + req.servicoId()));
+        // Nullable (V49) — quando o médico solicita pelo Portal, o serviço (LC 116/2003) não é
+        // mais escolhido por ele; a operação atribui depois, antes de emitir a NFS-e.
+        Servico servico = req.servicoId() != null
+            ? servicoRepo.findById(req.servicoId())
+                .orElseThrow(() -> new EntityNotFoundException("Serviço não encontrado: " + req.servicoId()))
+            : null;
 
         if (grupoRepo.existsByTomadorIdAndAtivoTrue(req.tomadorId())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -144,6 +148,23 @@ public class ProducaoService {
         participacaoRepo.saveAll(participacoes);
 
         return ProducaoResponse.from(p, participacoes);
+    }
+
+    // Atribui/troca o serviço (LC 116/2003) de uma produção já criada — usado pela operação para
+    // completar produções vindas do Portal do Médico sem serviço definido (V49), antes de emitir
+    // a NFS-e. Bloqueado depois de EMITIDA: o serviço já compôs a nota, não faz sentido trocar.
+    @Transactional
+    public ProducaoResponse atualizarServico(UUID id, UUID servicoId) {
+        Producao p = findOrThrow(id);
+        if (p.getStatus() == StatusProducao.EMITIDA) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Não é possível alterar o serviço de uma produção já emitida");
+        }
+        Servico servico = servicoRepo.findById(servicoId)
+            .orElseThrow(() -> new EntityNotFoundException("Serviço não encontrado: " + servicoId));
+        p.setServico(servico);
+        producaoRepo.save(p);
+        return ProducaoResponse.from(p, participacaoRepo.findByProducaoId(id));
     }
 
     @Transactional(readOnly = true)

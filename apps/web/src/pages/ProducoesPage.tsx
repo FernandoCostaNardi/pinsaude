@@ -84,8 +84,8 @@ function exportarCSV(producoes: Producao[], medicoNomeMap: Record<string, string
     p.participantes.map(pt => medicoNomeMap[pt.medicoId] ?? pt.medicoId).join(' / '),
     p.tomador.razaoSocialNome,
     p.tomador.municipio ?? '',
-    p.servico.codigoLc116,
-    p.servico.descricaoPadrao,
+    p.servico?.codigoLc116 ?? '',
+    p.servico?.descricaoPadrao ?? 'Não definido',
     formatCompetencia(p.competencia),
     (p.valorBruto / 100).toFixed(2).replace('.', ','),
     STATUS_CFG[p.status].label,
@@ -374,10 +374,16 @@ export function ProducoesPage() {
                   )}
                 </TD>
                 <TD>
-                  <div className="text-sm text-ds-mid font-medium">{p.servico.codigoLc116}</div>
-                  <div className="text-xs text-ds-light truncate max-w-40" title={p.servico.descricaoPadrao}>
-                    {p.servico.descricaoPadrao}
-                  </div>
+                  {p.servico ? (
+                    <>
+                      <div className="text-sm text-ds-mid font-medium">{p.servico.codigoLc116}</div>
+                      <div className="text-xs text-ds-light truncate max-w-40" title={p.servico.descricaoPadrao}>
+                        {p.servico.descricaoPadrao}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-xs font-semibold text-orange-600">Não definido</span>
+                  )}
                 </TD>
                 <TD className="font-medium text-ds-mid text-sm">{formatCompetencia(p.competencia)}</TD>
                 <TD className="text-right font-semibold text-ds-mid text-sm">{formatBRL(p.valorBruto)}</TD>

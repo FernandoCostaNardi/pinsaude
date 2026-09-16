@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Banknote, TrendingUp, FileText,
+  Banknote,
   RefreshCw, Bell, CheckCircle2, Clock, XCircle,
   AlertTriangle, Loader2, ShieldCheck, PlusCircle,
 } from 'lucide-react'
@@ -261,41 +261,19 @@ export function DashboardMedicoPage() {
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* KPI card */}
+      <div className="grid grid-cols-1 sm:max-w-xs gap-4">
         {loading ? (
-          <>
-            <SkeletonKpiCard />
-            <SkeletonKpiCard />
-            <SkeletonKpiCard />
-          </>
+          <SkeletonKpiCard />
         ) : dashboard ? (
-          <>
-            <KpiCard
-              icon={Banknote}
-              label="Repasse Disponível"
-              value={formatBRL(dashboard.saldoDisponivelCentavos)}
-              sub={<Link to="/portal/extrato" className="hover:text-primary transition-colors">Ver extrato →</Link>}
-              iconBg="bg-green-50"
-              iconColor="text-green-600"
-            />
-            <KpiCard
-              icon={TrendingUp}
-              label="A Receber"
-              value={formatBRL(dashboard.valorAReceberCentavos)}
-              sub="Notas em processamento"
-              iconBg="bg-primary-50"
-              iconColor="text-primary"
-            />
-            <KpiCard
-              icon={FileText}
-              label="Notas Emitidas"
-              value={String(dashboard.totalNotasEmitidas)}
-              sub="Total acumulado"
-              iconBg="bg-blue-50"
-              iconColor="text-blue-600"
-            />
-          </>
+          <KpiCard
+            icon={Banknote}
+            label="Saldo Disponível"
+            value={formatBRL(dashboard.saldoDisponivelCentavos)}
+            sub={<Link to="/portal/extrato" className="hover:text-primary transition-colors">Ver extrato →</Link>}
+            iconBg="bg-green-50"
+            iconColor="text-green-600"
+          />
         ) : null}
       </div>
 
@@ -303,8 +281,8 @@ export function DashboardMedicoPage() {
       <div className="bg-white rounded-xl border border-ds-border shadow-sm overflow-hidden">
         <div className="flex items-center gap-4 px-5 py-4 border-b border-ds-border">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-ds-text">Meu Repasse por Competência</p>
-            <p className="text-xs text-ds-light mt-0.5">Últimas 12 competências — notas emitidas</p>
+            <p className="text-sm font-bold text-ds-text">Meu Histórico por Competência</p>
+            <p className="text-xs text-ds-light mt-0.5">Últimas 12 competências</p>
           </div>
           {refreshing && <Spinner size="sm" />}
         </div>
@@ -321,15 +299,15 @@ export function DashboardMedicoPage() {
         </div>
       </div>
 
-      {/* Últimas notas */}
+      {/* Últimas transferências */}
       <div className="bg-white rounded-xl border border-ds-border shadow-sm overflow-hidden">
         <div className="flex items-center gap-4 px-5 py-4 border-b border-ds-border">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-ds-text">Últimas Notas Fiscais</p>
+            <p className="text-sm font-bold text-ds-text">Últimas Transferências</p>
             <p className="text-xs text-ds-light mt-0.5">5 mais recentes</p>
           </div>
           <Link
-            to="/portal/notas"
+            to="/portal/extrato"
             className="shrink-0 text-xs font-semibold text-primary hover:text-primary-700 transition-colors"
           >
             Ver todas →
@@ -349,7 +327,7 @@ export function DashboardMedicoPage() {
           </div>
         ) : !dashboard?.ultimasNotas?.length ? (
           <div className="px-5 py-10 text-center text-ds-light text-sm">
-            Nenhuma nota fiscal encontrada
+            Nenhuma transferência encontrada
           </div>
         ) : (
           <>
@@ -359,10 +337,9 @@ export function DashboardMedicoPage() {
                 <thead>
                   <tr className="bg-ds-surface">
                     <th className="text-left px-5 py-2.5 text-xs font-semibold text-ds-mid">Competência</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-ds-mid">Tomador</th>
-                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-ds-mid">Meu Repasse</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-ds-mid">Valor</th>
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-ds-mid">Status</th>
-                    <th className="text-right px-5 py-2.5 text-xs font-semibold text-ds-mid">Emissão</th>
+                    <th className="text-right px-5 py-2.5 text-xs font-semibold text-ds-mid">Data</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ds-border">
@@ -370,9 +347,6 @@ export function DashboardMedicoPage() {
                     <tr key={nota.id} className="hover:bg-ds-surface/50 transition-colors">
                       <td className="px-5 py-3 text-xs font-semibold text-ds-mid">
                         {formatCompetencia(nota.competencia)}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-ds-text max-w-[180px] truncate">
-                        {nota.tomadorNome ?? '—'}
                       </td>
                       <td className="px-4 py-3 text-xs text-right font-bold text-green-700">
                         {formatBRL(nota.valorLiquidoMedicoCentavos)}
@@ -397,9 +371,8 @@ export function DashboardMedicoPage() {
                     <span className="text-xs font-bold text-ds-text">{formatCompetencia(nota.competencia)}</span>
                     <StatusBadge status={nota.status} />
                   </div>
-                  <p className="text-xs text-ds-mid truncate">{nota.tomadorNome ?? '—'}</p>
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-ds-light">Meu repasse</span>
+                    <span className="text-[11px] text-ds-light">Valor recebido</span>
                     <span className="text-xs font-bold text-green-700">{formatBRL(nota.valorLiquidoMedicoCentavos)}</span>
                   </div>
                 </div>

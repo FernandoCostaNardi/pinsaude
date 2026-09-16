@@ -13,7 +13,8 @@ public record ProducaoRequest(
     @NotNull(message = "tomadorId é obrigatório")
     UUID tomadorId,
 
-    @NotNull(message = "servicoId é obrigatório")
+    // Nullable (V49): no Portal do Médico o médico não escolhe mais o serviço — fica a cargo da
+    // operação, atribuído depois via PUT /api/producoes/{id}/servico, antes da emissão.
     UUID servicoId,
 
     @NotBlank(message = "competencia é obrigatória")

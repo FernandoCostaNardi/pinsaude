@@ -113,7 +113,7 @@ public class PortalService {
                 FROM faturamento.participacoes_producao pp
                 JOIN faturamento.producoes p ON p.id = pp.producao_id
                 JOIN faturamento.tomadores t ON t.id = p.tomador_id
-                JOIN faturamento.servicos  s ON s.id = p.servico_id
+                LEFT JOIN faturamento.servicos s ON s.id = p.servico_id
                 WHERE pp.medico_id = ?
                 """);
 

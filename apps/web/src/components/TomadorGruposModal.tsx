@@ -119,16 +119,21 @@ function emptyModalidadeForm(): ModalidadeForm {
 
 // Ocorrência PERCENTUAL e FIXO podem coexistir ("10% + R$ 50,00") — tipoValor só decide qual
 // dos dois campos é obrigatório, o outro fica sempre disponível como valor extra opcional.
+//
+// setorIds: pedido do cliente — a ocorrência passa a poder ser restrita a Setores Operacionais
+// específicos (a tela de Frequência só sugere as ocorrências vinculadas ao setor selecionado).
+// Vazio = sem restrição, disponível em qualquer setor do tomador (comportamento anterior).
 interface OcorrenciaForm {
   nome: string
   tipoValor: 'PERCENTUAL' | 'FIXO' | 'SEM_VALOR'
   valorPercentualStr: string
   valorStr: string
   ativo: boolean
+  setorIds: Set<string>
 }
 
 function emptyOcorrenciaForm(): OcorrenciaForm {
-  return { nome: '', tipoValor: 'SEM_VALOR', valorPercentualStr: '', valorStr: '', ativo: true }
+  return { nome: '', tipoValor: 'SEM_VALOR', valorPercentualStr: '', valorStr: '', ativo: true, setorIds: new Set() }
 }
 
 interface HorarioPadraoForm {
@@ -496,7 +501,7 @@ function ModalidadeFormInline({
 }
 
 function OcorrenciaFormInline({
-  form, onChange, onSave, onCancel, saving, isNew,
+  form, onChange, onSave, onCancel, saving, isNew, setores,
 }: {
   form: OcorrenciaForm
   onChange: (patch: Partial<OcorrenciaForm>) => void
@@ -504,10 +509,25 @@ function OcorrenciaFormInline({
   onCancel: () => void
   saving: boolean
   isNew: boolean
+  setores: TomadorServicoOperacional[]
 }) {
   const isPercentual = form.tipoValor === 'PERCENTUAL'
   const isFixo = form.tipoValor === 'FIXO'
   const isSemValor = form.tipoValor === 'SEM_VALOR'
+
+  // Setor já selecionado mas hoje inativo (ex: ocorrência cadastrada antes de o setor ser
+  // desativado) — injetado no topo pra não sumir do checklist (mesmo padrão já usado para
+  // modalidade/ocorrência inativa em outros formulários deste componente).
+  const setoresSelecionadosInativos = setores.filter(s => form.setorIds.has(s.id) && !s.ativo)
+  const setorOptions = [...setoresSelecionadosInativos, ...setores.filter(s => s.ativo)]
+    .sort((a, b) => a.nome.localeCompare(b.nome))
+
+  function toggleSetor(setorId: string) {
+    const novos = new Set(form.setorIds)
+    if (novos.has(setorId)) novos.delete(setorId)
+    else novos.add(setorId)
+    onChange({ setorIds: novos })
+  }
 
   return (
     <div className="space-y-3">
@@ -585,6 +605,31 @@ function OcorrenciaFormInline({
             Ocorrência apenas informativa — não altera o valor pago ao médico.
           </p>
         )}
+
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Setores Operacionais
+            <span className="ml-1 text-xs font-normal text-ds-light">
+              (opcional — deixe tudo desmarcado para sugerir em qualquer setor; marque um ou mais para restringir)
+            </span>
+          </label>
+          {setores.length === 0 ? (
+            <p className="text-[11px] text-ds-light">
+              Nenhum setor cadastrado — sem restrição, esta ocorrência é sugerida em qualquer setor.
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-2.5">
+              {setorOptions.map(s => (
+                <Switch
+                  key={s.id}
+                  checked={form.setorIds.has(s.id)}
+                  onChange={() => toggleSetor(s.id)}
+                  label={`${s.nome}${!s.ativo ? ' — inativo' : ''}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="col-span-2">
           <label className="flex items-center gap-2 cursor-pointer">
@@ -1368,6 +1413,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       valorPercentualStr: o.valorPercentual != null ? String(o.valorPercentual) : '',
       valorStr: o.valorCentavos != null && o.valorCentavos > 0 ? centavosParaBrl(o.valorCentavos) : '',
       ativo: o.ativo,
+      setorIds: new Set(o.setorIds),
     })
     setEditingOcId(o.id)
     setOcErr(null)
@@ -1408,6 +1454,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       valorPercentual: ocForm.tipoValor !== 'SEM_VALOR' && percentualValido ? percentualNum : null,
       valorCentavos: ocForm.tipoValor !== 'SEM_VALOR' && centavosValido ? centavosNum : null,
       ativo: ocForm.ativo,
+      setorIds: Array.from(ocForm.setorIds),
     }
 
     setOcSaving(true)
@@ -1525,7 +1572,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
         </div>
       }
       onClose={onClose}
-      size="2xl"
+      size="3xl"
     >
       {/* Tab bar */}
       <div className="flex gap-1 mb-4 p-1 bg-ds-input rounded-xl border border-ds-border">
@@ -1898,7 +1945,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                 </p>
               )}
               <div className="overflow-x-auto rounded-xl border border-ds-border">
-                <table className="w-full text-xs min-w-[600px]">
+                <table className="w-full text-xs min-w-[900px]">
                   <thead>
                     <tr className="bg-ds-surface border-b border-ds-border">
                       {canWrite && <th className="px-2 py-2.5 w-8" />}
@@ -2066,13 +2113,14 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-ds-border">
-              <table className="w-full text-xs min-w-[560px]">
+              <table className="w-full text-xs min-w-[680px]">
                 <thead>
                   <tr className="bg-ds-surface border-b border-ds-border">
                     <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Nome</th>
                     <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Tipo</th>
                     <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Percentual</th>
                     <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Valor Fixo</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Setores</th>
                     <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-ds-light">Status</th>
                     {canWrite && <th className="px-3 py-2.5 w-16" />}
                   </tr>
@@ -2096,6 +2144,18 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {o.valorCentavos != null ? formatBRL(o.valorCentavos) : <span className="text-ds-light">—</span>}
+                      </td>
+                      <td className="px-3 py-2">
+                        {o.setorIds.length === 0 ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-ds-input text-ds-mid">Todos</span>
+                        ) : (
+                          <span
+                            className="block truncate max-w-[180px] text-ds-mid"
+                            title={o.setorIds.map(id => todosSetores.find(s => s.id === id)?.nome ?? id).join(', ')}
+                          >
+                            {o.setorIds.map(id => todosSetores.find(s => s.id === id)?.nome ?? '—').join(', ')}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-center">
                         <span className={[
@@ -2147,6 +2207,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                 onCancel={cancelarOcorrencia}
                 saving={ocSaving}
                 isNew={!editingOcId}
+                setores={todosSetores}
               />
             </div>
           )}

@@ -29,7 +29,7 @@ export function ExtratoPage() {
       const data = await portalApi.getExtrato({})
       setExtrato(data)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erro ao carregar repasses')
+      setError(e instanceof Error ? e.message : 'Erro ao carregar transferências')
     } finally {
       setLoading(false)
     }
@@ -37,8 +37,8 @@ export function ExtratoPage() {
 
   useEffect(() => { carregar() }, [carregar])
 
-  const repasses = extrato?.lancamentos ?? []
-  const totalRepasses = extrato?.totalCreditos ?? 0
+  const transferencias = extrato?.lancamentos ?? []
+  const totalTransferencias = extrato?.totalCreditos ?? 0
 
   return (
     <div className="flex flex-col h-full -m-6">
@@ -46,7 +46,7 @@ export function ExtratoPage() {
       <div className="px-6 pt-6 pb-4 bg-white border-b border-ds-border shrink-0">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-black text-ds-text">Meus Repasses</h1>
+            <h1 className="text-xl font-black text-ds-text">Minhas Transferências</h1>
             <p className="text-sm text-ds-light mt-0.5">
               Transferências efetuadas para sua conta bancária
             </p>
@@ -62,14 +62,14 @@ export function ExtratoPage() {
         </div>
 
         {/* Total acumulado — só exibe se houver dados */}
-        {!loading && repasses.length > 0 && (
+        {!loading && transferencias.length > 0 && (
           <div className="mt-4 inline-flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
             <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
               <Banknote size={15} className="text-green-700" />
             </div>
             <div>
               <p className="text-[10px] font-bold text-green-700 uppercase tracking-wide">Total recebido</p>
-              <p className="text-lg font-black text-green-800 tabular-nums">{formatBRL(totalRepasses)}</p>
+              <p className="text-lg font-black text-green-800 tabular-nums">{formatBRL(totalTransferencias)}</p>
             </div>
           </div>
         )}
@@ -87,10 +87,10 @@ export function ExtratoPage() {
           <div className="flex items-center justify-center h-48">
             <Spinner size="lg" />
           </div>
-        ) : repasses.length === 0 ? (
+        ) : transferencias.length === 0 ? (
           <EmptyState />
         ) : (
-          <RepassesTable repasses={repasses} totalRepasses={totalRepasses} />
+          <TransferenciasTable transferencias={transferencias} totalTransferencias={totalTransferencias} />
         )}
       </div>
     </div>
@@ -105,19 +105,19 @@ function EmptyState() {
       <div className="w-16 h-16 rounded-2xl bg-primary-50 flex items-center justify-center mb-4">
         <Wallet size={28} className="text-primary" />
       </div>
-      <p className="text-base font-bold text-ds-text">Nenhum repasse registrado</p>
+      <p className="text-base font-bold text-ds-text">Nenhuma transferência registrada</p>
       <p className="text-sm text-ds-light mt-1.5 text-center max-w-xs">
-        Seus repasses aparecerão aqui após serem processados e liquidados pelo financeiro da Pin Saúde.
+        Suas transferências aparecerão aqui após serem processadas e liquidadas pelo financeiro da Pin Saúde.
       </p>
     </div>
   )
 }
 
-// ─── Tabela de repasses ───────────────────────────────────────────────────────
+// ─── Tabela de transferências ──────────────────────────────────────────────────
 
-function RepassesTable({ repasses, totalRepasses }: {
-  repasses: ExtratoLancamento[]
-  totalRepasses: number
+function TransferenciasTable({ transferencias, totalTransferencias }: {
+  transferencias: ExtratoLancamento[]
+  totalTransferencias: number
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-ds-border bg-white shadow-sm">
@@ -140,18 +140,18 @@ function RepassesTable({ repasses, totalRepasses }: {
           </tr>
         </thead>
         <tbody className="divide-y divide-ds-border">
-          {repasses.map((r, i) => (
-            <RepasseRow key={i} repasse={r} />
+          {transferencias.map((t, i) => (
+            <TransferenciaRow key={i} transferencia={t} />
           ))}
         </tbody>
         <tfoot className="border-t-2 border-ds-border">
           <tr className="bg-ds-surface">
             <td colSpan={2} className="px-4 py-3 text-xs font-bold text-ds-text">
-              Total ({repasses.length} repasse{repasses.length !== 1 ? 's' : ''})
+              Total ({transferencias.length} transferência{transferencias.length !== 1 ? 's' : ''})
             </td>
             <td className="hidden sm:table-cell" />
             <td className="px-4 py-3 text-right text-xs font-black tabular-nums text-green-700">
-              {formatBRL(totalRepasses)}
+              {formatBRL(totalTransferencias)}
             </td>
           </tr>
         </tfoot>
@@ -160,24 +160,24 @@ function RepassesTable({ repasses, totalRepasses }: {
   )
 }
 
-function RepasseRow({ repasse: r }: { repasse: ExtratoLancamento }) {
+function TransferenciaRow({ transferencia: t }: { transferencia: ExtratoLancamento }) {
   return (
     <tr className="hover:bg-ds-surface/50 transition-colors">
       <td className="px-4 py-3 whitespace-nowrap">
-        <p className="text-xs font-semibold text-ds-text">{formatDate(r.dataRef)}</p>
+        <p className="text-xs font-semibold text-ds-text">{formatDate(t.dataRef)}</p>
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           <ArrowUpRight size={13} className="shrink-0 text-green-600" />
-          <span className="text-xs text-ds-text">{r.descricao}</span>
+          <span className="text-xs text-ds-text">{t.descricao}</span>
         </div>
       </td>
       <td className="px-4 py-3 text-center hidden sm:table-cell">
-        <span className="text-xs text-ds-mid">{r.competencia}</span>
+        <span className="text-xs text-ds-mid">{t.competencia}</span>
       </td>
       <td className="px-4 py-3 text-right">
         <span className="text-xs font-bold tabular-nums text-green-700">
-          {formatBRL(r.valor)}
+          {formatBRL(t.valor)}
         </span>
       </td>
     </tr>

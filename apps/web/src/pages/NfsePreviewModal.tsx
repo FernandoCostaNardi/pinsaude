@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Printer, Send, Loader2, AlertTriangle } from 'lucide-react'
-import { Producao } from '../api/producoesApi'
+import { Producao, ServicoResumo } from '../api/producoesApi'
 import { Empresa } from '../api/empresasApi'
 import { tomadoresApi, Tomador } from '../api/tomadoresApi'
 
@@ -81,7 +81,10 @@ function LinhaValor({
 // ─── Props ───────────────────────────────────────────────────────────────────
 
 interface Props {
-  producao: Producao
+  // Este modal só é aberto a partir do gate de NfseEmissaoPage.tsx, que já garante
+  // producao.servico não-nulo antes de permitir "Revisar e Emitir" — a intersecção aqui só
+  // formaliza essa garantia para o TypeScript, sem precisar de checagem em runtime.
+  producao: Producao & { servico: ServicoResumo }
   cnpjPrestador: string | null | undefined
   empresaInfo: Empresa | null
   medicoNomeMap: Record<string, string>

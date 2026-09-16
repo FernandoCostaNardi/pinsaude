@@ -3,6 +3,7 @@ package br.com.pinsaude.faturamento.dto;
 import br.com.pinsaude.faturamento.domain.TomadorOcorrencia;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 public record TomadorOcorrenciaResponse(
@@ -12,9 +13,12 @@ public record TomadorOcorrenciaResponse(
     String tipoValor,
     BigDecimal valorPercentual,
     Long valorCentavos,
-    boolean ativo
+    boolean ativo,
+    // Setores Operacionais em que esta ocorrência é sugerida — vazio = todos os setores do
+    // tomador (bypass, ver SetorOperacionalOcorrencia).
+    List<UUID> setorIds
 ) {
-    public static TomadorOcorrenciaResponse from(TomadorOcorrencia o) {
+    public static TomadorOcorrenciaResponse from(TomadorOcorrencia o, List<UUID> setorIds) {
         return new TomadorOcorrenciaResponse(
             o.getId(),
             o.getTomadorId(),
@@ -22,7 +26,8 @@ public record TomadorOcorrenciaResponse(
             o.getTipoValor(),
             o.getValorPercentual(),
             o.getValorCentavos(),
-            o.isAtivo()
+            o.isAtivo(),
+            setorIds
         );
     }
 }

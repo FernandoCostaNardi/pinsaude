@@ -617,6 +617,9 @@ export interface TomadorOcorrencia {
   valorPercentual: number | null
   valorCentavos: number | null
   ativo: boolean
+  // Setores Operacionais em que esta ocorrência é sugerida na tela de Frequência — vazio =
+  // disponível em qualquer setor do tomador (sem restrição).
+  setorIds: string[]
 }
 
 export interface TomadorOcorrenciaRequest {
@@ -625,6 +628,7 @@ export interface TomadorOcorrenciaRequest {
   valorPercentual: number | null
   valorCentavos: number | null
   ativo: boolean
+  setorIds: string[]
 }
 
 export interface TomadorHorarioPadrao {
