@@ -755,6 +755,122 @@ class FrequenciaServiceTest {
                 .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
+    // ─── Dias da semana permitidos pela modalidade ─────────────────────────────
+
+    @Test
+    void adicionarItem_semDiasSemanaConfigurados_aceitaQualquerDia() {
+        // Modalidade padrão do setUp não tem diasSemana — sem restrição (bypass).
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 4), null, null, null, null, null); // sábado
+
+        assertThat(service.adicionarItem(freqId, req)).isNotNull();
+    }
+
+    @Test
+    void adicionarItem_diaSemanaPermitidoPelaModalidade_ok() {
+        modalidade.setDiasSemana(new String[]{"MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"});
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 6), null, null, null, null, null); // segunda-feira
+
+        assertThat(service.adicionarItem(freqId, req)).isNotNull();
+    }
+
+    @Test
+    void adicionarItem_diaSemanaNaoPermitidoPelaModalidade_lanca422() {
+        modalidade.setDiasSemana(new String[]{"MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"});
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 4), null, null, null, null, null); // sábado
+
+        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("sábado")
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+        verify(itemRepo, never()).save(any());
+    }
+
+    // ─── Data não pode se repetir na mesma frequência ──────────────────────────
+
+    @Test
+    void adicionarItem_dataJaLancadaNaFrequencia_lanca409() {
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.existsByFrequenciaIdAndDataExecucao(freqId, LocalDate.of(2026, 7, 5))).thenReturn(true);
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT));
+        verify(itemRepo, never()).save(any());
+    }
+
+    @Test
+    void atualizarItem_mantendoAMesmaData_naoColideConsigoMesmo() {
+        UUID freqId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        FrequenciaItem item = itemFixture(freqId, modalidadeId, LocalDate.of(2026, 7, 5), null, 150000L);
+        setId(item, itemId);
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findById(itemId)).thenReturn(Optional.of(item));
+        when(itemRepo.existsByFrequenciaIdAndDataExecucaoAndIdNot(freqId, LocalDate.of(2026, 7, 5), itemId))
+            .thenReturn(false);
+        when(itemRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, null, null);
+
+        assertThat(service.atualizarItem(freqId, itemId, req)).isNotNull();
+    }
+
+    @Test
+    void atualizarItem_novaDataJaUsadaPorOutroItem_lanca409() {
+        UUID freqId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        FrequenciaItem item = itemFixture(freqId, modalidadeId, LocalDate.of(2026, 7, 5), null, 150000L);
+        setId(item, itemId);
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findById(itemId)).thenReturn(Optional.of(item));
+        when(itemRepo.existsByFrequenciaIdAndDataExecucaoAndIdNot(freqId, LocalDate.of(2026, 7, 6), itemId))
+            .thenReturn(true);
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 6), null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.atualizarItem(freqId, itemId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT));
+        verify(itemRepo, never()).save(any());
+    }
+
     @Test
     void adicionarItem_plantao_valorPermaneceFlat_semRegressao() {
         // modalidade PLANTONISTA (fixture padrão do setUp) — comportamento flat por lançamento

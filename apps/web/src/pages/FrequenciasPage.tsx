@@ -133,6 +133,31 @@ function ocorrenciasParaSetor(ocorrencias: TomadorOcorrencia[], setorId: string 
   return ocorrencias.filter(o => o.setorIds.length === 0 || (!!setorId && o.setorIds.includes(setorId)))
 }
 
+// PINSAUDE: modalidades "por lançamento" (com turno) podem restringir em quais dias da semana o
+// turno pode ser usado (cadastro em TomadorGruposModal, ex: "só de segunda a sexta") — nomes
+// batendo com java.time.DayOfWeek (backend). "YYYY-MM-DD" parseado com Number(...) em vez de
+// `new Date("YYYY-MM-DD")` pra nunca cair em UTC e virar o dia errado perto da meia-noite.
+function diaSemanaDaData(dataISO: string): string | null {
+  if (!dataISO) return null
+  const [ano, mes, dia] = dataISO.split('-').map(Number)
+  if (!ano || !mes || !dia) return null
+  const DIAS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+  return DIAS[new Date(ano, mes - 1, dia).getDay()]
+}
+
+// Modalidade sem nenhum dia marcado no cadastro = sem restrição, disponível em qualquer dia
+// (bypass, mesmo espírito de ocorrenciasParaSetor acima) — e sem data ainda escolhida, não há
+// nada pra filtrar.
+function modalidadePermiteDia(m: TomadorModalidade, dataISO: string): boolean {
+  const dia = diaSemanaDaData(dataISO)
+  return !dia || !m.diasSemana || m.diasSemana.length === 0 || m.diasSemana.includes(dia)
+}
+
+const DIA_SEMANA_LABEL: Record<string, string> = {
+  MONDAY: 'Seg', TUESDAY: 'Ter', WEDNESDAY: 'Qua', THURSDAY: 'Qui',
+  FRIDAY: 'Sex', SATURDAY: 'Sáb', SUNDAY: 'Dom',
+}
+
 function fmtQtd(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1).replace('.', ',')
 }
@@ -726,6 +751,15 @@ function PlantaoFormPanel({
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState<string | null>(null)
 
+  // PINSAUDE: modalidades com turno podem restringir em quais dias da semana podem ser lançadas
+  // (cadastro em TomadorGruposModal) — só sugere as que aceitam o dia da data escolhida. Modalidade
+  // Serviços não tem data própria (não é lançada por dia), então nunca precisa desse filtro.
+  const modalidadesFiltradas = isServicos ? modalidades : modalidades.filter(m => modalidadePermiteDia(m, data))
+  useEffect(() => {
+    if (modalidadeFixa || isServicos) return
+    if (modalidade && !modalidadePermiteDia(modalidade, data)) setModalidade(null)
+  }, [data])
+
   useEffect(() => {
     if (modalidadeFixa) { setModalidade(modalidadeFixa); return } // PINSAUDE-13.26: nada pra buscar
     tomadoresApi.listarModalidades(tomadorId)
@@ -844,15 +878,22 @@ function PlantaoFormPanel({
               </div>
             </div>
           ) : (
-            <Dropdown
-              label="Modalidade *"
-              placeholder={modalidades.length === 0 ? 'Sem modalidades cadastradas' : 'Selecione a modalidade...'}
-              items={modalidades}
-              value={modalidade}
-              onChange={setModalidade}
-              getLabel={m => `${m.nome} — ${detalheModalidade(m, tipoMedico)}`}
-              disabled={modalidades.length === 0}
-            />
+            <div>
+              <Dropdown
+                label="Modalidade *"
+                placeholder={modalidadesFiltradas.length === 0 ? 'Nenhuma modalidade aceita este dia' : 'Selecione a modalidade...'}
+                items={modalidadesFiltradas}
+                value={modalidade}
+                onChange={setModalidade}
+                getLabel={m => `${m.nome} — ${detalheModalidade(m, tipoMedico)}`}
+                disabled={modalidadesFiltradas.length === 0}
+              />
+              {modalidadesFiltradas.length < modalidades.length && (
+                <p className="mt-1 text-[11px] text-ds-light">
+                  {modalidades.length - modalidadesFiltradas.length} modalidade(s) oculta(s) — não aceitam {DIA_SEMANA_LABEL[diaSemanaDaData(data) ?? ''] ?? 'este dia'}.
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -1027,6 +1068,13 @@ function PlantaoGridPanel({
     return precisaQuantidade(modalidades.find(m => m.id === modalidadeId) ?? null, tipoMedico)
   }
 
+  // PINSAUDE: cada linha tem sua própria data — só sugere as modalidades que aceitam o dia da
+  // semana daquela data específica (ver modalidadePermiteDia). Serviços não tem data por linha.
+  function modalidadesParaLinha(dataExecucao: string): TomadorModalidade[] {
+    if (isServicos) return modalidades
+    return modalidades.filter(m => modalidadePermiteDia(m, dataExecucao))
+  }
+
   useEffect(() => {
     if (modalidadeFixa) return // PINSAUDE-13.26: nada pra buscar — modalidade/ocorrência já fixas
     // PINSAUDE-13.25: só oferece modalidades do mesmo Tipo de Escala da frequência aberta.
@@ -1058,7 +1106,18 @@ function PlantaoGridPanel({
   }, [rows, isServicos])
 
   function updateRow(key: number, patch: Partial<PlantaoRow>) {
-    setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r))
+    setRows(prev => prev.map(r => {
+      if (r.key !== key) return r
+      const next = { ...r, ...patch }
+      // PINSAUDE: se a data mudou e a modalidade já escolhida não aceita mais esse dia da
+      // semana, limpa a seleção — evita deixar uma opção inválida (e agora oculta do <select>)
+      // escondida na linha.
+      if (patch.dataExecucao !== undefined && next.modalidadeId) {
+        const m = modalidades.find(mm => mm.id === next.modalidadeId)
+        if (m && !modalidadePermiteDia(m, next.dataExecucao)) next.modalidadeId = ''
+      }
+      return next
+    }))
     setErr(null)
     if (patch.modalidadeId) {
       setLinhasSemModalidade(prev => {
@@ -1289,20 +1348,27 @@ function PlantaoGridPanel({
                 )}
                 {!modalidadeFixa && (
                   <td className="px-2 py-1.5">
-                    <select value={r.modalidadeId}
-                      data-row-key={r.key} data-field="modalidade"
-                      onChange={e => updateRow(r.key, { modalidadeId: e.target.value })}
-                      disabled={modalidades.length === 0}
-                      className={`w-full border rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 disabled:opacity-50 ${
-                        linhasSemModalidade.has(r.key)
-                          ? 'border-red-400 focus:border-red-500 focus:ring-red-300'
-                          : 'border-transparent hover:border-ds-border focus:border-primary focus:ring-primary/30'
-                      }`}>
-                      <option value="">{modalidades.length === 0 ? 'Sem modalidades' : 'Selecione...'}</option>
-                      {modalidades.map(m => (
-                        <option key={m.id} value={m.id}>{m.nome} — {detalheModalidade(m, tipoMedico)}</option>
-                      ))}
-                    </select>
+                    {(() => {
+                      const opcoes = modalidadesParaLinha(r.dataExecucao)
+                      return (
+                        <select value={r.modalidadeId}
+                          data-row-key={r.key} data-field="modalidade"
+                          onChange={e => updateRow(r.key, { modalidadeId: e.target.value })}
+                          disabled={opcoes.length === 0}
+                          className={`w-full border rounded-md px-2 py-1.5 text-sm text-ds-text focus:outline-none focus:ring-1 disabled:opacity-50 ${
+                            linhasSemModalidade.has(r.key)
+                              ? 'border-red-400 focus:border-red-500 focus:ring-red-300'
+                              : 'border-transparent hover:border-ds-border focus:border-primary focus:ring-primary/30'
+                          }`}>
+                          <option value="">
+                            {opcoes.length > 0 ? 'Selecione...' : modalidades.length === 0 ? 'Sem modalidades' : 'Nenhuma aceita este dia'}
+                          </option>
+                          {opcoes.map(m => (
+                            <option key={m.id} value={m.id}>{m.nome} — {detalheModalidade(m, tipoMedico)}</option>
+                          ))}
+                        </select>
+                      )
+                    })()}
                   </td>
                 )}
                 <td className="px-2 py-1.5">
@@ -1445,6 +1511,7 @@ function PainelFrequencia({
     ativo: true,
     horasSemanais: freq.modalidadeHorasSemanais,
     ordem: 0, // sintético, só para exibição — nunca enviado pra reordenação
+    diasSemana: [], // modalidade fixa nunca é "por lançamento" — nunca tem turno nem restrição de dia
   } : null
   const ocorrenciaFixaNome = freq.ocorrenciaId ? freq.ocorrenciaNome : null
   // Ajuste pós-implantação: valor aplicado uma única vez pela frequência (não por lançamento).

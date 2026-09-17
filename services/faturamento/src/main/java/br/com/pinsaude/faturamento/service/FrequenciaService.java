@@ -31,6 +31,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -325,6 +326,8 @@ public class FrequenciaService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Modalidade não encontrada: " + modalidadeId));
         validarCouplingTipoEscala(f, modalidade);
+        validarDiaSemana(modalidade, req.dataExecucao());
+        validarDataNaoRepetida(frequenciaId, req.dataExecucao(), null);
         // PINSAUDE-13.26 (ajuste): quando a frequência tem modalidade fixa, a ocorrência também é
         // fixa e seu valor é aplicado UMA ÚNICA VEZ sobre o valor da modalidade — não mais por
         // item (ver FrequenciaMedicaResponse.calcularValorOcorrenciaUnico). Só frequências
@@ -373,6 +376,8 @@ public class FrequenciaService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Modalidade não encontrada: " + modalidadeId));
         validarCouplingTipoEscala(f, modalidade);
+        validarDiaSemana(modalidade, req.dataExecucao());
+        validarDataNaoRepetida(frequenciaId, req.dataExecucao(), itemId);
         // PINSAUDE-13.26 (ajuste): ver comentário equivalente em adicionarItem — ocorrência fixa
         // não é mais resolvida/valorada por item.
         TomadorOcorrencia ocorrencia = f.getModalidadeId() == null
@@ -535,6 +540,44 @@ public class FrequenciaService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "Modalidade do tipo " + String.join("/", modalidade.getTipos()) + " não pode ser lançada numa "
                     + "frequência com Tipo de Escala " + f.getTipoMedico());
+        }
+    }
+
+    // Pedido do cliente: modalidades "por lançamento" podem restringir em quais dias da semana o
+    // turno pode ser usado (ex: "só de segunda a sexta") — ver TomadorModalidade.permiteDiaSemana.
+    // Sem nenhum dia marcado no cadastro, qualquer dia é aceito (bypass).
+    private void validarDiaSemana(TomadorModalidade modalidade, LocalDate data) {
+        if (!modalidade.permiteDiaSemana(data.getDayOfWeek())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "A modalidade " + modalidade.getNome() + " não pode ser lançada em " + labelDiaSemana(data.getDayOfWeek())
+                    + " — confira os dias da semana permitidos no cadastro da modalidade.");
+        }
+    }
+
+    private static String labelDiaSemana(java.time.DayOfWeek dia) {
+        return switch (dia) {
+            case MONDAY -> "segunda-feira";
+            case TUESDAY -> "terça-feira";
+            case WEDNESDAY -> "quarta-feira";
+            case THURSDAY -> "quinta-feira";
+            case FRIDAY -> "sexta-feira";
+            case SATURDAY -> "sábado";
+            case SUNDAY -> "domingo";
+        };
+    }
+
+    // Pedido do cliente: nunca pode repetir o mesmo dia dentro da mesma frequência (a mesma
+    // "folha" — médico+setor+competência+tipo de escala, ver criar()). itemIdExcluir é o próprio
+    // item sendo editado em atualizarItem — sem isso, editar um item mantendo a mesma data
+    // sempre colidiria consigo mesmo.
+    private void validarDataNaoRepetida(UUID frequenciaId, LocalDate data, UUID itemIdExcluir) {
+        boolean repetida = itemIdExcluir != null
+            ? itemRepo.existsByFrequenciaIdAndDataExecucaoAndIdNot(frequenciaId, data, itemIdExcluir)
+            : itemRepo.existsByFrequenciaIdAndDataExecucao(frequenciaId, data);
+        if (repetida) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Já existe um lançamento para o dia " + data.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                    + " nesta frequência.");
         }
     }
 

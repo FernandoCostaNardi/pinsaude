@@ -542,6 +542,7 @@ public class TomadorService {
             m.setHorario(null);
             m.setHoras(null);
             m.setHorasSemanais(req.horasSemanais());
+            m.setDiasSemana(null);
             return;
         }
         if (algumServico) {
@@ -550,6 +551,7 @@ public class TomadorService {
             m.setHorario(null);
             m.setHoras(null);
             m.setHorasSemanais(null);
+            m.setDiasSemana(null);
             return;
         }
         if (req.turno() == null || req.turno().isBlank()) {
@@ -569,6 +571,10 @@ public class TomadorService {
         m.setHorario(req.horario());
         m.setHoras(req.horas());
         m.setHorasSemanais(null);
+        // Dias da semana em que este turno pode ser lançado — vazio = sem restrição (disponível
+        // em qualquer dia). Só faz sentido pra tipos "por lançamento" (turno), por isso fica de
+        // fora dos outros dois ramos acima.
+        m.setDiasSemana(req.diasSemana().isEmpty() ? null : req.diasSemana().toArray(new String[0]));
     }
 
     @Transactional

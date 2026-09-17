@@ -18,7 +18,9 @@ public record TomadorModalidadeResponse(
     long deslocamentoCentavos,
     boolean ativo,
     BigDecimal horasSemanais,
-    int ordem
+    int ordem,
+    // Dias da semana em que este turno pode ser lançado — vazio = sem restrição.
+    List<String> diasSemana
 ) {
     public static TomadorModalidadeResponse from(TomadorModalidade m) {
         return new TomadorModalidadeResponse(
@@ -33,7 +35,8 @@ public record TomadorModalidadeResponse(
             m.getDeslocamentoCentavos(),
             m.isAtivo(),
             m.getHorasSemanais(),
-            m.getOrdem()
+            m.getOrdem(),
+            m.getDiasSemana() != null ? List.of(m.getDiasSemana()) : List.of()
         );
     }
 }

@@ -5,6 +5,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.UUID;
@@ -41,6 +42,14 @@ public class TomadorModalidade {
 
     @Column(name = "horas", precision = 6, scale = 2)
     private BigDecimal horas;
+
+    // Dias da semana em que este turno pode ser lançado (ex: "só de segunda a sexta") — só
+    // usado pelas modalidades "por lançamento" (que têm turno). Nulo/vazio = sem restrição,
+    // disponível em qualquer dia (ver V50__add_dias_semana_tomador_modalidades.sql). Valores são
+    // nomes de java.time.DayOfWeek.
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "dias_semana", columnDefinition = "text[]")
+    private String[] diasSemana;
 
     // ─── Campo do tipo DIARISTA (carga horária semanal obrigatória) ─────────────
     @Column(name = "horas_semanais", precision = 6, scale = 2)
@@ -83,6 +92,8 @@ public class TomadorModalidade {
     public void setHorario(String v)              { this.horario = v; }
     public BigDecimal getHoras()                  { return horas; }
     public void setHoras(BigDecimal v)            { this.horas = v; }
+    public String[] getDiasSemana()               { return diasSemana; }
+    public void setDiasSemana(String[] v)         { this.diasSemana = v; }
     public BigDecimal getHorasSemanais()          { return horasSemanais; }
     public void setHorasSemanais(BigDecimal v)    { this.horasSemanais = v; }
     public long getValorCentavos()                { return valorCentavos; }
@@ -107,5 +118,10 @@ public class TomadorModalidade {
 
     public boolean suportaTipo(String tipo) {
         return tipos != null && Arrays.asList(tipos).contains(tipo);
+    }
+
+    // Sem nenhum dia marcado = sem restrição, disponível em qualquer dia da semana.
+    public boolean permiteDiaSemana(DayOfWeek dia) {
+        return diasSemana == null || diasSemana.length == 0 || Arrays.asList(diasSemana).contains(dia.name());
     }
 }

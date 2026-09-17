@@ -103,6 +103,10 @@ interface ModalidadeForm {
   ativo: boolean
   // Campo dos tipos "fixos" (Diarista/Evolucionista) — carga horária semanal obrigatória
   horasSemanaisStr: string
+  // Dias da semana em que este turno pode ser lançado (ex: "só de segunda a sexta") — pedido do
+  // cliente. Vazio = sem restrição, disponível em qualquer dia. Só faz sentido pros tipos "por
+  // lançamento" (que têm turno) — ver ModalidadeFormInline.
+  diasSemana: Set<string>
 }
 
 function emptyGrupoForm(): GrupoForm {
@@ -113,7 +117,7 @@ function emptyModalidadeForm(): ModalidadeForm {
   return {
     nome: '', tipos: [], turno: '', horario: '',
     horasStr: '', valorStr: '', deslocamentoStr: '', ativo: true,
-    horasSemanaisStr: '',
+    horasSemanaisStr: '', diasSemana: new Set(),
   }
 }
 
@@ -204,6 +208,19 @@ const MODALIDADE_TIPOS: { modo: TipoEscala; titulo: string; sub: string }[] = [
   { modo: 'EVOLUCIONISTA', titulo: TIPO_ESCALA_LABEL.EVOLUCIONISTA, sub: 'valor mensal fixo; carga horária semanal obrigatória' },
   { modo: 'EVOLUCIONISTA_FDS', titulo: TIPO_ESCALA_LABEL.EVOLUCIONISTA_FDS, sub: 'valor por plantão; turno, horário e horas obrigatórios' },
   { modo: 'SERVICOS', titulo: TIPO_ESCALA_LABEL.SERVICOS, sub: 'valor por serviço realizado; sem turno, horário ou horas' },
+]
+
+// Pedido do cliente: modalidades com turno podem restringir em quais dias da semana o plantão
+// pode ser lançado (ex: "Turno de 7h, só de segunda a sexta" e "Turno de 7h, só de sexta a
+// domingo" como duas modalidades separadas). Valores batendo com java.time.DayOfWeek (backend).
+const DIAS_SEMANA_OPCOES: { valor: string; label: string }[] = [
+  { valor: 'MONDAY', label: 'Seg' },
+  { valor: 'TUESDAY', label: 'Ter' },
+  { valor: 'WEDNESDAY', label: 'Qua' },
+  { valor: 'THURSDAY', label: 'Qui' },
+  { valor: 'FRIDAY', label: 'Sex' },
+  { valor: 'SATURDAY', label: 'Sáb' },
+  { valor: 'SUNDAY', label: 'Dom' },
 ]
 
 // Família de comportamento do tipo — 3 vias, usada pra travar a multi-seleção de tipos no
@@ -414,6 +431,40 @@ function ModalidadeFormInline({
                 placeholder="ex: 07:00 as 17:00"
                 className="w-full h-9 rounded-lg border border-gray-300 text-sm text-gray-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary"
               />
+            </div>
+
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Dias da Semana
+                <span className="ml-1 text-xs font-normal text-ds-light">
+                  (opcional — deixe tudo desmarcado para qualquer dia; marque só os permitidos, ex: segunda a sexta)
+                </span>
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {DIAS_SEMANA_OPCOES.map(d => {
+                  const marcado = form.diasSemana.has(d.valor)
+                  return (
+                    <button
+                      key={d.valor}
+                      type="button"
+                      onClick={() => {
+                        const novos = new Set(form.diasSemana)
+                        if (marcado) novos.delete(d.valor)
+                        else novos.add(d.valor)
+                        onChange({ diasSemana: novos })
+                      }}
+                      className={[
+                        'w-11 h-9 rounded-lg border text-xs font-semibold transition-colors',
+                        marcado
+                          ? 'border-primary bg-primary-50 text-primary'
+                          : 'border-gray-300 text-gray-600 hover:border-primary/40',
+                      ].join(' ')}
+                    >
+                      {d.label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </>
         )}
@@ -1242,6 +1293,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       deslocamentoStr: m.deslocamentoCentavos > 0 ? centavosParaBrl(m.deslocamentoCentavos) : '',
       ativo: m.ativo,
       horasSemanaisStr: m.horasSemanais != null ? String(m.horasSemanais) : '',
+      diasSemana: new Set(m.diasSemana ?? []),
     })
     setEditingModId(m.id)
     setModErr(null)
@@ -1287,6 +1339,9 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
       horario: null as string | null,
       horas: null as number | null,
       horasSemanais: null as number | null,
+      // Só faz sentido pro tipo "por lançamento" (turno) — o backend ignora/zera esse campo pros
+      // demais, então é seguro sempre mandar o que estiver no form.
+      diasSemana: Array.from(modForm.diasSemana),
     }
 
     if (familia === 'LANCAMENTO') {
@@ -1945,7 +2000,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                 </p>
               )}
               <div className="overflow-x-auto rounded-xl border border-ds-border">
-                <table className="w-full text-xs min-w-[900px]">
+                <table className="w-full text-xs min-w-[980px]">
                   <thead>
                     <tr className="bg-ds-surface border-b border-ds-border">
                       {canWrite && <th className="px-2 py-2.5 w-8" />}
@@ -1953,6 +2008,7 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                       <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Tipo</th>
                       <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Turno</th>
                       <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Horário</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-ds-light">Dias</th>
                       <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Horas/Semana</th>
                       <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Valor</th>
                       <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-ds-light">Deslocamento</th>
@@ -2008,6 +2064,17 @@ export function TomadorGruposModal({ tomador, canWrite, onClose }: Props) {
                           ) : <span className="text-ds-light">—</span>}
                         </td>
                         <td className="px-3 py-2 text-ds-mid">{m.horario ?? '—'}</td>
+                        <td className="px-3 py-2">
+                          {!m.diasSemana || m.diasSemana.length === 0 ? (
+                            m.turno || m.horario ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-ds-input text-ds-mid">Todos</span>
+                            ) : <span className="text-ds-light">—</span>
+                          ) : (
+                            <span className="text-ds-mid">
+                              {m.diasSemana.map(d => DIAS_SEMANA_OPCOES.find(o => o.valor === d)?.label ?? d).join(', ')}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {isTipoModalidadeFixa(m.tipos[0]) ? (m.horasSemanais != null ? `${m.horasSemanais}h/sem` : '—') : (m.horas != null ? `${m.horas}h` : '—')}
                         </td>
