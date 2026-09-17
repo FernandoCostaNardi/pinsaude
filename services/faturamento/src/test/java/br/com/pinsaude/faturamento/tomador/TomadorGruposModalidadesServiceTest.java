@@ -243,7 +243,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "plantão 12h noturno", List.of("PLANTONISTA"), "NOTURNO", "19:00 as 07:00",
-            BigDecimal.valueOf(12), 1_000_000L, 0L, true, null);
+            BigDecimal.valueOf(12), 1_000_000L, 0L, true, null, List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -251,7 +251,38 @@ class TomadorGruposModalidadesServiceTest {
         assertThat(resp.tipos()).containsExactly("PLANTONISTA");
         assertThat(resp.turno()).isEqualTo("NOTURNO");
         assertThat(resp.horas()).isEqualByComparingTo(BigDecimal.valueOf(12));
+        assertThat(resp.diasSemana()).isEmpty();
         verify(modalidadeRepo).save(any());
+    }
+
+    @Test
+    void criarModalidade_comDiasSemana_salvaERetornaNoResponse() {
+        stubSaveComId();
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Plantão seg-sex", List.of("PLANTONISTA"), "DIURNO", "07:00 as 14:00",
+            BigDecimal.valueOf(7), 700_000L, 0L, true, null,
+            List.of("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"));
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.diasSemana()).containsExactlyInAnyOrder(
+            "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY");
+    }
+
+    @Test
+    void criarModalidade_tipoFixo_diasSemanaEhIgnorado() {
+        // Diarista/Evolucionista não têm turno — dias_semana não faz sentido, sempre fica nulo
+        // mesmo se o request mandar algo (o campo só é lido no ramo "por lançamento").
+        stubSaveComId();
+
+        TomadorModalidadeRequest req = new TomadorModalidadeRequest(
+            "Diarista 40h", List.of("DIARISTA"), null, null, null, 1_500_000L, 0L, true,
+            BigDecimal.valueOf(40), List.of("MONDAY"));
+
+        TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
+
+        assertThat(resp.diasSemana()).isEmpty();
     }
 
     @Test
@@ -260,7 +291,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Diária 10h", List.of("PLANTONISTA"), "DIURNO", "07:00 as 17:00",
-            BigDecimal.valueOf(10), 800_000L, 0L, true, null);
+            BigDecimal.valueOf(10), 800_000L, 0L, true, null, List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -272,7 +303,7 @@ class TomadorGruposModalidadesServiceTest {
         // PINSAUDE-13.22: turno passa a ser obrigatório pro tipo Plantonista (reverte V25)
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Diária 15h", List.of("PLANTONISTA"), null, "07:00 as 22:00",
-            BigDecimal.valueOf(15), 900_000L, 0L, true, null);
+            BigDecimal.valueOf(15), 900_000L, 0L, true, null, List.of());
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -283,7 +314,7 @@ class TomadorGruposModalidadesServiceTest {
     void criarModalidade_plantonistaSemHorario_lanca422() {
         // PINSAUDE-13.22: horário passa a ser obrigatório pro tipo Plantonista (reverte V26)
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "Plantão 20h", List.of("PLANTONISTA"), "DIURNO", null, BigDecimal.valueOf(20), 1_100_000L, 0L, true, null);
+            "Plantão 20h", List.of("PLANTONISTA"), "DIURNO", null, BigDecimal.valueOf(20), 1_100_000L, 0L, true, null, List.of());
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -293,7 +324,7 @@ class TomadorGruposModalidadesServiceTest {
     @Test
     void criarModalidade_plantonistaSemHoras_lanca422() {
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "Diária incompleta", List.of("PLANTONISTA"), "DIURNO", "07:00 as 17:00", null, 800_000L, 0L, true, null);
+            "Diária incompleta", List.of("PLANTONISTA"), "DIURNO", "07:00 as 17:00", null, 800_000L, 0L, true, null, List.of());
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -308,7 +339,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Diarista 20h/semana", List.of("DIARISTA"), null, null, null, 1_500_000L, 0L, true,
-            BigDecimal.valueOf(20));
+            BigDecimal.valueOf(20), List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -327,7 +358,7 @@ class TomadorGruposModalidadesServiceTest {
         // Mesmo que o request venha com turno/horário/horas, Diarista os ignora (zera)
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Diarista 20h/semana", List.of("DIARISTA"), "DIURNO", "07:00 as 19:00", BigDecimal.valueOf(12),
-            1_500_000L, 0L, true, BigDecimal.valueOf(20));
+            1_500_000L, 0L, true, BigDecimal.valueOf(20), List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -339,7 +370,7 @@ class TomadorGruposModalidadesServiceTest {
     @Test
     void criarModalidade_diaristaSemHorasSemanais_lanca422() {
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "Diarista sem meta", List.of("DIARISTA"), null, null, null, 1_500_000L, 0L, true, null);
+            "Diarista sem meta", List.of("DIARISTA"), null, null, null, 1_500_000L, 0L, true, null, List.of());
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -356,7 +387,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Evolucionista 30h/semana", List.of("EVOLUCIONISTA"), null, null, null, 1_200_000L, 0L, true,
-            BigDecimal.valueOf(30));
+            BigDecimal.valueOf(30), List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -376,7 +407,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Evolucionista FDS 12h", List.of("EVOLUCIONISTA_FDS"), "DIURNO", "07:00 as 19:00",
-            BigDecimal.valueOf(12), 600_000L, 0L, true, null);
+            BigDecimal.valueOf(12), 600_000L, 0L, true, null, List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -390,7 +421,7 @@ class TomadorGruposModalidadesServiceTest {
     @Test
     void criarModalidade_evolucionistaSemHorasSemanais_lanca422() {
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "Evolucionista sem meta", List.of("EVOLUCIONISTA"), null, null, null, 1_200_000L, 0L, true, null);
+            "Evolucionista sem meta", List.of("EVOLUCIONISTA"), null, null, null, 1_200_000L, 0L, true, null, List.of());
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -401,7 +432,7 @@ class TomadorGruposModalidadesServiceTest {
     void criarModalidade_evolucionistaFdsSemTurno_lanca422() {
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Evolucionista FDS incompleta", List.of("EVOLUCIONISTA_FDS"), null, "07:00 as 19:00",
-            BigDecimal.valueOf(12), 600_000L, 0L, true, null);
+            BigDecimal.valueOf(12), 600_000L, 0L, true, null, List.of());
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -419,7 +450,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Diarista/Evolucionista 30h", List.of("DIARISTA", "EVOLUCIONISTA"), null, null, null,
-            1_200_000L, 0L, true, BigDecimal.valueOf(30));
+            1_200_000L, 0L, true, BigDecimal.valueOf(30), List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -433,7 +464,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Plantão/Evolucionista FDS 12h", List.of("PLANTONISTA", "EVOLUCIONISTA_FDS"), "DIURNO",
-            "07:00 as 19:00", BigDecimal.valueOf(12), 600_000L, 0L, true, null);
+            "07:00 as 19:00", BigDecimal.valueOf(12), 600_000L, 0L, true, null, List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -445,7 +476,7 @@ class TomadorGruposModalidadesServiceTest {
     void criarModalidade_misturaFamilias_lanca422() {
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Mistura inválida", List.of("PLANTONISTA", "DIARISTA"), "DIURNO", "07:00 as 19:00",
-            BigDecimal.valueOf(12), 600_000L, 0L, true, BigDecimal.valueOf(20));
+            BigDecimal.valueOf(12), 600_000L, 0L, true, BigDecimal.valueOf(20), List.of());
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -459,7 +490,7 @@ class TomadorGruposModalidadesServiceTest {
         stubSaveComId();
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "Consulta Avulsa", List.of("SERVICOS"), null, null, null, 5_000L, 0L, true, null);
+            "Consulta Avulsa", List.of("SERVICOS"), null, null, null, 5_000L, 0L, true, null, List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -475,7 +506,7 @@ class TomadorGruposModalidadesServiceTest {
     void criarModalidade_misturaServicosComFixa_lanca422() {
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Mistura inválida", List.of("SERVICOS", "DIARISTA"), null, null, null, 5_000L, 0L, true,
-            BigDecimal.valueOf(20));
+            BigDecimal.valueOf(20), List.of());
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -486,7 +517,7 @@ class TomadorGruposModalidadesServiceTest {
     void criarModalidade_misturaServicosComPorLancamento_lanca422() {
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Mistura inválida", List.of("SERVICOS", "PLANTONISTA"), "DIURNO", "07:00 as 19:00",
-            BigDecimal.valueOf(12), 5_000L, 0L, true, null);
+            BigDecimal.valueOf(12), 5_000L, 0L, true, null, List.of());
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -503,7 +534,7 @@ class TomadorGruposModalidadesServiceTest {
         // "Plantonista" silenciosamente.
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "Tipo desconhecido", List.of("OUTRO_TIPO"), null, "07:00 as 17:00", BigDecimal.valueOf(10),
-            800_000L, 0L, true, null);
+            800_000L, 0L, true, null, List.of());
 
         assertThatThrownBy(() -> service.criarModalidade(tomadorId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -527,7 +558,7 @@ class TomadorGruposModalidadesServiceTest {
         when(modalidadeRepo.findById(modalidadeId)).thenReturn(Optional.empty());
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
-            "x", List.of("PLANTONISTA"), "DIURNO", "07:00 as 19:00", BigDecimal.valueOf(12), 0L, 0L, true, null);
+            "x", List.of("PLANTONISTA"), "DIURNO", "07:00 as 19:00", BigDecimal.valueOf(12), 0L, 0L, true, null, List.of());
 
         assertThatThrownBy(() -> service.atualizarModalidade(tomadorId, modalidadeId, req))
             .isInstanceOf(ResponseStatusException.class)
@@ -588,7 +619,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "plantão 12h noturno", List.of("PLANTONISTA"), "NOTURNO", "19:00 as 07:00",
-            BigDecimal.valueOf(12), 1_000_000L, 0L, true, null);
+            BigDecimal.valueOf(12), 1_000_000L, 0L, true, null, List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 
@@ -607,7 +638,7 @@ class TomadorGruposModalidadesServiceTest {
 
         TomadorModalidadeRequest req = new TomadorModalidadeRequest(
             "plantão 12h noturno", List.of("PLANTONISTA"), "NOTURNO", "19:00 as 07:00",
-            BigDecimal.valueOf(12), 1_000_000L, 0L, true, null);
+            BigDecimal.valueOf(12), 1_000_000L, 0L, true, null, List.of());
 
         TomadorModalidadeResponse resp = service.criarModalidade(tomadorId, req);
 

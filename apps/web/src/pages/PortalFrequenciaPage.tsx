@@ -86,6 +86,31 @@ function ocorrenciasParaSetor(ocorrencias: TomadorOcorrencia[], setorId: string 
   return ocorrencias.filter(o => o.setorIds.length === 0 || (!!setorId && o.setorIds.includes(setorId)))
 }
 
+// PINSAUDE: modalidades "por lançamento" (com turno) podem restringir em quais dias da semana o
+// turno pode ser usado (cadastro em TomadorGruposModal, ex: "só de segunda a sexta") — nomes
+// batendo com java.time.DayOfWeek (backend). "YYYY-MM-DD" parseado com Number(...) em vez de
+// `new Date("YYYY-MM-DD")` pra nunca cair em UTC e virar o dia errado perto da meia-noite.
+function diaSemanaDaData(dataISO: string): string | null {
+  if (!dataISO) return null
+  const [ano, mes, dia] = dataISO.split('-').map(Number)
+  if (!ano || !mes || !dia) return null
+  const DIAS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+  return DIAS[new Date(ano, mes - 1, dia).getDay()]
+}
+
+// Modalidade sem nenhum dia marcado no cadastro = sem restrição, disponível em qualquer dia
+// (bypass, mesmo espírito de ocorrenciasParaSetor acima) — e sem data ainda escolhida, não há
+// nada pra filtrar.
+function modalidadePermiteDia(m: TomadorModalidade, dataISO: string): boolean {
+  const dia = diaSemanaDaData(dataISO)
+  return !dia || !m.diasSemana || m.diasSemana.length === 0 || m.diasSemana.includes(dia)
+}
+
+const DIA_SEMANA_LABEL: Record<string, string> = {
+  MONDAY: 'Seg', TUESDAY: 'Ter', WEDNESDAY: 'Qua', THURSDAY: 'Qui',
+  FRIDAY: 'Sex', SATURDAY: 'Sáb', SUNDAY: 'Dom',
+}
+
 // Pedido do cliente: o lançamento individual dentro de "Minhas Frequências" é chamado de
 // "plantão" pros tipos "por lançamento" (Plantonista/Evolucionista FDS), de "frequência" pros
 // tipos "fixos" (Diarista/Evolucionista), e de "serviço" pro tipo Serviços — vocabulário mais
@@ -806,6 +831,13 @@ function PlantaoFormPanel({
   // PINSAUDE: só sugere as ocorrências vinculadas ao setor desta frequência (ou sem nenhum vínculo).
   const ocorrenciasFiltradas = ocorrenciasParaSetor(ocorrencias, setorId)
 
+  // PINSAUDE: só sugere as modalidades que aceitam o dia da semana da data escolhida.
+  const modalidadesFiltradas = modalidades.filter(m => modalidadePermiteDia(m, data))
+  useEffect(() => {
+    if (modalidadeFixa) return
+    if (modalidade && !modalidadePermiteDia(modalidade, data)) setModalidade(null)
+  }, [data])
+
   const precisaHoras = precisaHorasTrabalhadas(modalidade, tipoMedico)
   const precisaQtd   = precisaQuantidade(modalidade, tipoMedico)
 
@@ -873,15 +905,22 @@ function PlantaoFormPanel({
             </div>
           </div>
         ) : (
-          <Dropdown
-            label="Modalidade *"
-            placeholder={modalidades.length === 0 ? 'Sem modalidades cadastradas' : 'Selecione a modalidade...'}
-            items={modalidades}
-            value={modalidade}
-            onChange={setModalidade}
-            getLabel={m => `${m.nome} — ${detalheModalidade(m, tipoMedico)}`}
-            disabled={modalidades.length === 0}
-          />
+          <div>
+            <Dropdown
+              label="Modalidade *"
+              placeholder={modalidadesFiltradas.length === 0 ? 'Nenhuma modalidade aceita este dia' : 'Selecione a modalidade...'}
+              items={modalidadesFiltradas}
+              value={modalidade}
+              onChange={setModalidade}
+              getLabel={m => `${m.nome} — ${detalheModalidade(m, tipoMedico)}`}
+              disabled={modalidadesFiltradas.length === 0}
+            />
+            {modalidadesFiltradas.length < modalidades.length && (
+              <p className="mt-1 text-[11px] text-ds-light">
+                {modalidades.length - modalidadesFiltradas.length} modalidade(s) oculta(s) — não aceitam {DIA_SEMANA_LABEL[diaSemanaDaData(data) ?? ''] ?? 'este dia'}.
+              </p>
+            )}
+          </div>
         )}
       </div>
 
@@ -1031,6 +1070,7 @@ function FrequenciaItensPanel({
     ativo: true,
     horasSemanais: freq.modalidadeHorasSemanais,
     ordem: 0, // sintético, só para exibição — nunca enviado pra reordenação
+    diasSemana: [], // modalidade fixa nunca é "por lançamento" — nunca tem turno nem restrição de dia
   } : null
   const ocorrenciaFixaNome = freq.ocorrenciaId ? freq.ocorrenciaNome : null
 

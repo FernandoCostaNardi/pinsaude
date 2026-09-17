@@ -20,5 +20,15 @@ public record TomadorModalidadeRequest(
     @Min(0) long deslocamentoCentavos,
     boolean ativo,
     // ─── Campo do tipo DIARISTA ───
-    @DecimalMin("0.5") BigDecimal horasSemanais
-) {}
+    @DecimalMin("0.5") BigDecimal horasSemanais,
+    // Dias da semana em que este turno pode ser lançado — vazio/omitido = sem restrição. Só faz
+    // sentido para os tipos "por lançamento" (que têm turno); ignorado/zerado para os demais
+    // (ver TomadorService.aplicarCamposPorTipo). Valores validados como nomes de
+    // java.time.DayOfWeek em TomadorService.
+    List<@Pattern(regexp = "MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY",
+        message = "dia da semana inválido") String> diasSemana
+) {
+    public TomadorModalidadeRequest {
+        if (diasSemana == null) diasSemana = List.of();
+    }
+}

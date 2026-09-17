@@ -580,6 +580,10 @@ export interface TomadorModalidade {
   // Ordem de exibição, definida por drag-and-drop na aba Modalidades — reflete no seletor de
   // modalidade das telas de Frequência Médica.
   ordem: number
+  // Dias da semana em que este turno pode ser lançado (nomes de java.time.DayOfWeek: MONDAY..
+  // SUNDAY) — vazio = sem restrição, disponível em qualquer dia. Só é usado pelos tipos "por
+  // lançamento" (que têm turno).
+  diasSemana: string[]
 }
 
 export interface TomadorModalidadeRequest {
@@ -592,6 +596,7 @@ export interface TomadorModalidadeRequest {
   deslocamentoCentavos: number
   ativo: boolean
   horasSemanais: number | null
+  diasSemana: string[]
 }
 
 // Cada par (modalidadeId, tipo) é um vínculo independente — uma modalidade que suporta 2 Tipos

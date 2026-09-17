@@ -1,0 +1,14 @@
+-- Pedido do cliente: modalidades "por lançamento" (Plantonista/Evolucionista FDS, as que têm
+-- turno) podem restringir em quais dias da semana o plantão pode ser lançado — ex: "Turno de 7h,
+-- só de segunda a sexta" e "Turno de 7h, só de sexta a domingo" cadastrados como duas modalidades
+-- separadas para o mesmo turno/horas.
+--
+-- Nullable, sem valores — uma modalidade sem nenhum dia marcado continua disponível em qualquer
+-- dia da semana (bypass, mesmo espírito já usado para ocorrência sem setor vinculado e
+-- modalidade/ocorrência sem vínculo em outras tabelas deste schema) — preserva o comportamento
+-- de toda modalidade já cadastrada antes desta migration.
+--
+-- Valores esperados: nomes de java.time.DayOfWeek (MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY,
+-- SATURDAY, SUNDAY) — validado na camada de serviço, não via CHECK (mesmo padrão já usado pra
+-- "tipos", que também não tem CHECK de conteúdo no array).
+ALTER TABLE faturamento.tomador_modalidades ADD COLUMN dias_semana TEXT[];
