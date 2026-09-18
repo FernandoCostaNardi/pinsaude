@@ -6781,6 +6781,88 @@ PostgreSQL.
 
 ---
 
+## Backup Automático — refresh_token expirava a cada 7 dias (2026-09-18)
+
+### Sintoma
+E-mail diário `[backup] ERRO: ('invalid_grant: Token has been expired or revoked.', ...)` a partir
+de 2026-09-17 — o backup rodou perfeitamente todo dia entre 2026-09-09 e 2026-09-16 (confirmado no
+log `/home/pinsaude/logs/backup-db.log` do `pingestao.com`), e parou de funcionar exatamente 7 dias
+depois do token ter sido gerado.
+
+### Causa raiz — OAuth Client em "Testing"
+Refresh tokens emitidos enquanto o app OAuth (`console.cloud.google.com/auth/audience`, projeto
+`pin-saude-backups`) está com **Status de publicação = Testando** expiram automaticamente após
+**7 dias** — restrição do próprio Google, documentada mas fácil de não perceber na hora de criar o
+client. O client `backup-db-drive-script` (BACKUP-05) nasceu em "Testing" e nunca foi publicado —
+por isso o token gerado em 2026-09-09 morreu em 2026-09-16, e todo novo token gerado do mesmo jeito
+sofreria o mesmo problema em outros 7 dias.
+
+### Correção definitiva — publicar o app para "Em produção"
+Feito uma única vez, em `console.cloud.google.com/auth/audience?project=pin-saude-backups` →
+"Publicar app". Isso remove o limite de 7 dias dos refresh tokens (a verificação formal do Google
+**não é exigida** para isso — o escopo `drive.file` não é sensível/restrito e o app é de uso
+próprio). Pré-requisitos que faltavam em `.../auth/branding` para o botão "Publicar app" habilitar:
+- **Página inicial do aplicativo** e **Link da Política de Privacidade**: preenchidos com
+  `https://pinsaude.com.br` (não existe uma página de privacidade dedicada no site — reaproveitada
+  a home por não haver conteúdo mais específico; se algum dia isso importar para o público real,
+  criar uma página própria).
+- **Domínio autorizado**: precisou adicionar `pinsaude.com.br` em "Domínios autorizados" na mesma
+  tela — sem isso o campo de Homepage/Privacidade acusa "Domínio ausente".
+
+Status final: "Em produção" (não verificado — aceitável, sem aviso de app não verificado na tela de
+consentimento porque o escopo usado é `drive.file`, não sensível).
+
+### ⚠️ Client secret original não podia mais ser recuperado
+O Google **não permite mais visualizar nem baixar** o client secret depois de criado (só mostra
+mascarado, tipo `****ThhT`) — e o arquivo `client_secret_....json` baixado originalmente (BACKUP-05)
+já tinha sido apagado da máquina local (nunca versionado, por design). Para regenerar o
+`refresh_token` foi preciso **criar um novo secret** para o mesmo OAuth Client
+(`.../auth/clients/839662367103-...` → "Add secret") — o client_id continua o mesmo, só o secret
+mudou. O secret antigo foi **desativado** (não excluído) na mesma tela depois de confirmar que o
+script já funcionava com o novo.
+
+### ⚠️ Armadilha ao capturar o secret via clipboard no Windows — BOM corrompe o valor
+O botão de copiar do Console só disponibiliza o valor via clipboard (não há mais download do
+secret isolado). Salvar esse valor com `Get-Clipboard | Out-File -Encoding utf8` no PowerShell 5.1
+**grava um BOM UTF-8 (`EF BB BF`) na frente do texto** — e como o valor foi depois interpolado numa
+string via heredoc do bash e reprocessado por `json.load`/`json.dump` do Python, o BOM não ficou
+como um único caractere U+FEFF fácil de `lstrip`: apareceu como 3 codepoints Latin-1 separados
+(`ï»¿`) na string do secret, inflando o tamanho de 35 para 38 caracteres e causando
+`invalid_client: The provided client secret is invalid.` na troca do código por token. Diagnosticado
+comparando `len()`/prefixo/sufixo do secret salvo contra o valor mascarado mostrado na UI
+(`****33qo`) — o sufixo batia, mas o prefixo tinha lixo antes de `GOCSPX-`. Corrigido com
+`s.lstrip('ï»¿')` sobre a string já decodificada. **Ao capturar qualquer segredo via
+clipboard no Windows para um arquivo que será lido por outra ferramenta (Python, Node), sempre
+validar `len()` e os primeiros/últimos caracteres contra o que a UI mostra mascarado** — nunca
+assumir que o arquivo salvo tem exatamente o que foi copiado.
+
+### ⚠️ `InstalledAppFlow.run_local_server()` não é confiável para automação de navegador
+O fluxo documentado no BACKUP-05 original (`flow.run_local_server(port=8765, ...)`) funciona bem
+quando um humano cola a URL manualmente no navegador e autoriza em poucos segundos — mas ao pilotar
+o consentimento via automação de browser (múltiplas chamadas de ferramenta, cada uma com latência),
+o `local_server.handle_request()` da lib é uma chamada **bloqueante de uma única requisição**: se
+a primeira conexão que chega em `localhost:8765` não for o callback real do OAuth (ex.: alguma
+sondagem do Chrome), a função retorna sem nunca ter capturado o `code`, e lança
+`WSGITimeoutError: Timed out waiting for response from authorization server` mesmo com
+`timeout_seconds=None`.
+
+**Solução mais robusta para regenerar o token em cenários assim:** não usar `run_local_server` —
+construir a URL manualmente com `flow.authorization_url(access_type="offline", prompt="consent")`
+(guardando o mesmo objeto `flow` vivo no processo, para preservar o `code_verifier` do PKCE), abrir
+essa URL no navegador, completar o consentimento, e depois capturar o `code=` da URL final que o
+navegador tenta abrir (ainda que dê erro de conexão em `localhost:8765` — a barra de endereço
+continua mostrando a URL completa com o parâmetro `code`). Passar esse código para
+`flow.fetch_token(code=<code>)` diretamente — não precisa de nenhum servidor HTTP local de verdade.
+Reutilizável para qualquer regeneração futura de refresh_token deste projeto.
+
+### Verificação: sempre confirmar rodando o script de verdade
+Depois de qualquer regeneração de token, rodar manualmente `python3
+/home/pinsaude/scripts/backup-db-drive.py` no VPS e conferir "Concluído. 2/2 bancos enviados." — não
+basta confirmar que o `refresh_token` tem o campo preenchido, o teste real é o dump+upload
+completo.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
