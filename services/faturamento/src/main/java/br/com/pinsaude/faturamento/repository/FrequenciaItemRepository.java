@@ -19,10 +19,8 @@ public interface FrequenciaItemRepository extends JpaRepository<FrequenciaItem, 
 
     boolean existsByOcorrenciaId(UUID ocorrenciaId);
 
-    // Nunca pode repetir o mesmo dia dentro da mesma frequência (pedido do cliente).
-    boolean existsByFrequenciaIdAndDataExecucao(UUID frequenciaId, LocalDate dataExecucao);
-
-    // Mesma checagem, excluindo o próprio item — usado em atualizarItem (editar mantendo a
-    // mesma data não pode colidir consigo mesmo).
-    boolean existsByFrequenciaIdAndDataExecucaoAndIdNot(UUID frequenciaId, LocalDate dataExecucao, UUID id);
+    // Itens já lançados no mesmo dia dentro da mesma frequência — usado para checar conflito de
+    // horário entre lançamentos (ver FrequenciaService.validarConflitoHorario). Duas datas podem
+    // coexistir desde que os horários não se sobreponham (pedido do cliente).
+    List<FrequenciaItem> findByFrequenciaIdAndDataExecucao(UUID frequenciaId, LocalDate dataExecucao);
 }

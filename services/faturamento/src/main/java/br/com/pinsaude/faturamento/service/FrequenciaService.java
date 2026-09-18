@@ -32,6 +32,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -327,7 +328,7 @@ public class FrequenciaService {
                 "Modalidade não encontrada: " + modalidadeId));
         validarCouplingTipoEscala(f, modalidade);
         validarDiaSemana(modalidade, req.dataExecucao());
-        validarDataNaoRepetida(frequenciaId, req.dataExecucao(), null);
+        validarConflitoHorario(frequenciaId, modalidade, req, null);
         // PINSAUDE-13.26 (ajuste): quando a frequência tem modalidade fixa, a ocorrência também é
         // fixa e seu valor é aplicado UMA ÚNICA VEZ sobre o valor da modalidade — não mais por
         // item (ver FrequenciaMedicaResponse.calcularValorOcorrenciaUnico). Só frequências
@@ -377,7 +378,7 @@ public class FrequenciaService {
                 "Modalidade não encontrada: " + modalidadeId));
         validarCouplingTipoEscala(f, modalidade);
         validarDiaSemana(modalidade, req.dataExecucao());
-        validarDataNaoRepetida(frequenciaId, req.dataExecucao(), itemId);
+        validarConflitoHorario(frequenciaId, modalidade, req, itemId);
         // PINSAUDE-13.26 (ajuste): ver comentário equivalente em adicionarItem — ocorrência fixa
         // não é mais resolvida/valorada por item.
         TomadorOcorrencia ocorrencia = f.getModalidadeId() == null
@@ -566,19 +567,52 @@ public class FrequenciaService {
         };
     }
 
-    // Pedido do cliente: nunca pode repetir o mesmo dia dentro da mesma frequência (a mesma
-    // "folha" — médico+setor+competência+tipo de escala, ver criar()). itemIdExcluir é o próprio
-    // item sendo editado em atualizarItem — sem isso, editar um item mantendo a mesma data
-    // sempre colidiria consigo mesmo.
-    private void validarDataNaoRepetida(UUID frequenciaId, LocalDate data, UUID itemIdExcluir) {
-        boolean repetida = itemIdExcluir != null
-            ? itemRepo.existsByFrequenciaIdAndDataExecucaoAndIdNot(frequenciaId, data, itemIdExcluir)
-            : itemRepo.existsByFrequenciaIdAndDataExecucao(frequenciaId, data);
-        if (repetida) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "Já existe um lançamento para o dia " + data.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
-                    + " nesta frequência.");
+    // Pedido do cliente: dois lançamentos PODEM cair no mesmo dia (ex.: um plantão das 7h às 13h
+    // e outro das 13h às 19h, mesmo médico) — o que nunca pode é o HORÁRIO se sobrepor. A checagem
+    // depende da família da modalidade:
+    //   - "por lançamento" (PLANTONISTA): não existe hora_inicio/hora_fim por item — o turno vem
+    //     fixo do cadastro da modalidade (turno/horário). Duas modalidades diferentes no mesmo dia
+    //     são presumidas turnos distintos; a MESMA modalidade usada duas vezes no mesmo dia é
+    //     sempre conflito (não há como o médico ter feito o mesmo turno cadastrado duas vezes).
+    //   - "fixa" (DIARISTA): toda a frequência usa a mesma modalidade (ver resolverModalidadeIdParaItem),
+    //     então esse critério não distingue nada — aqui o horário de entrada/saída é digitado por
+    //     lançamento, e o conflito é a sobreposição real dos dois intervalos.
+    // itemIdExcluir é o próprio item sendo editado em atualizarItem — sem isso, editar um item
+    // mantendo o mesmo dia/horário sempre colidiria consigo mesmo.
+    private void validarConflitoHorario(UUID frequenciaId, TomadorModalidade modalidade,
+                                         FrequenciaItemRequest req, UUID itemIdExcluir) {
+        List<FrequenciaItem> doMesmoDia = itemRepo.findByFrequenciaIdAndDataExecucao(frequenciaId, req.dataExecucao());
+        for (FrequenciaItem outro : doMesmoDia) {
+            if (itemIdExcluir != null && itemIdExcluir.equals(outro.getId())) continue;
+
+            if (modalidade.isFixa()) {
+                if (req.horaInicio() != null && req.horaFim() != null
+                        && outro.getHoraInicio() != null && outro.getHoraFim() != null
+                        && intervalosSeSobrepoe(req.horaInicio(), req.horaFim(), outro.getHoraInicio(), outro.getHoraFim())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Já existe um lançamento das " + outro.getHoraInicio() + " às " + outro.getHoraFim()
+                            + " neste dia — os horários não podem se sobrepor.");
+                }
+            } else if (modalidade.getId().equals(outro.getModalidadeId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Já existe um lançamento desta modalidade (" + modalidade.getNome() + ") para o dia "
+                        + req.dataExecucao().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                        + " nesta frequência.");
+            }
         }
+    }
+
+    // Compara dois intervalos de horário do dia, tratando o caso de virada de meia-noite (ex.:
+    // 19:00 às 07:00) da mesma forma que calcularHorasTrabalhadas: quando o fim não é depois do
+    // início, soma 24h ao fim antes de comparar.
+    private boolean intervalosSeSobrepoe(LocalTime inicio1, LocalTime fim1, LocalTime inicio2, LocalTime fim2) {
+        int s1 = inicio1.toSecondOfDay();
+        int e1 = fim1.toSecondOfDay();
+        if (e1 <= s1) e1 += 86_400;
+        int s2 = inicio2.toSecondOfDay();
+        int e2 = fim2.toSecondOfDay();
+        if (e2 <= s2) e2 += 86_400;
+        return s1 < e2 && s2 < e1;
     }
 
     // PINSAUDE-13.26 (Diarista) / ajuste pós-implantação (Plantonista): quando a frequência tem

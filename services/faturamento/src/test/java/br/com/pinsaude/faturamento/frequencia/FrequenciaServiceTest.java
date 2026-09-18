@@ -811,14 +811,20 @@ class FrequenciaServiceTest {
         verify(itemRepo, never()).save(any());
     }
 
-    // ─── Data não pode se repetir na mesma frequência ──────────────────────────
+    // ─── Conflito de horário: mesmo dia é permitido, mesmo horário não ─────────
+    // Pedido do cliente: um médico pode fazer dois plantões no mesmo dia (ex.: 7h-13h e depois
+    // 13h-19h) — o que não pode é o horário se sobrepor.
 
     @Test
-    void adicionarItem_dataJaLancadaNaFrequencia_lanca409() {
+    void adicionarItem_mesmaModalidadeNoMesmoDia_lanca409() {
+        // PLANTONISTA: mesma modalidade cadastrada (mesmo turno fixo) usada duas vezes no mesmo
+        // dia é sempre conflito — não há como o médico ter feito o mesmo turno cadastrado 2x.
         UUID freqId = UUID.randomUUID();
         FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        FrequenciaItem existente = itemFixture(freqId, modalidadeId, LocalDate.of(2026, 7, 5), null, 150000L);
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
-        when(itemRepo.existsByFrequenciaIdAndDataExecucao(freqId, LocalDate.of(2026, 7, 5))).thenReturn(true);
+        when(itemRepo.findByFrequenciaIdAndDataExecucao(freqId, LocalDate.of(2026, 7, 5)))
+            .thenReturn(List.of(existente));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
             modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, null, null);
@@ -831,6 +837,84 @@ class FrequenciaServiceTest {
     }
 
     @Test
+    void adicionarItem_modalidadesDiferentesNoMesmoDia_permiteDoisPlantoes() {
+        // PLANTONISTA: modalidades diferentes (turnos distintos) no mesmo dia — ex.: 7h-13h numa
+        // modalidade e 13h-19h noutra — devem conviver na mesma frequência.
+        UUID freqId = UUID.randomUUID();
+        UUID outraModalidadeId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        FrequenciaItem existente = itemFixture(freqId, outraModalidadeId, LocalDate.of(2026, 7, 5), null, 150000L);
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdAndDataExecucao(freqId, LocalDate.of(2026, 7, 5)))
+            .thenReturn(List.of(existente));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            modalidadeId, LocalDate.of(2026, 7, 5), null, null, null, null, null);
+
+        assertThat(service.adicionarItem(freqId, req)).isNotNull();
+    }
+
+    @Test
+    void adicionarItem_diarista_horarioSobrepostoNoMesmoDia_lanca409() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        FrequenciaItem existente = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 6), new BigDecimal("6"), 0L);
+        existente.setHoraInicio(LocalTime.of(7, 0));
+        existente.setHoraFim(LocalTime.of(13, 0));
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdAndDataExecucao(freqId, LocalDate.of(2026, 7, 6)))
+            .thenReturn(List.of(existente));
+
+        // 12h-18h sobrepõe as 12h-13h do lançamento já existente (7h-13h)
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            diaristaId, LocalDate.of(2026, 7, 6), null, LocalTime.of(12, 0), LocalTime.of(18, 0), null, null);
+
+        assertThatThrownBy(() -> service.adicionarItem(freqId, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT));
+        verify(itemRepo, never()).save(any());
+    }
+
+    @Test
+    void adicionarItem_diarista_horarioDiferenteNoMesmoDia_permiteDoisLancamentos() {
+        UUID diaristaId = UUID.randomUUID();
+        TomadorModalidade diarista = modalidadeDiaristaFixture(diaristaId, 1_500_000L, "20");
+        when(modalidadeRepo.findById(diaristaId)).thenReturn(Optional.of(diarista));
+
+        UUID freqId = UUID.randomUUID();
+        FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
+        f.setTipoMedico("DIARISTA");
+        FrequenciaItem existente = itemFixture(freqId, diaristaId, LocalDate.of(2026, 7, 6), new BigDecimal("6"), 0L);
+        existente.setHoraInicio(LocalTime.of(7, 0));
+        existente.setHoraFim(LocalTime.of(13, 0));
+        when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
+        when(itemRepo.findByFrequenciaIdAndDataExecucao(freqId, LocalDate.of(2026, 7, 6)))
+            .thenReturn(List.of(existente));
+        when(itemRepo.save(any())).thenAnswer(inv -> {
+            FrequenciaItem item = inv.getArgument(0);
+            setId(item, UUID.randomUUID());
+            return item;
+        });
+
+        // 13h-19h não sobrepõe o lançamento já existente (7h-13h)
+        FrequenciaItemRequest req = new FrequenciaItemRequest(
+            diaristaId, LocalDate.of(2026, 7, 6), null, LocalTime.of(13, 0), LocalTime.of(19, 0), null, null);
+
+        assertThat(service.adicionarItem(freqId, req)).isNotNull();
+    }
+
+    @Test
     void atualizarItem_mantendoAMesmaData_naoColideConsigoMesmo() {
         UUID freqId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
@@ -839,8 +923,8 @@ class FrequenciaServiceTest {
         setId(item, itemId);
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
         when(itemRepo.findById(itemId)).thenReturn(Optional.of(item));
-        when(itemRepo.existsByFrequenciaIdAndDataExecucaoAndIdNot(freqId, LocalDate.of(2026, 7, 5), itemId))
-            .thenReturn(false);
+        when(itemRepo.findByFrequenciaIdAndDataExecucao(freqId, LocalDate.of(2026, 7, 5)))
+            .thenReturn(List.of(item));
         when(itemRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
@@ -850,16 +934,17 @@ class FrequenciaServiceTest {
     }
 
     @Test
-    void atualizarItem_novaDataJaUsadaPorOutroItem_lanca409() {
+    void atualizarItem_novaDataComMesmaModalidadeDeOutroItem_lanca409() {
         UUID freqId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
         FrequenciaMedica f = frequenciaFixture(medicoId, setorId, "2026-07");
         FrequenciaItem item = itemFixture(freqId, modalidadeId, LocalDate.of(2026, 7, 5), null, 150000L);
         setId(item, itemId);
+        FrequenciaItem outro = itemFixture(freqId, modalidadeId, LocalDate.of(2026, 7, 6), null, 150000L);
         when(frequenciaRepo.findById(freqId)).thenReturn(Optional.of(f));
         when(itemRepo.findById(itemId)).thenReturn(Optional.of(item));
-        when(itemRepo.existsByFrequenciaIdAndDataExecucaoAndIdNot(freqId, LocalDate.of(2026, 7, 6), itemId))
-            .thenReturn(true);
+        when(itemRepo.findByFrequenciaIdAndDataExecucao(freqId, LocalDate.of(2026, 7, 6)))
+            .thenReturn(List.of(outro));
 
         FrequenciaItemRequest req = new FrequenciaItemRequest(
             modalidadeId, LocalDate.of(2026, 7, 6), null, null, null, null, null);
