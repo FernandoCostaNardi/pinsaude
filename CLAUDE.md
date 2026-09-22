@@ -6995,6 +6995,51 @@ array explícito antes de invocar — `$args = @("package", "-pl", ":pinsaude-ge
 (`@args` explícito) em vez de tokens soltos sempre que a chamada `mvn` no PowerShell combinar
 `-pl :modulo` com uma ou mais flags `-D`.
 
+### PERFIL-09 — `MedicoController` → `perm_medicos` (primeira aplicação real do catálogo num controller)
+Todas as 28 anotações `@PreAuthorize` de `MedicoController.java` ganharam `or
+hasRole('perm_medicos')` — **adição em bloco, sem exceção**, incluindo as 4 que hoje são
+`hasRole('gestao')` sozinho (o tier mais restrito: `inativar`, `vinculos` GET/POST/DELETE).
+Decisão deliberada, não just find-replace cego: o catálogo (ADR-004/PERFIL-01) já define
+`perm_medicos` como **uma única permissão cobrindo o controller inteiro** (não há um `perm_*`
+mais granular tipo "médicos avançado" para separar `inativar`/`vinculos` do resto) — então
+qualquer perfil customizado que inclua `perm_medicos` deve ter paridade completa com o que
+`operacao` já enxerga nessa tela **e** com as ações hoje exclusivas de `gestao`, já que não
+existe outro jeito de conceder essas ações via perfil customizado senão por essa mesma
+permissão. `ContaBancariaController.java` foi **deliberadamente não tocado** apesar de
+mencionado na task original do Notion (ver correção no ADR-004) — ver seção específica abaixo.
+
+### ⚠️ Achado: `ContaBancariaController` não é do domínio médico — é conta bancária da **empresa**
+A task PERFIL-09 (e a linha original do catálogo em ADR-004) listava `ContaBancariaController`
+como sub-recurso de `perm_medicos`, pelo nome sugerir "conta bancária de alguém no contexto de
+médico". Conferindo o código antes de aplicar (`domain/ContaBancaria.java`): a entidade tem
+`@ManyToOne Empresa empresa` — é a conta bancária da **empresa** (usada em repasses), roteada em
+`/api/empresas/{empresaId}/contas`, `@PreAuthorize` de classe `hasRole('gestao')` sem nenhum
+`medico` no papel. Os dados bancários **do médico** já são um sub-recurso diferente,
+inteiramente dentro do próprio `MedicoController` (`/{id}/dados-bancarios*`, 4 endpoints, já
+contados nos 28). Verifiquei também a task de `perm_empresas` (PERFIL-10) — ela também não
+reivindica `ContaBancariaController` explicitamente. **Não modificado nesta task**; ADR-004
+corrigido com uma nota apontando o achado, sinalizando pra quem for implementar PERFIL-10
+decidir se inclui esse controller ali. Lição geral (reforça um padrão já visto em outras EPICs
+deste projeto): **nunca confiar no nome de uma classe/controller pra decidir o domínio de uma
+permissão — sempre checar o relacionamento JPA real da entidade** antes de aplicar `or
+hasRole(...)`, mesmo quando o catálogo/task já "decidiu" isso de antemão.
+
+### Teste real com token de verdade contendo SÓ `perm_medicos` (sem nenhum papel legado)
+Criado um usuário de teste no Keycloak com **apenas** a role `perm_medicos` (nenhum dos 5
+papéis legados) — token ROPC real, testado contra os 3 tiers de restrição do controller:
+`GET /api/medicos` (antes: gestao/operacao/financeiro/contabil) → `200`; `GET
+/fila-aprovacao` (antes: gestao/operacao) → `200`; `GET /{id}/vinculos` com UUID fake (antes:
+**só** gestao) → `404` (passou da checagem de autorização, chegou na lógica de negócio — prova
+que `perm_medicos` sozinho já destrava até a ação mais restrita do controller, confirmando a
+decisão de aplicação em bloco). Regressão checada nos dois sentidos: o mesmo token de
+`perm_medicos` contra `ContaBancariaController` (empresa) → continua `403` (confirma que a
+permissão não vazou pra um domínio que não deveria); um token de `medico` (papel legado, nunca
+teve acesso a `/fila-aprovacao`) → continua `403`; sem token → `401`. Usuário de teste removido
+ao final. Testes automatizados: `212` no total, `5` falhas — todas em
+`ConfiguracaoFiscalServiceTest`/`ConfiguracaoFiscalIntegrationTest`, o problema de clock-drift
+**já documentado** (seção EPIC-14.1 deste arquivo) e não relacionado a esta mudança; todos os
+testes de `MedicoController`/RBAC/segurança passaram limpos.
+
 ### PERFIL-10 — `EmpresaController` → `perm_empresas` (e o gap do `ContaBancariaController` fechado)
 `EmpresaController.java` tem uma estrutura mista: `@PreAuthorize("hasRole('gestao')")` a nível
 de **classe** cobre os 5 métodos CRUD que não têm anotação própria (`listar`/`buscarPorId`/

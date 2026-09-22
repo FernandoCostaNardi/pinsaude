@@ -26,13 +26,13 @@ public class MedicoController {
     }
 
     @GetMapping("/fila-aprovacao")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<List<MedicoResponse>> listarFilaAprovacao() {
         return ResponseEntity.ok(service.listarFilaAprovacao());
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil') or hasRole('perm_medicos')")
     public ResponseEntity<MedicoListResponse> listar(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -41,13 +41,13 @@ public class MedicoController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico') or hasRole('perm_medicos')")
     public ResponseEntity<MedicoResponse> buscarPorId(@PathVariable UUID id) {
         return ResponseEntity.ok(service.buscarPorId(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<MedicoResponse> criar(@Valid @RequestBody MedicoRequest request) {
         MedicoResponse created = service.criar(request);
         var location = ServletUriComponentsBuilder.fromCurrentRequest()
@@ -56,7 +56,7 @@ public class MedicoController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<MedicoResponse> atualizar(
             @PathVariable UUID id,
             @Valid @RequestBody MedicoRequest request) {
@@ -64,31 +64,31 @@ public class MedicoController {
     }
 
     @PutMapping("/{id}/ativar")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<MedicoResponse> ativar(@PathVariable UUID id) {
         return ResponseEntity.ok(service.ativar(id));
     }
 
     @PutMapping("/{id}/inativar")
-    @PreAuthorize("hasRole('gestao')")
+    @PreAuthorize("hasRole('gestao') or hasRole('perm_medicos')")
     public ResponseEntity<MedicoResponse> inativar(@PathVariable UUID id) {
         return ResponseEntity.ok(service.inativar(id));
     }
 
     @PostMapping("/{id}/convite")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<EnviarConviteResponse> enviarConvite(@PathVariable UUID id) {
         return ResponseEntity.ok(service.enviarConvite(id));
     }
 
     @PostMapping("/{id}/contrato/enviar")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<ContratoAssinaturaResponse> enviarContrato(@PathVariable UUID id) {
         return ResponseEntity.ok(service.enviarContrato(id));
     }
 
     @PostMapping("/{id}/reenviar-boas-vindas")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<Void> reenviarBoasVindas(
             @PathVariable UUID id,
             @RequestBody(required = false) ReenviarBoasVindasRequest request) {
@@ -97,13 +97,13 @@ public class MedicoController {
     }
 
     @PutMapping("/{id}/contrato/assinar")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<ContratoAssinaturaResponse> assinarContratoManual(@PathVariable UUID id) {
         return ResponseEntity.ok(service.assinarContratoManual(id));
     }
 
     @PutMapping("/{id}/junta-comercial")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<MedicoResponse> atualizarJuntaComercial(
             @PathVariable UUID id,
             @Valid @RequestBody AtualizarJuntaComercialRequest request) {
@@ -111,13 +111,13 @@ public class MedicoController {
     }
 
     @GetMapping("/{id}/dados-bancarios")
-    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico') or hasRole('perm_medicos')")
     public ResponseEntity<List<DadosBancariosMedicoResponse>> listarDadosBancarios(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarDadosBancarios(id));
     }
 
     @PostMapping("/{id}/dados-bancarios")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<DadosBancariosMedicoResponse> adicionarDadosBancarios(
             @PathVariable UUID id,
             @Valid @RequestBody DadosBancariosMedicoRequest request) {
@@ -128,7 +128,7 @@ public class MedicoController {
     }
 
     @PutMapping("/{id}/dados-bancarios/{contaId}")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<DadosBancariosMedicoResponse> atualizarDadosBancarios(
             @PathVariable UUID id,
             @PathVariable UUID contaId,
@@ -137,7 +137,7 @@ public class MedicoController {
     }
 
     @DeleteMapping("/{id}/dados-bancarios/{contaId}")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<Void> removerDadosBancarios(
             @PathVariable UUID id,
             @PathVariable UUID contaId) {
@@ -146,13 +146,13 @@ public class MedicoController {
     }
 
     @GetMapping("/{id}/documentos")
-    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico') or hasRole('perm_medicos')")
     public ResponseEntity<List<DocumentoMedicoResponse>> listarDocumentos(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarDocumentos(id));
     }
 
     @PostMapping(value = "/{id}/documentos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('gestao','operacao','medico')")
+    @PreAuthorize("hasAnyRole('gestao','operacao','medico') or hasRole('perm_medicos')")
     public ResponseEntity<DocumentoMedicoResponse> uploadDocumento(
             @PathVariable UUID id,
             @RequestParam TipoDocumentoMedico tipo,
@@ -164,7 +164,7 @@ public class MedicoController {
     }
 
     @DeleteMapping("/{id}/documentos/{docId}")
-    @PreAuthorize("hasAnyRole('gestao','operacao','medico')")
+    @PreAuthorize("hasAnyRole('gestao','operacao','medico') or hasRole('perm_medicos')")
     public ResponseEntity<Void> deletarDocumento(
             @PathVariable UUID id,
             @PathVariable UUID docId) {
@@ -173,7 +173,7 @@ public class MedicoController {
     }
 
     @PutMapping("/{id}/documentos/{docId}/validar")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<DocumentoMedicoResponse> validarDocumento(
             @PathVariable UUID id,
             @PathVariable UUID docId,
@@ -182,7 +182,7 @@ public class MedicoController {
     }
 
     @GetMapping("/{id}/documentos/{docId}/url")
-    @PreAuthorize("hasAnyRole('gestao','operacao','medico')")
+    @PreAuthorize("hasAnyRole('gestao','operacao','medico') or hasRole('perm_medicos')")
     public ResponseEntity<java.util.Map<String, String>> getDocumentoUrl(
             @PathVariable UUID id,
             @PathVariable UUID docId) {
@@ -190,7 +190,7 @@ public class MedicoController {
     }
 
     @GetMapping("/{id}/documentos/{docId}/download")
-    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico') or hasRole('perm_medicos')")
     public ResponseEntity<StreamingResponseBody> downloadDocumento(
             @PathVariable UUID id,
             @PathVariable UUID docId) {
@@ -198,19 +198,19 @@ public class MedicoController {
     }
 
     @GetMapping("/{id}/historico")
-    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil') or hasRole('perm_medicos')")
     public ResponseEntity<List<HistoricoMedicoResponse>> listarHistorico(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarHistorico(id));
     }
 
     @GetMapping("/{id}/taxa-pin/historico")
-    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil') or hasRole('perm_medicos')")
     public ResponseEntity<List<HistoricoTaxaPinResponse>> listarHistoricoTaxaPin(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarHistoricoTaxaPin(id));
     }
 
     @PutMapping("/{id}/checklist")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_medicos')")
     public ResponseEntity<ChecklistCondutaResponse> atualizarChecklist(
             @PathVariable UUID id,
             @RequestBody ChecklistCondutaRequest request) {
@@ -218,13 +218,13 @@ public class MedicoController {
     }
 
     @GetMapping("/{id}/vinculos")
-    @PreAuthorize("hasRole('gestao')")
+    @PreAuthorize("hasRole('gestao') or hasRole('perm_medicos')")
     public ResponseEntity<List<VinculoEmpresaResponse>> listarVinculos(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarVinculos(id));
     }
 
     @PostMapping("/{id}/vinculos")
-    @PreAuthorize("hasRole('gestao')")
+    @PreAuthorize("hasRole('gestao') or hasRole('perm_medicos')")
     public ResponseEntity<VinculoEmpresaResponse> adicionarVinculo(
             @PathVariable UUID id,
             @Valid @RequestBody VinculoEmpresaRequest request) {
@@ -233,7 +233,7 @@ public class MedicoController {
     }
 
     @DeleteMapping("/{id}/vinculos/{empresaId}")
-    @PreAuthorize("hasRole('gestao')")
+    @PreAuthorize("hasRole('gestao') or hasRole('perm_medicos')")
     public ResponseEntity<Void> removerVinculo(
             @PathVariable UUID id,
             @PathVariable UUID empresaId) {
