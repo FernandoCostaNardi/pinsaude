@@ -7092,6 +7092,46 @@ resposta já vinda do Keycloak** (não só um literal digitado à mão) pode car
 aviso — a regra prática já vale: gravar em arquivo (`curl ... > role.json`) e usar
 `curl --data-binary @arquivo.json` em vez de interpolar a variável no `-d "..."`.
 
+### PERFIL-06 — `menuCatalog.ts` + Sidebar reconhecendo perfil customizado
+`navItems` extraído de `Sidebar.tsx` para `apps/web/src/config/menuCatalog.ts` — refactor
+mecânico, cada item ganhando `perm?: string` (17 ocorrências, 15 valores distintos — bate
+exatamente com o catálogo de 15 `perm_*` do ADR-004; `perm_medicos` e `perm_conciliacao`
+aparecem 2× porque cobrem 2 telas cada). `Dashboard` e as 4 telas do Portal do Médico **não**
+recebem `perm` — de propósito, fora do catálogo (ver ADR-004).
+
+**Algoritmo em `Sidebar.tsx`**: usuário com um dos 5 papéis legados segue o filtro de sempre
+(`item.roles.some(r => userRoles.includes(r))`) — código idêntico, zero regressão, já que
+nenhum papel legado bate com `perfil_custom_*`. Usuário cujo `realm_access.roles` contém
+**qualquer** role `perfil_custom_*` usa um caminho totalmente diferente
+(`resolveVisibleItemsPorPerfilCustomizado`): nunca vê o Portal do Médico (`item.roles.includes
+('medico')` → `false` sempre), sempre vê itens sem `perm` (ex.: Dashboard — universal, sem
+operação sensível própria), e só vê os demais se `perm` estiver no array `permissoes` do perfil
+(buscado uma vez via `perfisApi.listar()`, `GET /api/perfis`, `isAuthenticated()` — qualquer
+papel logado pode ler). Um usuário nunca tem os dois tipos de role ao mesmo tempo através do
+próprio app — `alterarPerfil()` (PERFIL-05) sempre faz replace completo dos roles de negócio.
+
+**`perfisApi.ts` novo** — só `listar()` por enquanto (o suficiente para esta task); `criar`/
+`atualizar`/`excluir` ficam para as telas de CRUD (PERFIL-07/08), que os criam quando precisarem.
+
+### ⚠️ Verificação de UI bloqueada neste ambiente: Chrome força `https://localhost:3000` (sem TLS ali) mesmo sem HSTS do servidor
+Tentativa de testar esta mudança no navegador (`localhost:3000`, `127.0.0.1:3000`, aba nova,
+esperas de até 7s) sempre resultou na URL virando `https://` sozinha e a página caindo num erro
+de rede puro (`Frame ... is showing error page`, sem console, sem nenhuma request de rede
+registrada) — confirmado via `curl -I` que o servidor Vite **não** envia
+`Strict-Transport-Security` nem redirect algum, então a causa é 100% do lado do Chrome (provável
+"Sempre usar conexões seguras"/HTTPS-Only Mode ativo no perfil), não do app. A ferramenta
+`navigate` recusa URLs `chrome://` (`"Can't interact with browser-internal or unparseable
+URLs"`), e `screenshot`/`javascript_tool` falham numa página de erro de rede — não há como abrir
+`chrome://settings/security` nem clicar em nada via este conjunto de ferramentas de automação
+pra desligar o modo. **Se isso se repetir**: pedir pro usuário desligar "Sempre usar conexões
+seguras" em `chrome://settings/security` manualmente, ou testar por fora da automação.
+**Verificação alternativa usada nesta task**: `tsc --noEmit` limpo nos dois arquivos (prova a
+tipagem/wiring) + diff de texto normalizado por espaço entre o `navItems` antigo (dentro do
+`Sidebar.tsx`) e o novo (`menuCatalog.ts`, com os campos `perm` removidos) confirmando **zero
+drift semântico** nos campos `to`/`label`/`icon`/`roles`/`end` — mais forte que uma inspeção
+visual, mas não substitui um teste real de UI; a task fica sinalizada para uma verificação manual
+rápida no navegador do usuário antes do deploy.
+
 ---
 
 ## Convenções de Commit e Branch
