@@ -19,5 +19,6 @@ public record CandidaturaDadosBancariosRequest(
     String bancoNome,
     String agencia,
     String conta,
-    String tipoConta                   // "CORRENTE" ou "POUPANCA"
+    String tipoConta,                  // "CORRENTE" ou "POUPANCA"
+    String apelido
 ) {}

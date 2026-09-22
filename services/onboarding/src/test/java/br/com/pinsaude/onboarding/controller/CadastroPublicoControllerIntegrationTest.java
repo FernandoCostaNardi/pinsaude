@@ -367,7 +367,7 @@ class CadastroPublicoControllerIntegrationTest {
         UUID id = criarCandidatura(cpfValido("111444777"), "70004");
         var req = new CandidaturaDadosBancariosRequest(
             "PIX", br.com.pinsaude.onboarding.domain.TipoPix.EMAIL, "maria@exemplo.com",
-            null, null, null, null, null, null);
+            null, null, null, null, null, null, null);
 
         mockMvc.perform(put("/api/onboarding/publico/candidaturas/{id}/dados-bancarios", id)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -376,7 +376,7 @@ class CadastroPublicoControllerIntegrationTest {
             .andExpect(jsonPath("$.tipoRecebimento").value("PIX"))
             .andExpect(jsonPath("$.chavePix").value("maria@exemplo.com"));
 
-        assertThat(dadosBancariosRepo.findByMedicoId(id)).isPresent();
+        assertThat(dadosBancariosRepo.findByMedicoIdOrderByCreatedAtAsc(id)).isNotEmpty();
     }
 
     // ── declarações LGPD ─────────────────────────────────────────────────────

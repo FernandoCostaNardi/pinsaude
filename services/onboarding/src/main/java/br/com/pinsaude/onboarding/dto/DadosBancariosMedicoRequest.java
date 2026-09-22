@@ -15,5 +15,8 @@ public record DadosBancariosMedicoRequest(
     String agencia,
     String conta,
     String tipoConta,                  // "CORRENTE" ou "POUPANCA"
-    @NotNull Boolean confirmarAlteracao
+    @NotNull Boolean confirmarAlteracao,
+    // Rótulo livre para diferenciar contas quando o médico tem mais de uma
+    // (ex: "PIX principal", "TED Itaú salário"). Opcional.
+    String apelido
 ) {}

@@ -329,23 +329,68 @@ public class MedicoService {
         }
     }
 
+    public List<DadosBancariosMedicoResponse> listarDadosBancarios(UUID medicoId) {
+        findOrThrow(medicoId);
+        return dadosBancariosRepo.findByMedicoIdOrderByCreatedAtAsc(medicoId).stream()
+            .map(this::toDadosBancariosResponse)
+            .toList();
+    }
+
     @Transactional
-    public DadosBancariosMedicoResponse atualizarDadosBancarios(UUID medicoId, DadosBancariosMedicoRequest req) {
-        if (!Boolean.TRUE.equals(req.confirmarAlteracao())) {
+    public DadosBancariosMedicoResponse adicionarDadosBancarios(UUID medicoId, DadosBancariosMedicoRequest req) {
+        validarConfirmacaoDadosBancarios(req.confirmarAlteracao());
+        findOrThrow(medicoId);
+
+        var dados = new DadosBancariosMedico();
+        dados.setMedicoId(medicoId);
+        aplicarCamposDadosBancarios(dados, req);
+        dados = dadosBancariosRepo.save(dados);
+
+        registrarHistorico(medicoId, TipoAcaoMedico.ADICAO_CONTA_BANCARIA,
+            "Conta bancária adicionada" + (req.apelido() != null && !req.apelido().isBlank()
+                ? " (" + req.apelido().trim() + ")" : ""));
+
+        return toDadosBancariosResponse(dados);
+    }
+
+    @Transactional
+    public DadosBancariosMedicoResponse atualizarDadosBancarios(
+            UUID medicoId, UUID dadosBancariosId, DadosBancariosMedicoRequest req) {
+        validarConfirmacaoDadosBancarios(req.confirmarAlteracao());
+        findOrThrow(medicoId);
+
+        var dados = dadosBancariosRepo.findByIdAndMedicoId(dadosBancariosId, medicoId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conta bancária não encontrada"));
+
+        aplicarCamposDadosBancarios(dados, req);
+        dados = dadosBancariosRepo.save(dados);
+        registrarHistorico(medicoId, TipoAcaoMedico.ATUALIZACAO_DADOS_BANCARIOS, "Dados bancários atualizados");
+
+        return toDadosBancariosResponse(dados);
+    }
+
+    @Transactional
+    public void removerDadosBancarios(UUID medicoId, UUID dadosBancariosId) {
+        findOrThrow(medicoId);
+
+        var dados = dadosBancariosRepo.findByIdAndMedicoId(dadosBancariosId, medicoId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conta bancária não encontrada"));
+
+        dadosBancariosRepo.delete(dados);
+        registrarHistorico(medicoId, TipoAcaoMedico.REMOCAO_CONTA_BANCARIA,
+            "Conta bancária removida" + (dados.getApelido() != null ? " (" + dados.getApelido() + ")" : ""));
+    }
+
+    private void validarConfirmacaoDadosBancarios(Boolean confirmarAlteracao) {
+        if (!Boolean.TRUE.equals(confirmarAlteracao)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Alteração de dados bancários requer confirmação explícita. " +
                 "Envie confirmarAlteracao: true no corpo da requisição.");
         }
+    }
 
-        findOrThrow(medicoId);
-
-        var dados = dadosBancariosRepo.findByMedicoId(medicoId)
-            .orElseGet(() -> {
-                var novo = new DadosBancariosMedico();
-                novo.setMedicoId(medicoId);
-                return novo;
-            });
-
+    private void aplicarCamposDadosBancarios(DadosBancariosMedico dados, DadosBancariosMedicoRequest req) {
+        dados.setApelido(req.apelido() != null && !req.apelido().isBlank() ? req.apelido().trim() : null);
         dados.setTipoRecebimento(req.tipoRecebimento() != null ? req.tipoRecebimento() : "PIX");
         if ("TED".equals(req.tipoRecebimento())) {
             dados.setTipoPix(null);
@@ -367,12 +412,12 @@ public class MedicoService {
             dados.setConta(null);
             dados.setTipoConta(null);
         }
-        dados = dadosBancariosRepo.save(dados);
-        registrarHistorico(medicoId, TipoAcaoMedico.ATUALIZACAO_DADOS_BANCARIOS, "Dados bancários atualizados");
+    }
 
-        String chavePIXDecriptografada = dados.getChavePIXCriptografada() != null
-            ? cryptoService.decrypt(dados.getChavePIXCriptografada()) : null;
-        return DadosBancariosMedicoResponse.from(dados, chavePIXDecriptografada);
+    private DadosBancariosMedicoResponse toDadosBancariosResponse(DadosBancariosMedico d) {
+        String chavePIXDecriptografada = d.getChavePIXCriptografada() != null
+            ? cryptoService.decrypt(d.getChavePIXCriptografada()) : null;
+        return DadosBancariosMedicoResponse.from(d, chavePIXDecriptografada);
     }
 
     public List<DocumentoMedicoResponse> listarDocumentos(UUID medicoId) {
@@ -422,9 +467,14 @@ public class MedicoService {
         var saved = DocumentoMedicoResponse.from(documentoRepo.save(doc));
         registrarHistorico(medicoId, TipoAcaoMedico.VALIDACAO_DOCUMENTO,
             "Documento " + req.statusValidacao().name() + ": " + doc.getTipo().name());
+        Medico medico = findOrThrow(medicoId);
         if (reprovado) {
-            Medico medico = findOrThrow(medicoId);
             notificacaoService.notificarDocumentoReprovado(medico, doc.getTipo().name(), req.motivoReprovacao());
+        } else {
+            // Aprovar o último documento pendente pode ter sido o requisito que faltava —
+            // sem isso o médico só era ativado se outro gatilho (junta comercial/contrato)
+            // acontecesse depois, e ficava parado em RASCUNHO se a documentação era o último passo.
+            verificarAtivacaoAutomatica(medico);
         }
         return saved;
     }
@@ -530,22 +580,79 @@ public class MedicoService {
         }
     }
 
-    // Habilita o usuário Keycloak criado (desabilitado) ao final do auto-cadastro público
-    // (EPIC-14.3/14.4) e atribui a role medico. Médicos cadastrados manualmente (sem
-    // keycloakUserId) não passam por aqui — o acesso deles continua sendo criado à parte
-    // pela tela de Usuários (services/gestao). Falhas aqui são logadas, não bloqueiam a
-    // ativação em si — o médico já está corretamente ATIVO no onboarding independente do
-    // Keycloak; um operador pode liberar manualmente no Keycloak se isso falhar.
+    // Garante que o médico ativado tenha acesso à plataforma: conta no Keycloak habilitada e
+    // com a role medico. Médicos do auto-cadastro público (EPIC-14.3/14.4) já chegam aqui com
+    // keycloakUserId (conta criada desabilitada ao finalizar a candidatura); médicos de
+    // cadastro manual não tinham conta nenhuma e ficavam ATIVO no onboarding sem conseguir
+    // logar — o e-mail de boas-vindas saía com um link de definição de senha que não
+    // funcionava, por não existir usuário no realm. Agora a conta é criada aqui quando falta.
+    // Falhas são logadas, não bloqueiam a ativação em si — o médico já está corretamente
+    // ATIVO no onboarding independente do Keycloak, e o operador pode reenviar as boas-vindas
+    // (reenviarBoasVindas) para tentar de novo.
     private void liberarAcessoKeycloak(Medico medico) {
-        if (medico.getKeycloakUserId() == null) return;
         try {
-            keycloakAdminService.assignRole(medico.getKeycloakUserId(), "medico");
-            keycloakAdminService.updateUserEnabled(medico.getKeycloakUserId(), true);
+            String userId = resolverOuCriarUsuarioKeycloak(medico);
+            if (userId == null) return;
+            keycloakAdminService.assignRole(userId, "medico");
+            keycloakAdminService.updateUserEnabled(userId, true);
             log.info("Acesso Keycloak liberado para médico {}", medico.getId());
         } catch (Exception e) {
             log.error("Falha ao liberar acesso Keycloak para médico {} (keycloakUserId={}): {}",
                 medico.getId(), medico.getKeycloakUserId(), e.getMessage());
         }
+    }
+
+    // Retorna o id do usuário Keycloak do médico, criando-o se ainda não existir. Antes de
+    // criar, procura pelo e-mail: a conta pode ter sido criada à parte pela tela de Usuários
+    // (services/gestao) — criar de novo devolveria 409 do Keycloak.
+    private String resolverOuCriarUsuarioKeycloak(Medico medico) {
+        if (medico.getKeycloakUserId() != null) return medico.getKeycloakUserId();
+
+        if (medico.getEmail() == null || medico.getEmail().isBlank()) {
+            log.warn("Médico {} sem e-mail — não é possível criar acesso no Keycloak", medico.getId());
+            return null;
+        }
+
+        String cnpjPrimeiraEmpresa = vinculoRepo.findByIdMedicoId(medico.getId()).stream()
+            .findFirst()
+            .flatMap(v -> empresaRepo.findById(v.getId().getEmpresaId()))
+            .map(Empresa::getCnpj)
+            .orElse(null);
+
+        String userId = keycloakAdminService.findUserIdByEmail(medico.getEmail())
+            .orElseGet(() -> {
+                String novo = keycloakAdminService.createUserDesabilitado(
+                    medico.getEmail(), medico.getNome(), cnpjPrimeiraEmpresa);
+                log.info("Usuário Keycloak criado para médico {} ({})", medico.getId(), medico.getEmail());
+                return novo;
+            });
+
+        medico.setKeycloakUserId(userId);
+        medicoRepo.save(medico);
+        return userId;
+    }
+
+    /**
+     * Reenvia o e-mail de boas-vindas ("Cadastro aprovado") de um médico já ATIVO, opcionalmente
+     * com cópia. Antes de enviar, garante o acesso no Keycloak — assim também conserta médicos
+     * ativados antes desta correção, que ficaram ATIVO sem conta no realm.
+     */
+    @Transactional
+    public void reenviarBoasVindas(UUID medicoId, List<String> copias) {
+        Medico medico = findOrThrow(medicoId);
+        if (medico.getStatus() != StatusMedico.ATIVO) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Só é possível reenviar as boas-vindas de um médico ativo.");
+        }
+        if (medico.getEmail() == null || medico.getEmail().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Médico não possui e-mail cadastrado.");
+        }
+        liberarAcessoKeycloak(medico);
+        notificacaoService.notificarMedicoAtivado(medico, copias);
+        registrarHistorico(medicoId, TipoAcaoMedico.ATIVACAO,
+            "E-mail de boas-vindas reenviado para " + medico.getEmail()
+                + (copias == null || copias.isEmpty() ? "" : " (cópia: " + String.join(", ", copias) + ")"));
     }
 
     private void validarPreRequisitosAtivacao(UUID id, Medico medico) {
@@ -649,12 +756,10 @@ public class MedicoService {
             .filter(java.util.Objects::nonNull)
             .toList();
 
-        DadosBancariosMedicoResponse dadosBancarios = dadosBancariosRepo
-            .findByMedicoId(medico.getId())
-            .map(d -> DadosBancariosMedicoResponse.from(d,
-                d.getChavePIXCriptografada() != null
-                    ? cryptoService.decrypt(d.getChavePIXCriptografada()) : null))
-            .orElse(null);
+        List<DadosBancariosMedicoResponse> dadosBancarios = dadosBancariosRepo
+            .findByMedicoIdOrderByCreatedAtAsc(medico.getId()).stream()
+            .map(this::toDadosBancariosResponse)
+            .toList();
 
         List<DocumentoMedicoResponse> documentos = documentoRepo
             .findByMedicoId(medico.getId()).stream()

@@ -79,29 +79,42 @@ function StatCard({
 // ─── Dados bancários display ──────────────────────────────────────────────────
 
 function DadosBancariosDisplay({ medico }: { medico: Medico }) {
-  const db = medico.dadosBancarios
-  if (!db) return <span className="text-ds-light text-xs">—</span>
+  const contas = medico.dadosBancarios ?? []
+  if (contas.length === 0) return <span className="text-ds-light text-xs">—</span>
 
-  if (db.tipoRecebimento === 'TED' && db.bancoCodigo) {
-    const bancoData = bancos.find(b => b.compe === db.bancoCodigo) ?? null
+  const db = contas[0]
+  const resumo = (() => {
+    if (db.tipoRecebimento === 'TED' && db.bancoCodigo) {
+      const bancoData = bancos.find(b => b.compe === db.bancoCodigo) ?? null
+      return (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-ds-light">TED · {db.tipoConta === 'POUPANCA' ? 'Poupança' : 'Corrente'}</span>
+          <div className="flex items-center gap-1.5">
+            {bancoData && <BancoAvatar banco={bancoData} size={16} />}
+            <span className="text-xs font-mono text-ds-text">
+              {db.bancoNome || `Banco ${db.bancoCodigo}`} · Ag. {db.agencia} · Cc. {db.conta}
+            </span>
+          </div>
+        </div>
+      )
+    }
+    if (!db.tipoPix || !db.chavePix) return <span className="text-ds-light text-xs">—</span>
     return (
       <div className="flex flex-col gap-0.5">
-        <span className="text-xs text-ds-light">TED · {db.tipoConta === 'POUPANCA' ? 'Poupança' : 'Corrente'}</span>
-        <div className="flex items-center gap-1.5">
-          {bancoData && <BancoAvatar banco={bancoData} size={16} />}
-          <span className="text-xs font-mono text-ds-text">
-            {db.bancoNome || `Banco ${db.bancoCodigo}`} · Ag. {db.agencia} · Cc. {db.conta}
-          </span>
-        </div>
+        <span className="text-xs text-ds-light">PIX · {db.tipoPix}</span>
+        <span className="text-xs font-mono text-ds-text">{maskPixKey(db.tipoPix, db.chavePix)}</span>
       </div>
     )
-  }
+  })()
 
-  if (!db.tipoPix || !db.chavePix) return <span className="text-ds-light text-xs">—</span>
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-ds-light">PIX · {db.tipoPix}</span>
-      <span className="text-xs font-mono text-ds-text">{maskPixKey(db.tipoPix, db.chavePix)}</span>
+    <div className="flex items-center gap-1.5">
+      {resumo}
+      {contas.length > 1 && (
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-ds-input text-ds-light border border-ds-border shrink-0">
+          +{contas.length - 1}
+        </span>
+      )}
     </div>
   )
 }

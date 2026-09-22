@@ -63,11 +63,15 @@ public class EmailTemplateService {
             var helper = new MimeMessageHelper(mime, true, "UTF-8");
             helper.setFrom(emailFrom);
             helper.setTo(destinatario);
+            String[] copias = message.copias() == null ? new String[0]
+                : message.copias().stream().filter(c -> c != null && !c.isBlank()).map(String::trim).toArray(String[]::new);
+            if (copias.length > 0) helper.setCc(copias);
             helper.setSubject(message.assunto());
             helper.setText(body, true);
 
             mailSender.send(mime);
-            log.info("E-mail enviado: tipo={} destinatario={}", message.tipo(), destinatario);
+            log.info("E-mail enviado: tipo={} destinatario={} copias={}",
+                message.tipo(), destinatario, copias.length == 0 ? "-" : String.join(",", copias));
         } catch (Exception e) {
             log.error("Falha ao enviar e-mail: tipo={} dest={}", message.tipo(), destinatario, e);
         }

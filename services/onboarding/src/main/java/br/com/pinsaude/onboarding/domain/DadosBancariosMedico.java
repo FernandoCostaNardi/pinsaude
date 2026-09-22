@@ -21,6 +21,9 @@ public class DadosBancariosMedico {
     @Column(name = "medico_id", nullable = false)
     private UUID medicoId;
 
+    @Column(name = "apelido", length = 100)
+    private String apelido;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "tipo_pix")
     @ColumnTransformer(write = "?::onboarding.tipo_pix_enum")
@@ -66,6 +69,9 @@ public class DadosBancariosMedico {
 
     public UUID getMedicoId() { return medicoId; }
     public void setMedicoId(UUID medicoId) { this.medicoId = medicoId; }
+
+    public String getApelido() { return apelido; }
+    public void setApelido(String apelido) { this.apelido = apelido; }
 
     public TipoPix getTipoPix() { return tipoPix; }
     public void setTipoPix(TipoPix tipoPix) { this.tipoPix = tipoPix; }

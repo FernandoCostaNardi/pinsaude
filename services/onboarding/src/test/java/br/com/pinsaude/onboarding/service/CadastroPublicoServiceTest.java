@@ -400,11 +400,11 @@ class CadastroPublicoServiceTest {
         when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(medico));
         when(cryptoService.encrypt(any())).thenReturn(new byte[]{9, 9});
         when(cryptoService.decrypt(any())).thenReturn("medico@exemplo.com");
-        when(dadosBancariosRepo.findByMedicoId(MEDICO_ID)).thenReturn(Optional.empty());
+        when(dadosBancariosRepo.findByMedicoIdOrderByCreatedAtAsc(MEDICO_ID)).thenReturn(List.of());
         when(dadosBancariosRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var req = new CandidaturaDadosBancariosRequest(
-            "PIX", TipoPix.EMAIL, "medico@exemplo.com", null, null, null, null, null, null);
+            "PIX", TipoPix.EMAIL, "medico@exemplo.com", null, null, null, null, null, null, null);
 
         DadosBancariosMedicoResponse resp = service.atualizarDadosBancarios(MEDICO_ID, req);
 
@@ -419,7 +419,7 @@ class CadastroPublicoServiceTest {
         when(medicoRepo.findById(MEDICO_ID)).thenReturn(Optional.of(ativo));
 
         var req = new CandidaturaDadosBancariosRequest(
-            "TED", null, null, null, "341", "Itaú", "1234", "56789-0", "CORRENTE");
+            "TED", null, null, null, "341", "Itaú", "1234", "56789-0", "CORRENTE", null);
 
         assertThatThrownBy(() -> service.atualizarDadosBancarios(MEDICO_ID, req))
             .isInstanceOf(ResponseStatusException.class)

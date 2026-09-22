@@ -8,6 +8,7 @@ import java.util.UUID;
 
 public record DadosBancariosMedicoResponse(
     UUID id,
+    String apelido,
     String tipoRecebimento,
     // PIX
     TipoPix tipoPix,
@@ -24,6 +25,7 @@ public record DadosBancariosMedicoResponse(
     public static DadosBancariosMedicoResponse from(DadosBancariosMedico d, String chavePIXDecriptografada) {
         return new DadosBancariosMedicoResponse(
             d.getId(),
+            d.getApelido(),
             d.getTipoRecebimento() != null ? d.getTipoRecebimento() : "PIX",
             d.getTipoPix(),
             chavePIXDecriptografada,

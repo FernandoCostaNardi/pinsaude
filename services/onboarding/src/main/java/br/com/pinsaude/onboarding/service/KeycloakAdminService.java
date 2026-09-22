@@ -7,11 +7,14 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Cliente da Admin API do Keycloak duplicado dentro do onboarding — mesmo padrão já usado
@@ -92,6 +95,24 @@ public class KeycloakAdminService {
         String location = response.getHeaders().getFirst(HttpHeaders.LOCATION);
         if (location == null) throw new IllegalStateException("Keycloak não retornou header Location");
         return location.substring(location.lastIndexOf('/') + 1);
+    }
+
+    /**
+     * Procura um usuário pelo e-mail exato. Usado antes de criar a conta do médico na
+     * ativação: a conta pode já existir, criada à parte pela tela de Usuários
+     * (services/gestao) ou por uma candidatura pública anterior — criar de novo faria o
+     * Keycloak responder 409 (e-mail duplicado).
+     */
+    public Optional<String> findUserIdByEmail(String email) {
+        List<Map<String, Object>> encontrados = restClient.get()
+            .uri(adminUrl("/users?exact=true&email="
+                + URLEncoder.encode(email.toLowerCase(), StandardCharsets.UTF_8)))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+            .retrieve()
+            .body(new ParameterizedTypeReference<>() {});
+
+        if (encontrados == null || encontrados.isEmpty()) return Optional.empty();
+        return Optional.ofNullable((String) encontrados.get(0).get("id"));
     }
 
     public Map<String, Object> getRoleByName(String roleName) {
