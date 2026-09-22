@@ -2,6 +2,7 @@ package br.com.pinsaude.gestao.service;
 
 import br.com.pinsaude.gestao.dto.ConviteRequest;
 import br.com.pinsaude.gestao.dto.UsuarioDto;
+import br.com.pinsaude.gestao.repository.PerfilCustomizadoRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -18,9 +19,11 @@ public class UsuarioService {
     );
 
     private final KeycloakAdminService keycloak;
+    private final PerfilCustomizadoRepository perfilRepo;
 
-    public UsuarioService(KeycloakAdminService keycloak) {
+    public UsuarioService(KeycloakAdminService keycloak, PerfilCustomizadoRepository perfilRepo) {
         this.keycloak = keycloak;
+        this.perfilRepo = perfilRepo;
     }
 
     public List<UsuarioDto> listar() {
@@ -35,7 +38,7 @@ public class UsuarioService {
     }
 
     public UsuarioDto convidar(ConviteRequest request, String cnpjId) {
-        if (!PERFIS_VALIDOS.contains(request.perfil())) {
+        if (!perfilValido(request.perfil())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Perfil inválido: " + request.perfil());
         }
         String userId = keycloak.createUser(request.email(), request.nome(), cnpjId);
@@ -46,7 +49,7 @@ public class UsuarioService {
     }
 
     public UsuarioDto alterarPerfil(String userId, String novoPerfil) {
-        if (!PERFIS_VALIDOS.contains(novoPerfil)) {
+        if (!perfilValido(novoPerfil)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Perfil inválido: " + novoPerfil);
         }
         List<String> rolesAtuais = keycloak.getUserRealmRoles(userId);
@@ -66,6 +69,11 @@ public class UsuarioService {
 
     public void reenviarConvite(String userId) {
         keycloak.sendInvitationEmail(userId);
+    }
+
+    /** Aceita os 5 papéis legados ou o keycloak_role_name de qualquer perfil customizado (PERFIL-04). */
+    private boolean perfilValido(String perfil) {
+        return PERFIS_VALIDOS.contains(perfil) || perfilRepo.findByKeycloakRoleName(perfil).isPresent();
     }
 
     @SuppressWarnings("unchecked")

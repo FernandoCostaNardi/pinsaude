@@ -7048,6 +7048,50 @@ isola só esse arquivo (volta pro estado do HEAD), edita/commita a mudança pret
 normalmente, depois `git stash pop` reaplica o override local por cima do commit novo — as duas
 mudanças continuam existindo, cada uma no lugar certo (uma commitada, outra só local).
 
+### PERFIL-05 — `convidar()` quebrado em produção para praticamente todo `gestao` real (só a conta seed funcionava)
+`UsuarioController.convidar()` tinha um helper `currentCnpjId()` que **lançava 403** se o token
+não tivesse `cnpj_id` — mas só a conta seed (`gestao@pinsaude.com.br`) tem esse atributo; os
+`gestao` reais de produção não têm. Corrigido chamando `SecurityUtils.currentCnpjTenant()`
+(nullable) direto no controller, removendo o helper que lançava. `KeycloakAdminService.createUser`
+fazia `Map.of("cnpj_id", List.of(cnpjId))` incondicional — com `cnpjId=null` isso é NPE
+(`Map.of`/`List.of` não aceitam `null`), mascarado atrás do 403 anterior (nunca chegava a
+executar). Corrigido com o mesmo guard já usado em `onboarding/KeycloakAdminService.
+createUserDesabilitado` (`if (cnpjId != null && !cnpjId.isBlank())`).
+
+**Teste real do bug, não só do fix**: criado um usuário `gestao` de teste **sem** `cnpj_id`
+(via Admin API), obtido um token ROPC de verdade pra ele, e confirmado que `POST /api/usuarios`
+com esse token — reproduzindo exatamente o cenário de produção — cria o usuário normalmente
+(`201`), sem 403 e sem NPE. Usuário de teste removido ao final.
+
+### `UsuarioService`/`KeycloakAdminService` passam a reconhecer perfis customizados (PERFIL-04)
+`PERFIS_VALIDOS` (5 papéis fixos) virou `perfilValido(String)` — aceita os 5 legados **ou**
+qualquer `keycloak_role_name` presente em `perfis_customizados`
+(`perfilRepo.findByKeycloakRoleName(perfil).isPresent()`), usado em `convidar()`/`alterarPerfil()`.
+`getUserRealmRoles()` filtrava só `PERFIS_NEGOCIO::contains` — um usuário com perfil customizado
+sempre voltava com `perfil` vazio em `toDto()` e **sumia** da listagem (`listar()` filtra
+`!perfil.isBlank()`). Corrigido aceitando também `name.startsWith("perfil_custom_")`.
+
+**Achado colateral corrigido de brinde**: esse mesmo filtro quebrado também fazia
+`alterarPerfil()` **nunca remover** um perfil customizado antigo ao trocar de perfil — o loop
+`for (role : rolesAtuais) keycloak.removeRole(...)` simplesmente não via a role customizada
+(filtrada fora), então um usuário trocando de perfil customizado pra um papel legado ficava com
+**as duas roles atribuídas ao mesmo tempo** no Keycloak (a nova + a antiga órfã, nunca removida).
+Confirmado ao vivo: criado um perfil customizado de teste, convidado um usuário com ele
+(`perfil` retornado corretamente preenchido, não mais vazio), depois trocado pra `operacao` via
+`alterarPerfil()` — `GET .../role-mappings/realm` direto no Keycloak confirmou que a role
+customizada **saiu** e só `operacao` ficou. Sem o fix do item anterior, esse teste teria mostrado
+as duas roles coexistindo.
+
+### `curl -d "[$var]"` com uma role representation do Keycloak quebra por causa do mesmo bug de encoding já documentado (PERFIL-02)
+Ao montar manualmente um teste (atribuir a role `gestao` a um usuário via Admin API bruta, só
+pra simular o cenário de bug), `curl -X POST .../role-mappings/realm -d "[$ROLE_REP]"` retornou
+`400` — a `description` da role `gestao` tem travessão + acento (`"Gestor com acesso a
+relatórios — requer MFA"`), e interpolar essa string num `-d "..."` do Git Bash corrompe o JSON,
+exatamente o mesmo bug já documentado no PERFIL-02. **Qualquer payload que incorpore uma
+resposta já vinda do Keycloak** (não só um literal digitado à mão) pode carregar acentuação sem
+aviso — a regra prática já vale: gravar em arquivo (`curl ... > role.json`) e usar
+`curl --data-binary @arquivo.json` em vez de interpolar a variável no `-d "..."`.
+
 ---
 
 ## Convenções de Commit e Branch
