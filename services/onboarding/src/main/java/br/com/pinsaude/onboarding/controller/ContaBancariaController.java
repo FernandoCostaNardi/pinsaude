@@ -14,7 +14,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/empresas/{empresaId}/contas")
-@PreAuthorize("hasRole('gestao')")
+@PreAuthorize("hasRole('gestao') or hasRole('perm_empresas')")
 public class ContaBancariaController {
 
     private final ContaBancariaService service;

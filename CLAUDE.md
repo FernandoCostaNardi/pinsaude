@@ -6995,6 +6995,35 @@ array explícito antes de invocar — `$args = @("package", "-pl", ":pinsaude-ge
 (`@args` explícito) em vez de tokens soltos sempre que a chamada `mvn` no PowerShell combinar
 `-pl :modulo` com uma ou mais flags `-D`.
 
+### PERFIL-10 — `EmpresaController` → `perm_empresas` (e o gap do `ContaBancariaController` fechado)
+`EmpresaController.java` tem uma estrutura mista: `@PreAuthorize("hasRole('gestao')")` a nível
+de **classe** cobre os 5 métodos CRUD que não têm anotação própria (`listar`/`buscarPorId`/
+`criar`/`atualizar`/`deletar`) — no Spring Security, uma anotação de método **substitui**
+inteiramente a de classe, nunca combina, então só o `@PreAuthorize` mais específico vale por
+método. As outras 7 anotações são a nível de método (6× `hasAnyRole('gestao','operacao')` +
+1× `hasRole('gestao')`, o endpoint `alertas-vencimento`). Total 8, batendo com a task — `or
+hasRole('perm_empresas')` aplicado às 8 (incluindo a de classe, que precisa do próprio ajuste
+pra afetar os 5 métodos sem anotação individual).
+
+**Fechado o gap sinalizado em PERFIL-09**: `ContaBancariaController.java` (contas bancárias da
+**empresa**, não do médico — achado documentado na task anterior) também ganhou `or
+hasRole('perm_empresas')` nesta task, mesmo não estando no escopo literal dos "8
+`@PreAuthorize`" da task do Notion — é o controller correto pra essa permissão, e deixar sem
+fix seria repetir o mesmo buraco que a PERFIL-09 encontrou. ADR-004 atualizado (linha de
+`perm_empresas` agora soma `EmpresaController` (8) + `ContaBancariaController` (1) = 9).
+
+**Teste real com token contendo só `perm_empresas`**: `GET /api/empresas` (tier de classe,
+`gestao`) → `200`; `GET /documentos/alertas-vencimento` (tier mais restrito, `gestao` sozinho)
+→ `200`; `GET /{id}/documentos` (tier `gestao,operacao`) → `404` (passou da autorização); `GET
+/api/empresas/{id}/contas` (`ContaBancariaController`, recém-corrigido) → `404` (idem — antes
+desta task, teria sido `403`). Regressão checada com um **segundo** usuário de teste, portando
+só `perm_medicos` (permissão de outro domínio, criada em PERFIL-09) → `403` em `/api/empresas`,
+confirmando que as permissões não vazam entre domínios; papel `medico` legado → `403`; sem
+token → `401`. Suite de testes: mesmos `212` testes, mesmas `5` falhas pré-existentes de
+`ConfiguracaoFiscalServiceTest`/`IntegrationTest` (clock-drift, já documentado) — `10/10` em
+`EmpresaServiceTest`, `8/8` em `ContaBancariaServiceTest`, `6/6` em `RbacIntegrationTest`/
+`SecurityIntegrationTest`.
+
 ---
 
 ## Convenções de Commit e Branch
