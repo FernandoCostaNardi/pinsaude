@@ -40,8 +40,36 @@ export interface PerfilCustomizado {
   updatedAt:        string
 }
 
+export interface PerfilCustomizadoPayload {
+  nome:       string
+  permissoes: string[]
+}
+
 export const perfisApi = {
   listar(): Promise<PerfilCustomizado[]> {
     return fetch('/api/perfis', { headers: authHeaders() }).then(handleResponse<PerfilCustomizado[]>)
+  },
+
+  criar(payload: PerfilCustomizadoPayload): Promise<PerfilCustomizado> {
+    return fetch('/api/perfis', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    }).then(handleResponse<PerfilCustomizado>)
+  },
+
+  atualizar(id: string, payload: PerfilCustomizadoPayload): Promise<PerfilCustomizado> {
+    return fetch(`/api/perfis/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    }).then(handleResponse<PerfilCustomizado>)
+  },
+
+  excluir(id: string): Promise<void> {
+    return fetch(`/api/perfis/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    }).then(handleResponse<void>)
   },
 }
