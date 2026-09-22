@@ -35,7 +35,7 @@ nomeada `perm_<domínio>` (minúsculo, sem acento, no mesmo vocabulário da rota
 
 | # | Permissão | Tela(s) | Serviço · Controller | Endpoints protegidos |
 |---|---|---|---|---|
-| 1 | `perm_medicos` | Médicos, Aprovação | onboarding · `MedicoController` + `ContaBancariaController` | 28 + 1 = 29 |
+| 1 | `perm_medicos` | Médicos, Aprovação | onboarding · `MedicoController` | 28 |
 | 2 | `perm_empresas` | Empresas | onboarding · `EmpresaController` | 8 |
 | 3 | `perm_tomadores` | Tomadores | faturamento · `TomadorController` (CRUD + 8 sub-recursos: alíquotas, cnaes, empresas, grupos+setores, médicos+setores, modalidades, ocorrências, turnos-padrão) | 48 |
 | 4 | `perm_producao` | Produção | faturamento · `ProducaoController` | 5 |
@@ -56,6 +56,14 @@ por grep contra o código real em 2026-09-22** (breakdown acima batendo 1:1 com 
 `Grep '@PreAuthorize' services/` → 168 ocorrências em 26 arquivos, incluindo os 2 controllers
 de teste/stub genérico e o `PortalMedicoController`, ambos fora do catálogo — ver seção
 "Fora do catálogo").
+
+> **Correção (PERFIL-09, 2026-09-22):** a versão original desta tabela incluía
+> `ContaBancariaController` na linha de `perm_medicos` — checando o código na hora de aplicar a
+> permissão, essa entidade é `@ManyToOne Empresa`, ou seja, contas bancárias da **empresa** (Pin),
+> não do médico (os dados bancários do médico já são os 4 endpoints `/{id}/dados-bancarios*`
+> dentro do próprio `MedicoController`, já contados nos 28). `ContaBancariaController` não foi
+> tocado em PERFIL-09; fica sinalizado para `perm_empresas` (PERFIL-10) — que hoje também não o
+> reivindica explicitamente — decidir se o inclui.
 
 Contagens conferidas via `Grep '@PreAuthorize' services/` (2026-09-22) contra o código real —
 `TomadorController` (48), `MedicoController` (28) e os demais valores acima batem exatamente
