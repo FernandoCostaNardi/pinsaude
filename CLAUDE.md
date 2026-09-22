@@ -6995,6 +6995,59 @@ array explícito antes de invocar — `$args = @("package", "-pl", ":pinsaude-ge
 (`@args` explícito) em vez de tokens soltos sempre que a chamada `mvn` no PowerShell combinar
 `-pl :modulo` com uma ou mais flags `-D`.
 
+### PERFIL-04 — `PerfilService`/`PerfilController`, CRUD de perfis customizados
+`services/gestao` ganhou o primeiro endpoint que cria uma **realm role composta** no
+Keycloak (`perfil_custom_<uuid>`), cujos filhos são as `perm_*` escolhidas (PERFIL-01/ADR-004).
+`KeycloakAdminService` ganhou `createRole`/`deleteRole`/`getRoleComposites`/
+`replaceRoleComposites`/`countUsersWithRole`, mesmo padrão `RestClient` já usado por
+`assignRole`/`removeRole`. `replaceRoleComposites` faz **replace completo** (busca os
+composites atuais, `DELETE` de todos, `POST` do novo conjunto) — mais simples que diff,
+aceitável porque o número de `perm_*` por perfil é pequeno. Editar um perfil já em uso **nunca
+toca em usuário nenhum diretamente** — a expansão do papel composto acontece a cada emissão de
+token, então a mudança já propaga sozinha no próximo login de quem tem esse perfil atribuído
+(confirmado testando: atribuir/remover a role de um usuário via Admin API direto, sem passar
+pelo `PerfilService`, é só para simular "perfil em uso" no teste do bloqueio de exclusão).
+
+### ⚠️ `@CreationTimestamp`/`@UpdateTimestamp` fica `null` na resposta imediata do `POST` se só capturar o retorno de `repo.save(...)` — precisa de `saveAndFlush`
+Para uma entidade com `@Id` **atribuído manualmente em Java** (sem `@GeneratedValue` — mesmo
+padrão de `PerfilCustomizado`, EPIC-14.1 `DadosCivisMedico`, etc.), o padrão já estabelecido no
+projeto é capturar o retorno de `repo.save(...)` (`var saved = ...Repository.from(repo.save(x))`,
+visto em `ChecklistCondutaResponse`/`CadastroPublicoService`) — mas isso **não é suficiente**
+quando a entidade tem `@CreationTimestamp`/`@UpdateTimestamp` e o campo é lido de volta
+**imediatamente**, dentro do mesmo método `@Transactional`, para montar a resposta HTTP. Erro
+reproduzido e confirmado empiricamente em `PerfilService.criar()`: mesmo com `perfil =
+repo.save(perfil)`, o `POST /api/perfis` retornava `"createdAt":null,"updatedAt":null` — mas um
+`GET` logo em seguida já mostrava os valores corretos. Causa: o gerador do Hibernate para esses
+campos só popula o valor no momento do `INSERT`/`UPDATE` físico, que fica **deferido até o commit
+da transação** por padrão (Spring não força flush a cada `save()`); capturar o retorno de
+`save()` resolve o problema de identidade de objeto (merge() vs a instância original), mas não
+resolve o timing do flush. **Solução:** trocar `repo.save(perfil)` por `repo.saveAndFlush(perfil)`
+nos dois pontos (`criar()`/`atualizar()`) — força o `INSERT`/`UPDATE` a acontecer ali mesmo,
+dentro da transação, e só então os campos gerados ficam populados na instância retornada.
+Esse bug nunca tinha aparecido antes no projeto porque nenhum outro DTO de resposta expõe um
+campo `@CreationTimestamp`/`@UpdateTimestamp` que seja lido no mesmo request que cria a
+entidade — `ChecklistCondutaResponse`, por exemplo, nem expõe `createdAt` (só `verificadoEm`,
+setado manualmente, não gerado). **Regra prática:** sempre que uma entidade nova expuser
+`createdAt`/`updatedAt` gerados automaticamente **e** o service precisar devolver esses valores
+na mesma chamada que cria/atualiza a linha, usar `saveAndFlush` em vez de `save` — testado e
+confirmado via chamada HTTP real (`curl`), não só revisão de código.
+
+### Rota nova em `services/gestao` — sempre 2 gateways a atualizar (dev + prod), nunca só um
+`gateway/src/main/resources/application.yml` (dev, porta 8086) **e**
+`tools/deploy/gateway-application-prod.yml` (prod, porta 8186) precisam da mesma rota nova
+(`/api/perfis/**`) — esquecer o segundo faz a rota funcionar em dev e dar 404 em produção sem
+nenhum aviso. Mesmo padrão de "toda rota nova precisa dos dois arquivos" já documentado em
+[[project-prod-ports]] para o `gateway/application.yml` em geral, agora confirmado
+especificamente para `/api/perfis`.
+
+### Editar `gateway/src/main/resources/application.yml` quando já existe um override local não commitado
+Esse arquivo já tinha uma mudança local não commitada (porta `8090`→`8091`, workaround do
+conflito de porta documentado neste mesmo arquivo) antes de eu começar a editar. Editar direto
+por cima misturaria as duas mudanças no mesmo commit. Solução: `git stash push -- <arquivo>`
+isola só esse arquivo (volta pro estado do HEAD), edita/commita a mudança pretendida
+normalmente, depois `git stash pop` reaplica o override local por cima do commit novo — as duas
+mudanças continuam existindo, cada uma no lugar certo (uma commitada, outra só local).
+
 ---
 
 ## Convenções de Commit e Branch
