@@ -7132,6 +7132,47 @@ drift semântico** nos campos `to`/`label`/`icon`/`roles`/`end` — mais forte q
 visual, mas não substitui um teste real de UI; a task fica sinalizada para uma verificação manual
 rápida no navegador do usuário antes do deploy.
 
+### PERFIL-07 — Aba "Perfis" dentro de `/usuarios` (shell + tab + modal)
+`App.tsx` troca a rota `/usuarios` de `<UsersPage/>` direto para `<UsuariosShellPage/>`
+(shell novo com tab bar de 2 abas — Usuários/Perfis — mesmo padrão visual de
+`MedicoPerfilPage.tsx`), que alterna entre `<UsersPage/>` (**sem nenhuma mudança interna**,
+igual pedido pela task) e `<PerfisTab/>` (novo). `perfisApi.ts` ganhou `criar`/`atualizar`/
+`excluir` (só faltavam desde PERFIL-06, que só precisava de `listar`).
+
+**`menuCatalog.ts` ganhou `area` por item + `permCatalog` derivado** — um novo campo `area:
+Area` (`'Cadastros' | 'Faturamento' | 'Fiscal' | 'Financeiro' | 'Gestão'`) em cada um dos 17
+itens com `perm`, e um `permCatalog` calculado (IIFE no módulo, roda uma vez no import) que
+**deduplica por `perm`** — 15 entradas, não 17, porque `perm_medicos` (Médicos+Aprovação) e
+`perm_conciliacao` (Upload Extrato+Conciliação) cobrem 2 telas cada; o label da entrada
+deduplicada junta os dois nomes (`"Médicos / Aprovação"`). O checklist do `PerfilFormModal`
+usa `permCatalog`, não `navItems` direto — evita mostrar 2 checkboxes que fariam exatamente a
+mesma coisa.
+
+**`PerfisTab.tsx` — quantidade de colaboradores por perfil sem chamada extra ao backend**:
+carrega `perfisApi.listar()` e `usersApi.listar()` em paralelo (`Promise.all`), monta um
+`Map<keycloakRoleName, count>` contando `usuarios.filter(u => u.perfil === ...)` — o campo
+`Usuario.perfil` (retornado por `GET /api/usuarios`) é literalmente o `keycloakRoleName` do
+perfil customizado quando aplicável (confirmado via chamada real: `perfil":
+"perfil_custom_<uuid>"`), então o cruzamento é uma comparação de string direta, sem nenhum
+mapeamento adicional. Excluir um perfil em uso fica com o botão **desabilitado** (não só
+mostra erro depois de tentar) — `disabled={emUso > 0}` com `title` explicando o motivo,
+espelhando a mensagem exata que o backend devolveria em caso de bypass (`422 "Não é possível
+excluir um perfil em uso por N colaborador(es)"` — confirmado que o backend ainda bloqueia de
+verdade mesmo se o botão fosse forçado via DevTools).
+
+**Confirmação com dado real, não só leitura de tipos**: `POST`/`PUT`/`DELETE` `/api/perfis`
+testados via `curl` com o payload exato que `PerfilFormModal` monta (`{nome, permissoes:
+string[]}`) — resposta bate 100% com a interface `PerfilCustomizado` do `perfisApi.ts`. Fluxo
+completo também testado: criar perfil → convidar usuário com ele (reaproveitando PERFIL-05) →
+`GET /api/usuarios` confirma `perfil` = `keycloakRoleName` → `DELETE` bloqueado (`422`,
+mensagem exata) → remover vínculo → `DELETE` funciona (`204`) → lista final vazia.
+
+**Mesmo bloqueio de UI do PERFIL-06** (Chrome forçando `https://localhost:3000`) reproduzido
+de novo aqui, mesma causa, mesma ausência de solução via as ferramentas de automação — não
+repetido em detalhe (ver seção do PERFIL-06 acima). Compensado com a mesma estratégia:
+`tsc --noEmit` + `eslint` limpos, mais o teste de integração real contra a API descrito acima
+(mais forte que o do PERFIL-06, que era só leitura — aqui exercitei escrita completa).
+
 ---
 
 ## Convenções de Commit e Branch
