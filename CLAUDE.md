@@ -22,7 +22,7 @@ Instruções específicas deste projeto para o Claude Code.
 
 ```
 pinsaude/
-  apps/web/          → React 18 (porta 3000, proxy /api → 8090)
+  apps/web/          → React 18 (porta 3000, proxy /api → 8091)
   services/fiscal/   → Spring Boot (porta 8081)
   services/faturamento/ → Spring Boot (porta 8082)
   services/ledger/   → Spring Boot (porta 8083)
@@ -30,7 +30,7 @@ pinsaude/
   services/onboarding/ → Spring Boot (porta 8085)
   services/gestao/   → Spring Boot (porta 8086)
   services/portal/   → Spring Boot (porta 8087) ← Portal do Médico (EPIC-06.1)
-  gateway/           → Spring Cloud Gateway (porta 8090)
+  gateway/           → Spring Cloud Gateway (porta 8091, ver nota abaixo)
   tools/scripts/     → Scripts Node.js de build/test
   docs/              → PRD, ADR
 ```
@@ -67,6 +67,19 @@ Usar sempre `"command":` (singular) nos targets — `"commands": [...]` (array) 
 ---
 
 ## Ambiente Windows — Problemas Conhecidos
+
+### Porta 8090 do gateway em conflito com software de terceiro (mudado para 8091)
+Em pelo menos uma máquina de desenvolvimento, um software de periférico (`MCHOSE HUB.exe`, driver
+de mouse/teclado) reserva a porta 8090 via `bind()` sem colocar em modo `listen()` — o Spring Boot
+recusa o bind ("porta em uso"), mas **`netstat -ano` não mostra nada** (netstat só lista sockets em
+`LISTENING`/`ESTABLISHED`, não um bind puro). Diagnosticado via `Get-NetTCPConnection -LocalPort
+8090` (mostra o processo dono, estado `Bound`) — nunca confiar só no `netstat` para essa classe de
+conflito de porta no Windows.
+
+**Solução adotada:** porta dev do gateway movida de `8090` para **`8091`**
+(`gateway/src/main/resources/application.yml` + proxy `/api` do `apps/web/vite.config.ts`) — evita
+depender de encerrar um processo de terceiro (que pode exigir privilégio de admin para matar) toda
+vez que o ambiente for iniciado. Porta de produção (`8100`, ver seção de deploy) não foi afetada.
 
 ### PATH overflow no cmd.exe
 O PATH do Windows tem limite de ~8.191 caracteres. Com 292+ entradas no PATH, `pnpm`, `mvn`, `npm` e outros executáveis não são encontrados pelo cmd.exe quando invocado pelo Nx.
@@ -6860,6 +6873,46 @@ Depois de qualquer regeneração de token, rodar manualmente `python3
 /home/pinsaude/scripts/backup-db-drive.py` no VPS e conferir "Concluído. 2/2 bancos enviados." — não
 basta confirmar que o `refresh_token` tem o campo preenchido, o teste real é o dump+upload
 completo.
+
+---
+
+## Perfis de Acesso Customizados — Catálogo de Permissões Granulares (PERFIL-01)
+
+Novo épico rastreado no Notion (não mais ClickUp), banco "Perfis de Acesso Customizados —
+bloqueio por tela", tasks `PERFIL-01` a `PERFIL-21`. Introduz um segundo nível de RBAC além dos
+5 papéis legados do ADR-002 (`medico`/`operacao`/`financeiro`/`contabil`/`gestao`): roles
+atômicas `perm_*` no Keycloak, uma por tela, que um *perfil customizado* (role composta,
+PERFIL-04) pode agrupar. Decisão completa e catálogo final em
+[`docs/adr/004-permissoes-granulares.md`](docs/adr/004-permissoes-granulares.md) — 15 roles
+(`perm_medicos`, `perm_empresas`, `perm_tomadores`, `perm_producao`, `perm_frequencias`,
+`perm_fechamentos`, `perm_fiscal`, `perm_notas`, `perm_notas_lote`, `perm_conciliacao`,
+`perm_caixa`, `perm_ledger`, `perm_gestao`, `perm_usuarios`, `perm_repasses`).
+
+### `@PreAuthorize` no projeto é quase sempre por método — permissões podem ser mais finas que o controller sugere
+Contagem real via `Grep '@PreAuthorize' services/` (2026-09-22): 168 ocorrências em 26
+arquivos. A imensa maioria dos controllers anota cada endpoint individualmente (não a nível de
+classe) — só uns poucos stubs/simples usam uma única anotação de classe
+(`FaturamentoController`, `OnboardingController`, `GestaoController`, `RepasseController`).
+Isso importa para o catálogo `perm_*`: **`ConciliacaoController` (9 `@PreAuthorize`, todos por
+método) foi dividido em duas permissões diferentes** — `perm_conciliacao` (8 endpoints:
+upload/extratos/lancamentos/candidatas/sugestoes/conciliar/ignorar/delete-conciliação) e
+`perm_caixa` (1 endpoint: `GET /posicao-caixa`) — sem nenhuma mudança estrutural no controller,
+só decidindo qual `@PreAuthorize` de método recebe qual role nova.
+
+### Permissão para um serviço ainda-stub (EPIC-09/Repasse) — criar a role agora, não esperar a implementação real
+`RepasseController` (`services/repasse`) continua sendo só um stub de 3 endpoints
+(EPIC-09 nunca foi implementado de verdade). Mesmo assim, `perm_repasses` entrou no catálogo
+final — porque tasks de infraestrutura downstream (criação das roles no Keycloak, CRUD de
+perfil) dependem do catálogo estar fechado agora, e uma role Keycloak não usada tem custo zero.
+Quando o serviço for implementado, os métodos reais simplesmente herdam a role já existente —
+mesmo padrão aditivo já usado no projeto para adapters mock (Clicksign/NFS-e): construir o
+contrato antes da implementação real existir.
+
+### Endpoints de referência/lookup compartilhados por várias telas não entram no catálogo por tela
+`ServicoController` (`/api/servicos`, catálogo LC116 usado por formulários de Tomadores/
+Produção/Frequências) não tem tela própria no Sidebar — fica de fora do catálogo `perm_*`,
+mantendo o `hasAnyRole(...)` amplo de sempre. Mesmo raciocínio para os controllers-stub de
+smoke test (`/api/faturamento`, `/api/onboarding`, usados só por `RbacIntegrationTest`).
 
 ---
 
