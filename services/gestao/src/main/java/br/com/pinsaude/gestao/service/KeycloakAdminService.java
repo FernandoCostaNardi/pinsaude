@@ -83,7 +83,7 @@ public class KeycloakAdminService {
         if (roles == null) return Collections.emptyList();
         return roles.stream()
             .map(r -> (String) r.get("name"))
-            .filter(PERFIS_NEGOCIO::contains)
+            .filter(name -> PERFIS_NEGOCIO.contains(name) || name.startsWith("perfil_custom_"))
             .toList();
     }
 
@@ -105,7 +105,9 @@ public class KeycloakAdminService {
         body.put("enabled", true);
         body.put("emailVerified", false);
         body.put("requiredActions", List.of("UPDATE_PASSWORD", "VERIFY_EMAIL"));
-        body.put("attributes", Map.of("cnpj_id", List.of(cnpjId)));
+        if (cnpjId != null && !cnpjId.isBlank()) {
+            body.put("attributes", Map.of("cnpj_id", List.of(cnpjId)));
+        }
 
         var response = restClient.post()
             .uri(adminUrl("/users"))
