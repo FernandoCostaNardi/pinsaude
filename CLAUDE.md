@@ -7173,6 +7173,33 @@ repetido em detalhe (ver seção do PERFIL-06 acima). Compensado com a mesma est
 `tsc --noEmit` + `eslint` limpos, mais o teste de integração real contra a API descrito acima
 (mais forte que o do PERFIL-06, que era só leitura — aqui exercitei escrita completa).
 
+### PERFIL-08 — `UsersPage`/`InviteUserModal` reconhecendo perfis customizados
+Os dois dicionários fixos de 5 papéis (`UsersPage.tsx:PERFIS`, `InviteUserModal.tsx:PERFIS`)
+continuam existindo como a base **legada** — nunca removidos, já que `perfil` é `string` livre
+ponta a ponta no contrato (`ConvitePayload.perfil`/`AlterarPerfilRequest`, nenhuma mudança de
+tipo necessária, só a lista de opções exibidas). Cada tela agora carrega `perfisApi.listar()`
+(`UsersPage` em paralelo com `usersApi.listar()` via `Promise.all`, já que ambas já estavam no
+`load()`; `InviteUserModal` em um `useEffect` próprio no mount, com `.catch(() => {})` —
+falha ao carregar perfis customizados **não** impede convidar com um papel legado, os 5 padrão
+continuam disponíveis mesmo se a API de perfis cair) e mescla num array combinado
+(`perfilOptions`/`perfisOptions`, `useMemo`/`useState` conforme o componente).
+
+**Cor de badge determinística para perfil customizado** — mesmo princípio de
+`UserAvatar`/`AVATAR_COLORS` (já existente no arquivo, indexado por `nome.charCodeAt(0) %
+tamanho`), replicado para `CUSTOM_PERFIL_COLORS` (8 combinações bg/text do Tailwind, todas via
+`extend.colors` — nunca custom `ds-*`, então nenhum risco do bug de classe morta já documentado
+em EPIC-13.21 `bg-ds-surface`). `perfilConfig(perfil, customizados)` resolve primeiro contra o
+dicionário legado fixo (`O(1)`), só cai no `Array.find` pelos customizados (mais caro, mas a
+lista é pequena) quando não é um dos 5 papéis conhecidos.
+
+**Verificação**: `tsc --noEmit` + `eslint` limpos, mais confirmação com dado real (não só
+tipo) — criado um perfil de teste com nome real (`"Atendente Financeiro"`), conferido que a API
+retorna exatamente `nome`/`keycloakRoleName` (os dois campos que a lógica de merge consome), e
+rodada a função `corPerfilCustomizado` de verdade contra 3 nomes reais de perfis criados ao
+longo desta sessão — todas as 3 caíram em cores diferentes e válidas. Mesmo bloqueio de UI do
+PERFIL-06/07 (Chrome forçando HTTPS local) impediu o teste visual da tela; compensado com a
+mesma estratégia já documentada — recomenda-se checagem manual antes do deploy.
+
 ---
 
 ## Convenções de Commit e Branch
