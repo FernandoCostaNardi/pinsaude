@@ -87,6 +87,15 @@ public class MedicoController {
         return ResponseEntity.ok(service.enviarContrato(id));
     }
 
+    @PostMapping("/{id}/reenviar-boas-vindas")
+    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    public ResponseEntity<Void> reenviarBoasVindas(
+            @PathVariable UUID id,
+            @RequestBody(required = false) ReenviarBoasVindasRequest request) {
+        service.reenviarBoasVindas(id, request == null ? List.of() : request.copiasNormalizadas());
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/{id}/contrato/assinar")
     @PreAuthorize("hasAnyRole('gestao','operacao')")
     public ResponseEntity<ContratoAssinaturaResponse> assinarContratoManual(@PathVariable UUID id) {
@@ -101,12 +110,39 @@ public class MedicoController {
         return ResponseEntity.ok(service.atualizarJuntaComercial(id, request));
     }
 
-    @PutMapping("/{id}/dados-bancarios")
+    @GetMapping("/{id}/dados-bancarios")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico')")
+    public ResponseEntity<List<DadosBancariosMedicoResponse>> listarDadosBancarios(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.listarDadosBancarios(id));
+    }
+
+    @PostMapping("/{id}/dados-bancarios")
+    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    public ResponseEntity<DadosBancariosMedicoResponse> adicionarDadosBancarios(
+            @PathVariable UUID id,
+            @Valid @RequestBody DadosBancariosMedicoRequest request) {
+        DadosBancariosMedicoResponse created = service.adicionarDadosBancarios(id, request);
+        var location = ServletUriComponentsBuilder.fromCurrentRequest()
+            .path("/{contaId}").buildAndExpand(created.id()).toUri();
+        return ResponseEntity.created(location).body(created);
+    }
+
+    @PutMapping("/{id}/dados-bancarios/{contaId}")
     @PreAuthorize("hasAnyRole('gestao','operacao')")
     public ResponseEntity<DadosBancariosMedicoResponse> atualizarDadosBancarios(
             @PathVariable UUID id,
+            @PathVariable UUID contaId,
             @Valid @RequestBody DadosBancariosMedicoRequest request) {
-        return ResponseEntity.ok(service.atualizarDadosBancarios(id, request));
+        return ResponseEntity.ok(service.atualizarDadosBancarios(id, contaId, request));
+    }
+
+    @DeleteMapping("/{id}/dados-bancarios/{contaId}")
+    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    public ResponseEntity<Void> removerDadosBancarios(
+            @PathVariable UUID id,
+            @PathVariable UUID contaId) {
+        service.removerDadosBancarios(id, contaId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/documentos")

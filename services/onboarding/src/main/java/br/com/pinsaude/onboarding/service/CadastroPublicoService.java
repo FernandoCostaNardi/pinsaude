@@ -186,13 +186,18 @@ public class CadastroPublicoService {
     public DadosBancariosMedicoResponse atualizarDadosBancarios(UUID id, CandidaturaDadosBancariosRequest req) {
         findEditavelOrThrow(id);
 
-        var dados = dadosBancariosRepo.findByMedicoId(id)
+        // Candidatura pública ainda é upsert de um único registro — o auto-cadastro
+        // preenche apenas a conta inicial; múltiplas contas são geridas depois por
+        // operação/gestão via MedicoController (ver MedicoService).
+        var dados = dadosBancariosRepo.findByMedicoIdOrderByCreatedAtAsc(id).stream()
+            .findFirst()
             .orElseGet(() -> {
                 var novo = new DadosBancariosMedico();
                 novo.setMedicoId(id);
                 return novo;
             });
 
+        dados.setApelido(req.apelido() != null && !req.apelido().isBlank() ? req.apelido().trim() : null);
         dados.setTipoRecebimento(req.tipoRecebimento() != null ? req.tipoRecebimento() : "PIX");
         if ("TED".equals(req.tipoRecebimento())) {
             dados.setTipoPix(null);

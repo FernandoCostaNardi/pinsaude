@@ -63,6 +63,8 @@ export interface DeclaracaoLgpd {
 }
 
 export interface DadosBancariosMedico {
+  id: string
+  apelido?: string
   tipoRecebimento?: TipoRecebimento
   // PIX
   tipoPix?: TipoPix
@@ -74,6 +76,7 @@ export interface DadosBancariosMedico {
   agencia?: string
   conta?: string
   tipoConta?: TipoConta
+  updatedAt?: string
 }
 
 export interface DocumentoMedico {
@@ -118,7 +121,7 @@ export interface Medico {
   statusJuntaComercial: StatusJuntaComercial
   empresaId?: string
   empresas?: VinculoEmpresa[]
-  dadosBancarios?: DadosBancariosMedico
+  dadosBancarios?: DadosBancariosMedico[]
   documentos?: DocumentoMedico[]
   checklist?: ChecklistConduta
   contratoAssinatura?: ContratoAssinatura
@@ -163,6 +166,7 @@ export interface DadosBancariosMedicoRequest {
   conta: string | null
   tipoConta: TipoConta | null
   confirmarAlteracao: true
+  apelido: string | null
 }
 
 export interface ConviteMedico {
@@ -263,13 +267,39 @@ async function inativar(id: string): Promise<Medico> {
   return handleResponse<Medico>(res)
 }
 
-async function atualizarDadosBancarios(id: string, data: DadosBancariosMedicoRequest): Promise<DadosBancariosMedico> {
+async function listarDadosBancarios(id: string): Promise<DadosBancariosMedico[]> {
+  const res = await fetch(`/api/medicos/${id}/dados-bancarios`, { headers: authHeaders() })
+  return handleResponse<DadosBancariosMedico[]>(res)
+}
+
+async function adicionarDadosBancarios(id: string, data: DadosBancariosMedicoRequest): Promise<DadosBancariosMedico> {
   const res = await fetch(`/api/medicos/${id}/dados-bancarios`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  })
+  return handleResponse<DadosBancariosMedico>(res)
+}
+
+async function atualizarDadosBancarios(
+  id: string,
+  contaId: string,
+  data: DadosBancariosMedicoRequest
+): Promise<DadosBancariosMedico> {
+  const res = await fetch(`/api/medicos/${id}/dados-bancarios/${contaId}`, {
     method: 'PUT',
     headers: authHeaders(),
     body: JSON.stringify(data),
   })
   return handleResponse<DadosBancariosMedico>(res)
+}
+
+async function removerDadosBancarios(id: string, contaId: string): Promise<void> {
+  const res = await fetch(`/api/medicos/${id}/dados-bancarios/${contaId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<void>(res)
 }
 
 async function listarDocumentos(medicoId: string): Promise<DocumentoMedico[]> {
@@ -334,6 +364,15 @@ async function deletarDocumento(medicoId: string, docId: string): Promise<void> 
   const res = await fetch(`/api/medicos/${medicoId}/documentos/${docId}`, {
     method: 'DELETE',
     headers: authHeaders(),
+  })
+  return handleResponse<void>(res)
+}
+
+async function reenviarBoasVindas(medicoId: string, copiaPara: string[] = []): Promise<void> {
+  const res = await fetch(`/api/medicos/${medicoId}/reenviar-boas-vindas`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ copiaPara }),
   })
   return handleResponse<void>(res)
 }
@@ -420,10 +459,11 @@ async function removerVinculo(medicoId: string, empresaId: string): Promise<void
 
 export const medicosApi = {
   listar, buscarPorId, criar, atualizar, ativar, inativar,
-  atualizarDadosBancarios, listarDocumentos, uploadDocumento,
+  listarDadosBancarios, adicionarDadosBancarios, atualizarDadosBancarios, removerDadosBancarios,
+  listarDocumentos, uploadDocumento,
   validarDocumento, getDocumentoUrl, deletarDocumento, listarHistorico,
   listarHistoricoTaxaPin, downloadDocumento,
-  enviarConvite, enviarContrato, atualizarJuntaComercial,
+  enviarConvite, reenviarBoasVindas, enviarContrato, atualizarJuntaComercial,
   assinarContratoManual, listarFilaAprovacao, atualizarChecklist,
   listarVinculos, adicionarVinculo, removerVinculo,
 }

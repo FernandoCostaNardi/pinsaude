@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { User, Stethoscope, CreditCard } from 'lucide-react'
+import { User, Stethoscope } from 'lucide-react'
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -10,11 +10,8 @@ function WhatsAppIcon({ className }: { className?: string }) {
 }
 import { Modal, Input, Button, Alert, StepWizard } from '@pinsaude/ui'
 import { CpfInput } from './CpfInput'
-import { BancoSelect, BancoAvatar, bancos } from './BancoSelect'
-import {
-  Medico, MedicoRequest, DadosBancariosMedicoRequest,
-  TipoPix, TipoRecebimento, TipoConta, medicosApi,
-} from '../api/medicosApi'
+import { Medico, MedicoRequest, medicosApi } from '../api/medicosApi'
+import { TipoPix } from '../api/medicosApi'
 
 import { isValidCpf, formatCpf } from '../utils/cpf'
 
@@ -23,7 +20,6 @@ import { isValidCpf, formatCpf } from '../utils/cpf'
 const STEPS = [
   { label: 'Dados Pessoais',      icon: User },
   { label: 'Dados Profissionais', icon: Stethoscope },
-  { label: 'Dados Bancários',     icon: CreditCard },
 ]
 
 const UFS = [
@@ -32,29 +28,7 @@ const UFS = [
   'RO','RR','RS','SC','SE','SP','TO',
 ]
 
-const TIPO_PIX_OPTIONS: { value: TipoPix; label: string }[] = [
-  { value: 'CPF',       label: 'CPF' },
-  { value: 'CNPJ',      label: 'CNPJ' },
-  { value: 'EMAIL',     label: 'E-mail' },
-  { value: 'TELEFONE',  label: 'Telefone' },
-  { value: 'ALEATORIA', label: 'Chave Aleatória' },
-]
-
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface BankForm {
-  tipoRecebimento: TipoRecebimento
-  // PIX
-  tipoPix: TipoPix | ''
-  chavePix: string
-  cpfsAdicionaisSplit: string
-  // TED
-  bancoCodigo: string
-  bancoNome: string
-  agencia: string
-  conta: string
-  tipoConta: TipoConta | ''
-}
 
 interface Props {
   medico: Medico | null
@@ -67,13 +41,10 @@ const emptyMedico = (): MedicoRequest => ({
   email: '', telefone: '', taxaPinPct: 0.15,
 })
 
-const emptyBank = (): BankForm => ({
-  tipoRecebimento: 'PIX',
-  tipoPix: '', chavePix: '', cpfsAdicionaisSplit: '',
-  bancoCodigo: '', bancoNome: '', agencia: '', conta: '', tipoConta: '',
-})
-
 // ─── PIX masking ─────────────────────────────────────────────────────────────
+// Reaproveitado por MedicoPerfilPage / ContasBancariasSection para mascarar a
+// chave PIX na exibição (o backend nunca retorna a chave em claro fora do
+// próprio fluxo de edição).
 
 export function maskPixKey(tipo: TipoPix, chave: string): string {
   if (!chave) return '—'
@@ -98,13 +69,16 @@ export function maskPixKey(tipo: TipoPix, chave: string): string {
 }
 
 // ─── Wizard ──────────────────────────────────────────────────────────────────
+// Cadastra apenas os dados pessoais/profissionais do médico. Contas bancárias
+// (PIX e/ou TED — o médico pode ter várias) são geridas depois, na aba
+// "Dados Bancários" do perfil (ContasBancariasSection), assim como
+// documentos/vínculos/tomadores.
 
 export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
   const isEditing = medico !== null
   const [step, setStep]             = useState(0)
   const [maxVisited, setMaxVisited] = useState(0)
   const [form, setForm]             = useState<MedicoRequest>(emptyMedico)
-  const [bank, setBank]             = useState<BankForm>(emptyBank)
   const [errors, setErrors]         = useState<Partial<Record<string, string>>>({})
   const [apiError, setApiError]     = useState<string | null>(null)
   const [loading, setLoading]       = useState(false)
@@ -121,22 +95,9 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
         telefone:      medico.telefone ?? '',
         taxaPinPct:    medico.taxaPinPct ?? 0.15,
       })
-      const db = medico.dadosBancarios
-      setBank({
-        tipoRecebimento:     (db?.tipoRecebimento ?? 'PIX') as TipoRecebimento,
-        tipoPix:             db?.tipoPix ?? '',
-        chavePix:            '',
-        cpfsAdicionaisSplit: db?.cpfsAdicionaisSplit ?? '',
-        bancoCodigo:         db?.bancoCodigo ?? '',
-        bancoNome:           db?.bancoNome ?? '',
-        agencia:             db?.agencia ?? '',
-        conta:               db?.conta ?? '',
-        tipoConta:           (db?.tipoConta ?? '') as TipoConta | '',
-      })
-      setMaxVisited(2)
+      setMaxVisited(1)
     } else {
       setForm(emptyMedico())
-      setBank(emptyBank())
       setMaxVisited(0)
     }
     setStep(0)
@@ -146,11 +107,6 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
 
   function setField<K extends keyof MedicoRequest>(key: K, value: MedicoRequest[K]) {
     setForm(f => ({ ...f, [key]: value }))
-    setErrors(e => ({ ...e, [key]: undefined }))
-  }
-
-  function setBankField<K extends keyof BankForm>(key: K, value: BankForm[K]) {
-    setBank(b => ({ ...b, [key]: value }))
     setErrors(e => ({ ...e, [key]: undefined }))
   }
 
@@ -184,32 +140,13 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
   }
 
   async function handleSave() {
+    if (!validateStep(step)) return
     setLoading(true)
     setApiError(null)
     try {
       const saved = isEditing
         ? await medicosApi.atualizar(medico.id, form)
         : await medicosApi.criar(form)
-
-      const hasPix = bank.tipoRecebimento === 'PIX' && bank.tipoPix && bank.chavePix.trim()
-      const hasTed = bank.tipoRecebimento === 'TED' && bank.bancoCodigo.trim() && bank.agencia.trim() && bank.conta.trim() && bank.tipoConta
-      if (hasPix || hasTed) {
-        const bankReq: DadosBancariosMedicoRequest = {
-          tipoRecebimento:     bank.tipoRecebimento,
-          tipoPix:             bank.tipoRecebimento === 'PIX' ? bank.tipoPix || null : null,
-          chavePix:            bank.tipoRecebimento === 'PIX' ? bank.chavePix.trim() || null : null,
-          cpfsAdicionaisSplit: bank.tipoRecebimento === 'PIX' ? bank.cpfsAdicionaisSplit.trim() || null : null,
-          bancoCodigo:         bank.tipoRecebimento === 'TED' ? bank.bancoCodigo.trim() || null : null,
-          bancoNome:           bank.tipoRecebimento === 'TED' ? bank.bancoNome.trim() || null : null,
-          agencia:             bank.tipoRecebimento === 'TED' ? bank.agencia.trim() || null : null,
-          conta:               bank.tipoRecebimento === 'TED' ? bank.conta.trim() || null : null,
-          tipoConta:           bank.tipoRecebimento === 'TED' ? bank.tipoConta || null : null,
-          confirmarAlteracao:  true,
-        }
-        const updatedBank = await medicosApi.atualizarDadosBancarios(saved.id, bankReq)
-        saved.dadosBancarios = updatedBank
-      }
-
       onSaved(saved)
     } catch (err) {
       setApiError(err instanceof Error ? err.message : 'Erro ao salvar médico')
@@ -243,19 +180,6 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
               onChange={setField}
             />
           )}
-          {step === 2 && (
-            <StepDadosBancarios
-              bank={bank}
-              errors={errors}
-              isEditing={isEditing}
-              existingDados={medico?.dadosBancarios}
-              onChange={setBankField}
-              onBancoSelect={(nome, compe) => {
-                setBank(b => ({ ...b, bancoNome: nome, bancoCodigo: compe }))
-                setErrors(e => ({ ...e, bancoNome: undefined }))
-              }}
-            />
-          )}
         </div>
 
         {apiError && <Alert variant="error">{apiError}</Alert>}
@@ -268,7 +192,7 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
           >
             {step === 0 ? 'Cancelar' : '← Voltar'}
           </Button>
-          {step < 2 ? (
+          {step < 1 ? (
             <Button type="button" onClick={handleNext}>
               Próximo →
             </Button>
@@ -410,173 +334,9 @@ function StepDadosProfissionais({
   )
 }
 
-// ─── Step 2: Dados Bancários ──────────────────────────────────────────────────
-
-function StepDadosBancarios({
-  bank,
-  errors,
-  isEditing,
-  existingDados,
-  onChange,
-  onBancoSelect,
-}: {
-  bank: BankForm
-  errors: Partial<Record<string, string>>
-  isEditing: boolean
-  existingDados?: { tipoRecebimento?: string; tipoPix?: TipoPix; bancoCodigo?: string }
-  onChange: <K extends keyof BankForm>(k: K, v: BankForm[K]) => void
-  onBancoSelect: (nome: string, compe: string) => void
-}) {
-  const isTed = bank.tipoRecebimento === 'TED'
-  const bancoSelecionado = bancos.find(b => b.compe === bank.bancoCodigo) ?? null
-
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-gray-500">
-        Dados bancários para recebimento de repasses.{' '}
-        <span className="text-gray-400">Passo opcional — pode ser configurado depois.</span>
-      </p>
-
-      {/* Toggle PIX / TED */}
-      <div className="flex rounded-lg border border-gray-200 overflow-hidden self-start">
-        {(['PIX', 'TED'] as TipoRecebimento[]).map(tipo => (
-          <button
-            key={tipo}
-            type="button"
-            onClick={() => onChange('tipoRecebimento', tipo)}
-            className={[
-              'px-6 py-2 text-sm font-medium transition-colors',
-              bank.tipoRecebimento === tipo
-                ? 'bg-primary text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50',
-            ].join(' ')}
-          >
-            {tipo}
-          </button>
-        ))}
-      </div>
-
-      {isEditing && existingDados && (existingDados.tipoPix || existingDados.bancoCodigo) && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Já existem dados bancários cadastrados. Preencha os campos abaixo apenas se desejar alterá-los.
-        </div>
-      )}
-
-      {!isTed ? (
-        /* ── PIX ── */
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <SelectField
-            label="Tipo de chave PIX"
-            value={bank.tipoPix}
-            onChange={v => onChange('tipoPix', v as TipoPix | '')}
-            error={errors.tipoPix}
-            placeholder="Selecione o tipo"
-          >
-            {TIPO_PIX_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </SelectField>
-          <Input
-            label="Chave PIX"
-            value={bank.chavePix}
-            onChange={e => onChange('chavePix', e.target.value)}
-            error={errors.chavePix}
-            placeholder={pixPlaceholder(bank.tipoPix)}
-            disabled={!bank.tipoPix}
-          />
-          <div className="sm:col-span-2">
-            <Input
-              label="CPFs para split acima de R$ 40.000 (separados por vírgula)"
-              value={bank.cpfsAdicionaisSplit}
-              onChange={e => onChange('cpfsAdicionaisSplit', e.target.value)}
-              error={errors.cpfsAdicionaisSplit}
-              placeholder="Ex: 000.000.000-00, 111.111.111-11"
-            />
-          </div>
-          {bank.tipoPix && bank.chavePix && (
-            <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Pré-visualização (mascarado após salvar)</p>
-              <p className="mt-1 text-sm font-semibold text-gray-900 font-mono">
-                {maskPixKey(bank.tipoPix as TipoPix, bank.chavePix)}
-              </p>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* ── TED ── */
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <BancoSelect
-              value={bank.bancoNome}
-              onChange={onBancoSelect}
-              error={errors.bancoNome}
-            />
-          </div>
-          <Input
-            label="Agência *"
-            value={bank.agencia}
-            onChange={e => onChange('agencia', e.target.value)}
-            error={errors.agencia}
-            placeholder="Ex: 1234"
-          />
-          <Input
-            label="Conta *"
-            value={bank.conta}
-            onChange={e => onChange('conta', e.target.value)}
-            error={errors.conta}
-            placeholder="Ex: 12345-6"
-          />
-          <div className="sm:col-span-2 flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700">Tipo de conta *</label>
-            <div className="flex gap-4">
-              {(['CORRENTE', 'POUPANCA'] as TipoConta[]).map(tipo => (
-                <label key={tipo} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="tipoConta"
-                    value={tipo}
-                    checked={bank.tipoConta === tipo}
-                    onChange={() => onChange('tipoConta', tipo)}
-                    className="accent-primary"
-                  />
-                  <span className="text-sm text-gray-700">
-                    {tipo === 'CORRENTE' ? 'Corrente' : 'Poupança'}
-                  </span>
-                </label>
-              ))}
-            </div>
-            {errors.tipoConta && <p className="text-xs text-red-500">{errors.tipoConta}</p>}
-          </div>
-          {bank.bancoCodigo && bank.agencia && bank.conta && (
-            <div className="sm:col-span-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Resumo TED</p>
-              <div className="mt-1 flex items-center gap-2">
-                {bancoSelecionado && <BancoAvatar banco={bancoSelecionado} size={20} />}
-                <p className="text-sm font-semibold text-gray-900">
-                  {bank.bancoNome || `Banco ${bank.bancoCodigo}`} · Ag. {bank.agencia} · Cc. {bank.conta}
-                  {bank.tipoConta ? ` (${bank.tipoConta === 'CORRENTE' ? 'Corrente' : 'Poupança'})` : ''}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function pixPlaceholder(tipo: TipoPix | ''): string {
-  switch (tipo) {
-    case 'CPF':       return '000.000.000-00'
-    case 'CNPJ':      return '00.000.000/0001-00'
-    case 'EMAIL':     return 'email@exemplo.com'
-    case 'TELEFONE':  return '+5511999999999'
-    case 'ALEATORIA': return 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
-    default:          return 'Selecione o tipo primeiro'
-  }
-}
-
 // ─── Shared select ────────────────────────────────────────────────────────────
 
-function SelectField({
+export function SelectField({
   label,
   value,
   onChange,

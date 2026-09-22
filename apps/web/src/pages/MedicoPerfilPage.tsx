@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Pencil, UserCheck, UserX, FileText,
   User, Building2, CreditCard, Clock, CheckCircle2,
-  XCircle, AlertCircle, Mail, Send, Landmark,
+  XCircle, Mail, Send, Landmark,
   Award, GraduationCap, Home, BookOpen, Hospital,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
@@ -14,14 +14,14 @@ import {
 } from '../api/medicosApi'
 import { empresasApi, Empresa } from '../api/empresasApi'
 import { Tomador, tomadoresApi } from '../api/tomadoresApi'
-import { MedicoWizardModal, maskPixKey } from '../components/MedicoWizardModal'
+import { MedicoWizardModal } from '../components/MedicoWizardModal'
 import { MedicoInativarModal } from '../components/MedicoInativarModal'
 import { DocumentosModal } from '../components/DocumentosModal'
 import { ChecklistEditor } from '../components/ChecklistEditor'
+import { ContasBancariasSection } from '../components/ContasBancariasSection'
 import { formatCpf } from '../utils/cpf'
 import { formatCnpj } from '../utils/cnpj'
 import { useAuth } from '../auth/useAuth'
-import { bancos } from '../components/BancoSelect'
 
 // ─── Status ───────────────────────────────────────────────────────────────────
 
@@ -47,6 +47,8 @@ const ACAO_CONFIG: Record<string, { label: string; cls: string; Icon: React.Elem
   INATIVACAO:                  { label: 'Inativação',           cls: 'bg-gray-100 text-gray-500',      Icon: XCircle },
   ATUALIZACAO_DADOS:           { label: 'Dados atualizados',    cls: 'bg-blue-50 text-blue-600',       Icon: Pencil },
   ATUALIZACAO_DADOS_BANCARIOS: { label: 'Dados bancários',      cls: 'bg-purple-50 text-purple-600',   Icon: CreditCard },
+  ADICAO_CONTA_BANCARIA:       { label: 'Conta bancária adicionada', cls: 'bg-purple-50 text-purple-600', Icon: CreditCard },
+  REMOCAO_CONTA_BANCARIA:      { label: 'Conta bancária removida',   cls: 'bg-red-50 text-red-500',       Icon: XCircle },
   UPLOAD_DOCUMENTO:            { label: 'Documento enviado',    cls: 'bg-amber-50 text-amber-600',     Icon: FileText },
   VALIDACAO_DOCUMENTO:         { label: 'Documento validado',   cls: 'bg-teal-50 text-teal-600',       Icon: CheckCircle2 },
   EXCLUSAO_DOCUMENTO:          { label: 'Documento removido',   cls: 'bg-red-50 text-red-500',         Icon: XCircle },
@@ -171,6 +173,9 @@ export function MedicoPerfilPage() {
   const [showDocs,         setShowDocs]         = useState(false)
   const [activating,       setActivating]       = useState(false)
   const [enviandoConvite,  setEnviandoConvite]  = useState(false)
+  const [reenviandoBoasVindas, setReenviandoBoasVindas] = useState(false)
+  const [copiaBoasVindas,      setCopiaBoasVindas]      = useState('')
+  const [boasVindasOk,         setBoasVindasOk]         = useState<string | null>(null)
   const [enviandoContrato, setEnviandoContrato] = useState(false)
   const [assinandoContrato, setAssinandoContrato] = useState(false)
   const [novoStatusJunta,  setNovoStatusJunta]  = useState<StatusJuntaComercial | ''>('')
@@ -237,6 +242,24 @@ export function MedicoPerfilPage() {
       setError(e instanceof Error ? e.message : 'Erro ao enviar convite')
     } finally {
       setEnviandoConvite(false)
+    }
+  }
+
+  async function handleReenviarBoasVindas() {
+    if (!medico) return
+    setReenviandoBoasVindas(true)
+    setError(null)
+    setBoasVindasOk(null)
+    try {
+      const copias = copiaBoasVindas.trim() ? [copiaBoasVindas.trim()] : []
+      await medicosApi.reenviarBoasVindas(medico.id, copias)
+      setBoasVindasOk(
+        `E-mail reenviado para ${medico.email}${copias.length ? ` (cópia: ${copias[0]})` : ''}.`
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao reenviar e-mail de boas-vindas')
+    } finally {
+      setReenviandoBoasVindas(false)
     }
   }
 
@@ -368,8 +391,6 @@ export function MedicoPerfilPage() {
       </div>
     )
   }
-
-  const db = medico.dadosBancarios
 
   return (
     <div className="flex flex-col gap-5">
@@ -658,36 +679,12 @@ export function MedicoPerfilPage() {
         {/* ── Dados Bancários ── */}
         {tab === 'bancarios' && (
           <div className="p-6">
-            {!db ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <AlertCircle size={28} className="text-ds-light mb-3" />
-                <p className="text-sm font-medium text-ds-mid">Dados bancários não cadastrados</p>
-                <p className="text-xs text-ds-light mt-1">Configure os dados bancários para recebimento de repasses</p>
-              </div>
-            ) : db.tipoRecebimento === 'TED' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                <InfoRow label="Tipo de recebimento" value="TED — Transferência Eletrônica" />
-                <InfoRow label="Banco"
-                  value={bancos.find(b => b.compe === db.bancoCodigo)
-                    ? `${db.bancoCodigo} — ${db.bancoNome}`
-                    : db.bancoNome ?? db.bancoCodigo} />
-                <InfoRow label="Agência"       value={db.agencia} />
-                <InfoRow label="Conta"         value={db.conta} />
-                <InfoRow label="Tipo de conta" value={db.tipoConta === 'POUPANCA' ? 'Poupança' : 'Conta Corrente'} />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <InfoRow label="Tipo de recebimento" value="PIX" />
-                <InfoRow label="Tipo de chave" value={db.tipoPix ?? '—'} />
-                <InfoRow label="Chave PIX (mascarada)"
-                  value={db.tipoPix && db.chavePix ? maskPixKey(db.tipoPix, db.chavePix) : '—'} />
-                {db.cpfsAdicionaisSplit && (
-                  <div className="col-span-2">
-                    <InfoRow label="CPFs para split" value={db.cpfsAdicionaisSplit} />
-                  </div>
-                )}
-              </div>
-            )}
+            <ContasBancariasSection
+              medicoId={medico.id}
+              contas={medico.dadosBancarios ?? []}
+              canEdit={canEdit}
+              onChanged={contas => setMedico(m => m ? { ...m, dadosBancarios: contas } : m)}
+            />
           </div>
         )}
 
@@ -744,6 +741,49 @@ export function MedicoPerfilPage() {
         {/* ── Onboarding ── */}
         {tab === 'onboarding' && (
           <div className="p-6 flex flex-col gap-6">
+
+            {/* Acesso à plataforma / boas-vindas */}
+            {medico.status === 'ATIVO' && (
+              <div className="border border-ds-border rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
+                    <Send size={16} className="text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-ds-text">Acesso à Plataforma</p>
+                    <p className="text-xs text-ds-light">
+                      Reenvia o e-mail de boas-vindas com o link para o médico definir a senha —
+                      garante também que a conta de acesso exista.
+                    </p>
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="email"
+                        value={copiaBoasVindas}
+                        onChange={e => setCopiaBoasVindas(e.target.value)}
+                        placeholder="Enviar cópia para (opcional)"
+                        className="text-sm border border-ds-border rounded-lg px-3 py-1.5 bg-white text-ds-text w-64 focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={handleReenviarBoasVindas}
+                        disabled={reenviandoBoasVindas || !medico.email}
+                      >
+                        <Mail size={13} />
+                        {reenviandoBoasVindas ? 'Enviando...' : 'Reenviar boas-vindas'}
+                      </Button>
+                    </div>
+                    {!medico.email && (
+                      <p className="text-xs text-amber-600">Cadastre um e-mail no médico para enviar o acesso.</p>
+                    )}
+                    {boasVindasOk && <p className="text-xs text-green-600">{boasVindasOk}</p>}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Convite por e-mail */}
             <div className="border border-ds-border rounded-xl p-5">

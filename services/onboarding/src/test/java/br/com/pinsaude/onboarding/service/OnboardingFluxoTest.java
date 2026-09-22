@@ -172,10 +172,13 @@ class OnboardingFluxoTest {
         when(checklistRepo.findById(medicoId)).thenReturn(Optional.of(checklist));
         when(documentoRepo.findByMedicoId(medicoId)).thenReturn(docs);
         when(contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.of(contrato));
-        when(dadosBancariosRepo.findByMedicoId(medicoId)).thenReturn(Optional.empty());
+        when(dadosBancariosRepo.findByMedicoIdOrderByCreatedAtAsc(medicoId)).thenReturn(List.of());
         when(cryptoService.decrypt(any())).thenReturn("000.000.000-00");
         when(vinculoRepo.findByIdMedicoId(medicoId)).thenReturn(List.of());
         when(conviteRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.empty());
+        when(keycloakAdminService.findUserIdByEmail("dr.auto@pinsaude.com.br")).thenReturn(Optional.empty());
+        when(keycloakAdminService.createUserDesabilitado(eq("dr.auto@pinsaude.com.br"), any(), any()))
+            .thenReturn("kc-novo-123");
 
         var req = new AtualizarJuntaComercialRequest("APROVADO", null);
         medicoService.atualizarJuntaComercial(medicoId, req);
@@ -183,10 +186,81 @@ class OnboardingFluxoTest {
         ArgumentCaptor<Medico> captor = ArgumentCaptor.forClass(Medico.class);
         verify(medicoRepo, atLeast(2)).save(captor.capture());
         assertThat(captor.getAllValues()).anyMatch(m -> m.getStatus() == StatusMedico.ATIVO);
-        // Médico sem keycloakUserId (cadastro manual) — não deve nem tentar chamar o Keycloak.
-        verifyNoInteractions(keycloakAdminService);
+        // Médico de cadastro manual não tinha conta no Keycloak — ela é criada na ativação,
+        // senão ele fica ATIVO sem conseguir logar (e o e-mail de boas-vindas vira link morto).
+        verify(keycloakAdminService).createUserDesabilitado(eq("dr.auto@pinsaude.com.br"), any(), any());
+        verify(keycloakAdminService).assignRole("kc-novo-123", "medico");
+        verify(keycloakAdminService).updateUserEnabled("kc-novo-123", true);
+        assertThat(medico.getKeycloakUserId()).isEqualTo("kc-novo-123");
         // Ativação automática também dispara o e-mail de boas-vindas, igual à ativação manual.
         verify(notificacaoService).notificarMedicoAtivado(medico);
+    }
+
+    @Test
+    void ativar_medicoManualComEmailJaExistenteNoKeycloak_reaproveitaContaSemCriarOutra() {
+        UUID medicoId = UUID.randomUUID();
+        var medico = medicoComEmail(medicoId);
+        medico.setStatusJuntaComercial("APROVADO");
+        var checklist = checklistCompleto(medicoId);
+        var docs = List.of(
+            docAprovado(medicoId, TipoDocumentoMedico.CRM),
+            docAprovado(medicoId, TipoDocumentoMedico.DIPLOMA)
+        );
+        var contrato = new ContratoAssinatura();
+        contrato.setMedicoId(medicoId);
+        contrato.setStatus("ASSINADO");
+
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medico));
+        when(medicoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(checklistRepo.findById(medicoId)).thenReturn(Optional.of(checklist));
+        when(documentoRepo.findByMedicoId(medicoId)).thenReturn(docs);
+        when(contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.of(contrato));
+        when(dadosBancariosRepo.findByMedicoIdOrderByCreatedAtAsc(medicoId)).thenReturn(List.of());
+        when(cryptoService.decrypt(any())).thenReturn("000.000.000-00");
+        when(vinculoRepo.findByIdMedicoId(medicoId)).thenReturn(List.of());
+        when(conviteRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.empty());
+        when(keycloakAdminService.findUserIdByEmail("dr.auto@pinsaude.com.br"))
+            .thenReturn(Optional.of("kc-ja-existente"));
+
+        medicoService.ativar(medicoId);
+
+        verify(keycloakAdminService, never()).createUserDesabilitado(any(), any(), any());
+        verify(keycloakAdminService).assignRole("kc-ja-existente", "medico");
+        verify(keycloakAdminService).updateUserEnabled("kc-ja-existente", true);
+        assertThat(medico.getKeycloakUserId()).isEqualTo("kc-ja-existente");
+    }
+
+    @Test
+    void reenviarBoasVindas_medicoAtivo_enviaComCopiaEGaranteAcessoKeycloak() {
+        UUID medicoId = UUID.randomUUID();
+        var medico = medicoComEmail(medicoId);
+        medico.setStatus(StatusMedico.ATIVO);
+
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medico));
+        when(medicoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(vinculoRepo.findByIdMedicoId(medicoId)).thenReturn(List.of());
+        when(keycloakAdminService.findUserIdByEmail("dr.auto@pinsaude.com.br")).thenReturn(Optional.empty());
+        when(keycloakAdminService.createUserDesabilitado(any(), any(), any())).thenReturn("kc-reenvio");
+
+        medicoService.reenviarBoasVindas(medicoId, List.of("copia@pinsaude.com.br"));
+
+        verify(keycloakAdminService).assignRole("kc-reenvio", "medico");
+        verify(keycloakAdminService).updateUserEnabled("kc-reenvio", true);
+        verify(notificacaoService).notificarMedicoAtivado(medico, List.of("copia@pinsaude.com.br"));
+        verify(historicoRepo).save(any(HistoricoMedico.class));
+    }
+
+    @Test
+    void reenviarBoasVindas_medicoNaoAtivo_lancaUnprocessableEntity() {
+        UUID medicoId = UUID.randomUUID();
+        var medico = medicoComEmail(medicoId);   // RASCUNHO
+
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medico));
+
+        assertThatThrownBy(() -> medicoService.reenviarBoasVindas(medicoId, List.of()))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("ativo");
+        verifyNoInteractions(notificacaoService);
     }
 
     @Test
@@ -210,7 +284,7 @@ class OnboardingFluxoTest {
         when(checklistRepo.findById(medicoId)).thenReturn(Optional.of(checklist));
         when(documentoRepo.findByMedicoId(medicoId)).thenReturn(docs);
         when(contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.of(contrato));
-        when(dadosBancariosRepo.findByMedicoId(medicoId)).thenReturn(Optional.empty());
+        when(dadosBancariosRepo.findByMedicoIdOrderByCreatedAtAsc(medicoId)).thenReturn(List.of());
         when(cryptoService.decrypt(any())).thenReturn("000.000.000-00");
         when(vinculoRepo.findByIdMedicoId(medicoId)).thenReturn(List.of());
         when(conviteRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.empty());
@@ -245,7 +319,7 @@ class OnboardingFluxoTest {
         when(checklistRepo.findById(medicoId)).thenReturn(Optional.of(checklist));
         when(documentoRepo.findByMedicoId(medicoId)).thenReturn(docs);
         when(contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.of(contrato));
-        when(dadosBancariosRepo.findByMedicoId(medicoId)).thenReturn(Optional.empty());
+        when(dadosBancariosRepo.findByMedicoIdOrderByCreatedAtAsc(medicoId)).thenReturn(List.of());
         when(cryptoService.decrypt(any())).thenReturn("000.000.000-00");
         when(vinculoRepo.findByIdMedicoId(medicoId)).thenReturn(List.of());
         when(conviteRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.empty());
@@ -277,7 +351,7 @@ class OnboardingFluxoTest {
             docAprovado(medicoId, TipoDocumentoMedico.RESIDENCIA)
         ));
         when(contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.empty());
-        when(dadosBancariosRepo.findByMedicoId(medicoId)).thenReturn(Optional.empty());
+        when(dadosBancariosRepo.findByMedicoIdOrderByCreatedAtAsc(medicoId)).thenReturn(List.of());
         when(cryptoService.decrypt(any())).thenReturn("000.000.000-00");
         when(vinculoRepo.findByIdMedicoId(medicoId)).thenReturn(List.of());
         when(conviteRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.empty());
@@ -408,7 +482,7 @@ class OnboardingFluxoTest {
         when(documentoRepo.findByMedicoId(medicoId)).thenReturn(docs);
         when(contratoRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.of(contrato));
         when(vinculoRepo.findByIdMedicoId(medicoId)).thenReturn(List.of());
-        when(dadosBancariosRepo.findByMedicoId(medicoId)).thenReturn(Optional.empty());
+        when(dadosBancariosRepo.findByMedicoIdOrderByCreatedAtAsc(medicoId)).thenReturn(List.of());
         when(cryptoService.decrypt(any())).thenReturn("000.000.000-00");
         when(conviteRepo.findTopByMedicoIdOrderByCreatedAtDesc(medicoId)).thenReturn(Optional.empty());
 

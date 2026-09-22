@@ -10,6 +10,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -47,7 +48,8 @@ public class NotificacaoService {
             medico.getEmail(),
             medico.getId().toString(),
             "Pin Saúde — Documento reprovado: " + tipoDocumento,
-            dados
+            dados,
+            List.of()
         ));
     }
 
@@ -61,12 +63,20 @@ public class NotificacaoService {
             medico.getEmail(),
             medico.getId().toString(),
             "Pin Saúde — Recebemos sua candidatura",
-            dados
+            dados,
+            List.of()
         ));
     }
 
     public void notificarMedicoAtivado(Medico medico) {
-        if (medico.getEmail() == null || medico.getEmail().isBlank()) return;
+        notificarMedicoAtivado(medico, List.of());
+    }
+
+    public void notificarMedicoAtivado(Medico medico, List<String> copias) {
+        if (medico.getEmail() == null || medico.getEmail().isBlank()) {
+            log.warn("Médico {} ativado sem e-mail cadastrado — nenhuma notificação enviada", medico.getId());
+            return;
+        }
         var dados = Map.<String, Object>of(
             "nome", medico.getNome(),
             "portalUrl", baseUrl,
@@ -77,7 +87,8 @@ public class NotificacaoService {
             medico.getEmail(),
             medico.getId().toString(),
             "Pin Saúde — Cadastro aprovado! Bem-vindo(a)",
-            dados
+            dados,
+            copias == null ? List.of() : copias
         ));
     }
 

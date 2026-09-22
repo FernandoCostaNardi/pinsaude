@@ -47,7 +47,7 @@ public class EmailEventConsumer {
                 if (email != null && !email.isBlank()) {
                     return new EmailEnvioMessage(
                         message.tipo(), email, message.medicoId(),
-                        message.assunto(), message.dados()
+                        message.assunto(), message.dados(), message.copias()
                     );
                 }
             } catch (Exception e) {

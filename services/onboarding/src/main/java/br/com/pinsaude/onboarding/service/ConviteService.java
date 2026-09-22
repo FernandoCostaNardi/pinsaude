@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -68,7 +69,8 @@ public class ConviteService {
             emailDestino,
             medico.getId().toString(),
             "Pin Saúde — Convite para completar seu cadastro",
-            dados
+            dados,
+            List.of()
         );
 
         try {
