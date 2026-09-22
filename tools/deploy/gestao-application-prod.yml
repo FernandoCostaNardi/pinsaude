@@ -5,12 +5,15 @@ spring:
     password: ${DB_PASSWORD_GESTAO}
   jpa:
     hibernate:
-      ddl-auto: none
+      ddl-auto: validate
     properties:
       hibernate:
         default_schema: gestao
   flyway:
-    enabled: false
+    schemas: gestao
+    default-schema: gestao
+    locations: classpath:db/migration
+    enabled: true
   security:
     oauth2:
       resourceserver:

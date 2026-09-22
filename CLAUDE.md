@@ -6953,6 +6953,48 @@ remoto). Reexecução é segura — confirmado (`POST /roles` com `name` já exi
 `409 Conflict` com `{"errorMessage":"Role with name perm_medicos already exists"}`, sem
 sobrescrever nem duplicar a role.
 
+### PERFIL-03 — Flyway habilitado em `services/gestao`, primeira feature de dados do serviço
+`services/gestao` já tinha `spring-boot-starter-data-jpa`/`flyway-core`/datasource pro schema
+`gestao` (`svc_gestao`, já com `GRANT CREATE, USAGE ON SCHEMA gestao`, `search_path` e
+`ALTER DEFAULT PRIVILEGES` desde `tools/db/init.sql`), mas nunca tinha rodado uma migration de
+verdade — `flyway.enabled: false` em `application.yml` (dev) **e** em
+`tools/deploy/gestao-application-prod.yml` (prod), sem nenhum arquivo em `db/migration` (só um
+`.gitkeep`). Habilitado (`enabled: true` + `ddl-auto: validate`, mesmo padrão dos outros
+serviços) e criada a primeira migration (`V1__create_perfis_customizados.sql`, tabela
+`gestao.perfis_customizados` — catálogo de perfis de acesso customizados do PERFIL-04/05).
+`flyway-maven-plugin` adicionado ao `pom.xml` do gestao, mesmo bloco de `services/onboarding/
+pom.xml` trocando usuário/schema (`svc_gestao`/`gestao_dev`/schema `gestao`).
+
+### Entidade com `id` montado em Java (não `@GeneratedValue`) para poder derivar outro campo antes do insert
+`PerfilCustomizado.keycloakRoleName` precisa ser `"perfil_custom_" + id` **antes** do primeiro
+`save()` (a role Keycloak é criada com esse nome). Como `@GeneratedValue` só atribui o ID depois
+do INSERT (ou exige uma segunda roundtrip pra sequence-based strategies), o construtor gera
+`UUID.randomUUID()` manualmente e monta o `keycloakRoleName` a partir dele na mesma chamada —
+sem anotação `@GeneratedValue` no campo `@Id`. Mesmo padrão de `TEXT[]` já documentado (EPIC-14.1):
+`@JdbcTypeCode(SqlTypes.ARRAY)` + `columnDefinition = "text[]"`, sem conversor customizado.
+
+### Verificação mais forte de uma migration nova: subir o serviço de verdade com `ddl-auto: validate`
+Além de rodar `flyway:migrate` e inspecionar a tabela via `psql` (confirma o schema físico), o
+teste que realmente prova que a entidade JPA bate com o schema é **subir o serviço com
+`ddl-auto: validate`** — se o mapeamento Hibernate divergir do que o Flyway criou (tipo errado,
+coluna faltando, nullability diferente), o boot falha com `SchemaManagementException` antes de
+"Started ...Application" aparecer no log. Buildar o jar (`mvn package -Dmaven.test.skip=true
+-pl :pinsaude-gestao`), rodar em background (`java -jar ... > log 2>&1 &`), aguardar "Started
+GestaoApplication" + `curl .../actuator/health` → `{"status":"UP"}`, depois encerrar via
+`Get-NetTCPConnection -LocalPort <porta> | Stop-Process` (o `$!` do bash captura o PID do job
+do shell, não o do processo Java real — usar a porta pra achar o PID de verdade no Windows).
+
+### ⚠️ `mvn.cmd` via PowerShell: múltiplos `-D...=...` inline na mesma chamada `&` pode quebrar o parsing de argumentos
+`& $mvn package -pl :pinsaude-gestao -Dmaven.test.skip=true --no-transfer-progress` (argumentos
+soltos, um por token, do jeito que normalmente funciona) falhou com
+`Unknown lifecycle phase ".test.skip=true"` — o PowerShell/mvn.cmd interpretou algo entre
+`-pl :pinsaude-gestao` e `-Dmaven.test.skip=true` de forma equivocada (não reproduzido isolando
+cada flag individualmente). **Solução que funcionou de primeira**: montar os argumentos como um
+array explícito antes de invocar — `$args = @("package", "-pl", ":pinsaude-gestao",
+"-Dmaven.test.skip=true", "--no-transfer-progress"); & $mvn @args`. Preferir esse padrão
+(`@args` explícito) em vez de tokens soltos sempre que a chamada `mvn` no PowerShell combinar
+`-pl :modulo` com uma ou mais flags `-D`.
+
 ---
 
 ## Convenções de Commit e Branch
