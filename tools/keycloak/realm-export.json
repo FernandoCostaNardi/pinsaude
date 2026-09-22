@@ -79,6 +79,96 @@
         "description": "Conta de serviço (client credentials) — chamadas internas entre serviços, ex.: POST no ledger",
         "composite": false,
         "clientRole": false
+      },
+      {
+        "name": "perm_medicos",
+        "description": "Permissão granular de tela — Médicos, Aprovação (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_empresas",
+        "description": "Permissão granular de tela — Empresas (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_tomadores",
+        "description": "Permissão granular de tela — Tomadores (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_producao",
+        "description": "Permissão granular de tela — Produção (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_frequencias",
+        "description": "Permissão granular de tela — Frequências (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_fechamentos",
+        "description": "Permissão granular de tela — Fechamento (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_fiscal",
+        "description": "Permissão granular de tela — Fiscal (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_notas",
+        "description": "Permissão granular de tela — Notas (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_notas_lote",
+        "description": "Permissão granular de tela — Lotes NFS-e (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_conciliacao",
+        "description": "Permissão granular de tela — Upload Extrato, Conciliação (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_caixa",
+        "description": "Permissão granular de tela — Posição de Caixa (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_ledger",
+        "description": "Permissão granular de tela — Extrato Ledger (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_gestao",
+        "description": "Permissão granular de tela — Gestão (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_usuarios",
+        "description": "Permissão granular de tela — Usuários (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "perm_repasses",
+        "description": "Permissão granular de tela — Repasses (PERFIL-01/ADR-004)",
+        "composite": false,
+        "clientRole": false
       }
     ]
   },

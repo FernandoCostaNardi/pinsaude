@@ -6914,6 +6914,45 @@ Produção/Frequências) não tem tela própria no Sidebar — fica de fora do c
 mantendo o `hasAnyRole(...)` amplo de sempre. Mesmo raciocínio para os controllers-stub de
 smoke test (`/api/faturamento`, `/api/onboarding`, usados só por `RbacIntegrationTest`).
 
+### PERFIL-02 — As 15 roles `perm_*` já existem nos 3 ambientes Keycloak (realm `pinsaude`)
+Criadas via Admin API (`POST /admin/realms/pinsaude/roles`), como **realm roles simples**
+(`composite: false`) — nunca compostas; quem agrupa várias `perm_*` como filhas é o papel do
+*perfil customizado* em si (PERFIL-04). Também registradas em
+`tools/keycloak/realm-export.json` (seção `roles.realm`, 21 roles no total: 6 legadas + 15
+novas) — fonte de verdade para qualquer ambiente novo que subir do zero via `--import-realm`.
+
+**Credenciais de admin do Keycloak por ambiente** (nunca hardcoded em nenhum arquivo do git):
+- **dev local**: `admin`/`admin` (default do `docker-compose.yml`, `KEYCLOAK_ADMIN_PASSWORD`).
+- **212.85.12.228** e **pingestao.com**: usuário/senha em `KC_ADMIN_USER`/`KC_ADMIN_PASS` dentro
+  de `/home/pinsaude/infra/.env` em cada host (compose real fica em
+  `/home/pinsaude/infra/docker-compose.prod.yml`, não em `/home/pinsaude/projeto/
+  docker-compose.yml` — esse último é só o arquivo de dev que por acaso está no checkout git).
+  Keycloak escuta em `localhost:8180` internamente nos dois hosts — usar essa porta via SSH
+  (não a porta pública 8443/nginx) evita qualquer problema de TLS/proxy no Admin API.
+
+### ⚠️ Acento/travessão (`—`) em `-d "..."` do curl no Git Bash do Windows corrompe o JSON silenciosamente
+Criar uma role com `description` contendo travessão (`—`) ou acento retornou `400 Bad Request`
+genérico (`"For more on this error consult the server log at the debug level"`, sem detalhe
+útil) em **todas** as 15 roles de uma vez — parecia um problema de payload/schema do Keycloak,
+mas era só a codificação do agrupamento de variável bash `-d "{\"description\":\"$desc\"}"`
+interpolando um caractere não-ASCII no codepage do terminal, gerando JSON malformado antes
+mesmo de sair do `curl`. Confirmado isolando: a mesma chamada com `description` 100% ASCII
+(`"Permissao granular de tela (PERFIL-01/ADR-004)"`, sem cedilha/acento/travessão) retornou
+`201` de primeira. **Regra prática**: ao montar JSON via `curl -d` com heredoc/interpolação de
+shell no Git Bash, nunca usar acentuação ou pontuação Unicode (`—`, `´`, `ã`, etc.) dentro do
+payload — só ASCII puro. Se o texto final precisa de acentuação, gravar num arquivo `.json`
+com `Write` (que grava UTF-8 corretamente) e usar `curl -d @arquivo.json` em vez de `-d "..."`.
+
+### Script de criação de role reaproveitável — parametrizado por `KC_URL`/`KC_ADMIN_USER`/`KC_ADMIN_PASS`
+Um único script (`create-perm-roles.sh`, mantido só no scratchpad da sessão, não commitado —
+tarefa pontual de infra, não faz parte do código do repo) rodou nos 3 ambientes sem alteração,
+recebendo as credenciais como variáveis de ambiente via `ssh host "env KC_ADMIN_USER=... bash -s" < script.sh`
+— evita reescrever a lógica de obtenção de token/loop de criação por ambiente, e evita colar
+senha na linha de comando remota (fica só no `env` do processo SSH, nunca no `history` do shell
+remoto). Reexecução é segura — confirmado (`POST /roles` com `name` já existente): retorna
+`409 Conflict` com `{"errorMessage":"Role with name perm_medicos already exists"}`, sem
+sobrescrever nem duplicar a role.
+
 ---
 
 ## Convenções de Commit e Branch
