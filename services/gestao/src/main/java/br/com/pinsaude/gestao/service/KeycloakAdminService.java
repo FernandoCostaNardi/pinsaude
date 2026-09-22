@@ -169,4 +169,79 @@ public class KeycloakAdminService {
             .retrieve()
             .body(new ParameterizedTypeReference<>() {});
     }
+
+    /**
+     * Cria uma realm role composta (PERFIL-04 — papel do perfil customizado em si).
+     * As roles perm_* que agrupa são atribuídas depois via {@link #replaceRoleComposites}.
+     */
+    public void createRole(String name, String description) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", name);
+        body.put("description", description);
+        body.put("composite", true);
+        restClient.post()
+            .uri(adminUrl("/roles"))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .toBodilessEntity();
+    }
+
+    public void deleteRole(String roleName) {
+        restClient.method(HttpMethod.DELETE)
+            .uri(adminUrl("/roles/" + roleName))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+            .retrieve()
+            .toBodilessEntity();
+    }
+
+    public List<Map<String, Object>> getRoleComposites(String roleName) {
+        List<Map<String, Object>> composites = restClient.get()
+            .uri(adminUrl("/roles/" + roleName + "/composites"))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+            .retrieve()
+            .body(new ParameterizedTypeReference<>() {});
+        return composites != null ? composites : Collections.emptyList();
+    }
+
+    /**
+     * Substitui por completo o conjunto de roles filhas de uma role composta — busca os
+     * composites atuais, remove todos, posta o novo conjunto. Mais simples que diff
+     * (adicionar só os novos / remover só os que saíram), aceitável dado que o número de
+     * perm_* por perfil é pequeno (dezenas no máximo).
+     */
+    public void replaceRoleComposites(String roleName, List<String> childRoleNames) {
+        List<Map<String, Object>> atuais = getRoleComposites(roleName);
+        if (!atuais.isEmpty()) {
+            restClient.method(HttpMethod.DELETE)
+                .uri(adminUrl("/roles/" + roleName + "/composites"))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(atuais)
+                .retrieve()
+                .toBodilessEntity();
+        }
+        if (childRoleNames.isEmpty()) return;
+        List<Map<String, Object>> novos = childRoleNames.stream()
+            .map(this::getRoleByName)
+            .toList();
+        restClient.post()
+            .uri(adminUrl("/roles/" + roleName + "/composites"))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(novos)
+            .retrieve()
+            .toBodilessEntity();
+    }
+
+    /** Usado para bloquear exclusão de um perfil customizado ainda em uso. */
+    public int countUsersWithRole(String roleName) {
+        List<Map<String, Object>> users = restClient.get()
+            .uri(adminUrl("/roles/" + roleName + "/users"))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+            .retrieve()
+            .body(new ParameterizedTypeReference<>() {});
+        return users != null ? users.size() : 0;
+    }
 }
