@@ -7225,6 +7225,39 @@ Suite: **341/341 testes verdes** — mesmo módulo limpo já confirmado nas PERF
 
 ---
 
+## PERFIL-15 — faturamento · FechamentoController → perm_fechamentos
+
+### 6 endpoints em exatamente 2 grupos — leitura (4) vs escrita (2)
+`FechamentoController` (preview/executar Fechamento por Grupo + status manual por médico) tem 6
+`@PreAuthorize`, sem nenhum a nível de classe, em 2 strings distintas:
+- **4× leitura** — `hasAnyRole('operacao','gestao','financeiro','contabil')`: `preview`, `listar`,
+  `buscarPorId`, `listarStatusMedicos`.
+- **2× escrita** — `hasAnyRole('operacao','gestao')`: `executar` (gera as produções do fechamento,
+  irreversível na prática) e `salvarStatusMedico`.
+
+`or hasRole('perm_fechamentos')` aplicado às 6 com 2 `Edit replace_all`, verificado por grep
+antes/depois: `@PreAuthorize` = 6, `perm_fechamentos` = 6 — bate com o ADR-004.
+
+### Teste real — 6 endpoints, e uma reconfirmação ao vivo da armadilha `@Valid`-antes-`@PreAuthorize`
+Com token contendo **só** `perm_fechamentos`: os 4 de leitura → `200`/`404` (nenhum `403`); os 2
+de escrita → `400` Bean Validation (nenhum `403`) — todos passaram `@PreAuthorize`.
+
+Ao testar a regressão do tier de escrita com um usuário `financeiro` temporário, o primeiro teste
+(`POST /api/fechamentos` com corpo `{}`) voltou `400`, não `403` — inconclusivo por construção
+(o `@Valid` do `FechamentoRequest` rejeita o corpo vazio antes do `@PreAuthorize` rodar, mesmo
+padrão já documentado em várias seções deste arquivo e reaplicado nas PERFIL-11/12). Corrigido
+enviando um corpo Bean-Validation-válido (`tomadorId` + `competencia` preenchidos, ambos com
+UUID/competência fake) → **`403` limpo**, confirmando que `financeiro` de fato nunca teve acesso
+ao tier de escrita, sem ambiguidade de camada.
+
+### Cross-domain confirmado contra 3 domínios diferentes
+Token `perm_fechamentos` em `GET /api/tomadores`, `GET /api/producoes` e `GET /api/frequencias`
+(3 controllers de outras 3 permissões já aplicadas nesta epic) → `403` nos três.
+
+Suite: **341/341 testes verdes** — mesmo módulo limpo já confirmado nas PERFIL-12/13/14.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
