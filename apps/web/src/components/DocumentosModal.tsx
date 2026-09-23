@@ -39,6 +39,45 @@ function validarArquivo(f: File) {
   return null
 }
 
+function nomeUnico(base: string, usados: Set<string>): string {
+  if (!usados.has(base)) { usados.add(base); return base }
+  const dot = base.lastIndexOf('.')
+  const stem = dot === -1 ? base : base.slice(0, dot)
+  const ext = dot === -1 ? '' : base.slice(dot)
+  let n = 2
+  let cand = `${stem}_${n}${ext}`
+  while (usados.has(cand)) { n++; cand = `${stem}_${n}${ext}` }
+  usados.add(cand)
+  return cand
+}
+
+function SelectCheckbox({
+  checked, indeterminate, onChange, title, disabled,
+}: {
+  checked: boolean
+  indeterminate?: boolean
+  onChange: () => void
+  title?: string
+  disabled?: boolean
+}) {
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = !!indeterminate && !checked
+  }, [indeterminate, checked])
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={onChange}
+      disabled={disabled}
+      title={title}
+      onClick={e => e.stopPropagation()}
+      className="w-4 h-4 shrink-0 rounded border-ds-border accent-primary cursor-pointer disabled:opacity-50"
+    />
+  )
+}
+
 // ─── Linha de tipo (com múltiplos arquivos) ───────────────────────────────────
 
 interface RowProps {
@@ -51,6 +90,9 @@ interface RowProps {
   rejectingDocId: string | null
   rejectReason: string
   downloadingId: string | null
+  selectedIds: Set<string>
+  onToggle: (id: string) => void
+  onToggleTipo: () => void
   onAprovar: (doc: DocumentoMedico) => void
   onIniciarReprovacao: (doc: DocumentoMedico) => void
   onConfirmarReprovacao: () => void
@@ -64,16 +106,26 @@ interface RowProps {
 
 function DocumentoRow({
   tipo, docs, previews, uploadingThisTipo, validating, canValidate,
-  rejectingDocId, rejectReason, downloadingId,
+  rejectingDocId, rejectReason, downloadingId, selectedIds, onToggle, onToggleTipo,
   onAprovar, onIniciarReprovacao, onConfirmarReprovacao,
   onCancelarReprovacao, onRejectReasonChange, onVerArquivo, onDownload, onDeletar, onAdicionarMais,
 }: RowProps) {
   const { Icon, label } = TIPO_INFO[tipo]
+  const tipoAllSelected = docs.length > 0 && docs.every(d => selectedIds.has(d.id))
+  const tipoSomeSelected = docs.some(d => selectedIds.has(d.id))
 
   return (
     <div className="flex flex-col">
       {/* Cabeçalho do tipo */}
       <div className="flex items-center gap-3 py-2.5 px-4 bg-ds-input">
+        {docs.length > 0 && (
+          <SelectCheckbox
+            checked={tipoAllSelected}
+            indeterminate={tipoSomeSelected && !tipoAllSelected}
+            onChange={onToggleTipo}
+            title="Selecionar todos deste tipo"
+          />
+        )}
         <div className="w-7 h-7 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
           <Icon size={14} className="text-primary" />
         </div>
@@ -116,7 +168,12 @@ function DocumentoRow({
 
         return (
           <div key={doc.id} className="flex flex-col border-t border-ds-border/50">
-            <div className="flex items-center gap-2 py-2 px-6">
+            <div className="flex items-center gap-2 py-2 px-4">
+              <SelectCheckbox
+                checked={selectedIds.has(doc.id)}
+                onChange={() => onToggle(doc.id)}
+                title="Selecionar arquivo"
+              />
               <div className="flex-1 min-w-0">
                 <p className="text-[12px] text-ds-mid truncate">{doc.nomeArquivo}</p>
               </div>
@@ -246,6 +303,8 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
   const [rejectReason, setRejectReason]     = useState('')
   const [downloadingId, setDownloadingId]   = useState<string | null>(null)
   const [downloadingAll, setDownloadingAll] = useState(false)
+  const [downloadingSelected, setDownloadingSelected] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [error, setError]   = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -379,6 +438,12 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
         ...d,
         [doc.tipo]: (d[doc.tipo] ?? []).filter(x => x.id !== doc.id),
       }))
+      setSelectedIds(prev => {
+        if (!prev.has(doc.id)) return prev
+        const n = new Set(prev)
+        n.delete(doc.id)
+        return n
+      })
       onDocumentosChange?.()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao remover arquivo')
@@ -443,11 +508,14 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
     }
   }
 
-  async function handleDownloadAll() {
-    setDownloadingAll(true)
-    setError(null)
-    const lista = TODOS_TIPOS.flatMap(t => docs[t] ?? [])
+  async function baixarLista(lista: DocumentoMedico[]) {
+    if (lista.length === 0) return
+    if (lista.length === 1) {
+      await handleDownload(lista[0])
+      return
+    }
 
+    setError(null)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let dirHandle: any = null
     if ('showDirectoryPicker' in window) {
@@ -455,27 +523,76 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
       } catch (e: unknown) {
-        if ((e as { name?: string })?.name === 'AbortError') { setDownloadingAll(false); return }
+        if ((e as { name?: string })?.name === 'AbortError') return
       }
     }
 
+    const usados = new Set<string>()
     for (const doc of lista) {
       try {
         const blob = await medicosApi.downloadDocumento(medico.id, doc.id)
+        const nome = nomeUnico(`${doc.tipo}_${doc.nomeArquivo}`, usados)
         if (dirHandle) {
-          const fileHandle = await dirHandle.getFileHandle(doc.nomeArquivo, { create: true })
+          const fileHandle = await dirHandle.getFileHandle(nome, { create: true })
           const writable = await fileHandle.createWritable()
           await writable.write(blob)
           await writable.close()
         } else {
-          await salvarBlob(blob, doc.nomeArquivo)
+          await salvarBlob(blob, nome)
           await new Promise(r => setTimeout(r, 400))
         }
       } catch {
         // continua para o próximo documento
       }
     }
-    setDownloadingAll(false)
+  }
+
+  async function handleDownloadAll() {
+    setDownloadingAll(true)
+    try {
+      await baixarLista(TODOS_TIPOS.flatMap(t => docs[t] ?? []))
+    } finally {
+      setDownloadingAll(false)
+    }
+  }
+
+  async function handleDownloadSelected() {
+    const lista = TODOS_TIPOS.flatMap(t => docs[t] ?? []).filter(d => selectedIds.has(d.id))
+    setDownloadingSelected(true)
+    try {
+      await baixarLista(lista)
+    } finally {
+      setDownloadingSelected(false)
+    }
+  }
+
+  function toggleId(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleTipo(tipo: TipoDocumentoMedico) {
+    const ids = (docs[tipo] ?? []).map(d => d.id)
+    if (ids.length === 0) return
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      const allOn = ids.every(id => next.has(id))
+      if (allOn) ids.forEach(id => next.delete(id))
+      else ids.forEach(id => next.add(id))
+      return next
+    })
+  }
+
+  function toggleTodos() {
+    const ids = TODOS_TIPOS.flatMap(t => docs[t] ?? []).map(d => d.id)
+    setSelectedIds(prev => {
+      if (ids.length > 0 && ids.every(id => prev.has(id))) return new Set()
+      return new Set(ids)
+    })
   }
 
   const allDocs = TODOS_TIPOS.flatMap(t => docs[t] ?? [])
@@ -505,7 +622,7 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
             {totalEnviados > 0 && (
               <button
                 onClick={handleDownloadAll}
-                disabled={downloadingAll || downloadingId !== null}
+                disabled={downloadingAll || downloadingSelected || downloadingId !== null}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium border border-ds-border text-ds-mid hover:text-primary hover:border-primary hover:bg-primary-50 disabled:opacity-50 transition-colors"
               >
                 <Download size={13} className={downloadingAll ? 'animate-bounce' : ''} />
@@ -569,8 +686,38 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
 
         {/* Lista de documentos por tipo */}
         <div className="border border-ds-border rounded-xl overflow-hidden">
-          <div className="px-4 py-2 border-b border-ds-border bg-ds-input">
-            <p className="text-xs font-semibold text-ds-mid">Documentos enviados</p>
+          <div className="px-4 py-2 border-b border-ds-border bg-ds-input flex items-center gap-2 flex-wrap">
+            {totalEnviados > 0 && (
+              <SelectCheckbox
+                checked={allDocs.length > 0 && allDocs.every(d => selectedIds.has(d.id))}
+                indeterminate={allDocs.some(d => selectedIds.has(d.id)) && !allDocs.every(d => selectedIds.has(d.id))}
+                onChange={toggleTodos}
+                title="Selecionar todos"
+              />
+            )}
+            <p className="text-xs font-semibold text-ds-mid flex-1">Documentos enviados</p>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-ds-mid">
+                  {selectedIds.size} selecionado{selectedIds.size !== 1 ? 's' : ''}
+                </span>
+                <button
+                  onClick={handleDownloadSelected}
+                  disabled={downloadingSelected || downloadingAll || downloadingId !== null}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border border-ds-border text-ds-mid hover:text-primary hover:border-primary hover:bg-primary-50 disabled:opacity-50 transition-colors"
+                >
+                  <Download size={12} className={downloadingSelected ? 'animate-bounce' : ''} />
+                  {downloadingSelected ? 'Baixando...' : 'Baixar selecionados'}
+                </button>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  disabled={downloadingSelected}
+                  className="px-2 py-1 rounded-lg text-[11px] text-ds-light hover:text-ds-mid hover:bg-white disabled:opacity-50 transition-colors"
+                >
+                  Limpar
+                </button>
+              </div>
+            )}
           </div>
           {loading ? (
             <div className="flex justify-center py-8"><Spinner size="md" /></div>
@@ -588,6 +735,9 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
                   rejectingDocId={rejectingDocId}
                   rejectReason={rejectReason}
                   downloadingId={downloadingId}
+                  selectedIds={selectedIds}
+                  onToggle={toggleId}
+                  onToggleTipo={() => toggleTipo(tipo)}
                   onAprovar={handleAprovar}
                   onIniciarReprovacao={doc => { setRejectingDocId(doc.id); setRejectReason('') }}
                   onConfirmarReprovacao={handleConfirmarReprovacao}
