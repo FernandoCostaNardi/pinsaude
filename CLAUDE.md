@@ -7356,6 +7356,50 @@ nesta epic; sem nenhuma falha pré-existente.
 
 ---
 
+## PERFIL-18 — fiscal · NfseController (10) → perm_notas
+
+### Controller mais heterogêneo do catálogo até agora — 10 endpoints em 6 combinações de role distintas
+`NfseController` (emissão, cancelamento, rejeição, aprovação, reprocessamento e consulta de NFS-e)
+tem 10 `@PreAuthorize` de método, todos textualmente diferentes uns dos outros mesmo quando
+semanticamente parecidos — `hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro')` (2×,
+`emitir`/`listar`) é uma string diferente de `hasAnyRole('gestao', 'contabil', 'operacao',
+'financeiro')` (1×, `listarExcecoes`) só pela **ordem dos parâmetros**, mesmo cobrindo exatamente
+os mesmos 4 papéis. Grupos exatos:
+- `contabil,gestao,operacao,financeiro` (2×) — `emitir`, `listar`.
+- `contabil,gestao,operacao,financeiro,medico` (3×) — `getStatus`, `downloadXml`, `downloadPdf`
+  (únicos endpoints que liberam `medico`, para o médico acompanhar/baixar a própria nota).
+- `gestao,contabil` (2×) — `aprovar`, `rejeitar` (ações mais sensíveis, tier mais restrito).
+- `gestao,contabil,operacao,financeiro` (1×) — `listarExcecoes`.
+- `gestao,contabil,financeiro` (1×) — `cancelar`.
+- `gestao,contabil,operacao` (1×) — `reprocessar`.
+
+`or hasRole('perm_notas')` aplicado às 10 com 6 `Edit` (2 delas com `replace_all` cobrindo os
+grupos repetidos), verificado por grep: `@PreAuthorize` = 10, `perm_notas` = 10 — bate com o
+ADR-004. Ao editar, cuidado extra necessário para não deixar um `old_string` de um grupo casar
+acidentalmente com outro por conter o outro como substring (ex.: o grupo de 4 papéis é prefixo
+textual do grupo de 5 com `medico` adicionado) — resolvido incluindo sempre a anotação completa
+(`@PreAuthorize("...")`) no `old_string`, nunca só um fragmento do meio da string de roles.
+
+### Teste real — 10 endpoints únicos, mais uma trilha de regressão em 3 tiers diferentes do mesmo papel
+Todos os 10 endpoints testados com token **só** `perm_notas` — nenhum `403` (mistura de `200`,
+`404` "Nota não encontrada" e `400` Bean Validation, todos provando que passou `@PreAuthorize`).
+
+Regressão testada com um único usuário `financeiro` temporário contra **3 tiers diferentes** do
+mesmo controller, provando que a granularidade fina não foi achatada pela nova permissão:
+- `GET /api/nfse` (tier que sempre incluiu `financeiro`) → continua `200`.
+- `POST /{id}/aprovar` (tier `gestao,contabil` — `financeiro` nunca teve acesso) → continua `403`.
+- `PUT /{id}/cancelar` (tier `gestao,contabil,financeiro` — inclui `financeiro`) → continua
+  passando autorização (`404`, não `403`).
+
+Cross-domain: token `perm_notas` em `GET /api/fiscal/regras-equiparacao` (`perm_fiscal`, mesmo
+serviço `fiscal`) e `GET /api/nfse/lote` (`perm_notas_lote`, rota real do `NfseBatchController`
+— `/api/nfse-lotes` não existe, a rota correta é `/api/nfse/lote`, achado durante o teste) → `403`
+nos dois.
+
+Suite: **88/88 testes verdes** — mesmo módulo limpo já confirmado na PERFIL-17.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
