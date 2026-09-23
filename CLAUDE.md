@@ -7192,6 +7192,39 @@ na PERFIL-12 — nenhuma falha pré-existente neste módulo.
 
 ---
 
+## PERFIL-14 — faturamento · FrequenciaController → perm_frequencias
+
+### 11 endpoints em exatamente 2 grupos — leitura ampla (3) vs escrita restrita (8)
+`FrequenciaController` (CRUD de Frequência Médica + itens/documento) tem 11 `@PreAuthorize`, sem
+nenhum a nível de classe, mas caem em só 2 strings distintas:
+- **3× leitura** — `hasAnyRole('operacao','gestao','medico','financeiro','contabil')`: `listar`,
+  `buscarPorId`, `getDocumentoUrl`.
+- **8× escrita** — `hasAnyRole('operacao','gestao','medico')` (sem `financeiro`/`contabil`):
+  `criar`, `atualizar`, `excluir`, `gerarPdf`, `receberDocumentoAssinado`, `adicionarItem`,
+  `atualizarItem`, `removerItem`.
+
+`or hasRole('perm_frequencias')` aplicado às 11 com 2 `Edit replace_all`, verificado por grep
+antes/depois: `@PreAuthorize` = 11, `perm_frequencias` = 11 — bate com o ADR-004.
+
+### Teste real — 11 endpoints únicos, incluindo o multipart (`receberDocumentoAssinado`)
+Com token contendo **só** `perm_frequencias`: os 3 de leitura → `200`/`404` (nenhum `403`); os 8
+de escrita → `400` Bean Validation ou `404` "Frequência não encontrada" (nenhum `403`) —
+incluindo `POST /{id}/documento` (multipart, sem arquivo anexado) → `415 Unsupported Media Type`,
+não `403`, provando que passou `@PreAuthorize` mesmo sem chegar no corpo da requisição
+(`415` acontece na negociação de conteúdo, depois da security filter chain).
+
+### Regressão em 2 camadas — cross-domain e a própria divisão leitura/escrita do controller
+Confirmado com um usuário `financeiro` temporário (papel legado, só tier de leitura neste
+controller): `GET /api/frequencias` → continua `200`; `DELETE /{id}` (tier de escrita, nunca
+incluiu `financeiro`) → continua `403`. Prova que a permissão nova não colapsou a distinção
+leitura/escrita que já existia — `perm_frequencias` sozinha dá acesso às duas, mas o papel legado
+`financeiro` continua restrito exatamente como antes. Cross-domain: token `perm_frequencias` em
+`GET /api/tomadores` e `GET /api/producoes` (2 domínios diferentes) → `403` nos dois.
+
+Suite: **341/341 testes verdes** — mesmo módulo limpo já confirmado nas PERFIL-12/13.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
