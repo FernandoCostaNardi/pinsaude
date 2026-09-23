@@ -26,7 +26,7 @@ public class ProducaoController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_producao')")
     public ResponseEntity<List<ProducaoResponse>> listar(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String competencia,
@@ -38,13 +38,13 @@ public class ProducaoController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_producao')")
     public ResponseEntity<ProducaoResponse> buscarPorId(@PathVariable UUID id) {
         return ResponseEntity.ok(service.buscarPorId(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico') or hasRole('perm_producao')")
     public ResponseEntity<ProducaoResponse> criar(@Valid @RequestBody ProducaoRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.criar(req));
     }
@@ -52,14 +52,14 @@ public class ProducaoController {
     // Operação atribui/troca o serviço (LC 116/2003) de uma produção já criada — completa
     // produções vindas do Portal do Médico sem serviço definido (V49), antes de emitir a NFS-e.
     @PutMapping("/{id}/servico")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_producao')")
     public ResponseEntity<ProducaoResponse> atualizarServico(
             @PathVariable UUID id, @Valid @RequestBody AtualizarServicoProducaoRequest req) {
         return ResponseEntity.ok(service.atualizarServico(id, req.servicoId()));
     }
 
     @PostMapping("/preview-calculo")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_producao')")
     public ResponseEntity<PreviewCalculoResponse> previewCalculo(
             @Valid @RequestBody PreviewCalculoRequest req) {
         return ResponseEntity.ok(service.calcularPreview(req));
