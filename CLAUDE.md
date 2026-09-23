@@ -7069,6 +7069,34 @@ token → `401`. Suite de testes: mesmos `212` testes, mesmas `5` falhas pré-ex
 `EmpresaServiceTest`, `8/8` em `ContaBancariaServiceTest`, `6/6` em `RbacIntegrationTest`/
 `SecurityIntegrationTest`.
 
+### PERFIL-11 — `ConfiguracaoFiscalController` → `perm_fiscal` (1/2) — `perm_fiscal` cruza dois serviços
+`perm_fiscal` é a primeira permissão do catálogo que protege controllers em **dois serviços
+diferentes** ao mesmo tempo — `onboarding` (`ConfiguracaoFiscalController`, esta task) e
+`fiscal` (5 controllers, PERFIL-12/"2/2" — task separada), porque a tela "Fiscal" do menu
+consome os dois back-ends juntos. `ConfiguracaoFiscalController` tem só 1 `@PreAuthorize` de
+classe (`hasRole('gestao')`, cobre os 2 endpoints `GET`/`PUT`) — virou `hasRole('gestao') or
+hasRole('perm_fiscal')`, mudança de uma linha só.
+
+**Achado, não corrigido (fora do escopo aditivo)**: o item "Fiscal" do `Sidebar.tsx` libera o
+menu pra `contabil`/`gestao`/`financeiro`, mas este controller específico do `onboarding`
+sempre foi `gestao`-only — `operacao`/`financeiro`/`contabil` nunca tiveram acesso a
+`GET/PUT /api/empresas/{id}/configuracao-fiscal`, mesmo sendo alcançável pela mesma tela.
+Confirmado ao vivo: um token real de `operacao` continua `403` depois desta mudança (correto —
+tarefa é estritamente aditiva, "revisar se o papel bate" não significa "alargar o papel legado
+pra bater com o menu"). Pré-existente, não introduzido por esta task — sinalizado aqui caso
+vire um bug real reportado no futuro.
+
+**Teste real com token contendo só `perm_fiscal`**: `GET` com UUID de empresa inexistente →
+`404` (passou da autorização); `PUT` com corpo inválido → `400` "aliquota: não deve ser nulo"
+(passou da autorização, chegou na validação Bean Validation) — os dois provam que
+`@PreAuthorize` deixou passar. Regressão: token com `perm_empresas` (domínio errado, criado na
+PERFIL-10) → `403`; token de `operacao` (nunca teve acesso) → `403`; sem token → `401`. Suite
+de testes: mesmas `5` falhas pré-existentes — desta vez até nos próprios testes deste
+controller (`ConfiguracaoFiscalIntegrationTest`), confirmando de novo que é o bug de
+clock-drift (competência mínima avança com o relógio real, não tem nada a ver com
+`@PreAuthorize`) e não uma regressão desta mudança — `git diff` confirma que só a linha da
+anotação mudou, nenhuma lógica de negócio tocada.
+
 ---
 
 ## Convenções de Commit e Branch
