@@ -1,6 +1,7 @@
 package br.com.pinsaude.onboarding.controller;
 
 import br.com.pinsaude.onboarding.domain.RegimeTributario;
+import br.com.pinsaude.onboarding.dto.DocumentoEmpresaResponse;
 import br.com.pinsaude.onboarding.dto.EmpresaPageResponse;
 import br.com.pinsaude.onboarding.dto.EmpresaRequest;
 import br.com.pinsaude.onboarding.dto.EmpresaResponse;
@@ -168,5 +169,62 @@ class EmpresaControllerTest {
         mockMvc.perform(delete("/api/empresas/{id}", ID)
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isNoContent());
+    }
+
+    // ─── PERFIL-22 — regressão do catálogo perm_* (ADR-004), PERFIL-10 ─────────
+    // Grupo 1 (classe): gestao sozinho — GET / (listar), já coberto acima com gestao/
+    // operacao/medico/sem-auth. Faltava perm_empresas positivo e um perm de outro domínio negativo.
+
+    @Test
+    void listar_permEmpresas_retorna200() throws Exception {
+        when(empresaService.listar(anyInt(), anyInt())).thenReturn(pageResponse());
+
+        mockMvc.perform(get("/api/empresas")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_empresas"))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void listar_permOutroDominio_retorna403() throws Exception {
+        mockMvc.perform(get("/api/empresas")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_medicos"))))
+            .andExpect(status().isForbidden());
+    }
+
+    // Grupo 2 (método): gestao,operacao — GET /{id}/documentos.
+
+    @Test
+    void listarDocumentos_gestao_retorna200() throws Exception {
+        when(empresaService.listarDocumentos(any(UUID.class))).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/empresas/{id}/documentos", ID)
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void listarDocumentos_operacao_retorna200() throws Exception {
+        when(empresaService.listarDocumentos(any(UUID.class)))
+            .thenReturn(List.of(org.mockito.Mockito.mock(DocumentoEmpresaResponse.class)));
+
+        mockMvc.perform(get("/api/empresas/{id}/documentos", ID)
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void listarDocumentos_permEmpresas_retorna200() throws Exception {
+        when(empresaService.listarDocumentos(any(UUID.class))).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/empresas/{id}/documentos", ID)
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_empresas"))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void listarDocumentos_financeiro_retorna403() throws Exception {
+        mockMvc.perform(get("/api/empresas/{id}/documentos", ID)
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_financeiro"))))
+            .andExpect(status().isForbidden());
     }
 }

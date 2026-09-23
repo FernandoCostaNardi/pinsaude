@@ -5,6 +5,8 @@ import br.com.pinsaude.faturamento.controller.FrequenciaController;
 import br.com.pinsaude.faturamento.dto.FrequenciaMedicaResponse;
 import br.com.pinsaude.faturamento.service.FrequenciaService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -141,5 +143,49 @@ class FrequenciaControllerTest {
 
     private static FrequenciaMedicaResponse mockResponse() {
         return org.mockito.Mockito.mock(FrequenciaMedicaResponse.class);
+    }
+
+    // ─── PERFIL-22 — regressão do catálogo perm_* (ADR-004), PERFIL-14 ─────────
+    // Grupo escrita (operacao,gestao,medico) já coberto acima via removerItem/atualizar —
+    // faltava só perm_frequencias sozinho. Grupo leitura (operacao,gestao,medico,financeiro,
+    // contabil) cobre TODOS os 5 papéis legados — sem "papel sem acesso" possível ali, só
+    // perm_frequencias positivo e um perm de outro domínio negativo.
+
+    @Test
+    void removerItem_permFrequencias_retorna204() throws Exception {
+        UUID freqId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        doNothing().when(service).removerItem(freqId, itemId);
+
+        mockMvc.perform(delete("/api/frequencias/{id}/itens/{itemId}", freqId, itemId)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_frequencias"))))
+                .andExpect(status().isNoContent());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"operacao", "gestao", "medico", "financeiro", "contabil"})
+    void listar_papelLegado_retorna200(String role) throws Exception {
+        when(service.listar(any(), any(), any(), any(), any())).thenReturn(java.util.List.of());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/frequencias")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_" + role))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void listar_permFrequencias_retorna200() throws Exception {
+        when(service.listar(any(), any(), any(), any(), any())).thenReturn(java.util.List.of());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/frequencias")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_frequencias"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void listar_permOutroDominio_retorna403() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/frequencias")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_tomadores"))))
+                .andExpect(status().isForbidden());
     }
 }

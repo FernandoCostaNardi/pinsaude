@@ -258,4 +258,21 @@ class ConfiguracaoFiscalIntegrationTest {
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isNotFound());
     }
+
+    // ─── PERFIL-22 — regressão do catálogo perm_* (ADR-004), PERFIL-11 ─────────
+    // Único grupo (classe): gestao sozinho.
+
+    @Test
+    void permFiscal_podeAcessar_retorna200() throws Exception {
+        mockMvc.perform(get("/api/empresas/{id}/configuracao-fiscal", empresaId)
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_fiscal"))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void permOutroDominio_naoPodeAcessar_retorna403() throws Exception {
+        mockMvc.perform(get("/api/empresas/{id}/configuracao-fiscal", empresaId)
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_empresas"))))
+            .andExpect(status().isForbidden());
+    }
 }

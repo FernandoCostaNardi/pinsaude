@@ -7781,6 +7781,80 @@ e o processo do serviço removidos ao final — suite automatizada: 34/34 verdes
 
 ---
 
+## PERFIL-22 — Testes de Regressão do catálogo perm_* em Todos os Serviços
+
+Última task de aplicação/validação do catálogo `perm_*` (ADR-004) — cobre automaticamente, via
+`@WebMvcTest`/`@SpringBootTest` + MockMvc, as 39 combinações distintas de `@PreAuthorize` tocadas
+nas PERFIL-09 a 21 (18 controllers, 5 serviços). Cada grupo ganhou 3 asserções mínimas: papel
+legado continua autorizando (`@ParameterizedTest` sobre os papéis do grupo), `perm_*` sozinho
+também autoriza, e um papel/perm sem acesso continua barrado com 403.
+
+### ⚠️ Nunca `Write` um arquivo de teste sem `Read` primeiro — mesmo achando que é novo
+Ao começar esta task, tentei criar `EmpresaControllerTest.java` (onboarding) via `Write` direto,
+sem checar antes se já existia — **ele já existia**, com uma suíte completa de testes de CRUD
+(não só RBAC) escrita numa task anterior (PERFIL-10). O `Write` sobrescreveu tudo silenciosamente
+(a ferramenta não avisa "arquivo já existia" de forma destacada — só a mensagem de retorno muda de
+"created" para "updated", fácil de não notar). Percebido a tempo checando `git status --short`
+logo em seguida (`M`, não `??`) — revertido com `git checkout -- <arquivo>` antes de qualquer
+commit. **Lição prática, sem exceção**: antes de `Write` em qualquer arquivo de teste (ou
+qualquer arquivo, de fato) que possa já existir — mesmo com alta confiança de que é novo —
+rodar `find`/`git status`/`ls` no caminho exato primeiro, ou usar `Read` (que falha de forma
+clara se o arquivo não existir) em vez de assumir. Quando o arquivo já existe, sempre `Edit`
+(append/insert), nunca `Write` por cima.
+
+### Padrão de teste — dois estilos coexistem no projeto, ambos válidos
+`@WebMvcTest(Controller.class) + @Import(SecurityConfig.class) + @MockBean` (fatia web, sem
+Spring Data/DB, ~0.5-1s de boot) é o padrão mais rápido e foi usado para todo controller **sem**
+teste prévio. `@SpringBootTest + @AutoConfigureMockMvc + @MockBean` (contexto completo, ~3-15s de
+boot, mas ainda sem tocar banco real — `spring.flyway.enabled=false` + H2 `ddl-auto=none`) é o
+padrão já estabelecido em `UsuarioControllerTest`/`EmpresaControllerTest`/etc. (onboarding/gestao)
+— usado ao **estender** um arquivo pré-existente, para não misturar dois estilos no mesmo arquivo.
+Os dois funcionam porque `jwt()` do `SecurityMockMvcRequestPostProcessors` injeta a
+`Authentication` direto no `SecurityContext`, sem nunca decodificar um JWT de verdade — não
+precisa de `jwk-set-uri`/Keycloak real em nenhum dos dois estilos.
+
+### `@WebMvcTest(controllers = {A.class, B.class, ...})` cobre vários controllers numa só classe
+Usado para os 5 controllers que compartilham `perm_fiscal` (`FiscalController`,
+`FiscalParametrosController`, `MotorFiscalController`, `RegraEquiparacaoController`,
+`ParametroFiscalController`) — uma única `PermFiscalControllersTest` com `@MockBean` para os 4
+services envolvidos, em vez de 5 arquivos quase idênticos. Só vale a pena quando os controllers
+de fato compartilham a mesma permissão/proposta — para os demais serviços (onde cada controller
+tem `perm_*` própria), 1 arquivo por controller continua mais claro.
+
+### `FiscalParametrosController`/`RegraEquiparacaoController` sem `cnpj_id` no JWT de teste
+Sem `.jwt(j -> j.claim("cnpj_id", "..."))` no builder do `jwt()`, `SecurityUtils.currentCnpjTenant()`
+retorna `null` — `FiscalParametrosController.listar()` já trata isso retornando `[]` sem tocar o
+service (comportamento de produção pra `gestao` cross-tenant, documentado em EPIC-05.3); mas
+`RegraEquiparacaoController.listar()` chama `requireCnpj()`, que lança 400 sem o claim — ainda
+assim prova que passou `@PreAuthorize` (não é ambiguidade tipo `@Valid`, é uma exceção de negócio
+que só roda depois da autorização), mas pra manter o teste limpo (200, não 400) o claim foi
+incluído nos testes desse controller e do `MotorFiscalController` (que também exige o claim).
+
+### `LedgerControllerTest` — testa também que `perm_ledger` NUNCA destrava o carve-out
+Além do padrão de 3 asserções por grupo, este arquivo tem 2 testes negativos extras confirmando
+que o carve-out deliberado da PERFIL-20 continua de pé: nem `perm_ledger` nem `gestao` (o papel
+legado com mais acesso no resto do sistema) conseguem `POST /api/ledger/lancamentos`, que
+permanece exclusivo de `hasRole('service')` (service accounts internas). Sem esse teste, uma
+futura edição descuidada do `@PreAuthorize` desse endpoint (ex.: um `replace_all` mal escopado)
+passaria despercebida até virar um incidente de segurança em produção.
+
+### Resultado final — 5 serviços, zero regressão
+| Serviço | Testes novos | Total do módulo | Resultado |
+|---|---|---|---|
+| onboarding | 38 (`MedicoControllerTest` novo + 3 arquivos estendidos) | 250 | 245 verdes, 5 falhas pré-existentes (clock-drift, ver EPIC-14.1) |
+| faturamento | 66 (3 arquivos novos + 2 estendidos) | 407 | 407/407 |
+| fiscal | 73 (3 arquivos novos) | 161 | 161/161 |
+| ledger | 9 (1 arquivo novo) | 45 | 45/45 |
+| gestao | 7 (1 arquivo novo + 1 estendido) | 41 | 41/41 |
+
+As 5 falhas do onboarding são o mesmo bug de clock-drift já documentado (competência mínima
+calculada a partir de `LocalDate.now()`, testes usam competência fixa que envelhece) — confirmado
+que nenhum teste novo desta task está na lista de falhas, e que o mesmo padrão de 5 falhas já
+existia antes desta task (`git stash`/execução isolada não foi necessária — a lista de nomes de
+teste que falha é idêntica à já documentada, não uma falha nova por posição/contagem).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
