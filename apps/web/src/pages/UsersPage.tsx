@@ -7,10 +7,13 @@ import {
   Table, THead, TBody, TRow, TH, TD,
 } from '@pinsaude/ui'
 import { usersApi, type Usuario } from '../api/usersApi'
+import { perfisApi, type PerfilCustomizado } from '../api/perfisApi'
 import { InviteUserModal } from '../components/InviteUserModal'
 
 // ─── Perfil config ────────────────────────────────────────────────────────────
 
+// Os 5 papéis legados — perfis customizados (PERFIL-04) são carregados em runtime e
+// mesclados às opções/badges abaixo, nunca hardcoded aqui.
 const PERFIS: Record<string, { label: string; cls: string }> = {
   medico:     { label: 'Médico',      cls: 'bg-primary-50 text-primary'     },
   operacao:   { label: 'Operação',    cls: 'bg-green-50 text-green-700'     },
@@ -19,10 +22,33 @@ const PERFIS: Record<string, { label: string; cls: string }> = {
   gestao:     { label: 'Gestão',      cls: 'bg-rose-50 text-rose-700'       },
 }
 
-const PERFIL_OPTIONS = Object.entries(PERFIS).map(([value, { label }]) => ({ value, label }))
+const PERFIL_OPTIONS_LEGADOS = Object.entries(PERFIS).map(([value, { label }]) => ({ value, label }))
 
-function PerfilBadge({ perfil }: { perfil: string }) {
-  const cfg = PERFIS[perfil] ?? { label: perfil, cls: 'bg-ds-input text-ds-mid' }
+// Cor determinística por nome — mesmo padrão de AVATAR_COLORS/UserAvatar mais abaixo.
+const CUSTOM_PERFIL_COLORS = [
+  'bg-primary-50 text-primary',
+  'bg-green-50 text-green-700',
+  'bg-amber-50 text-amber-700',
+  'bg-violet-50 text-violet-700',
+  'bg-rose-50 text-rose-700',
+  'bg-cyan-50 text-cyan-700',
+  'bg-indigo-50 text-indigo-700',
+  'bg-fuchsia-50 text-fuchsia-700',
+]
+
+function corPerfilCustomizado(nome: string): string {
+  return CUSTOM_PERFIL_COLORS[nome.charCodeAt(0) % CUSTOM_PERFIL_COLORS.length]
+}
+
+function perfilConfig(perfil: string, customizados: PerfilCustomizado[]): { label: string; cls: string } {
+  if (PERFIS[perfil]) return PERFIS[perfil]
+  const custom = customizados.find(p => p.keycloakRoleName === perfil)
+  if (custom) return { label: custom.nome, cls: corPerfilCustomizado(custom.nome) }
+  return { label: perfil, cls: 'bg-ds-input text-ds-mid' }
+}
+
+function PerfilBadge({ perfil, customPerfis }: { perfil: string; customPerfis: PerfilCustomizado[] }) {
+  const cfg = perfilConfig(perfil, customPerfis)
   return (
     <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-semibold ${cfg.cls}`}>
       {cfg.label}
@@ -99,6 +125,7 @@ const PAGE_SIZES = [10, 25, 50]
 
 export function UsersPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
+  const [perfisCustomizados, setPerfisCustomizados] = useState<PerfilCustomizado[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
   const [loadingId, setLoadingId]     = useState<string | null>(null)
@@ -125,7 +152,9 @@ export function UsersPage() {
     setLoading(true)
     setError(null)
     try {
-      setUsuarios(await usersApi.listar())
+      const [usuariosData, perfisData] = await Promise.all([usersApi.listar(), perfisApi.listar()])
+      setUsuarios(usuariosData)
+      setPerfisCustomizados(perfisData)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar usuários')
     } finally {
@@ -163,6 +192,12 @@ export function UsersPage() {
     setUsuarios(prev => [novo, ...prev])
     setShowInvite(false)
   }
+
+  // ── Perfis disponíveis (5 legados + customizados carregados em runtime) ──
+  const perfilOptions = useMemo(() => [
+    ...PERFIL_OPTIONS_LEGADOS,
+    ...perfisCustomizados.map(p => ({ value: p.keycloakRoleName, label: p.nome })),
+  ], [perfisCustomizados])
 
   // ── Stats ──
   const stats = useMemo(() => ({
@@ -218,7 +253,7 @@ export function UsersPage() {
         />
         <StatCard
           icon={Shield}    label="Perfis em Uso"        value={stats.perfis}
-          sub={`de ${PERFIL_OPTIONS.length} disponíveis`} iconBg="bg-violet-50" iconColor="text-violet-600"
+          sub={`de ${perfilOptions.length} disponíveis`} iconBg="bg-violet-50" iconColor="text-violet-600"
         />
       </div>
 
@@ -254,7 +289,7 @@ export function UsersPage() {
             className="py-1.5 px-3 text-sm border border-ds-border rounded-lg bg-white text-ds-mid focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
           >
             <option value="">Todos os perfis</option>
-            {PERFIL_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            {perfilOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
           <select
             value={filterStatus}
@@ -333,14 +368,14 @@ export function UsersPage() {
                     <div className="flex flex-col gap-1">
                       <p className="text-xs font-medium text-ds-light">Perfil</p>
                       <div className="flex items-center gap-2">
-                        <PerfilBadge perfil={u.perfil} />
+                        <PerfilBadge perfil={u.perfil} customPerfis={perfisCustomizados} />
                         <select
                           value={u.perfil}
                           disabled={loadingId === u.id}
                           onChange={e => handlePerfilChange(u, e.target.value)}
                           className="py-1 px-2 text-xs border border-ds-border rounded-lg bg-white text-ds-mid focus:outline-none focus:border-primary disabled:opacity-50 max-w-[7rem]"
                         >
-                          {PERFIL_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                          {perfilOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                         </select>
                       </div>
                     </div>
@@ -406,7 +441,7 @@ export function UsersPage() {
                           onChange={e => handlePerfilChange(u, e.target.value)}
                           className="py-1 px-2 text-xs border border-ds-border rounded-lg bg-white text-ds-mid focus:outline-none focus:border-primary disabled:opacity-50"
                         >
-                          {PERFIL_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                          {perfilOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                         </select>
                       </TD>
                       <TD>

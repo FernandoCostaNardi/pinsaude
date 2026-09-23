@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal, Button, Input, Alert } from '@pinsaude/ui'
 import { usersApi, type ConvitePayload, type Usuario } from '../api/usersApi'
+import { perfisApi } from '../api/perfisApi'
 
-const PERFIS = [
+const PERFIS_LEGADOS = [
   { value: 'medico',     label: 'Médico'      },
   { value: 'operacao',   label: 'Operação'    },
   { value: 'financeiro', label: 'Financeiro'  },
@@ -19,6 +20,16 @@ export function InviteUserModal({ onClose, onSaved }: Props) {
   const [form, setForm]     = useState<ConvitePayload>({ email: '', nome: '', perfil: 'operacao' })
   const [loading, setLoading] = useState(false)
   const [error, setError]   = useState<string | null>(null)
+  const [perfisOptions, setPerfisOptions] = useState(PERFIS_LEGADOS)
+
+  useEffect(() => {
+    perfisApi.listar()
+      .then(customizados => setPerfisOptions([
+        ...PERFIS_LEGADOS,
+        ...customizados.map(p => ({ value: p.keycloakRoleName, label: p.nome })),
+      ]))
+      .catch(() => {}) // falha ao carregar perfis customizados não impede convidar com um papel legado
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -61,7 +72,7 @@ export function InviteUserModal({ onClose, onSaved }: Props) {
             onChange={e => setForm(f => ({ ...f, perfil: e.target.value }))}
             className="block w-full rounded-lg border border-ds-border px-3 py-2.5 text-sm text-ds-text bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary"
           >
-            {PERFIS.map(p => (
+            {perfisOptions.map(p => (
               <option key={p.value} value={p.value}>{p.label}</option>
             ))}
           </select>

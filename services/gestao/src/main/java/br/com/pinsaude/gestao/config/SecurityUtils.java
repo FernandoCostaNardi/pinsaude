@@ -46,6 +46,15 @@ public class SecurityUtils {
         return null;
     }
 
+    public static String currentUserEmail() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth instanceof JwtAuthenticationToken token) {
+            String email = token.getToken().getClaimAsString("email");
+            return email != null ? email : token.getToken().getClaimAsString("preferred_username");
+        }
+        return null;
+    }
+
     private static boolean hasRole(String role) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         return auth != null && auth.getAuthorities().stream()

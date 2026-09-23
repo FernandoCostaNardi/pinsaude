@@ -6995,6 +6995,213 @@ array explícito antes de invocar — `$args = @("package", "-pl", ":pinsaude-ge
 (`@args` explícito) em vez de tokens soltos sempre que a chamada `mvn` no PowerShell combinar
 `-pl :modulo` com uma ou mais flags `-D`.
 
+### PERFIL-04 — `PerfilService`/`PerfilController`, CRUD de perfis customizados
+`services/gestao` ganhou o primeiro endpoint que cria uma **realm role composta** no
+Keycloak (`perfil_custom_<uuid>`), cujos filhos são as `perm_*` escolhidas (PERFIL-01/ADR-004).
+`KeycloakAdminService` ganhou `createRole`/`deleteRole`/`getRoleComposites`/
+`replaceRoleComposites`/`countUsersWithRole`, mesmo padrão `RestClient` já usado por
+`assignRole`/`removeRole`. `replaceRoleComposites` faz **replace completo** (busca os
+composites atuais, `DELETE` de todos, `POST` do novo conjunto) — mais simples que diff,
+aceitável porque o número de `perm_*` por perfil é pequeno. Editar um perfil já em uso **nunca
+toca em usuário nenhum diretamente** — a expansão do papel composto acontece a cada emissão de
+token, então a mudança já propaga sozinha no próximo login de quem tem esse perfil atribuído
+(confirmado testando: atribuir/remover a role de um usuário via Admin API direto, sem passar
+pelo `PerfilService`, é só para simular "perfil em uso" no teste do bloqueio de exclusão).
+
+### ⚠️ `@CreationTimestamp`/`@UpdateTimestamp` fica `null` na resposta imediata do `POST` se só capturar o retorno de `repo.save(...)` — precisa de `saveAndFlush`
+Para uma entidade com `@Id` **atribuído manualmente em Java** (sem `@GeneratedValue` — mesmo
+padrão de `PerfilCustomizado`, EPIC-14.1 `DadosCivisMedico`, etc.), o padrão já estabelecido no
+projeto é capturar o retorno de `repo.save(...)` (`var saved = ...Repository.from(repo.save(x))`,
+visto em `ChecklistCondutaResponse`/`CadastroPublicoService`) — mas isso **não é suficiente**
+quando a entidade tem `@CreationTimestamp`/`@UpdateTimestamp` e o campo é lido de volta
+**imediatamente**, dentro do mesmo método `@Transactional`, para montar a resposta HTTP. Erro
+reproduzido e confirmado empiricamente em `PerfilService.criar()`: mesmo com `perfil =
+repo.save(perfil)`, o `POST /api/perfis` retornava `"createdAt":null,"updatedAt":null` — mas um
+`GET` logo em seguida já mostrava os valores corretos. Causa: o gerador do Hibernate para esses
+campos só popula o valor no momento do `INSERT`/`UPDATE` físico, que fica **deferido até o commit
+da transação** por padrão (Spring não força flush a cada `save()`); capturar o retorno de
+`save()` resolve o problema de identidade de objeto (merge() vs a instância original), mas não
+resolve o timing do flush. **Solução:** trocar `repo.save(perfil)` por `repo.saveAndFlush(perfil)`
+nos dois pontos (`criar()`/`atualizar()`) — força o `INSERT`/`UPDATE` a acontecer ali mesmo,
+dentro da transação, e só então os campos gerados ficam populados na instância retornada.
+Esse bug nunca tinha aparecido antes no projeto porque nenhum outro DTO de resposta expõe um
+campo `@CreationTimestamp`/`@UpdateTimestamp` que seja lido no mesmo request que cria a
+entidade — `ChecklistCondutaResponse`, por exemplo, nem expõe `createdAt` (só `verificadoEm`,
+setado manualmente, não gerado). **Regra prática:** sempre que uma entidade nova expuser
+`createdAt`/`updatedAt` gerados automaticamente **e** o service precisar devolver esses valores
+na mesma chamada que cria/atualiza a linha, usar `saveAndFlush` em vez de `save` — testado e
+confirmado via chamada HTTP real (`curl`), não só revisão de código.
+
+### Rota nova em `services/gestao` — sempre 2 gateways a atualizar (dev + prod), nunca só um
+`gateway/src/main/resources/application.yml` (dev, porta 8086) **e**
+`tools/deploy/gateway-application-prod.yml` (prod, porta 8186) precisam da mesma rota nova
+(`/api/perfis/**`) — esquecer o segundo faz a rota funcionar em dev e dar 404 em produção sem
+nenhum aviso. Mesmo padrão de "toda rota nova precisa dos dois arquivos" já documentado em
+[[project-prod-ports]] para o `gateway/application.yml` em geral, agora confirmado
+especificamente para `/api/perfis`.
+
+### Editar `gateway/src/main/resources/application.yml` quando já existe um override local não commitado
+Esse arquivo já tinha uma mudança local não commitada (porta `8090`→`8091`, workaround do
+conflito de porta documentado neste mesmo arquivo) antes de eu começar a editar. Editar direto
+por cima misturaria as duas mudanças no mesmo commit. Solução: `git stash push -- <arquivo>`
+isola só esse arquivo (volta pro estado do HEAD), edita/commita a mudança pretendida
+normalmente, depois `git stash pop` reaplica o override local por cima do commit novo — as duas
+mudanças continuam existindo, cada uma no lugar certo (uma commitada, outra só local).
+
+### PERFIL-05 — `convidar()` quebrado em produção para praticamente todo `gestao` real (só a conta seed funcionava)
+`UsuarioController.convidar()` tinha um helper `currentCnpjId()` que **lançava 403** se o token
+não tivesse `cnpj_id` — mas só a conta seed (`gestao@pinsaude.com.br`) tem esse atributo; os
+`gestao` reais de produção não têm. Corrigido chamando `SecurityUtils.currentCnpjTenant()`
+(nullable) direto no controller, removendo o helper que lançava. `KeycloakAdminService.createUser`
+fazia `Map.of("cnpj_id", List.of(cnpjId))` incondicional — com `cnpjId=null` isso é NPE
+(`Map.of`/`List.of` não aceitam `null`), mascarado atrás do 403 anterior (nunca chegava a
+executar). Corrigido com o mesmo guard já usado em `onboarding/KeycloakAdminService.
+createUserDesabilitado` (`if (cnpjId != null && !cnpjId.isBlank())`).
+
+**Teste real do bug, não só do fix**: criado um usuário `gestao` de teste **sem** `cnpj_id`
+(via Admin API), obtido um token ROPC de verdade pra ele, e confirmado que `POST /api/usuarios`
+com esse token — reproduzindo exatamente o cenário de produção — cria o usuário normalmente
+(`201`), sem 403 e sem NPE. Usuário de teste removido ao final.
+
+### `UsuarioService`/`KeycloakAdminService` passam a reconhecer perfis customizados (PERFIL-04)
+`PERFIS_VALIDOS` (5 papéis fixos) virou `perfilValido(String)` — aceita os 5 legados **ou**
+qualquer `keycloak_role_name` presente em `perfis_customizados`
+(`perfilRepo.findByKeycloakRoleName(perfil).isPresent()`), usado em `convidar()`/`alterarPerfil()`.
+`getUserRealmRoles()` filtrava só `PERFIS_NEGOCIO::contains` — um usuário com perfil customizado
+sempre voltava com `perfil` vazio em `toDto()` e **sumia** da listagem (`listar()` filtra
+`!perfil.isBlank()`). Corrigido aceitando também `name.startsWith("perfil_custom_")`.
+
+**Achado colateral corrigido de brinde**: esse mesmo filtro quebrado também fazia
+`alterarPerfil()` **nunca remover** um perfil customizado antigo ao trocar de perfil — o loop
+`for (role : rolesAtuais) keycloak.removeRole(...)` simplesmente não via a role customizada
+(filtrada fora), então um usuário trocando de perfil customizado pra um papel legado ficava com
+**as duas roles atribuídas ao mesmo tempo** no Keycloak (a nova + a antiga órfã, nunca removida).
+Confirmado ao vivo: criado um perfil customizado de teste, convidado um usuário com ele
+(`perfil` retornado corretamente preenchido, não mais vazio), depois trocado pra `operacao` via
+`alterarPerfil()` — `GET .../role-mappings/realm` direto no Keycloak confirmou que a role
+customizada **saiu** e só `operacao` ficou. Sem o fix do item anterior, esse teste teria mostrado
+as duas roles coexistindo.
+
+### `curl -d "[$var]"` com uma role representation do Keycloak quebra por causa do mesmo bug de encoding já documentado (PERFIL-02)
+Ao montar manualmente um teste (atribuir a role `gestao` a um usuário via Admin API bruta, só
+pra simular o cenário de bug), `curl -X POST .../role-mappings/realm -d "[$ROLE_REP]"` retornou
+`400` — a `description` da role `gestao` tem travessão + acento (`"Gestor com acesso a
+relatórios — requer MFA"`), e interpolar essa string num `-d "..."` do Git Bash corrompe o JSON,
+exatamente o mesmo bug já documentado no PERFIL-02. **Qualquer payload que incorpore uma
+resposta já vinda do Keycloak** (não só um literal digitado à mão) pode carregar acentuação sem
+aviso — a regra prática já vale: gravar em arquivo (`curl ... > role.json`) e usar
+`curl --data-binary @arquivo.json` em vez de interpolar a variável no `-d "..."`.
+
+### PERFIL-06 — `menuCatalog.ts` + Sidebar reconhecendo perfil customizado
+`navItems` extraído de `Sidebar.tsx` para `apps/web/src/config/menuCatalog.ts` — refactor
+mecânico, cada item ganhando `perm?: string` (17 ocorrências, 15 valores distintos — bate
+exatamente com o catálogo de 15 `perm_*` do ADR-004; `perm_medicos` e `perm_conciliacao`
+aparecem 2× porque cobrem 2 telas cada). `Dashboard` e as 4 telas do Portal do Médico **não**
+recebem `perm` — de propósito, fora do catálogo (ver ADR-004).
+
+**Algoritmo em `Sidebar.tsx`**: usuário com um dos 5 papéis legados segue o filtro de sempre
+(`item.roles.some(r => userRoles.includes(r))`) — código idêntico, zero regressão, já que
+nenhum papel legado bate com `perfil_custom_*`. Usuário cujo `realm_access.roles` contém
+**qualquer** role `perfil_custom_*` usa um caminho totalmente diferente
+(`resolveVisibleItemsPorPerfilCustomizado`): nunca vê o Portal do Médico (`item.roles.includes
+('medico')` → `false` sempre), sempre vê itens sem `perm` (ex.: Dashboard — universal, sem
+operação sensível própria), e só vê os demais se `perm` estiver no array `permissoes` do perfil
+(buscado uma vez via `perfisApi.listar()`, `GET /api/perfis`, `isAuthenticated()` — qualquer
+papel logado pode ler). Um usuário nunca tem os dois tipos de role ao mesmo tempo através do
+próprio app — `alterarPerfil()` (PERFIL-05) sempre faz replace completo dos roles de negócio.
+
+**`perfisApi.ts` novo** — só `listar()` por enquanto (o suficiente para esta task); `criar`/
+`atualizar`/`excluir` ficam para as telas de CRUD (PERFIL-07/08), que os criam quando precisarem.
+
+### ⚠️ Verificação de UI bloqueada neste ambiente: Chrome força `https://localhost:3000` (sem TLS ali) mesmo sem HSTS do servidor
+Tentativa de testar esta mudança no navegador (`localhost:3000`, `127.0.0.1:3000`, aba nova,
+esperas de até 7s) sempre resultou na URL virando `https://` sozinha e a página caindo num erro
+de rede puro (`Frame ... is showing error page`, sem console, sem nenhuma request de rede
+registrada) — confirmado via `curl -I` que o servidor Vite **não** envia
+`Strict-Transport-Security` nem redirect algum, então a causa é 100% do lado do Chrome (provável
+"Sempre usar conexões seguras"/HTTPS-Only Mode ativo no perfil), não do app. A ferramenta
+`navigate` recusa URLs `chrome://` (`"Can't interact with browser-internal or unparseable
+URLs"`), e `screenshot`/`javascript_tool` falham numa página de erro de rede — não há como abrir
+`chrome://settings/security` nem clicar em nada via este conjunto de ferramentas de automação
+pra desligar o modo. **Se isso se repetir**: pedir pro usuário desligar "Sempre usar conexões
+seguras" em `chrome://settings/security` manualmente, ou testar por fora da automação.
+**Verificação alternativa usada nesta task**: `tsc --noEmit` limpo nos dois arquivos (prova a
+tipagem/wiring) + diff de texto normalizado por espaço entre o `navItems` antigo (dentro do
+`Sidebar.tsx`) e o novo (`menuCatalog.ts`, com os campos `perm` removidos) confirmando **zero
+drift semântico** nos campos `to`/`label`/`icon`/`roles`/`end` — mais forte que uma inspeção
+visual, mas não substitui um teste real de UI; a task fica sinalizada para uma verificação manual
+rápida no navegador do usuário antes do deploy.
+
+### PERFIL-07 — Aba "Perfis" dentro de `/usuarios` (shell + tab + modal)
+`App.tsx` troca a rota `/usuarios` de `<UsersPage/>` direto para `<UsuariosShellPage/>`
+(shell novo com tab bar de 2 abas — Usuários/Perfis — mesmo padrão visual de
+`MedicoPerfilPage.tsx`), que alterna entre `<UsersPage/>` (**sem nenhuma mudança interna**,
+igual pedido pela task) e `<PerfisTab/>` (novo). `perfisApi.ts` ganhou `criar`/`atualizar`/
+`excluir` (só faltavam desde PERFIL-06, que só precisava de `listar`).
+
+**`menuCatalog.ts` ganhou `area` por item + `permCatalog` derivado** — um novo campo `area:
+Area` (`'Cadastros' | 'Faturamento' | 'Fiscal' | 'Financeiro' | 'Gestão'`) em cada um dos 17
+itens com `perm`, e um `permCatalog` calculado (IIFE no módulo, roda uma vez no import) que
+**deduplica por `perm`** — 15 entradas, não 17, porque `perm_medicos` (Médicos+Aprovação) e
+`perm_conciliacao` (Upload Extrato+Conciliação) cobrem 2 telas cada; o label da entrada
+deduplicada junta os dois nomes (`"Médicos / Aprovação"`). O checklist do `PerfilFormModal`
+usa `permCatalog`, não `navItems` direto — evita mostrar 2 checkboxes que fariam exatamente a
+mesma coisa.
+
+**`PerfisTab.tsx` — quantidade de colaboradores por perfil sem chamada extra ao backend**:
+carrega `perfisApi.listar()` e `usersApi.listar()` em paralelo (`Promise.all`), monta um
+`Map<keycloakRoleName, count>` contando `usuarios.filter(u => u.perfil === ...)` — o campo
+`Usuario.perfil` (retornado por `GET /api/usuarios`) é literalmente o `keycloakRoleName` do
+perfil customizado quando aplicável (confirmado via chamada real: `perfil":
+"perfil_custom_<uuid>"`), então o cruzamento é uma comparação de string direta, sem nenhum
+mapeamento adicional. Excluir um perfil em uso fica com o botão **desabilitado** (não só
+mostra erro depois de tentar) — `disabled={emUso > 0}` com `title` explicando o motivo,
+espelhando a mensagem exata que o backend devolveria em caso de bypass (`422 "Não é possível
+excluir um perfil em uso por N colaborador(es)"` — confirmado que o backend ainda bloqueia de
+verdade mesmo se o botão fosse forçado via DevTools).
+
+**Confirmação com dado real, não só leitura de tipos**: `POST`/`PUT`/`DELETE` `/api/perfis`
+testados via `curl` com o payload exato que `PerfilFormModal` monta (`{nome, permissoes:
+string[]}`) — resposta bate 100% com a interface `PerfilCustomizado` do `perfisApi.ts`. Fluxo
+completo também testado: criar perfil → convidar usuário com ele (reaproveitando PERFIL-05) →
+`GET /api/usuarios` confirma `perfil` = `keycloakRoleName` → `DELETE` bloqueado (`422`,
+mensagem exata) → remover vínculo → `DELETE` funciona (`204`) → lista final vazia.
+
+**Mesmo bloqueio de UI do PERFIL-06** (Chrome forçando `https://localhost:3000`) reproduzido
+de novo aqui, mesma causa, mesma ausência de solução via as ferramentas de automação — não
+repetido em detalhe (ver seção do PERFIL-06 acima). Compensado com a mesma estratégia:
+`tsc --noEmit` + `eslint` limpos, mais o teste de integração real contra a API descrito acima
+(mais forte que o do PERFIL-06, que era só leitura — aqui exercitei escrita completa).
+
+### PERFIL-08 — `UsersPage`/`InviteUserModal` reconhecendo perfis customizados
+Os dois dicionários fixos de 5 papéis (`UsersPage.tsx:PERFIS`, `InviteUserModal.tsx:PERFIS`)
+continuam existindo como a base **legada** — nunca removidos, já que `perfil` é `string` livre
+ponta a ponta no contrato (`ConvitePayload.perfil`/`AlterarPerfilRequest`, nenhuma mudança de
+tipo necessária, só a lista de opções exibidas). Cada tela agora carrega `perfisApi.listar()`
+(`UsersPage` em paralelo com `usersApi.listar()` via `Promise.all`, já que ambas já estavam no
+`load()`; `InviteUserModal` em um `useEffect` próprio no mount, com `.catch(() => {})` —
+falha ao carregar perfis customizados **não** impede convidar com um papel legado, os 5 padrão
+continuam disponíveis mesmo se a API de perfis cair) e mescla num array combinado
+(`perfilOptions`/`perfisOptions`, `useMemo`/`useState` conforme o componente).
+
+**Cor de badge determinística para perfil customizado** — mesmo princípio de
+`UserAvatar`/`AVATAR_COLORS` (já existente no arquivo, indexado por `nome.charCodeAt(0) %
+tamanho`), replicado para `CUSTOM_PERFIL_COLORS` (8 combinações bg/text do Tailwind, todas via
+`extend.colors` — nunca custom `ds-*`, então nenhum risco do bug de classe morta já documentado
+em EPIC-13.21 `bg-ds-surface`). `perfilConfig(perfil, customizados)` resolve primeiro contra o
+dicionário legado fixo (`O(1)`), só cai no `Array.find` pelos customizados (mais caro, mas a
+lista é pequena) quando não é um dos 5 papéis conhecidos.
+
+**Verificação**: `tsc --noEmit` + `eslint` limpos, mais confirmação com dado real (não só
+tipo) — criado um perfil de teste com nome real (`"Atendente Financeiro"`), conferido que a API
+retorna exatamente `nome`/`keycloakRoleName` (os dois campos que a lógica de merge consome), e
+rodada a função `corPerfilCustomizado` de verdade contra 3 nomes reais de perfis criados ao
+longo desta sessão — todas as 3 caíram em cores diferentes e válidas. Mesmo bloqueio de UI do
+PERFIL-06/07 (Chrome forçando HTTPS local) impediu o teste visual da tela; compensado com a
+mesma estratégia já documentada — recomenda-se checagem manual antes do deploy.
+
+---
+
 ### PERFIL-09 — `MedicoController` → `perm_medicos` (primeira aplicação real do catálogo num controller)
 Todas as 28 anotações `@PreAuthorize` de `MedicoController.java` ganharam `or
 hasRole('perm_medicos')` — **adição em bloco, sem exceção**, incluindo as 4 que hoje são
@@ -7471,6 +7678,60 @@ sozinho, sem depender de nenhum estado compartilhado entre os serviços.
 
 Suite: **36/36 testes verdes** em `services/ledger` — primeira vez que este módulo é testado
 nesta epic, sem nenhuma falha pré-existente.
+
+---
+
+## Incidente: 5 PRs "merged" no GitHub nunca chegaram na `main` (PERFIL-04 a 08)
+
+### Sintoma: código de uma feature "concluída" simplesmente não existe na branch atual
+Ao iniciar a PERFIL-21, uma investigação de rotina (checar se o frontend já tinha algum
+`perm_usuarios`/`perm_gestao` referenciado, antes de decidir se valia a pena aplicar) revelou que
+**nenhum** arquivo do frontend tinha qualquer referência a `perm_*` — nem `menuCatalog.ts`
+existia. No backend, `services/gestao/src/main/java/.../controller/PerfilController.java` e
+`PerfilService.java` também não existiam no source tree, **apesar de `target/classes/` ainda ter
+os `.class` compilados** de uma sessão anterior (`git status` limpo, então não eram arquivos
+deletados sem commit — simplesmente nunca tinham chegado ali).
+
+### Causa raiz: PR aberto contra o branch anterior da sequência, não contra `main`
+As PRs #207 a #211 (PERFIL-04 "CRUD de perfis customizados" até PERFIL-08 "UsersPage
+reconhecendo perfis") **todas mostravam "Merged" no GitHub** — mas `gh pr view <n> --json
+baseRefName` revelou que cada uma tinha sido aberta com `base` apontando para a branch da task
+**anterior** (`feature/perfil-03-flyway-gestao`, depois `feature/perfil-04-perfil-crud`, etc.),
+não para `main`. PERFIL-03 (`PR #206`) tinha sido corretamente aberta e mesclada contra `main` —
+mas a PR seguinte (#207) foi criada a partir da branch local `feature/perfil-03-flyway-gestao`
+**sem antes atualizá-la/recriá-la a partir da `main` pós-merge**, então o `gh pr create` (ou a
+criação manual) herdou a branch de origem errada como base. Isso empilhou 5 PRs em cadeia
+(`207→base 03`, `208→base 04`, `209→base 05`, `210→base 06`, `211→base 07`) — cada merge
+individual é tecnicamente válido (head mesclado no seu base), mas a cadeia inteira nunca reencontra
+`main`, formando um "beco sem saída" que o GitHub mostra como 5 PRs verdes sem nenhum aviso.
+
+### Por que passou despercebido por 12 tasks (PERFIL-09 a 20)
+Nenhuma das tasks seguintes desta epic tocou os arquivos afetados (`services/gestao/.../Perfil*`,
+`apps/web/.../menuCatalog.ts`, `PerfisTab.tsx`, etc.) — todas mexiam em controllers de outros
+serviços (`onboarding`, `faturamento`, `fiscal`, `ledger`). O padrão de verificação já estabelecido
+nesta epic (`git branch --show-current` + `gh pr view <PR anterior> --json state,mergedAt` antes de
+cada nova branch) só confirma que **a PR imediatamente anterior da própria sequência** foi
+mesclada — nunca checou se a cadeia inteira, remontando até PERFIL-01/02/03, de fato converge em
+`main`. Esse é exatamente o tipo de checagem que faltou.
+
+### Correção aplicada
+`git merge-tree` confirmou só **1 arquivo em conflito** (`CLAUDE.md`, aditivo dos dois lados — as
+seções PERFIL-04..08 de um lado, PERFIL-09..20 do outro) e **zero conflitos em código** (19 outros
+arquivos, incluindo os 8 novos). Resolvido reordenando cronologicamente (PERFIL-04..08 antes de
+PERFIL-09..20, consistente com a convenção de todo o resto do arquivo) via extração/remontagem com
+`sed` (arquivo grande demais para um `Edit` único). Validado com `mvn compile`+`test` em
+`services/gestao` (34/34 verdes) e `tsc --noEmit` no frontend (limpo) **antes** de fechar o merge
+commit — confirma que o código recuperado é são, não só que o merge foi mecanicamente limpo.
+
+### Lição para toda sessão futura desta epic (ou qualquer epic com PRs em sequência)
+**Nunca abrir uma PR nova a partir de uma branch local de uma task anterior sem primeiro
+confirmar/recriar essa branch a partir da `main` pós-merge.** O padrão seguro já usado
+consistentemente a partir da PERFIL-09 (stash → `checkout main` → `pull` → `checkout -b
+<nova-branch>` → stash pop) é a proteção correta — mas só protege a partir do momento em que é
+aplicado; não corrige retroativamente uma cadeia que já começou torta. Ao retomar QUALQUER epic
+sequencial após um hiato longo (troca de sessão, reset de contexto), vale conferir não só a PR
+mais recente, mas se a **base** dela era de fato `main` (`gh pr view <n> --json baseRefName`) —
+um `state: MERGED` sozinho não garante que o conteúdo chegou onde deveria.
 
 ---
 

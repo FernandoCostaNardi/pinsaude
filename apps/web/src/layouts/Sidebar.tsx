@@ -1,71 +1,49 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Stethoscope,
-  Building2,
-  Hospital,
-  ClipboardList,
-  FileText,
-  Banknote,
-  ArrowLeftRight,
-  BarChart3,
-  Users,
-  BookOpen,
-  X,
-  ClipboardCheck,
-  SlidersHorizontal,
-  Layers,
-  HeartPulse,
-  TrendingUp,
-  PlusCircle,
-  Upload,
-  Wallet,
-  CalendarDays,
-  PackageCheck,
-} from 'lucide-react'
+import { BookOpen, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
-
-const BACKOFFICE = ['operacao', 'gestao', 'financeiro', 'contabil']
-
-const navItems = [
-  // ── Portal do Médico ─────────────────────────────────────────────────────────
-  { to: '/portal/dashboard',     label: 'Meu Portal',        icon: HeartPulse,       roles: ['medico'], end: true  },
-  { to: '/portal/extrato',       label: 'Extrato',           icon: TrendingUp,       roles: ['medico'], end: true  },
-  { to: '/portal/producao/nova', label: 'Informar Produção', icon: PlusCircle,       roles: ['medico'], end: true  },
-  { to: '/portal/frequencias',   label: 'Frequências',       icon: CalendarDays,     roles: ['medico'], end: true  },
-  // ── Backoffice ───────────────────────────────────────────────────────────────
-  { to: '/',                       label: 'Dashboard',        icon: LayoutDashboard,  roles: BACKOFFICE,                        end: true  },
-  { to: '/medicos',                label: 'Médicos',          icon: Stethoscope,      roles: ['gestao', 'operacao'],            end: false },
-  { to: '/medicos/aprovacao',      label: 'Aprovação',        icon: ClipboardCheck,   roles: ['gestao', 'operacao'],            end: true  },
-  { to: '/empresas',               label: 'Empresas',         icon: Building2,        roles: ['gestao'],                        end: true  },
-  { to: '/tomadores',              label: 'Tomadores',        icon: Hospital,         roles: BACKOFFICE,                        end: true  },
-  { to: '/producao',               label: 'Produção',         icon: ClipboardList,    roles: BACKOFFICE,                        end: false },
-  { to: '/frequencias',            label: 'Frequências',      icon: CalendarDays,     roles: BACKOFFICE,                        end: true  },
-  { to: '/fechamentos',            label: 'Fechamento',       icon: PackageCheck,     roles: BACKOFFICE,                        end: true  },
-  { to: '/fiscal/config',          label: 'Fiscal',           icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'], end: true },
-  { to: '/notas',                  label: 'Notas',            icon: FileText,         roles: BACKOFFICE,                        end: true  },
-  { to: '/notas/lote',             label: 'Lotes NFS-e',      icon: Layers,           roles: ['operacao', 'gestao', 'contabil', 'financeiro'], end: true },
-  { to: '/repasses',               label: 'Repasses',         icon: Banknote,         roles: BACKOFFICE,                        end: true  },
-  { to: '/conciliacao/upload',     label: 'Upload Extrato',   icon: Upload,           roles: BACKOFFICE,                        end: true  },
-  { to: '/conciliacao/assistida',  label: 'Conciliação',      icon: ArrowLeftRight,   roles: BACKOFFICE,                        end: true  },
-  { to: '/conciliacao/caixa',      label: 'Posição de Caixa', icon: Wallet,           roles: BACKOFFICE,                        end: true  },
-  { to: '/financeiro/ledger',      label: 'Extrato Ledger',   icon: BookOpen,         roles: ['financeiro', 'gestao', 'contabil'], end: true },
-  { to: '/gestao',                 label: 'Gestão',           icon: BarChart3,        roles: ['gestao'],                        end: true  },
-  { to: '/usuarios',               label: 'Usuários',         icon: Users,            roles: ['gestao'],                        end: true  },
-]
+import { navItems, type NavItem } from '../config/menuCatalog'
+import { perfisApi, type PerfilCustomizado } from '../api/perfisApi'
 
 interface SidebarProps {
   mobileOpen: boolean
   onMobileClose: () => void
 }
 
+/**
+ * Usuário com um dos 5 papéis legados segue o caminho de código idêntico ao de sempre —
+ * nenhum papel legado bate com `perfil_custom_*`, então essa função nunca é chamada pra eles.
+ * Um usuário com perfil customizado nunca vê o Portal do Médico (fora do catálogo, role
+ * `medico` fixa) e sempre vê telas sem `perm` no catálogo (ex.: Dashboard — agrega dados,
+ * sem operação sensível própria); as demais só aparecem se a permissão estiver no perfil.
+ */
+function resolveVisibleItemsPorPerfilCustomizado(
+  keycloakRoleName: string,
+  perfis: PerfilCustomizado[]
+): NavItem[] {
+  const perfil = perfis.find(p => p.keycloakRoleName === keycloakRoleName)
+  const permissoes = new Set(perfil?.permissoes ?? [])
+  return navItems.filter(item => {
+    if (item.roles.includes('medico')) return false
+    if (!item.perm) return true
+    return permissoes.has(item.perm)
+  })
+}
+
 export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const { user } = useAuth()
   const userRoles = user?.realm_access?.roles ?? []
+  const [perfis, setPerfis] = useState<PerfilCustomizado[]>([])
 
-  const visibleItems = navItems.filter(
-    item => item.roles === null || item.roles.some(r => userRoles.includes(r))
-  )
+  useEffect(() => {
+    perfisApi.listar().then(setPerfis).catch(() => setPerfis([]))
+  }, [])
+
+  const perfilCustomizadoRole = userRoles.find(r => r.startsWith('perfil_custom_'))
+
+  const visibleItems = perfilCustomizadoRole
+    ? resolveVisibleItemsPorPerfilCustomizado(perfilCustomizadoRole, perfis)
+    : navItems.filter(item => item.roles === null || item.roles.some(r => userRoles.includes(r)))
 
   const content = (
     <nav className="flex flex-col h-full bg-white">

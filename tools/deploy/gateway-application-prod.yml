@@ -22,6 +22,10 @@ spring:
           uri: http://localhost:8186
           predicates:
             - Path=/api/usuarios,/api/usuarios/**
+        - id: gestao-perfis
+          uri: http://localhost:8186
+          predicates:
+            - Path=/api/perfis,/api/perfis/**
         - id: faturamento
           uri: http://localhost:8182
           predicates:

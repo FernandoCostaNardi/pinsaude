@@ -5,7 +5,7 @@ import { Shell }             from './layouts/Shell'
 import { LoginPage }         from './pages/LoginPage'
 import { CadastroMedicoWizardPage } from './pages/CadastroMedicoWizardPage'
 import { Dashboard }         from './pages/Dashboard'
-import { UsersPage }         from './pages/UsersPage'
+import { UsuariosShellPage } from './pages/UsuariosShellPage'
 import { EmpresasPage }      from './pages/EmpresasPage'
 import { TomadoresPage }     from './pages/TomadoresPage'
 import { MedicosPage }              from './pages/MedicosPage'
@@ -45,7 +45,7 @@ export default function App() {
             }
           >
             <Route path="/"            element={<Dashboard />} />
-            <Route path="/usuarios"    element={<UsersPage />} />
+            <Route path="/usuarios"    element={<UsuariosShellPage />} />
             <Route path="/medicos"             element={<MedicosPage />} />
             <Route path="/medicos/aprovacao"  element={<AprovacaoOnboardingPage />} />
             <Route path="/medicos/:id"        element={<MedicoPerfilPage />} />
