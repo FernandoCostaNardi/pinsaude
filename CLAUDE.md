@@ -7258,6 +7258,46 @@ Suite: **341/341 testes verdes** — mesmo módulo limpo já confirmado nas PERF
 
 ---
 
+## PERFIL-16 — faturamento · ConciliacaoController → perm_conciliacao + perm_caixa
+
+### Primeiro controller do catálogo com 2 `perm_*` diferentes — só possível porque cada endpoint tem sua própria anotação de método
+`ConciliacaoController` (Upload Extrato + Conciliação Assistida + Posição de Caixa) tinha, antes
+desta task, **9 `@PreAuthorize` idênticos** (`hasAnyRole('operacao','gestao','financeiro','contabil')`,
+um por método, nenhum de classe) — já decidido no ADR-004 que 8 vão para `perm_conciliacao` e 1
+(`GET /posicao-caixa`) vai para `perm_caixa`, mas só era viável **se os endpoints já estivessem
+fisicamente separados** (cada um com sua própria anotação de método, não uma única de classe
+cobrindo todos). Confirmado ao ler o controller: são de fato 9 anotações de método distintas,
+mesmo com o texto idêntico — a separação foi só uma questão de decidir qual `or hasRole(...)`
+vai em qual delas, não uma refatoração estrutural.
+
+**Aplicação:** editada primeiro a anotação de `getPosicaoCaixa` isoladamente (usando contexto
+suficiente no `old_string` do Edit pra ficar única), depois um único `Edit replace_all` aplicou
+`or hasRole('perm_conciliacao')` às 8 restantes (que já não batiam mais com a string exata de
+`getPosicaoCaixa`, agora com `perm_caixa`). Verificado por grep: `@PreAuthorize` = 9,
+`perm_conciliacao` = 8, `perm_caixa` = 1 — bate exatamente com o ADR-004.
+
+### Teste real — a validação mais importante desta task é a separação DENTRO do mesmo controller
+Além do padrão de sempre (positivo com cada `perm_*`, cross-domain contra outros controllers,
+regressão com papel legado), o teste crítico aqui foi confirmar que as **duas permissões não
+vazam uma para a outra dentro do próprio `ConciliacaoController`**:
+- Token só `perm_conciliacao` em `GET /posicao-caixa` (endpoint de `perm_caixa`) → **`403`**.
+- Token só `perm_caixa` em `GET /extratos` (endpoint de `perm_conciliacao`) → **`403`**.
+
+Sem essa granularidade de método (nenhuma anotação de classe cobrindo o controller inteiro), a
+separação em 2 permissões teria sido impossível — reforça o achado já documentado no ADR-004 de
+que `@PreAuthorize` por método (o padrão predominante no projeto) permite recortes mais finos que
+o controller inteiro sempre que a tela justificar.
+
+Os 8 endpoints de `perm_conciliacao` (incluindo o multipart `POST /extratos/upload`, que voltou
+`415` sem arquivo — mesmo padrão já visto na PERFIL-14) e o único de `perm_caixa` passaram
+`@PreAuthorize` sem nenhum `403`. Cross-domain: `perm_conciliacao` em `GET /api/tomadores` e
+`perm_caixa` em `GET /api/fechamentos` → `403` nos dois. Regressão: `operacao` (papel legado)
+continua `200` nos dois grupos de endpoints, sem nenhuma mudança de comportamento.
+
+Suite: **341/341 testes verdes** — mesmo módulo limpo já confirmado nas PERFIL-12/13/14/15.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
