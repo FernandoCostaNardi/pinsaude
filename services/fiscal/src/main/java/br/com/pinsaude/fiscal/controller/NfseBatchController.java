@@ -35,7 +35,7 @@ public class NfseBatchController {
      * Retorna 409 Conflict se já existe lote em andamento para a competência.
      */
     @PostMapping("/emitir")
-    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao')")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao') or hasRole('perm_notas_lote')")
     public ResponseEntity<LoteProgressoResponse> emitirLote(@Valid @RequestBody EmitirLoteRequest req) {
         return ResponseEntity.accepted().body(batchService.emitirLote(req.competencia()));
     }
@@ -45,7 +45,7 @@ public class NfseBatchController {
      * Finaliza o lote lazily se todas as notas foram processadas.
      */
     @GetMapping("/{loteId}/progresso")
-    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro')")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro') or hasRole('perm_notas_lote')")
     public ResponseEntity<LoteProgressoResponse> getProgresso(@PathVariable UUID loteId) {
         return ResponseEntity.ok(batchService.getProgresso(loteId));
     }
@@ -54,7 +54,7 @@ public class NfseBatchController {
      * Lista todos os lotes de emissão, do mais recente ao mais antigo.
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro')")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro') or hasRole('perm_notas_lote')")
     public ResponseEntity<List<LoteProgressoResponse>> listarLotes() {
         return ResponseEntity.ok(batchService.listarLotes());
     }
@@ -64,7 +64,7 @@ public class NfseBatchController {
      * Permite reprocessamento individual via POST /api/nfse/{notaId}/reprocessar.
      */
     @GetMapping("/{loteId}/erros")
-    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro')")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro') or hasRole('perm_notas_lote')")
     public ResponseEntity<List<NotaFiscalStatusResponse>> listarErros(@PathVariable UUID loteId) {
         return ResponseEntity.ok(batchService.listarErros(loteId));
     }

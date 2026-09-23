@@ -7400,6 +7400,34 @@ Suite: **88/88 testes verdes** — mesmo módulo limpo já confirmado na PERFIL-
 
 ---
 
+## PERFIL-19 — fiscal · NfseBatchController → perm_notas_lote
+
+### Menor controller desta epic até agora — 4 endpoints, 2 grupos, sem nenhum achado incidental
+`NfseBatchController` (`/api/nfse/lote` — disparo manual + acompanhamento de emissão de NFS-e em
+massa, EPIC-05.7) tem 4 `@PreAuthorize` de método, em 2 grupos:
+- `hasAnyRole('gestao','contabil','operacao')` (1×) — `emitirLote` (POST, dispara o lote).
+- `hasAnyRole('gestao','contabil','operacao','financeiro')` (3×) — `getProgresso`, `listarLotes`,
+  `listarErros` (leitura).
+
+`or hasRole('perm_notas_lote')` aplicado às 4 com 2 `Edit` (o segundo com `replace_all`),
+verificado por grep: `@PreAuthorize` = 4, `perm_notas_lote` = 4 — bate com o ADR-004.
+
+### Teste real — 4 endpoints, cross-domain contra as 2 permissões irmãs do mesmo serviço fiscal
+Todos os 4 endpoints testados com token **só** `perm_notas_lote` — nenhum `403` (`200` em
+`listarLotes`, `404` "Lote não encontrado" em `getProgresso`/`listarErros`, `400` Bean Validation
+em `emitirLote`). Regressão confirmada com um `financeiro` temporário: `GET /api/nfse/lote`
+(tier read, sempre teve acesso) → continua `200`; `POST /emitir` (tier write,
+`gestao,contabil,operacao` — `financeiro` nunca teve acesso) com corpo Bean-Validation-válido →
+continua `403` direto, sem a ambiguidade `@Valid`-antes-`@PreAuthorize` de outras tasks (o corpo
+já veio válido de propósito). Cross-domain: token `perm_notas_lote` em `GET /api/nfse`
+(`perm_notas`) e `GET /api/fiscal/regras-equiparacao` (`perm_fiscal`) → `403` nos dois — as 3
+permissões do serviço `fiscal` aplicadas até agora nesta epic (`perm_fiscal`, `perm_notas`,
+`perm_notas_lote`) continuam mutuamente isoladas.
+
+Suite: **88/88 testes verdes** — mesmo módulo limpo já confirmado nas PERFIL-17/18.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
