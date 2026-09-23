@@ -26,7 +26,7 @@ public class FechamentoController {
     }
 
     @GetMapping("/preview")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_fechamentos')")
     public ResponseEntity<FechamentoPreviewResponse> preview(
             @RequestParam UUID tomadorId,
             @RequestParam String competencia) {
@@ -34,21 +34,21 @@ public class FechamentoController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_fechamentos')")
     public ResponseEntity<FechamentoResponse> executar(
             @Valid @RequestBody FechamentoRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.executar(req));
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_fechamentos')")
     public ResponseEntity<List<FechamentoResponse>> listar(
             @RequestParam(required = false) UUID tomadorId) {
         return ResponseEntity.ok(service.listar(tomadorId));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_fechamentos')")
     public ResponseEntity<FechamentoResponse> buscarPorId(@PathVariable UUID id) {
         return ResponseEntity.ok(service.buscarPorId(id));
     }
@@ -56,7 +56,7 @@ public class FechamentoController {
     // ─── Status manual por médico (aba "Médicos" do Fechamento) ────────────────
 
     @GetMapping("/status-medicos")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_fechamentos')")
     public ResponseEntity<List<FechamentoMedicoStatusResponse>> listarStatusMedicos(
             @RequestParam UUID tomadorId,
             @RequestParam String competencia) {
@@ -64,7 +64,7 @@ public class FechamentoController {
     }
 
     @PutMapping("/status-medicos")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_fechamentos')")
     public ResponseEntity<FechamentoMedicoStatusResponse> salvarStatusMedico(
             @Valid @RequestBody FechamentoMedicoStatusRequest req) {
         return ResponseEntity.ok(service.salvarStatusMedico(req));
