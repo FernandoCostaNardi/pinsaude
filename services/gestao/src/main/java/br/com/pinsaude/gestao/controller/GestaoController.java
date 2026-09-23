@@ -10,7 +10,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/gestao")
-@PreAuthorize("hasRole('gestao')")
+@PreAuthorize("hasRole('gestao') or hasRole('perm_gestao')")
 public class GestaoController {
 
     @GetMapping

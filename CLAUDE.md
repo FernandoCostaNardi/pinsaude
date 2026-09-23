@@ -7735,6 +7735,52 @@ um `state: MERGED` sozinho não garante que o conteúdo chegou onde deveria.
 
 ---
 
+## PERFIL-21 — gestao · GestaoController + UsuarioController → perm_gestao / perm_usuarios
+
+Última task de aplicação do catálogo `perm_*` (ADR-004) — fecha o épico de Perfis de Acesso
+Customizados. Os dois controllers do serviço `gestao` têm exatamente **1 `@PreAuthorize` de
+classe cada** (`hasRole('gestao')`), sem nenhuma anotação de método — a mudança mais simples de
+toda a epic, uma linha por arquivo.
+
+### Decisão de design: `perm_usuarios` foi wireado, não deixado de fora
+O texto original da task no Notion deixava em aberto se valia a pena criar `perm_usuarios` para
+`UsuarioController`, já que só `gestao` pode gerir perfis/usuários por definição do próprio
+produto. **A resposta já estava decidida no frontend, recuperado pelo merge do PR #225**:
+`apps/web/src/config/menuCatalog.ts` já lista `perm_gestao` (linha do item `/gestao`) e
+`perm_usuarios` (linha do item `/usuarios`) como entradas normais de `navItems`, com `area:
+'Gestão'` — ambos já aparecem como checkboxes selecionáveis no formulário de perfil customizado
+(`PerfilFormModal`, via `permCatalog`) desde a PERFIL-07. Deixar `UsuarioController` sem o `or
+hasRole('perm_usuarios')` teria sido um bug real e silencioso: um operador monta um perfil
+customizado, marca a permissão "Usuários" na tela, salva — e o back-end continua recusando
+com 403, porque o checkbox nunca tinha efeito nenhum. Mesmo raciocínio já usado nas decisões de
+PERFIL-16 (`perm_caixa`) e PERFIL-20 (carve-out de `perm_ledger`): **o catálogo do frontend é a
+fonte da verdade sobre quais permissões devem existir de verdade no backend**, não uma leitura
+isolada do texto da task.
+
+### Armadilha ao criar usuário de teste no Keycloak: `invalid_grant: Account is not fully set up` sem nenhum `requiredAction` pendente
+Diferente do padrão já documentado (CONFIGURE_TOTP pendente), desta vez o usuário de teste tinha
+`requiredActions: []`, `emailVerified: true`, `enabled: true` — e mesmo assim o ROPC falhava com
+essa mesma mensagem genérica. Causa: o realm tem User Profile habilitado (Keycloak 24) e o
+usuário não tinha `email`/`firstName`/`lastName` preenchidos (só `username` + senha, criado via
+`POST /users` mínimo) — **um perfil de usuário incompleto também dispara essa mensagem**, não só
+required actions pendentes. Corrigido com um `PUT` de update incluindo `email`/`firstName`/
+`lastName`/`emailVerified` no mesmo usuário — login funcionou de primeira depois disso. Vale
+registrar como uma segunda causa possível para essa mensagem, além da já documentada de MFA.
+
+### Teste real via 9 combinações — token com só `perm_gestao`, token com só `perm_usuarios`
+Dois usuários de teste no Keycloak, cada um só com a `perm_*` sob teste (nenhum papel legado).
+Serviço `gestao` subido localmente (porta 8086, Postgres real via docker `pinsaude-postgres`,
+schema `gestao`, RabbitMQ real — sem nenhum profile/mocking, igual às tasks anteriores desta
+epic). Resultado: `perm_gestao` → `GET /api/gestao` 200, `GET /api/usuarios` 403 (cross-domain);
+`perm_usuarios` → `GET /api/usuarios` 200, `GET /api/gestao` 403 (cross-domain); `perm_gestao` →
+`POST /api/usuarios` com corpo válido → 403 (prova que é bloqueio de autorização, não Bean
+Validation — mesma disciplina metodológica já documentada em PERFIL-12); papel legado `medico`
+(nunca teve acesso a nenhum dos dois) → 403 nos dois; sem token → 401 nos dois. Usuários de teste
+e o processo do serviço removidos ao final — suite automatizada: 34/34 verdes em
+`services/gestao` (sem nenhuma falha pré-existente conhecida nesse módulo).
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

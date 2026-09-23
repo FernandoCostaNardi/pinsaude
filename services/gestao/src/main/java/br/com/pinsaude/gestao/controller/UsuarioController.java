@@ -15,7 +15,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/usuarios")
-@PreAuthorize("hasRole('gestao')")
+@PreAuthorize("hasRole('gestao') or hasRole('perm_usuarios')")
 public class UsuarioController {
 
     private final UsuarioService service;
