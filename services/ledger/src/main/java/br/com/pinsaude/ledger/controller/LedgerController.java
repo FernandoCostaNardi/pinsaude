@@ -48,7 +48,7 @@ public class LedgerController {
 
     /** Listagem paginada com filtros opcionais (médico, tipo de origem, intervalo de datas). */
     @GetMapping("/lancamentos")
-    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil')")
+    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil') or hasRole('perm_ledger')")
     public Page<LancamentoResponse> listar(
             @RequestParam(required = false) UUID medicoId,
             @RequestParam(required = false) TipoOrigem tipoOrigem,
@@ -61,21 +61,21 @@ public class LedgerController {
 
     /** Detalhe de um lançamento com todas as partidas. */
     @GetMapping("/lancamentos/{id}")
-    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil')")
+    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil') or hasRole('perm_ledger')")
     public LancamentoResponse detalhe(@PathVariable UUID id) {
         return lancamentoService.detalhe(id);
     }
 
     /** Saldo do médico: SUM(créditos) - SUM(débitos) na conta de repasse. */
     @GetMapping("/saldo/{medicoId}")
-    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil')")
+    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil') or hasRole('perm_ledger')")
     public SaldoResponse saldo(@PathVariable UUID medicoId) {
         return SaldoResponse.of(medicoId, saldoCalculator.saldoCentavos(medicoId));
     }
 
     /** Extrato do médico com saldo running após cada lançamento, em ordem cronológica. */
     @GetMapping("/extrato/{medicoId}")
-    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil')")
+    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil') or hasRole('perm_ledger')")
     public List<ExtratoItemResponse> extrato(@PathVariable UUID medicoId) {
         return saldoCalculator.extrato(medicoId);
     }
@@ -90,7 +90,7 @@ public class LedgerController {
     // ─── Plano de contas ──────────────────────────────────────────────────────
 
     @GetMapping("/contas")
-    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil')")
+    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil') or hasRole('perm_ledger')")
     public List<ContaResponse> contas() {
         return contaRepo.findAll().stream()
             .sorted((a, b) -> a.getCodigo().compareTo(b.getCodigo()))
@@ -101,7 +101,7 @@ public class LedgerController {
 
     /** Solicita um ajuste — fica PENDENTE até a aprovação de um segundo usuário. */
     @PostMapping("/ajustes")
-    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil')")
+    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil') or hasRole('perm_ledger')")
     public ResponseEntity<AjusteResponse> solicitarAjuste(@Valid @RequestBody CriarAjusteRequest req) {
         AjusteResponse resp = ajusteService.criar(
             req, SecurityUtils.currentUserId(), SecurityUtils.currentPerfil(), SecurityUtils.currentCnpjTenant());
@@ -109,20 +109,20 @@ public class LedgerController {
     }
 
     @GetMapping("/ajustes")
-    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil')")
+    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil') or hasRole('perm_ledger')")
     public List<AjusteResponse> listarAjustes(@RequestParam(required = false) StatusAjuste status) {
         return ajusteService.listar(status);
     }
 
     /** Aprova um ajuste — exige um segundo usuário com perfil diferente. Gera o lançamento. */
     @PostMapping("/ajustes/{id}/aprovar")
-    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil')")
+    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil') or hasRole('perm_ledger')")
     public AjusteResponse aprovarAjuste(@PathVariable UUID id) {
         return ajusteService.aprovar(id, SecurityUtils.currentUserId(), SecurityUtils.currentPerfil());
     }
 
     @PostMapping("/ajustes/{id}/rejeitar")
-    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil')")
+    @PreAuthorize("hasAnyRole('financeiro','gestao','contabil') or hasRole('perm_ledger')")
     public AjusteResponse rejeitarAjuste(@PathVariable UUID id,
                                          @RequestParam(required = false) String motivo) {
         return ajusteService.rejeitar(id, SecurityUtils.currentUserId(), SecurityUtils.currentPerfil(), motivo);
