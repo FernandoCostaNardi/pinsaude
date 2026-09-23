@@ -7681,6 +7681,60 @@ nesta epic, sem nenhuma falha pré-existente.
 
 ---
 
+## Incidente: 5 PRs "merged" no GitHub nunca chegaram na `main` (PERFIL-04 a 08)
+
+### Sintoma: código de uma feature "concluída" simplesmente não existe na branch atual
+Ao iniciar a PERFIL-21, uma investigação de rotina (checar se o frontend já tinha algum
+`perm_usuarios`/`perm_gestao` referenciado, antes de decidir se valia a pena aplicar) revelou que
+**nenhum** arquivo do frontend tinha qualquer referência a `perm_*` — nem `menuCatalog.ts`
+existia. No backend, `services/gestao/src/main/java/.../controller/PerfilController.java` e
+`PerfilService.java` também não existiam no source tree, **apesar de `target/classes/` ainda ter
+os `.class` compilados** de uma sessão anterior (`git status` limpo, então não eram arquivos
+deletados sem commit — simplesmente nunca tinham chegado ali).
+
+### Causa raiz: PR aberto contra o branch anterior da sequência, não contra `main`
+As PRs #207 a #211 (PERFIL-04 "CRUD de perfis customizados" até PERFIL-08 "UsersPage
+reconhecendo perfis") **todas mostravam "Merged" no GitHub** — mas `gh pr view <n> --json
+baseRefName` revelou que cada uma tinha sido aberta com `base` apontando para a branch da task
+**anterior** (`feature/perfil-03-flyway-gestao`, depois `feature/perfil-04-perfil-crud`, etc.),
+não para `main`. PERFIL-03 (`PR #206`) tinha sido corretamente aberta e mesclada contra `main` —
+mas a PR seguinte (#207) foi criada a partir da branch local `feature/perfil-03-flyway-gestao`
+**sem antes atualizá-la/recriá-la a partir da `main` pós-merge**, então o `gh pr create` (ou a
+criação manual) herdou a branch de origem errada como base. Isso empilhou 5 PRs em cadeia
+(`207→base 03`, `208→base 04`, `209→base 05`, `210→base 06`, `211→base 07`) — cada merge
+individual é tecnicamente válido (head mesclado no seu base), mas a cadeia inteira nunca reencontra
+`main`, formando um "beco sem saída" que o GitHub mostra como 5 PRs verdes sem nenhum aviso.
+
+### Por que passou despercebido por 12 tasks (PERFIL-09 a 20)
+Nenhuma das tasks seguintes desta epic tocou os arquivos afetados (`services/gestao/.../Perfil*`,
+`apps/web/.../menuCatalog.ts`, `PerfisTab.tsx`, etc.) — todas mexiam em controllers de outros
+serviços (`onboarding`, `faturamento`, `fiscal`, `ledger`). O padrão de verificação já estabelecido
+nesta epic (`git branch --show-current` + `gh pr view <PR anterior> --json state,mergedAt` antes de
+cada nova branch) só confirma que **a PR imediatamente anterior da própria sequência** foi
+mesclada — nunca checou se a cadeia inteira, remontando até PERFIL-01/02/03, de fato converge em
+`main`. Esse é exatamente o tipo de checagem que faltou.
+
+### Correção aplicada
+`git merge-tree` confirmou só **1 arquivo em conflito** (`CLAUDE.md`, aditivo dos dois lados — as
+seções PERFIL-04..08 de um lado, PERFIL-09..20 do outro) e **zero conflitos em código** (19 outros
+arquivos, incluindo os 8 novos). Resolvido reordenando cronologicamente (PERFIL-04..08 antes de
+PERFIL-09..20, consistente com a convenção de todo o resto do arquivo) via extração/remontagem com
+`sed` (arquivo grande demais para um `Edit` único). Validado com `mvn compile`+`test` em
+`services/gestao` (34/34 verdes) e `tsc --noEmit` no frontend (limpo) **antes** de fechar o merge
+commit — confirma que o código recuperado é são, não só que o merge foi mecanicamente limpo.
+
+### Lição para toda sessão futura desta epic (ou qualquer epic com PRs em sequência)
+**Nunca abrir uma PR nova a partir de uma branch local de uma task anterior sem primeiro
+confirmar/recriar essa branch a partir da `main` pós-merge.** O padrão seguro já usado
+consistentemente a partir da PERFIL-09 (stash → `checkout main` → `pull` → `checkout -b
+<nova-branch>` → stash pop) é a proteção correta — mas só protege a partir do momento em que é
+aplicado; não corrige retroativamente uma cadeia que já começou torta. Ao retomar QUALQUER epic
+sequencial após um hiato longo (troca de sessão, reset de contexto), vale conferir não só a PR
+mais recente, mas se a **base** dela era de fato `main` (`gh pr view <n> --json baseRefName`) —
+um `state: MERGED` sozinho não garante que o conteúdo chegou onde deveria.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
