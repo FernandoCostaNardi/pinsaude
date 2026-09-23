@@ -48,7 +48,7 @@ public class TomadorController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorResponse>> buscar(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) UUID medicoId,
@@ -57,19 +57,19 @@ public class TomadorController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorResponse> buscarPorId(@PathVariable UUID id) {
         return ResponseEntity.ok(service.buscarPorId(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorResponse> criar(@Valid @RequestBody TomadorRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.criar(req));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorResponse> atualizar(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorRequest req) {
@@ -77,14 +77,14 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> deletar(@PathVariable UUID id) {
         service.deletar(id);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/receita/{cnpj}")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_tomadores')")
     public ResponseEntity<ReceitaFederalResponse> consultarReceita(@PathVariable String cnpj) {
         Optional<ReceitaFederalResponse> resultado = service.consultarReceita(cnpj);
         return resultado.map(ResponseEntity::ok)
@@ -94,13 +94,13 @@ public class TomadorController {
     // ─── Alíquotas por tomador ────────────────────────────────────────────────
 
     @GetMapping("/{id}/aliquotas")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorAliquotaResponse>> listarAliquotas(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarAliquotas(id));
     }
 
     @PostMapping("/{id}/aliquotas")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorAliquotaResponse> salvarAliquota(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorAliquotaRequest req) {
@@ -108,7 +108,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/aliquotas/{aliquotaId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerAliquota(
             @PathVariable UUID id,
             @PathVariable UUID aliquotaId) {
@@ -119,13 +119,13 @@ public class TomadorController {
     // ─── CNAEs por tomador ────────────────────────────────────────────────────
 
     @GetMapping("/{id}/cnaes")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorCnaeResponse>> listarCnaes(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarCnaes(id));
     }
 
     @PostMapping("/{id}/cnaes")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorCnaeResponse> adicionarCnae(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorCnaeRequest req) {
@@ -133,7 +133,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/cnaes/{cnaeId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerCnae(
             @PathVariable UUID id,
             @PathVariable UUID cnaeId) {
@@ -144,13 +144,13 @@ public class TomadorController {
     // ─── Serviços por tomador ─────────────────────────────────────────────────
 
     @GetMapping("/{id}/servicos")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorServicoResponse>> listarServicos(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarServicos(id));
     }
 
     @PostMapping("/{id}/servicos")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorServicoResponse> adicionarServico(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorServicoRequest req) {
@@ -158,7 +158,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/servicos/{vinculoId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerServico(
             @PathVariable UUID id,
             @PathVariable UUID vinculoId) {
@@ -169,13 +169,13 @@ public class TomadorController {
     // ─── Grupos de faturamento ────────────────────────────────────────────────
 
     @GetMapping("/{id}/grupos")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorGrupoFaturamentoResponse>> listarGrupos(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarGrupos(id));
     }
 
     @PostMapping("/{id}/grupos")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorGrupoFaturamentoResponse> criarGrupo(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorGrupoFaturamentoRequest req) {
@@ -183,7 +183,7 @@ public class TomadorController {
     }
 
     @PutMapping("/{id}/grupos/{grupoId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorGrupoFaturamentoResponse> atualizarGrupo(
             @PathVariable UUID id,
             @PathVariable UUID grupoId,
@@ -192,7 +192,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/grupos/{grupoId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerGrupo(
             @PathVariable UUID id,
             @PathVariable UUID grupoId) {
@@ -203,7 +203,7 @@ public class TomadorController {
     // ─── Vínculo Grupo ↔ Setor (N:N) — permite reutilizar o mesmo setor em vários grupos ──────
 
     @GetMapping("/{id}/grupos/{grupoId}/setores")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorServicoOperacionalResponse>> listarSetoresDoGrupo(
             @PathVariable UUID id,
             @PathVariable UUID grupoId) {
@@ -211,7 +211,7 @@ public class TomadorController {
     }
 
     @PostMapping("/{id}/grupos/{grupoId}/setores")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorServicoOperacionalResponse> adicionarSetorAoGrupo(
             @PathVariable UUID id,
             @PathVariable UUID grupoId,
@@ -220,7 +220,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/grupos/{grupoId}/setores/{setorId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerSetorDoGrupo(
             @PathVariable UUID id,
             @PathVariable UUID grupoId,
@@ -232,13 +232,13 @@ public class TomadorController {
     // ─── Modalidades ──────────────────────────────────────────────────────────
 
     @GetMapping("/{id}/modalidades")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorModalidadeResponse>> listarModalidades(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarModalidades(id));
     }
 
     @PostMapping("/{id}/modalidades")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorModalidadeResponse> criarModalidade(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorModalidadeRequest req) {
@@ -246,7 +246,7 @@ public class TomadorController {
     }
 
     @PutMapping("/{id}/modalidades/{modalidadeId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorModalidadeResponse> atualizarModalidade(
             @PathVariable UUID id,
             @PathVariable UUID modalidadeId,
@@ -255,7 +255,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/modalidades/{modalidadeId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerModalidade(
             @PathVariable UUID id,
             @PathVariable UUID modalidadeId) {
@@ -267,7 +267,7 @@ public class TomadorController {
     // lista completa de ids na nova ordem; a mesma ordem é refletida no seletor de modalidade
     // das telas de Frequência Médica.
     @PutMapping("/{id}/modalidades/reordenar")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorModalidadeResponse>> reordenarModalidades(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorModalidadesReordenarRequest req) {
@@ -277,14 +277,14 @@ public class TomadorController {
     // ─── Serviços operacionais (setores) ──────────────────────────────────────
 
     @GetMapping("/{id}/servicos-operacionais")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorServicoOperacionalResponse>> listarServicosOperacionais(
             @PathVariable UUID id) {
         return ResponseEntity.ok(service.listarServicosOperacionais(id));
     }
 
     @PostMapping("/{id}/servicos-operacionais")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorServicoOperacionalResponse> criarServicoOperacional(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorServicoOperacionalRequest req) {
@@ -293,7 +293,7 @@ public class TomadorController {
     }
 
     @PutMapping("/{id}/servicos-operacionais/{servicoOperacionalId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorServicoOperacionalResponse> atualizarServicoOperacional(
             @PathVariable UUID id,
             @PathVariable UUID servicoOperacionalId,
@@ -302,7 +302,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/servicos-operacionais/{servicoOperacionalId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerServicoOperacional(
             @PathVariable UUID id,
             @PathVariable UUID servicoOperacionalId) {
@@ -313,13 +313,13 @@ public class TomadorController {
     // ─── Médicos alocados ao tomador (EPIC-15) ────────────────────────────────
 
     @GetMapping("/{id}/medicos")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<MedicoTomadorResponse>> listarMedicos(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarMedicos(id));
     }
 
     @PostMapping("/{id}/medicos")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<MedicoTomadorResponse> adicionarMedico(
             @PathVariable UUID id,
             @Valid @RequestBody MedicoTomadorRequest req) {
@@ -327,7 +327,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/medicos/{medicoId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerMedico(
             @PathVariable UUID id,
             @PathVariable UUID medicoId) {
@@ -338,7 +338,7 @@ public class TomadorController {
     // ─── Setores Operacionais do médico alocado (tomador.exigeFrequencia) ─────
 
     @GetMapping("/{id}/medicos/{medicoId}/setores")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorServicoOperacionalResponse>> listarSetoresDoMedico(
             @PathVariable UUID id,
             @PathVariable UUID medicoId) {
@@ -346,7 +346,7 @@ public class TomadorController {
     }
 
     @PostMapping("/{id}/medicos/{medicoId}/setores")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorServicoOperacionalResponse> adicionarSetorAoMedico(
             @PathVariable UUID id,
             @PathVariable UUID medicoId,
@@ -355,7 +355,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/medicos/{medicoId}/setores/{setorId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerSetorDoMedico(
             @PathVariable UUID id,
             @PathVariable UUID medicoId,
@@ -365,13 +365,13 @@ public class TomadorController {
     }
 
     @GetMapping("/{id}/empresas")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorEmpresaResponse>> listarEmpresas(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarEmpresas(id));
     }
 
     @PostMapping("/{id}/empresas")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorEmpresaResponse> adicionarEmpresa(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorEmpresaRequest req) {
@@ -379,7 +379,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/empresas/{empresaId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerEmpresa(
             @PathVariable UUID id,
             @PathVariable UUID empresaId) {
@@ -390,13 +390,13 @@ public class TomadorController {
     // ─── Ocorrências pré-cadastradas com valor ──────────────────────────────────
 
     @GetMapping("/{id}/ocorrencias")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorOcorrenciaResponse>> listarOcorrencias(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarOcorrencias(id));
     }
 
     @PostMapping("/{id}/ocorrencias")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorOcorrenciaResponse> criarOcorrencia(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorOcorrenciaRequest req) {
@@ -404,7 +404,7 @@ public class TomadorController {
     }
 
     @PutMapping("/{id}/ocorrencias/{ocorrenciaId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorOcorrenciaResponse> atualizarOcorrencia(
             @PathVariable UUID id,
             @PathVariable UUID ocorrenciaId,
@@ -413,7 +413,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/ocorrencias/{ocorrenciaId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerOcorrencia(
             @PathVariable UUID id,
             @PathVariable UUID ocorrenciaId) {
@@ -424,13 +424,13 @@ public class TomadorController {
     // ─── Preenchimento rápido de turno ───────────────────────────────────────────
 
     @GetMapping("/{id}/turnos-padrao")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_tomadores')")
     public ResponseEntity<List<TomadorHorarioPadraoResponse>> listarHorariosPadrao(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarHorariosPadrao(id));
     }
 
     @PostMapping("/{id}/turnos-padrao")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorHorarioPadraoResponse> criarHorarioPadrao(
             @PathVariable UUID id,
             @Valid @RequestBody TomadorHorarioPadraoRequest req) {
@@ -438,7 +438,7 @@ public class TomadorController {
     }
 
     @PutMapping("/{id}/turnos-padrao/{horarioId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<TomadorHorarioPadraoResponse> atualizarHorarioPadrao(
             @PathVariable UUID id,
             @PathVariable UUID horarioId,
@@ -447,7 +447,7 @@ public class TomadorController {
     }
 
     @DeleteMapping("/{id}/turnos-padrao/{horarioId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao') or hasRole('perm_tomadores')")
     public ResponseEntity<Void> removerHorarioPadrao(
             @PathVariable UUID id,
             @PathVariable UUID horarioId) {

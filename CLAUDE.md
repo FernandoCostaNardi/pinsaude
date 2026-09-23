@@ -7099,6 +7099,63 @@ anotação mudou, nenhuma lógica de negócio tocada.
 
 ---
 
+## PERFIL-12 — faturamento · TomadorController (48!) → perm_tomadores
+
+### Maior controller do monorepo — 48 `@PreAuthorize` em 3 grupos exatos, sem exceção
+`TomadorController` (CRUD do Tomador + 8 sub-recursos: alíquotas, CNAEs, empresas, grupos+setores,
+médicos+setores, modalidades, ocorrências, turnos-padrão) é de longe o maior controller do
+projeto — mais que o dobro do segundo maior (`MedicoController`, 28, PERFIL-09). Catalogados via
+`grep -c` os 48 em exatamente 3 strings distintas, cada uma tratada com um único `Edit
+replace_all`:
+- **13× leitura ampla** — `hasAnyRole('operacao','gestao','financeiro','contabil','medico')`:
+  todo GET de listagem/detalhe em qualquer sub-recurso (buscar, buscarPorId, listarCnaes,
+  listarServicos, listarGrupos, listarSetoresDoGrupo, listarModalidades,
+  listarServicosOperacionais, listarMedicos, listarSetoresDoMedico, listarEmpresas,
+  listarOcorrencias, listarHorariosPadrao).
+- **2× leitura restrita** — `hasAnyRole('operacao','gestao','financeiro','contabil')`:
+  `consultarReceita` (GET receita por CNPJ) e `listarAliquotas` — únicos 2 GETs sem `medico`.
+- **33× escrita** — `hasAnyRole('operacao','gestao')`: todo POST/PUT/DELETE, em qualquer
+  sub-recurso, sem exceção — inclusive os 8 endpoints N:N de vínculo (grupos↔setores,
+  médicos↔setores).
+
+Verificado por grep antes e depois de cada edição: `@PreAuthorize` = 48, `perm_tomadores` = 48,
+e os 3 grupos batendo exatamente 13/2/33 — zero anotação órfã, zero duplicidade.
+
+### Teste real reconfirma a lição já documentada (`@Valid` roda antes de `@PreAuthorize`) — desta vez com um caso mais sutil
+Os primeiros testes de POST/PUT com corpo vazio/inválido sempre voltavam `400`, inconclusivo
+entre "bloqueado por autorização" e "autorizado, mas rejeitado pela validação" (mesmo padrão já
+documentado na seção do Ledger EPIC-08.2 e reaplicado em toda esta epic). A correção metodológica
+de sempre mandar um corpo `@Valid`-compatível revelou um caso novo, mais sutil: com token
+`perm_tomadores` e um corpo Bean-Validation-válido mas com `tipo` inválido
+(`"tipo":"PJ"` — não é um valor do enum `TipoTomador`), a resposta foi `400 "Tipo inválido. Use:
+HOSPITAL, CLINICA, OPERADORA ou PACIENTE_PF"` — uma mensagem de **validação de negócio dentro do
+service**, não do Bean Validation do controller. Isso já é prova suficiente de que passou por
+`@PreAuthorize` (senão nunca chegaria no service) — mas para fechar com o mesmo rigor das tasks
+anteriores, corrigido `tipo` para `"HOSPITAL"` e um CNPJ com dígito verificador válido
+(`11222333000181`, o mesmo CNPJ de teste já usado em outras seções deste arquivo) → `201 Created`
+limpo, tomador de teste removido em seguida via `DELETE` (`204`).
+
+**Lição geral reforçada**: nem todo `400` numa tentativa de POST/PUT prova bloqueio de
+autorização — pode ser Bean Validation (`@Valid`, roda antes do `@PreAuthorize`) **ou** validação
+de negócio dentro do service (roda depois, então já é prova de que passou). Ao testar
+autorização, sempre usar GET sem corpo quando possível (inequívoco), ou POST/PUT com um corpo
+100% válido até a camada de negócio, nunca parar no primeiro `400` sem diagnosticar de qual
+camada ele veio.
+
+### Suite de testes do `faturamento` — módulo 100% limpo, sem nenhuma falha pré-existente
+Diferente de `onboarding` (sempre 5 falhas pré-existentes por clock-drift, documentadas em várias
+seções deste arquivo), `services/faturamento` roda **341/341 testes verdes** neste módulo,
+confirmado após o merge (branch recriada limpa a partir do `main` atualizado, pós-PERFIL-11) —
+nenhuma falha pré-existente para distinguir de regressão aqui; qualquer falha futura neste módulo
+é, por padrão, uma regressão real.
+
+### Isolamento cross-domain confirmado com endpoint sem corpo
+Token com só `perm_tomadores` em `GET /api/producoes` (domínio diferente, controller nunca tocado
+por esta epic) → `403` — inequívoco (GET sem corpo, nenhuma ambiguidade de camada de validação).
+Confirma que uma `perm_*` nunca vaza acesso para o controller de outro domínio.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
