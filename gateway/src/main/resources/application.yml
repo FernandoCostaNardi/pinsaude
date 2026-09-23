@@ -80,6 +80,10 @@ spring:
           uri: http://localhost:8086
           predicates:
             - Path=/api/usuarios/**
+        - id: perfis
+          uri: http://localhost:8086
+          predicates:
+            - Path=/api/perfis/**
   security:
     oauth2:
       resourceserver:
