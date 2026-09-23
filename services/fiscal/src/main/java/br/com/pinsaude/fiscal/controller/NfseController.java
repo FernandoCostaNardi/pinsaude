@@ -31,7 +31,7 @@ public class NfseController {
      * Resposta 202: nota enfileirada, processamento assíncrono via RabbitMQ.
      */
     @PostMapping("/emitir")
-    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro')")
+    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro') or hasRole('perm_notas')")
     public ResponseEntity<EmitirNfseResponse> emitir(@Valid @RequestBody EmitirNfseRequest request) {
         String cnpjTenant = SecurityUtils.currentCnpjTenant();
         EmitirNfseResponse response = nfseService.emitir(request, cnpjTenant);
@@ -42,7 +42,7 @@ public class NfseController {
      * Lista todas as notas fiscais (mais recentes primeiro).
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro')")
+    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro') or hasRole('perm_notas')")
     public ResponseEntity<List<NotaFiscalStatusResponse>> listar() {
         return ResponseEntity.ok(nfseService.listar());
     }
@@ -51,7 +51,7 @@ public class NfseController {
      * Retorna o status atual de uma nota pelo producaoId — usado para polling.
      */
     @GetMapping("/status/{producaoId}")
-    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro', 'medico')")
+    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro', 'medico') or hasRole('perm_notas')")
     public ResponseEntity<NotaFiscalStatusResponse> getStatus(@PathVariable UUID producaoId) {
         return ResponseEntity.ok(nfseService.getStatus(producaoId));
     }
@@ -60,7 +60,7 @@ public class NfseController {
      * Download do XML da NFS-e emitida.
      */
     @GetMapping("/{notaId}/download/xml")
-    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro', 'medico')")
+    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro', 'medico') or hasRole('perm_notas')")
     public ResponseEntity<String> downloadXml(@PathVariable UUID notaId) {
         String xml = nfseService.getXml(notaId);
         return ResponseEntity.ok()
@@ -73,7 +73,7 @@ public class NfseController {
      * Download do PDF (DANFSE) da NFS-e emitida.
      */
     @GetMapping("/{notaId}/download/pdf")
-    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro', 'medico')")
+    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro', 'medico') or hasRole('perm_notas')")
     public ResponseEntity<byte[]> downloadPdf(@PathVariable UUID notaId) {
         byte[] pdf = nfseService.getPdf(notaId);
         return ResponseEntity.ok()
@@ -87,7 +87,7 @@ public class NfseController {
      * Exclusivo para gestao/contabil.
      */
     @PostMapping("/{notaId}/aprovar")
-    @PreAuthorize("hasAnyRole('gestao', 'contabil')")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil') or hasRole('perm_notas')")
     public ResponseEntity<Void> aprovar(@PathVariable UUID notaId) {
         nfseService.aprovar(notaId);
         return ResponseEntity.noContent().build();
@@ -97,7 +97,7 @@ public class NfseController {
      * Lista notas na fila de exceções (AGUARDANDO_VALIDACAO — 1ª nota de cada médico).
      */
     @GetMapping("/excecoes")
-    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro')")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao', 'financeiro') or hasRole('perm_notas')")
     public ResponseEntity<List<NotaFiscalStatusResponse>> listarExcecoes() {
         return ResponseEntity.ok(nfseService.listarExcecoes());
     }
@@ -106,7 +106,7 @@ public class NfseController {
      * Cancela uma nota emitida com registro de motivo para auditoria.
      */
     @PutMapping("/{notaId}/cancelar")
-    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'financeiro')")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'financeiro') or hasRole('perm_notas')")
     public ResponseEntity<Void> cancelar(@PathVariable UUID notaId,
                                          @Valid @RequestBody MotivoRequest body) {
         nfseService.cancelar(notaId, body.motivo());
@@ -117,7 +117,7 @@ public class NfseController {
      * Rejeita nota na fila de exceções (AGUARDANDO_VALIDACAO → CANCELADA) com motivo.
      */
     @PutMapping("/{notaId}/rejeitar")
-    @PreAuthorize("hasAnyRole('gestao', 'contabil')")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil') or hasRole('perm_notas')")
     public ResponseEntity<Void> rejeitar(@PathVariable UUID notaId,
                                           @Valid @RequestBody MotivoRequest body) {
         nfseService.rejeitar(notaId, body.motivo());
@@ -129,7 +129,7 @@ public class NfseController {
      * Reseta para PENDENTE e republica na fila RabbitMQ.
      */
     @PostMapping("/{notaId}/reprocessar")
-    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao')")
+    @PreAuthorize("hasAnyRole('gestao', 'contabil', 'operacao') or hasRole('perm_notas')")
     public ResponseEntity<Void> reprocessar(@PathVariable UUID notaId) {
         nfseService.reprocessarNota(notaId);
         return ResponseEntity.noContent().build();
