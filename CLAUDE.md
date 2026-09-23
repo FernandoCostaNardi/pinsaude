@@ -7156,6 +7156,42 @@ Confirma que uma `perm_*` nunca vaza acesso para o controller de outro domínio.
 
 ---
 
+## PERFIL-13 — faturamento · ProducaoController → perm_producao
+
+### 5 endpoints, 4 combinações de role distintas — sem nenhum tier a nível de classe
+`ProducaoController` não tem `@PreAuthorize` de classe (diferente de `EmpresaController`/
+`ConfiguracaoFiscalController`) — os 5 endpoints têm cada um sua própria anotação de método,
+formando 4 combinações distintas de papel (2 delas compartilhadas por 2 endpoints cada):
+- `hasAnyRole('operacao','gestao','financeiro','contabil')` (2×) — `listar`, `buscarPorId`.
+- `hasAnyRole('operacao','gestao','medico')` (1×) — `criar` (o médico lança a própria produção
+  direto, sem depender de operação — já documentado em EPIC-15.7).
+- `hasAnyRole('operacao','gestao')` (1×) — `atualizarServico` (tier mais restrito).
+- `hasAnyRole('operacao','gestao','financeiro','contabil','medico')` (1×) — `previewCalculo`.
+
+`or hasRole('perm_producao')` aplicado às 5, verificado por grep antes/depois: `@PreAuthorize` = 5,
+`perm_producao` = 5 — bate exatamente com a contagem do ADR-004.
+
+### Teste real — 6 endpoints, incluindo `criar` (POST) com corpo Bean-Validation-inválido de propósito
+Com token contendo **só** `perm_producao`: `GET /api/producoes` → `200`; `GET /{id-fake}` → `404`
+"Produção não encontrada" (passou autorização, chegou no service); `PUT /{id}/servico` → `404`
+idêntico; `POST /preview-calculo` com corpo `{}` → `400` Bean Validation (passou autorização,
+rejeitado só pelos `@NotNull` do DTO); `POST /api/producoes` (criar) com corpo `{}` → `400` Bean
+Validation, mesmo padrão. Nenhum dos 6 voltou `403` — todos passaram `@PreAuthorize`.
+
+**Regressão dupla, testada com o usuário seed `medico@pinsaude.com.br` (papel legado `medico`)**:
+`GET /api/producoes` → continua `403` (medico nunca teve acesso a esse tier); `PUT /{id}/servico`
+→ continua `403` (tier `operacao,gestao` apenas); `POST /api/producoes` (criar) → continua passando
+autorização (`400` Bean Validation, não `403` — médico sempre teve acesso a criar a própria
+produção). Confirma que a mudança é estritamente aditiva nos dois sentidos: `perm_producao` não
+amplia o que `medico` já podia fazer, e `medico` não perdeu nada que já tinha.
+
+Cross-domain: token `perm_producao` em `GET /api/tomadores` (controller de outro domínio) → `403`.
+
+Suite: **341/341 testes verdes** em `services/faturamento`, mesmo resultado limpo já confirmado
+na PERFIL-12 — nenhuma falha pré-existente neste módulo.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
