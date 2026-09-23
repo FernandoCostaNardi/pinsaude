@@ -42,7 +42,7 @@ public class ConciliacaoController {
     }
 
     @PostMapping(value = "/extratos/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_conciliacao')")
     public ResponseEntity<ExtratoResponse> upload(
             @RequestParam("arquivo") MultipartFile arquivo,
             @RequestParam("banco") BancoEnum banco,
@@ -57,13 +57,13 @@ public class ConciliacaoController {
     }
 
     @GetMapping("/extratos")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_conciliacao')")
     public ResponseEntity<List<ExtratoResponse>> listar() {
         return ResponseEntity.ok(extratoService.listarExtratos());
     }
 
     @GetMapping("/extratos/{id}/lancamentos")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_conciliacao')")
     public ResponseEntity<List<LancamentoExtratoResponse>> listarLancamentos(
             @PathVariable UUID id,
             @RequestParam(required = false) String status) {
@@ -71,19 +71,19 @@ public class ConciliacaoController {
     }
 
     @GetMapping("/producoes/candidatas")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_conciliacao')")
     public ResponseEntity<List<ProducaoCandidataResponse>> listarCandidatas() {
         return ResponseEntity.ok(extratoService.listarCandidatas());
     }
 
     @GetMapping("/lancamentos/{id}/sugestoes")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_conciliacao')")
     public ResponseEntity<List<CandidatoMatchResponse>> getSugestoes(@PathVariable UUID id) {
         return ResponseEntity.ok(matchingService.getSugestoes(id));
     }
 
     @PostMapping("/lancamentos/{id}/conciliar")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_conciliacao')")
     public ResponseEntity<Void> conciliar(@PathVariable UUID id,
                                           @RequestBody @Valid ConciliarRequest req,
                                           @AuthenticationPrincipal Jwt jwt) {
@@ -93,21 +93,21 @@ public class ConciliacaoController {
     }
 
     @PutMapping("/lancamentos/{id}/ignorar")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_conciliacao')")
     public ResponseEntity<Void> ignorar(@PathVariable UUID id) {
         extratoService.ignorar(id);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/lancamentos/{id}/conciliacao")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_conciliacao')")
     public ResponseEntity<Void> desfazer(@PathVariable UUID id) {
         extratoService.desfazerConciliacao(id);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/posicao-caixa")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_caixa')")
     public ResponseEntity<PosicaoCaixaResponse> getPosicaoCaixa() {
         return ResponseEntity.ok(posicaoCaixaService.calcular());
     }
