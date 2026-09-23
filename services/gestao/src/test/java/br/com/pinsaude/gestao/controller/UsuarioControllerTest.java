@@ -118,4 +118,24 @@ class UsuarioControllerTest {
                     .jwt(j -> j.claim("cnpj_id", "12.345.678/0001-90"))))
             .andExpect(status().isNoContent());
     }
+
+    // ─── PERFIL-22 — regressão do catálogo perm_* (ADR-004), PERFIL-21 ─────────
+    // Único grupo (classe): gestao sozinho — já coberto acima (gestao/operacao/financeiro/
+    // medico/sem-auth). Faltava perm_usuarios positivo e um perm de outro domínio negativo.
+
+    @Test
+    void permUsuarios_podeListarUsuarios() throws Exception {
+        when(usuarioService.listar()).thenReturn(List.of(USUARIO_FIXTURE));
+
+        mockMvc.perform(get("/api/usuarios")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_usuarios"))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void permOutroDominio_naoPodeListarUsuarios_retorna403() throws Exception {
+        mockMvc.perform(get("/api/usuarios")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_gestao"))))
+            .andExpect(status().isForbidden());
+    }
 }

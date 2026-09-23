@@ -135,4 +135,23 @@ class ContaBancariaControllerTest {
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
             .andExpect(status().isNoContent());
     }
+
+    // ─── PERFIL-22 — regressão do catálogo perm_* (ADR-004), PERFIL-10 ─────────
+    // Único grupo (classe): gestao sozinho.
+
+    @Test
+    void permEmpresas_podeListar_retorna200() throws Exception {
+        when(contaBancariaService.listar(any(UUID.class))).thenReturn(List.of(contaResponse()));
+
+        mockMvc.perform(get("/api/empresas/{empresaId}/contas", EMPRESA_ID)
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_empresas"))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void permOutroDominio_naoPodeListar_retorna403() throws Exception {
+        mockMvc.perform(get("/api/empresas/{empresaId}/contas", EMPRESA_ID)
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_medicos"))))
+            .andExpect(status().isForbidden());
+    }
 }

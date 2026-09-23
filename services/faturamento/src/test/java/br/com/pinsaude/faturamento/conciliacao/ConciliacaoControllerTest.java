@@ -8,6 +8,7 @@ import br.com.pinsaude.faturamento.service.PosicaoCaixaService;
 import br.com.pinsaude.faturamento.domain.*;
 import br.com.pinsaude.faturamento.dto.ExtratoResponse;
 import br.com.pinsaude.faturamento.dto.LancamentoExtratoResponse;
+import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse;
 import br.com.pinsaude.faturamento.service.ExtratoService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -209,5 +210,53 @@ class ConciliacaoControllerTest {
                 .andExpect(status().isOk());
 
         verify(service).listarLancamentos(id, "PENDENTE");
+    }
+
+    // ─── PERFIL-22 — regressão do catálogo perm_* (ADR-004), PERFIL-16 ─────────
+    // perm_conciliacao cobre upload/extratos/lancamentos (já testados acima com legado);
+    // perm_caixa cobre só getPosicaoCaixa. Os dois nunca devem vazar um para o outro.
+
+    @Test
+    void listarExtratos_permConciliacao_retorna200() throws Exception {
+        when(service.listarExtratos()).thenReturn(List.of(EXTRATO_MOCK));
+
+        mockMvc.perform(get("/api/conciliacao/extratos")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_conciliacao"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getPosicaoCaixa_papelLegado_retorna200() throws Exception {
+        when(posicaoCaixaService.calcular()).thenReturn(mock(PosicaoCaixaResponse.class));
+
+        mockMvc.perform(get("/api/conciliacao/posicao-caixa")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_financeiro"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getPosicaoCaixa_permCaixa_retorna200() throws Exception {
+        when(posicaoCaixaService.calcular()).thenReturn(mock(PosicaoCaixaResponse.class));
+
+        mockMvc.perform(get("/api/conciliacao/posicao-caixa")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_caixa"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getPosicaoCaixa_permConciliacao_retorna403() throws Exception {
+        // perm_conciliacao (upload/extratos/lancamentos) NUNCA deve destravar posicao-caixa —
+        // são 2 permissões separadas de propósito (PERFIL-16), mesmo controller.
+        mockMvc.perform(get("/api/conciliacao/posicao-caixa")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_conciliacao"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listarExtratos_permCaixa_retorna403() throws Exception {
+        // E vice-versa: perm_caixa não deve destravar os endpoints de perm_conciliacao.
+        mockMvc.perform(get("/api/conciliacao/extratos")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_caixa"))))
+                .andExpect(status().isForbidden());
     }
 }
