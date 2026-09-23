@@ -28,7 +28,7 @@ public class ParametroFiscalController {
      * Se competencia (YYYY-MM) for fornecida, retorna apenas o vigente para aquela data.
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('contabil','gestao','financeiro')")
+    @PreAuthorize("hasAnyRole('contabil','gestao','financeiro') or hasRole('perm_fiscal')")
     public ResponseEntity<?> listar(@RequestParam(required = false) String competencia) {
         if (competencia != null && !competencia.isBlank()) {
             return ResponseEntity.ok(service.buscarParaCompetencia(competencia));
@@ -39,7 +39,7 @@ public class ParametroFiscalController {
 
     /** Cria parâmetro fiscal genérico (regime atual ou IBS/CBS completo). */
     @PostMapping
-    @PreAuthorize("hasAnyRole('contabil','gestao')")
+    @PreAuthorize("hasAnyRole('contabil','gestao') or hasRole('perm_fiscal')")
     public ResponseEntity<ParametroFiscalResponse> criar(
             @Valid @RequestBody ParametroFiscalRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.criar(req));
@@ -50,7 +50,7 @@ public class ParametroFiscalController {
      * Zera IR/CSLL/PIS/COFINS e ativa ibs_cbs_ativo=true.
      */
     @PostMapping("/ibs-cbs")
-    @PreAuthorize("hasAnyRole('contabil','gestao')")
+    @PreAuthorize("hasAnyRole('contabil','gestao') or hasRole('perm_fiscal')")
     public ResponseEntity<ParametroFiscalResponse> criarIbsCbs(
             @Valid @RequestBody IbsCbsRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.criarIbsCbs(req));
@@ -61,7 +61,7 @@ public class ParametroFiscalController {
      * Parâmetros não homologados são tratados como rascunho.
      */
     @PutMapping("/{id}/homologar")
-    @PreAuthorize("hasAnyRole('contabil','gestao')")
+    @PreAuthorize("hasAnyRole('contabil','gestao') or hasRole('perm_fiscal')")
     public ResponseEntity<ParametroFiscalResponse> homologar(@PathVariable UUID id) {
         return ResponseEntity.ok(service.homologar(id));
     }

@@ -17,7 +17,7 @@ import java.util.UUID;
 /** CRUD de regras de equiparação hospitalar (CNAE + LC 116). */
 @RestController
 @RequestMapping("/api/fiscal/regras-equiparacao")
-@PreAuthorize("hasRole('contabil') or hasRole('gestao')")
+@PreAuthorize("hasRole('contabil') or hasRole('gestao') or hasRole('perm_fiscal')")
 public class RegraEquiparacaoController {
 
     private final RegraEquiparacaoService service;

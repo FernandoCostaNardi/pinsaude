@@ -10,7 +10,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/fiscal")
-@PreAuthorize("hasRole('contabil') or hasRole('gestao')")
+@PreAuthorize("hasRole('contabil') or hasRole('gestao') or hasRole('perm_fiscal')")
 public class FiscalController {
 
     @GetMapping
