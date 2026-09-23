@@ -13,7 +13,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/empresas/{empresaId}/configuracao-fiscal")
-@PreAuthorize("hasRole('gestao')")
+@PreAuthorize("hasRole('gestao') or hasRole('perm_fiscal')")
 public class ConfiguracaoFiscalController {
 
     private final ConfiguracaoFiscalService service;
