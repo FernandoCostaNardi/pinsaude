@@ -30,13 +30,13 @@ public class FrequenciaController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico') or hasRole('perm_frequencias')")
     public ResponseEntity<FrequenciaMedicaResponse> criar(@Valid @RequestBody FrequenciaMedicaRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.criar(req));
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico','financeiro','contabil') or hasRole('perm_frequencias')")
     public ResponseEntity<List<FrequenciaMedicaResponse>> listar(
             @RequestParam(required = false) UUID medicoId,
             @RequestParam(required = false) UUID tomadorId,
@@ -47,7 +47,7 @@ public class FrequenciaController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico','financeiro','contabil') or hasRole('perm_frequencias')")
     public ResponseEntity<FrequenciaMedicaResponse> buscarPorId(@PathVariable UUID id) {
         return ResponseEntity.ok(service.buscarPorId(id));
     }
@@ -55,7 +55,7 @@ public class FrequenciaController {
     // Permite editar Competência e Setor Operacional de uma frequência já criada (Tomador, Tipo
     // de Escala, Modalidade e Ocorrência permanecem fixos). Bloqueado apenas quando FATURADA.
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico') or hasRole('perm_frequencias')")
     public ResponseEntity<FrequenciaMedicaResponse> atualizar(
             @PathVariable UUID id,
             @Valid @RequestBody FrequenciaMedicaEditRequest req) {
@@ -64,20 +64,20 @@ public class FrequenciaController {
 
     // Exclusão permitida em qualquer status exceto FATURADA (já entrou no Fechamento/NFS-e).
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico') or hasRole('perm_frequencias')")
     public ResponseEntity<Void> excluir(@PathVariable UUID id) {
         service.excluir(id);
         return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{id}/gerar-pdf")
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico') or hasRole('perm_frequencias')")
     public ResponseEntity<FrequenciaMedicaResponse> gerarPdf(@PathVariable UUID id) {
         return ResponseEntity.ok(service.gerarPdf(id));
     }
 
     @PostMapping(value = "/{id}/documento", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico') or hasRole('perm_frequencias')")
     public ResponseEntity<FrequenciaMedicaResponse> receberDocumentoAssinado(
             @PathVariable UUID id,
             @RequestParam("arquivo") MultipartFile arquivo) {
@@ -85,13 +85,13 @@ public class FrequenciaController {
     }
 
     @GetMapping("/{id}/documento/url")
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico','financeiro','contabil')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico','financeiro','contabil') or hasRole('perm_frequencias')")
     public ResponseEntity<Map<String, String>> getDocumentoUrl(@PathVariable UUID id) {
         return ResponseEntity.ok(Map.of("url", service.getDocumentoUrl(id)));
     }
 
     @PostMapping("/{id}/itens")
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico') or hasRole('perm_frequencias')")
     public ResponseEntity<FrequenciaItemResponse> adicionarItem(
             @PathVariable UUID id,
             @Valid @RequestBody FrequenciaItemRequest req) {
@@ -99,7 +99,7 @@ public class FrequenciaController {
     }
 
     @PutMapping("/{id}/itens/{itemId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico') or hasRole('perm_frequencias')")
     public ResponseEntity<FrequenciaItemResponse> atualizarItem(
             @PathVariable UUID id,
             @PathVariable UUID itemId,
@@ -108,7 +108,7 @@ public class FrequenciaController {
     }
 
     @DeleteMapping("/{id}/itens/{itemId}")
-    @PreAuthorize("hasAnyRole('operacao','gestao','medico')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico') or hasRole('perm_frequencias')")
     public ResponseEntity<Void> removerItem(
             @PathVariable UUID id,
             @PathVariable UUID itemId) {
