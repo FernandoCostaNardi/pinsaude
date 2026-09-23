@@ -36,7 +36,7 @@ nomeada `perm_<domínio>` (minúsculo, sem acento, no mesmo vocabulário da rota
 | # | Permissão | Tela(s) | Serviço · Controller | Endpoints protegidos |
 |---|---|---|---|---|
 | 1 | `perm_medicos` | Médicos, Aprovação | onboarding · `MedicoController` | 28 |
-| 2 | `perm_empresas` | Empresas | onboarding · `EmpresaController` | 8 |
+| 2 | `perm_empresas` | Empresas | onboarding · `EmpresaController` (8) + `ContaBancariaController` (1) | 9 |
 | 3 | `perm_tomadores` | Tomadores | faturamento · `TomadorController` (CRUD + 8 sub-recursos: alíquotas, cnaes, empresas, grupos+setores, médicos+setores, modalidades, ocorrências, turnos-padrão) | 48 |
 | 4 | `perm_producao` | Produção | faturamento · `ProducaoController` | 5 |
 | 5 | `perm_frequencias` | Frequências | faturamento · `FrequenciaController` | 11 |
@@ -64,6 +64,11 @@ de teste/stub genérico e o `PortalMedicoController`, ambos fora do catálogo �
 > dentro do próprio `MedicoController`, já contados nos 28). `ContaBancariaController` não foi
 > tocado em PERFIL-09; fica sinalizado para `perm_empresas` (PERFIL-10) — que hoje também não o
 > reivindica explicitamente — decidir se o inclui.
+>
+> **Resolvido (PERFIL-10, 2026-09-22):** `ContaBancariaController` incluído em `perm_empresas`
+> (linha atualizada acima, 8+1=9 endpoints) — é o lugar correto, já que a entidade pertence à
+> Empresa. Validado com um token real contendo só `perm_empresas`: `GET
+> /api/empresas/{id}/contas` retorna `404` (passa da autorização), não mais `403`.
 
 Contagens conferidas via `Grep '@PreAuthorize' services/` (2026-09-22) contra o código real —
 `TomadorController` (48), `MedicoController` (28) e os demais valores acima batem exatamente

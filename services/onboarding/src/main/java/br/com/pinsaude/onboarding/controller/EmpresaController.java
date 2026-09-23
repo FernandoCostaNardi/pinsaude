@@ -20,7 +20,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/empresas")
-@PreAuthorize("hasRole('gestao')")
+@PreAuthorize("hasRole('gestao') or hasRole('perm_empresas')")
 public class EmpresaController {
 
     private final EmpresaService service;
@@ -65,25 +65,25 @@ public class EmpresaController {
     // ─── Documentos ──────────────────────────────────────────────────────────
 
     @GetMapping("/{id}/documentos")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_empresas')")
     public ResponseEntity<List<DocumentoEmpresaResponse>> listarDocumentos(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarDocumentos(id));
     }
 
     @GetMapping("/{id}/documentos/contrato-social/historico")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_empresas')")
     public ResponseEntity<List<DocumentoEmpresaResponse>> historicoContratoSocial(@PathVariable UUID id) {
         return ResponseEntity.ok(service.listarHistoricoContratoSocial(id));
     }
 
     @GetMapping("/documentos/alertas-vencimento")
-    @PreAuthorize("hasRole('gestao')")
+    @PreAuthorize("hasRole('gestao') or hasRole('perm_empresas')")
     public ResponseEntity<List<AlertaVencimentoDocumentoResponse>> alertasVencimento() {
         return ResponseEntity.ok(service.buscarAlertasVencimento());
     }
 
     @PostMapping(value = "/{id}/documentos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_empresas')")
     public ResponseEntity<DocumentoEmpresaResponse> uploadDocumento(
             @PathVariable UUID id,
             @RequestParam TipoDocumentoEmpresa tipo,
@@ -96,7 +96,7 @@ public class EmpresaController {
     }
 
     @DeleteMapping("/{id}/documentos/{docId}")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_empresas')")
     public ResponseEntity<Void> deletarDocumento(
             @PathVariable UUID id,
             @PathVariable UUID docId) {
@@ -105,7 +105,7 @@ public class EmpresaController {
     }
 
     @PutMapping("/{id}/documentos/{docId}/validar")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_empresas')")
     public ResponseEntity<DocumentoEmpresaResponse> validarDocumento(
             @PathVariable UUID id,
             @PathVariable UUID docId,
@@ -114,7 +114,7 @@ public class EmpresaController {
     }
 
     @GetMapping("/{id}/documentos/{docId}/download")
-    @PreAuthorize("hasAnyRole('gestao','operacao')")
+    @PreAuthorize("hasAnyRole('gestao','operacao') or hasRole('perm_empresas')")
     public ResponseEntity<StreamingResponseBody> downloadDocumento(
             @PathVariable UUID id,
             @PathVariable UUID docId) {
