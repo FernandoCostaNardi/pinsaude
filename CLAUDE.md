@@ -7428,6 +7428,52 @@ Suite: **88/88 testes verdes** — mesmo módulo limpo já confirmado nas PERFIL
 
 ---
 
+## PERFIL-20 — ledger · LedgerController (10) → perm_ledger
+
+### Primeiro carve-out explícito do catálogo — 9 de 10 anotações, uma deliberadamente fora
+`LedgerController` (extrato/saldo/ajuste manual com dupla aprovação, `services/ledger`) tem 10
+`@PreAuthorize`, mas a própria task no Notion pediu **atenção especial**: o endpoint de criação de
+lançamento (`POST /lancamentos`, `criar()`) usa `hasRole('service')` sozinho — é chamado só por
+service accounts internas (`ROLE_service`, já documentado em EPIC-08.2), nunca por um usuário
+humano de nenhum papel legado. Adicionar `or hasRole('perm_ledger')` ali abriria um caminho para
+qualquer perfil customizado criar lançamentos contábeis brutos diretamente, contornando toda a
+lógica de negócio que hoje só os eventos RabbitMQ (`ledger.nota.emitida`, etc., EPIC-08.3) e o
+fluxo de ajuste com dupla aprovação (EPIC-08.4) exercitam — um problema de segurança real, não só
+uma inconsistência de escopo. **Esse endpoint foi deliberadamente deixado intocado.**
+
+Os outros 9 (leitura de lançamentos/saldo/extrato/contas + o fluxo completo de ajuste manual)
+compartilham a mesma string `hasAnyRole('financeiro','gestao','contabil')` — um único `Edit
+replace_all` aplicou `or hasRole('perm_ledger')` a todos eles de uma vez, sem tocar na anotação
+de `criar` (string diferente, `hasRole('service')`, nunca casada pelo `replace_all`). Verificado
+por grep: `@PreAuthorize` = 10 (inalterado), `perm_ledger` = 9 — a contagem de 10 no título da
+task/ADR-004 refere-se ao total de anotações no controller, não ao total que recebe a permissão.
+
+### Teste real — o teste mais importante desta task é confirmar que `perm_ledger` NÃO destrava `criar`
+Todos os 9 endpoints tocados passaram `@PreAuthorize` com token **só** `perm_ledger` (mistura de
+`200`/`404`, nenhum `403`). O teste crítico: `POST /lancamentos` com token `perm_ledger` e um
+corpo Bean-Validation-completo (`cnpjIdTenant`, `competencia`, `tipoOrigem`, `descricao`,
+`correlationId`, `partidas` balanceadas) → **`403` confirmado** — a primeira tentativa com corpo
+vazio tinha voltado `400` (mesma ambiguidade `@Valid`-antes-`@PreAuthorize` já documentada em
+várias tasks desta epic), corrigida montando o corpo completo do `CriarLancamentoRequest`
+(incluindo a lista `partidas: List<PartidaRequest>` aninhada com `@Valid`).
+
+Regressão dupla com o usuário seed `gestao@pinsaude.com.br` (papel legado, sempre teve acesso ao
+tier de leitura): `GET /api/ledger/lancamentos` → continua `200`; `POST /lancamentos` com o mesmo
+corpo completo → continua `403` — confirma que nem `gestao` (que tem acesso a praticamente tudo
+no resto do sistema) nunca teve `ROLE_service`, então o carve-out não é uma regressão nova, é o
+comportamento que já existia antes desta task.
+
+Cross-domain: token `perm_ledger` em `GET /api/producoes` (`services/faturamento`, microsserviço
+Spring Boot **completamente diferente**, não só controller diferente) → `403` — primeira vez
+nesta epic que o teste de cross-domain atravessa dois processos JVM/serviços distintos em vez de
+dois controllers do mesmo serviço, reforçando que o isolamento funciona no nível do JWT/role
+sozinho, sem depender de nenhum estado compartilhado entre os serviços.
+
+Suite: **36/36 testes verdes** em `services/ledger` — primeira vez que este módulo é testado
+nesta epic, sem nenhuma falha pré-existente.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
