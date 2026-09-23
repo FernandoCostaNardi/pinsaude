@@ -7298,6 +7298,64 @@ Suite: **341/341 testes verdes** — mesmo módulo limpo já confirmado nas PERF
 
 ---
 
+## PERFIL-17 — fiscal · Parametros/MotorFiscal/RegraEquiparacao/Fiscal → perm_fiscal (2/2)
+
+### Primeira vez que uma `perm_*` cruza serviços — mesma permissão em 2 codebases diferentes
+`perm_fiscal` já tinha sido aplicada em `onboarding/ConfiguracaoFiscalController` na PERFIL-11
+(1/2). Esta task fecha a permissão no lado `fiscal` (2/2): 8 `@PreAuthorize` em **5 controllers**
+diferentes — `FiscalController` (2 endpoints via 1 anotação de classe), `FiscalParametrosController`
+(3 endpoints via 1 anotação de classe), `MotorFiscalController` (1, de método),
+`RegraEquiparacaoController` (4 endpoints via 1 anotação de classe) e `ParametroFiscalController`
+(4, todas de método — o único dos 5 sem anotação de classe). Confirma que uma mesma `perm_*` do
+catálogo pode proteger controllers em serviços Spring Boot totalmente diferentes, sem nenhum
+acoplamento entre os deploys — cada serviço só precisa reconhecer a mesma string de role vinda
+do JWT do Keycloak (compartilhado entre todos os serviços via realm único).
+
+### 5 arquivos, 3 padrões de anotação — classe, método único, e método múltiplo no mesmo arquivo
+- **3 controllers com anotação de classe** (`FiscalController`, `FiscalParametrosController`,
+  `RegraEquiparacaoController`): todos `hasRole('contabil') or hasRole('gestao')` — 1 `Edit` por
+  arquivo, já que só existe 1 ocorrência em cada.
+- **`MotorFiscalController`**: 1 anotação de método, `hasAnyRole('contabil', 'gestao', 'financeiro',
+  'operacao')` — única do catálogo com espaço depois da vírgula (`'contabil', 'gestao'`), diferente
+  do padrão sem espaço (`'contabil','gestao'`) usado no resto do projeto; o `old_string` do `Edit`
+  precisou respeitar essa formatação exata.
+- **`ParametroFiscalController`**: 4 anotações de método em 2 strings distintas —
+  `hasAnyRole('contabil','gestao','financeiro')` (1×, `listar`) e `hasAnyRole('contabil','gestao')`
+  (3×, `criar`/`criarIbsCbs`/`homologar`) — 2 `Edit`, o segundo com `replace_all`.
+
+`or hasRole('perm_fiscal')` aplicado às 8, verificado por grep antes/depois (somando os 5
+arquivos): `@PreAuthorize` = 8, `perm_fiscal` = 8 — bate com o ADR-004.
+
+### Teste real — primeiro teste desta epic contra o serviço `fiscal`, exigiu `cnpj_id` no usuário de teste
+Diferente do `faturamento` (onde `medico_tomadores`/`producoes` não checam tenant no `@PreAuthorize`
+em si), quase todo endpoint do `fiscal` resolve `SecurityUtils.currentCnpjTenant()` do JWT **depois**
+de passar pela autorização — sem `cnpj_id` no usuário de teste, `FiscalParametrosController.listar()`
+retornaria `[]` silenciosamente em vez de dado real (mascarando se a autorização de fato passou).
+Usuário de teste criado com `attributes: {"cnpj_id": ["11.222.333/0001-81"]}` (mesmo CNPJ dos
+usuários seed) — `GET /api/fiscal/parametros` retornou as 5 alíquotas reais do tenant, prova mais
+forte de que passou por `@PreAuthorize` do que um `404`/`400` genérico.
+
+Todos os 8 endpoints únicos testados com token **só** `perm_fiscal` — nenhum `403`. Dois achados
+incidentais (não corrigidos, fora do escopo aditivo): `GET /regras-equiparacao/{id-fake}` e
+`PUT /parametros-fiscais/{id-fake}/homologar` retornam **`500`** (não `404`) quando o recurso não
+existe — exceções de negócio (`"Regra não encontrada"`/`"Parâmetro não encontrado"`) não são
+mapeadas para `ResponseStatusException` nesses dois métodos, diferente do padrão já usado em
+outros services do projeto. Sinalizado aqui para quem for mexer nesses controllers no futuro —
+não impede a validação de autorização (um `500` ainda prova que passou de `@PreAuthorize`).
+
+### Regressão em 2 direções com o mesmo usuário `financeiro` — tier bloqueado e tier liberado
+`financeiro` tem acesso a `ParametroFiscalController.listar` (`contabil,gestao,financeiro`) mas
+**nunca** teve acesso a `RegraEquiparacaoController` (`contabil,gestao` apenas, nem no `GET`).
+Confirmado com o mesmo token `financeiro` temporário: `GET /api/parametros-fiscais` → continua
+`200`; `GET /api/fiscal/regras-equiparacao` e `POST` (corpo Bean-Validation-válido) → continuam
+`403` nos dois. Cross-domain: token `perm_fiscal` em `GET /api/nfse` (`perm_notas`, mesmo serviço
+`fiscal`, controller diferente) → `403`.
+
+Suite: **88/88 testes verdes** em `services/fiscal` — primeira vez que este módulo é testado
+nesta epic; sem nenhuma falha pré-existente.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

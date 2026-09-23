@@ -25,7 +25,7 @@ public class MotorFiscalController {
     }
 
     @PostMapping("/calcular")
-    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'financeiro', 'operacao')")
+    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'financeiro', 'operacao') or hasRole('perm_fiscal')")
     public ResponseEntity<CalculoFiscalResponse> calcular(@Valid @RequestBody CalculoFiscalRequest req) {
         String cnpjId = SecurityUtils.currentCnpjTenant();
         if (cnpjId != null) cnpjId = cnpjId.replaceAll("\\D", "");

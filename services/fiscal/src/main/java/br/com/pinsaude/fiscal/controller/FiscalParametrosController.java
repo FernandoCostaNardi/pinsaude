@@ -17,7 +17,7 @@ import java.util.Map;
 /** CRUD de alíquotas por tributo + competência (tabela parametros_fiscais V2). */
 @RestController
 @RequestMapping("/api/fiscal/parametros")
-@PreAuthorize("hasRole('contabil') or hasRole('gestao')")
+@PreAuthorize("hasRole('contabil') or hasRole('gestao') or hasRole('perm_fiscal')")
 public class FiscalParametrosController {
 
     private final ParametrosFiscaisService service;
