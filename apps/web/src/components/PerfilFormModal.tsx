@@ -65,7 +65,7 @@ export function PerfilFormModal({ perfil, onClose, onSaved }: Props) {
   }
 
   return (
-    <Modal open onClose={onClose} title={editando ? 'Editar Perfil' : 'Novo Perfil'} size="lg">
+    <Modal open onClose={onClose} title={editando ? 'Editar Perfil' : 'Novo Perfil'} size="2xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input
           label="Nome do perfil"
@@ -99,17 +99,14 @@ export function PerfilFormModal({ perfil, onClose, onSaved }: Props) {
                       {todasMarcadas ? 'Desmarcar todos' : 'Marcar todos'}
                     </button>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
                     {entries.map(entry => (
-                      <label key={entry.perm} className="flex items-center gap-2 text-sm text-ds-text cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={permissoes.has(entry.perm)}
-                          onChange={() => toggle(entry.perm)}
-                          className="rounded border-ds-border text-primary focus:ring-primary-100"
-                        />
-                        {entry.label}
-                      </label>
+                      <Switch
+                        key={entry.perm}
+                        checked={permissoes.has(entry.perm)}
+                        onChange={() => toggle(entry.perm)}
+                        label={entry.label}
+                      />
                     ))}
                   </div>
                 </div>
@@ -130,5 +127,47 @@ export function PerfilFormModal({ perfil, onClose, onSaved }: Props) {
         </div>
       </form>
     </Modal>
+  )
+}
+
+// Switch estilo pílula (padrão do resto do app, ao invés de checkbox nativo). Sem `label`,
+// renderiza só o botão (pra compor livremente em listas que já têm seu próprio texto ao lado —
+// evita aninhar <label> dentro de <label>, que é inválido).
+function Switch({
+  checked, onChange, label, disabled,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  label?: string
+  disabled?: boolean
+}) {
+  const button = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={[
+        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+        'focus:outline-none focus:ring-2 focus:ring-primary-300 focus:ring-offset-1',
+        disabled ? 'opacity-50 cursor-not-allowed' : '',
+        checked ? 'bg-primary' : 'bg-gray-300',
+      ].join(' ')}
+    >
+      <span
+        className={[
+          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-[18px]' : 'translate-x-0.5',
+        ].join(' ')}
+      />
+    </button>
+  )
+  if (!label) return button
+  return (
+    <label className="flex items-center gap-2.5 cursor-pointer select-none">
+      {button}
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+    </label>
   )
 }
