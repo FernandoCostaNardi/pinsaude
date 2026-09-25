@@ -124,12 +124,13 @@ function FiscalRow({ label, value, indent, negative, bold }: {
 }
 
 // ─── Serviço pendente (V49) ─────────────────────────────────────────────────
-// Produções vindas do Portal do Médico nascem sem serviço (LC 116/2003) definido — o médico não
-// escolhe mais isso, é a operação quem define antes de emitir a NFS-e. Gate simples: enquanto
+// Produções nascem sem serviço (LC 116/2003) definido — nem o Portal do Médico nem a tela de Nova
+// Produção pedem mais isso; é a operação quem define aqui, antes de emitir a NFS-e. Gate simples: enquanto
 // producao.servico for null, a página só mostra este painel; o resto (breakdown fiscal, emissão)
 // depende de servico e continua assumindo não-nulo, sem precisar de guardas espalhadas.
-function SelecionarServicoPanel({ producao, onResolvido }: {
+function SelecionarServicoPanel({ producao, tomador, onResolvido }: {
   producao: Producao
+  tomador: Tomador | null
   onResolvido: (p: Producao) => void
 }) {
   const [servicos, setServicos] = useState<Servico[]>([])
@@ -140,6 +141,17 @@ function SelecionarServicoPanel({ producao, onResolvido }: {
   useEffect(() => {
     servicosApi.listar().then(setServicos).catch(() => {})
   }, [])
+
+  // Se o tomador tem serviços cadastrados, só eles aparecem (e o único é pré-selecionado);
+  // senão cai no catálogo completo — mesma regra que existia na tela de Nova Produção.
+  const vinculados = tomador?.servicos ?? []
+  const servicosDisponiveis = vinculados.length > 0
+    ? servicos.filter(s => vinculados.some(v => v.servicoId === s.id))
+    : servicos
+
+  useEffect(() => {
+    if (servicosDisponiveis.length === 1) setServicoId(servicosDisponiveis[0].id)
+  }, [servicosDisponiveis.length === 1 ? servicosDisponiveis[0].id : ''])
 
   async function confirmar() {
     if (!servicoId) return
@@ -161,8 +173,8 @@ function SelecionarServicoPanel({ producao, onResolvido }: {
         <div>
           <h2 className="text-sm font-bold text-ds-mid uppercase tracking-wider">Serviço ainda não definido</h2>
           <p className="text-sm text-ds-light mt-1">
-            Esta produção veio do Portal do Médico sem o Serviço (LC 116/2003) — selecione qual se aplica
-            antes de revisar e emitir a NFS-e.
+            Selecione o Serviço (LC 116/2003) desta produção antes de revisar e emitir a NFS-e.
+            O CNAE é escolhido na próxima etapa.
           </p>
         </div>
         {erro && <Alert variant="error" onClose={() => setErro(null)}>{erro}</Alert>}
@@ -174,7 +186,7 @@ function SelecionarServicoPanel({ producao, onResolvido }: {
             className="w-full h-10 rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 focus:outline-none focus:border-primary"
           >
             <option value="">Selecione o serviço...</option>
-            {servicos.map(s => (
+            {servicosDisponiveis.map(s => (
               <option key={s.id} value={s.id}>{s.codigoLc116} — {s.descricaoPadrao}</option>
             ))}
           </select>
@@ -373,7 +385,7 @@ export function NfseEmissaoPage() {
   }
 
   if (!producao.servico) {
-    return <SelecionarServicoPanel producao={producao} onResolvido={setProducao} />
+    return <SelecionarServicoPanel producao={producao} tomador={tomadorFull} onResolvido={setProducao} />
   }
 
   const { tomador, servico, valorBruto } = producao

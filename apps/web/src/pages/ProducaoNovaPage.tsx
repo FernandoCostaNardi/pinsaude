@@ -5,14 +5,11 @@ import {
   AlertCircle, Loader2, Plus, Trash2, Users,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
-import { Servico, servicosApi } from '../api/servicosApi'
 import { Tomador, tomadoresApi } from '../api/tomadoresApi'
 import { Medico, medicosApi } from '../api/medicosApi'
 import { ProducaoRequest, producoesApi } from '../api/producoesApi'
-import { calcularFiscal } from '../api/fiscalApi'
 import { Empresa, empresasApi } from '../api/empresasApi'
 import { useAuth } from '../auth/useAuth'
-import { formatCnae } from '../components/CnaeSelect'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -154,105 +151,25 @@ function Autocomplete({
   )
 }
 
-// ─── Tipo local para o preview fiscal ─────────────────────────────────────────
+// ─── Resumo lateral ───────────────────────────────────────────────────────────
+// Serviço (LC 116/2003) e CNAE não são mais escolhidos aqui — ficam para a emissão da NFS-e,
+// onde o breakdown fiscal completo (que depende do serviço) é exibido.
 
-interface TaxaItem { valor: number; retido: boolean }
-interface FiscalPreview {
-  valorBruto: number
-  iss: TaxaItem
-  ir: TaxaItem
-  csll: TaxaItem
-  pis: TaxaItem
-  cofins: TaxaItem
-  totalRetencoes: number
-  valorLiquidoNota: number
-}
-
-// ─── Preview card ─────────────────────────────────────────────────────────────
-
-function PreviewCard({ preview, loading }: {
-  preview: FiscalPreview | null
-  loading: boolean
-}) {
-  const impostos: { label: string; item: TaxaItem }[] = preview ? [
-    { label: 'ISS',    item: preview.iss    },
-    { label: 'IR',     item: preview.ir     },
-    { label: 'CSLL',   item: preview.csll   },
-    { label: 'PIS',    item: preview.pis    },
-    { label: 'COFINS', item: preview.cofins },
-  ] : []
-
+function ResumoCard({ valorBruto }: { valorBruto: number }) {
   return (
-    <div className="bg-white rounded-xl border border-ds-border shadow-sm p-5 sticky top-6">
-      <div className="flex items-center gap-2 mb-4">
+    <div className="bg-white rounded-xl border border-ds-border shadow-sm p-5 sticky top-6 space-y-4">
+      <div className="flex items-center gap-2">
         <Calculator size={16} className="text-primary" />
-        <h3 className="font-semibold text-ds-mid text-sm">Cálculo Fiscal da Nota</h3>
+        <h3 className="font-semibold text-ds-mid text-sm">Resumo da Produção</h3>
       </div>
-
-      {loading && (
-        <div className="flex items-center justify-center py-8">
-          <Spinner size="md" />
-        </div>
-      )}
-
-      {!loading && !preview && (
-        <div className="text-center text-ds-light py-8 text-sm">
-          <Calculator size={32} className="mx-auto mb-2 opacity-30" />
-          Preencha tomador, serviço e ao menos um participante para ver o cálculo
-        </div>
-      )}
-
-      {!loading && preview && (
-        <div className="space-y-4">
-          {/* Valor bruto */}
-          <div className="flex items-center justify-between py-2 border-b border-ds-border">
-            <span className="text-sm font-semibold text-ds-mid">Valor Bruto da Nota</span>
-            <span className="text-lg font-black text-ds-mid">{formatBRL(preview.valorBruto)}</span>
-          </div>
-
-          {/* Impostos individuais */}
-          <div className="space-y-1">
-            <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-2">Impostos</p>
-            {impostos.map(({ label, item }) => (
-              item.valor > 0 && (
-                <div key={label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm font-medium ${item.retido ? 'text-ds-mid' : 'text-ds-light'}`}>
-                      {label}
-                    </span>
-                    {item.retido ? (
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">
-                        retido
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-ds-surface text-ds-light">
-                        Pin paga
-                      </span>
-                    )}
-                  </div>
-                  <span className={`text-sm font-semibold ${item.retido ? 'text-ds-mid' : 'text-ds-light'}`}>
-                    {item.retido ? '−' : ''}{formatBRL(item.valor)}
-                  </span>
-                </div>
-              )
-            ))}
-          </div>
-
-          {/* Total retido */}
-          <div className="flex items-center justify-between py-2 border-t border-ds-border">
-            <span className="text-sm font-semibold text-ds-mid">Total retido na nota</span>
-            <span className="text-sm font-bold text-orange-700">
-              − {formatBRL(preview.totalRetencoes)}
-            </span>
-          </div>
-
-          {/* Valor líquido */}
-          <div className="flex items-center justify-between py-3 px-4 bg-primary-50 rounded-lg border border-primary-100">
-            <span className="font-bold text-ds-mid text-sm">Valor Líquido da Nota</span>
-            <span className="font-black text-primary text-xl">{formatBRL(preview.valorLiquidoNota)}</span>
-          </div>
-        </div>
-      )}
+      <div className="flex items-center justify-between py-2 border-b border-ds-border">
+        <span className="text-sm font-semibold text-ds-mid">Valor Bruto da Nota</span>
+        <span className="text-lg font-black text-ds-mid">{formatBRL(valorBruto)}</span>
+      </div>
+      <p className="text-xs text-ds-light leading-relaxed">
+        O Serviço (LC 116/2003), o CNAE e o cálculo dos impostos da nota são definidos na
+        etapa de emissão da NFS-e.
+      </p>
     </div>
   )
 }
@@ -353,13 +270,10 @@ export function ProducaoNovaPage() {
 
   const [medicos, setMedicos]     = useState<Medico[]>([])
   const [tomadores, setTomadores] = useState<Tomador[]>([])
-  const [servicos, setServicos]   = useState<Servico[]>([])
   const [empresas, setEmpresas]   = useState<Empresa[]>([])
   const [loadingData, setLoadingData] = useState(true)
 
   const [tomador,    setTomador]    = useState<AutocompleteItem | null>(null)
-  const [cnaeCodigo, setCnaeCodigo] = useState<string>('')
-  const [servico,    setServico]    = useState<AutocompleteItem | null>(null)
   const [empresaId,  setEmpresaId]  = useState<string>('')
   const [competencia, setCompetencia] = useState(currentCompetencia())
   const [descricao, setDescricao] = useState('')
@@ -368,13 +282,10 @@ export function ProducaoNovaPage() {
     { key: nextKey++, medico: null, valorStr: '' },
   ])
 
-  const [preview, setPreview]           = useState<FiscalPreview | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
   const [errors, setErrors]             = useState<Record<string, string>>({})
   const [submitLoading, setSubmitLoading] = useState(false)
   const [globalError, setGlobalError]   = useState<string | null>(null)
 
-  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const competencias    = generateCompetencias()
 
   // Filtro de tomadores por médico(s) participante(s) (EPIC-15.13): sem médico selecionado,
@@ -414,12 +325,10 @@ export function ProducaoNovaPage() {
     Promise.all([
       medicosApi.listar(0, 1000, 'ATIVO').catch(() => ({ content: [] as Medico[] })),
       tomadoresApi.listar().catch(() => [] as Tomador[]),
-      servicosApi.listar().catch(() => [] as Servico[]),
       empresasApi.listar(0, 1000).catch(() => ({ content: [] as Empresa[], page: 0, size: 1000, totalElements: 0, totalPages: 0 })),
-    ]).then(([mp, ts, ss, ep]) => {
+    ]).then(([mp, ts, ep]) => {
       setMedicos(mp.content)
       setTomadores(ts)
-      setServicos(ss)
       setEmpresas(ep.content)
       // Auto-select: única empresa → seleciona direto; múltiplas → tenta pelo cnpj_id do JWT
       if (ep.content.length === 1) {
@@ -434,61 +343,7 @@ export function ProducaoNovaPage() {
 
   const totalCentavos = participantes.reduce((s, p) => s + parseBRL(p.valorStr), 0)
 
-  useEffect(() => {
-    if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
-    const tomObj = tomador ? tomadores.find(t => t.id === tomador.id) : null
-    const servObj = servico ? servicos.find(s => s.id === servico.id) : null
-    if (!tomObj || !servObj || totalCentavos <= 0) {
-      setPreview(null)
-      return
-    }
-    previewTimerRef.current = setTimeout(() => {
-      const tomadorPj = tomObj.tipo !== 'PACIENTE_PF'
-      const retFed    = tomadorPj && tomObj.indicadorRetencaoFederal
-      const retIss    = tomadorPj && tomObj.indicadorRetencaoIss
-      // Cenário D: PF sem equiparação — apenas IR retido pelo tomador
-      const cenarioD  = !tomadorPj && !servObj.indicadorEquiparacao
-
-      // Alíquotas do tomador sobrescrevem as da empresa: converter de percentual (5.0) para fração (0.05)
-      const aliquotasOverride: Record<string, number> = {}
-      if (tomObj.aliquotas?.length) {
-        for (const a of tomObj.aliquotas) {
-          aliquotasOverride[a.tipoTributo] = Number(a.valorAliquota) / 100
-        }
-      }
-
-      setPreviewLoading(true)
-      calcularFiscal({
-        competencia,
-        valorBruto: totalCentavos,
-        tomadorPj,
-        indicadorRetencaoFederal: tomObj.indicadorRetencaoFederal,
-        indicadorRetencaoIss: tomObj.indicadorRetencaoIss,
-        equiparacaoHospitalar: servObj.indicadorEquiparacao,
-        aliquotasOverride: Object.keys(aliquotasOverride).length > 0 ? aliquotasOverride : undefined,
-      })
-        .then(r => setPreview({
-          valorBruto:       r.valorBruto,
-          iss:    { valor: r.valorIss,    retido: retIss },
-          ir:     { valor: r.valorIr,     retido: retFed || cenarioD },
-          csll:   { valor: r.valorCsll,   retido: retFed },
-          pis:    { valor: r.valorPis,    retido: retFed },
-          cofins: { valor: r.valorCofins, retido: retFed },
-          totalRetencoes:   r.totalRetencoes,
-          valorLiquidoNota: r.valorBruto - r.totalRetencoes,
-        }))
-        .catch(() => setPreview(null))
-        .finally(() => setPreviewLoading(false))
-    }, 400)
-    return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current) }
-  }, [servico?.id, tomador?.id, totalCentavos, competencia, tomadores, servicos])
-
-  // Serviços disponíveis para o tomador selecionado: se o tomador tem serviços cadastrados,
-  // só eles aparecem; caso contrário, cai no catálogo completo (fallback para tomadores sem vínculo).
   const tomadorObj = tomador ? tomadores.find(t => t.id === tomador.id) ?? null : null
-  const servicosDisponiveis: Servico[] = tomadorObj && tomadorObj.servicos && tomadorObj.servicos.length > 0
-    ? servicos.filter(s => tomadorObj.servicos.some(v => v.servicoId === s.id))
-    : servicos
 
   // Empresas emissoras disponíveis para o tomador selecionado (PINSAUDE-13.12): se o tomador
   // tem empresa(s) Pin vinculada(s), só elas aparecem; caso contrário, cai no catálogo completo
@@ -497,25 +352,9 @@ export function ProducaoNovaPage() {
     ? empresas.filter(e => tomadorObj.empresas.some(v => v.empresaId === e.id))
     : empresas
 
-  // Auto-seleciona quando há exatamente 1 opção disponível (serviço, CNAE ou empresa do
-  // tomador); limpa a seleção que deixou de ser válida para o tomador atual.
+  // Auto-seleciona a empresa quando o tomador tem exatamente 1 vinculada; limpa a seleção que
+  // deixou de ser válida para o tomador atual.
   useEffect(() => {
-    // Serviço
-    if (servicosDisponiveis.length === 1) {
-      const only = servicosDisponiveis[0]
-      setServico(prev => prev?.id === only.id ? prev : { id: only.id, label: `${only.codigoLc116} — ${only.descricaoPadrao}` })
-    } else if (servico && !servicosDisponiveis.some(s => s.id === servico.id)) {
-      setServico(null)
-    }
-
-    // CNAE do tomador
-    const cnaesTomador = tomadorObj?.cnaes ?? []
-    if (cnaesTomador.length === 1) {
-      setCnaeCodigo(prev => prev === cnaesTomador[0].codigoCnae ? prev : cnaesTomador[0].codigoCnae)
-    } else if (cnaeCodigo && !cnaesTomador.some(c => c.codigoCnae === cnaeCodigo)) {
-      setCnaeCodigo('')
-    }
-
     // Empresa emissora vinculada ao tomador
     const empresasTomador = tomadorObj?.empresas ?? []
     if (empresasTomador.length === 1) {
@@ -523,7 +362,7 @@ export function ProducaoNovaPage() {
     } else if (empresaId && empresasTomador.length > 0 && !empresasTomador.some(v => v.empresaId === empresaId)) {
       setEmpresaId('')
     }
-  }, [tomador?.id, servicos, tomadores, empresas])
+  }, [tomador?.id, tomadores, empresas])
 
   const usedMedicoIds = new Set(participantes.map(p => p.medico?.id).filter(Boolean) as string[])
 
@@ -542,7 +381,6 @@ export function ProducaoNovaPage() {
   function validate(): boolean {
     const e: Record<string, string> = {}
     if (!tomador)    e.tomador   = 'Selecione um tomador'
-    if (!servico)    e.servico   = 'Selecione um serviço'
     if (!competencia) e.competencia = 'Selecione a competência'
     if (!empresaId)  e.empresa   = 'Selecione a empresa emissora'
 
@@ -565,10 +403,9 @@ export function ProducaoNovaPage() {
     const medicoMap = new Map(medicos.map(m => [m.id, m]))
     const req: ProducaoRequest = {
       tomadorId:             tomador!.id,
-      servicoId:             servico!.id,
+      servicoId:             null,
       competencia,
       descricaoComplementar: descricao || undefined,
-      cnaeCodigo:            cnaeCodigo || undefined,
       empresaId:             empresaId || null,
       participantes: participantes.map(p => ({
         medicoId:   p.medico!.id,
@@ -602,7 +439,7 @@ export function ProducaoNovaPage() {
     sublabel: t.municipio ?? undefined,
   }))
 
-  const canConfirm = !!tomador && !!servico && totalCentavos > 0 && !!competencia && !!empresaId
+  const canConfirm = !!tomador && totalCentavos > 0 && !!competencia && !!empresaId
     && participantes.every(p => p.medico && parseBRL(p.valorStr) > 0)
 
   if (loadingData) return (
@@ -620,7 +457,7 @@ export function ProducaoNovaPage() {
         </button>
         <div>
           <h1 className="text-2xl font-bold text-ds-mid">Nova Produção Médica</h1>
-          <p className="text-sm text-ds-light mt-0.5">Registre a produção de um ou mais médicos e veja o breakdown fiscal</p>
+          <p className="text-sm text-ds-light mt-0.5">Registre a produção de um ou mais médicos</p>
         </div>
       </div>
 
@@ -639,8 +476,8 @@ export function ProducaoNovaPage() {
               <Autocomplete
                 items={tomadorItems}
                 value={tomador}
-                onChange={item => { setTomador(item); setCnaeCodigo(''); setServico(null); setErrors(e => ({ ...e, tomador: '' })) }}
-                onClear={() => { setTomador(null); setCnaeCodigo(''); setServico(null); setPreview(null) }}
+                onChange={item => { setTomador(item); setErrors(e => ({ ...e, tomador: '' })) }}
+                onClear={() => setTomador(null)}
                 placeholder="Buscar por nome ou CNPJ..."
                 loading={tomadoresFiltroLoading}
               />
@@ -660,62 +497,6 @@ export function ProducaoNovaPage() {
                 <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
                   <AlertCircle size={11} />
                   Atenção: o tomador selecionado não está alocado a todos os médicos participantes.
-                </p>
-              )}
-            </Field>
-
-            {/* CNAE do tomador — aparece quando o tomador tem CNAEs cadastrados */}
-            {(() => {
-              const tomadorObj = tomadores.find(t => t.id === tomador?.id)
-              if (!tomadorObj || !tomadorObj.cnaes || tomadorObj.cnaes.length === 0) return null
-              const cnaeUnico = tomadorObj.cnaes.length === 1
-              return (
-                <Field label="CNAE (atividade econômica da nota)">
-                  <select
-                    value={cnaeCodigo}
-                    onChange={e => setCnaeCodigo(e.target.value)}
-                    disabled={cnaeUnico}
-                    className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid disabled:bg-ds-surface disabled:text-ds-mid"
-                  >
-                    <option value="">Selecione o CNAE...</option>
-                    {tomadorObj.cnaes.map(c => (
-                      <option key={c.id} value={c.codigoCnae}>
-                        {formatCnae(c.codigoCnae)}{c.descricao ? ` — ${c.descricao.charAt(0) + c.descricao.slice(1).toLowerCase()}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {cnaeUnico && (
-                    <p className="mt-1 text-[11px] text-ds-light">
-                      CNAE único do tomador — selecionado automaticamente.
-                    </p>
-                  )}
-                </Field>
-              )
-            })()}
-
-            <Field label="Serviço (LC 116/2003)" required error={errors.servico}>
-              <select
-                value={servico?.id ?? ''}
-                onChange={e => {
-                  const s = servicosDisponiveis.find(s => s.id === e.target.value)
-                  setServico(s ? { id: s.id, label: `${s.codigoLc116} — ${s.descricaoPadrao}` } : null)
-                  setErrors(ex => ({ ...ex, servico: '' }))
-                }}
-                disabled={servicosDisponiveis.length === 1}
-                className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-ds-mid disabled:bg-ds-surface disabled:text-ds-mid"
-              >
-                <option value="">Selecione o serviço...</option>
-                {servicosDisponiveis.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.codigoLc116} — {s.descricaoPadrao}
-                  </option>
-                ))}
-              </select>
-              {tomadorObj && tomadorObj.servicos && tomadorObj.servicos.length > 0 && (
-                <p className="mt-1 text-[11px] text-ds-light">
-                  {servicosDisponiveis.length === 1
-                    ? 'Serviço único do tomador — selecionado automaticamente.'
-                    : 'Exibindo apenas os serviços cadastrados para este tomador.'}
                 </p>
               )}
             </Field>
@@ -834,7 +615,6 @@ export function ProducaoNovaPage() {
                 <p className="text-xs text-ds-light text-right">
                   Faltam: {[
                     !tomador && 'tomador',
-                    !servico && 'serviço',
                     !empresaId && 'empresa emissora',
                     totalCentavos <= 0 && 'valor',
                     participantes.some(p => !p.medico) && 'médico',
@@ -858,7 +638,7 @@ export function ProducaoNovaPage() {
 
         {/* Preview (2/5) */}
         <div className="lg:col-span-2">
-          <PreviewCard preview={preview} loading={previewLoading} />
+          <ResumoCard valorBruto={totalCentavos} />
         </div>
       </div>
     </div>
