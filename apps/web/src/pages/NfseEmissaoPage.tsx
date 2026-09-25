@@ -29,6 +29,32 @@ function formatCompetencia(comp: string): string {
   return `${meses[parseInt(mes, 10) - 1]}/${ano}`
 }
 
+function formatPct(fracao: number): string {
+  return `${(fracao * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
+}
+
+// Taxa Pin da produção com o percentual acordado no cadastro de cada médico (taxaPinPct);
+// enquanto o cadastro não carregou (ou se falhar), usa o percentual gravado na participação.
+function calcTaxaPin(producao: Producao, taxaCadastro: Record<string, number>) {
+  let taxaPin = 0
+  const pcts = new Set<number>()
+  let divergeDoLancamento = false
+  for (const p of producao.participantes) {
+    const gravado = Number(p.taxaPinPct)
+    const pct = taxaCadastro[p.medicoId] ?? gravado
+    if (pct !== gravado) divergeDoLancamento = true
+    pcts.add(pct)
+    taxaPin += Math.round(p.valorBruto * pct)
+  }
+  const unico = pcts.size === 1 ? [...pcts][0] : null
+  return {
+    taxaPin,
+    taxaLabel:    unico != null ? formatPct(unico) : 'conforme cada médico',
+    repasseLabel: unico != null ? formatPct(1 - unico) : 'conforme cada médico',
+    divergeDoLancamento,
+  }
+}
+
 function calcPct(valorCentavos: number, aliquotaPct: number): number {
   return Math.round(valorCentavos * aliquotaPct / 100)
 }
@@ -218,6 +244,7 @@ export function NfseEmissaoPage() {
   const [showPreview, setShowPreview] = useState(false)
   const [empresaInfo, setEmpresaInfo] = useState<Empresa | null>(null)
   const [medicoNomeMap, setMedicoNomeMap] = useState<Record<string, string>>({})
+  const [taxaCadastro, setTaxaCadastro] = useState<Record<string, number>>({})
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -276,8 +303,14 @@ export function NfseEmissaoPage() {
     Promise.all(ids.map(id => medicosApi.buscarPorId(id).catch(() => null)))
       .then(medicos => {
         const map: Record<string, string> = {}
-        medicos.forEach((m, i) => { if (m) map[ids[i]] = m.nome })
+        const taxas: Record<string, number> = {}
+        medicos.forEach((m, i) => {
+          if (!m) return
+          map[ids[i]] = m.nome
+          if (m.taxaPinPct != null) taxas[ids[i]] = Number(m.taxaPinPct)
+        })
         setMedicoNomeMap(map)
+        setTaxaCadastro(taxas)
       })
   }, [producao])
 
@@ -311,7 +344,7 @@ export function NfseEmissaoPage() {
         return override !== undefined ? Number(override.valorAliquota) : servicoAliq
       }
 
-      const taxaPin       = calcPct(valorBruto, 15)
+      const { taxaPin }   = calcTaxaPin(producao, taxaCadastro)
       const issRetido     = tomador.retencaoIss     ? calcPct(valorBruto, efAliq('ISS',    servico.aliquotaIss))    : 0
       const irRetido      = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('IR',     servico.aliquotaIr))     : 0
       const csllRetido    = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('CSLL',   servico.aliquotaCsll))   : 0
@@ -401,7 +434,7 @@ export function NfseEmissaoPage() {
   const aliqPis    = efAliq('PIS',    servico.aliquotaPis)
   const aliqCofins = efAliq('COFINS', servico.aliquotaCofins)
 
-  const taxaPin        = calcPct(valorBruto, 15)
+  const { taxaPin, taxaLabel, repasseLabel, divergeDoLancamento } = calcTaxaPin(producao, taxaCadastro)
   const issRetido      = tomador.retencaoIss     ? calcPct(valorBruto, aliqIss)    : 0
   const irRetido       = tomador.retencaoFederal ? calcPct(valorBruto, aliqIr)     : 0
   const csllRetido     = tomador.retencaoFederal ? calcPct(valorBruto, aliqCsll)   : 0
@@ -462,7 +495,7 @@ export function NfseEmissaoPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-ds-light">Competência</span>
-                <span className="font-medium text-ds-mid">{formatCompetencia(producao.competencia)}</span>
+                <span className="font-bold text-primary text-base">{formatCompetencia(producao.competencia)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-ds-light">Valor Bruto</span>
@@ -503,14 +536,19 @@ export function NfseEmissaoPage() {
               {/* Distribuição do bruto */}
               <div className="mb-3">
                 <FiscalRow label="Valor Bruto" value={valorBruto} />
-                <FiscalRow label="Repasse ao Médico (85%)" value={valorRepasse} indent />
-                <FiscalRow label="Taxa Pin Saúde (15%)" value={taxaPin} indent />
+                <FiscalRow label={`Repasse ao Médico (${repasseLabel})`} value={valorRepasse} indent />
+                <FiscalRow label={`Taxa Pin Saúde (${taxaLabel})`} value={taxaPin} indent />
+                {divergeDoLancamento && (
+                  <p className="text-[10px] text-amber-600 mt-1 italic">
+                    Percentual do cadastro do médico diferente do gravado no lançamento desta produção — valores calculados com o do cadastro.
+                  </p>
+                )}
               </div>
 
-              {/* Apuração real da Pin — o que sobra dos 15% após tributos */}
+              {/* Apuração real da Pin — o que sobra da taxa Pin após tributos */}
               <div className="border-t border-ds-border pt-3">
                 <p className="text-[10px] font-semibold text-ds-mid uppercase tracking-wide mb-2">Apuração Pin Saúde</p>
-                <FiscalRow label="Pin retém (15% do bruto)" value={taxaPin} />
+                <FiscalRow label={`Pin retém (${taxaLabel} do bruto)`} value={taxaPin} />
                 <FiscalRow
                   label={`ISS (${aliqIss}%)${aliqIss !== servico.aliquotaIss ? ' *' : ''} ${issRetido > 0 ? '— retido pelo tomador' : '— a recolher via guia'}`}
                   value={issTotal} indent negative
@@ -538,7 +576,7 @@ export function NfseEmissaoPage() {
                   </span>
                 </div>
                 <p className="text-[10px] text-ds-light mt-2 italic">
-                  O médico sempre recebe 85% do bruto. Os tributos saem dos 15% da Pin, retidos ou não.
+                  O médico recebe o bruto menos a taxa Pin acordada. Os tributos saem da taxa da Pin, retidos ou não.
                 </p>
                 {tomadorFull?.aliquotas && tomadorFull.aliquotas.length > 0 && (
                   <p className="text-[10px] text-amber-600 mt-1.5 italic">
