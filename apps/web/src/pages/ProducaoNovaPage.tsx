@@ -26,6 +26,10 @@ function maskBRL(centavos: number): string {
   return (centavos / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function formatPct(fracao: number): string {
+  return `${(fracao * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
+}
+
 function currentCompetencia(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -223,6 +227,11 @@ export function ProducaoNovaPage() {
   const [tomadoresMedico, setTomadoresMedico]   = useState<Tomador[]>([])
   const [tomadoresLoading, setTomadoresLoading] = useState(false)
   const [tomador, setTomador] = useState<AutocompleteItem | null>(null)
+  // Cadastro completo do médico selecionado: a listagem de médicos não traz a taxa Pin
+  // acordada (taxaPinPct), só o detalhe (GET /api/medicos/{id}).
+  const [medicoDetalhe, setMedicoDetalhe] = useState<Medico | null>(null)
+  const [medicoDetalheLoading, setMedicoDetalheLoading] = useState(false)
+  const [medicoDetalheErro, setMedicoDetalheErro] = useState<string | null>(null)
   const [empresaEscolhida, setEmpresaEscolhida] = useState('')
   const [competencia, setCompetencia] = useState(currentCompetencia())
   const [valorStr, setValorStr]   = useState('')
@@ -258,6 +267,19 @@ export function ProducaoNovaPage() {
 
   useEffect(() => { setEmpresaEscolhida('') }, [tomador?.id])
 
+  useEffect(() => {
+    setMedicoDetalhe(null)
+    setMedicoDetalheErro(null)
+    if (!medico) return
+    let cancelled = false
+    setMedicoDetalheLoading(true)
+    medicosApi.buscarPorId(medico.id)
+      .then(m => { if (!cancelled) setMedicoDetalhe(m) })
+      .catch(() => { if (!cancelled) setMedicoDetalheErro('Não foi possível carregar a taxa Pin acordada com este médico. Tente selecioná-lo novamente.') })
+      .finally(() => { if (!cancelled) setMedicoDetalheLoading(false) })
+    return () => { cancelled = true }
+  }, [medico?.id])
+
   // Tomadores com faturamento por grupo geram produção pelo Fechamento por Grupo (PINSAUDE-13.11).
   const tomadoresDisponiveis = tomadoresMedico.filter(t => !t.temGrupoFaturamento)
   const qtdOcultosPorGrupo   = tomadoresMedico.length - tomadoresDisponiveis.length
@@ -276,22 +298,24 @@ export function ProducaoNovaPage() {
   const empresaInfo = empresaId ? empresas.find(e => e.id === empresaId) ?? null : null
 
   const valorCentavos = parseBRL(valorStr)
-  const taxaPinPct    = medicoObj?.taxaPinPct ?? 0.15
-  const taxaPin       = Math.round(valorCentavos * taxaPinPct)
+  // Sem fallback fixo: a produção só é confirmada depois que a taxa do cadastro do médico carregou.
+  const taxaPinPct    = medicoDetalhe?.taxaPinPct != null ? Number(medicoDetalhe.taxaPinPct) : null
+  const taxaPin       = taxaPinPct != null ? Math.round(valorCentavos * taxaPinPct) : 0
 
   const etapa1Ok = !!medico
   const etapa2Ok = etapa1Ok && !!tomador && !!empresaId
-  const etapa3Ok = etapa2Ok && !!competencia && valorCentavos > 0
+  const etapa3Ok = etapa2Ok && !!competencia && valorCentavos > 0 && taxaPinPct != null
 
   const faltando = [
     !medico && 'médico',
     !tomador && 'tomador',
     tomador && !empresaId && 'empresa emissora',
     valorCentavos <= 0 && 'valor',
+    medico && taxaPinPct == null && !medicoDetalheLoading && 'taxa Pin do médico',
   ].filter(Boolean) as string[]
 
   async function handleSubmit() {
-    if (!etapa3Ok || !medico || !tomador) return
+    if (!etapa3Ok || !medico || !tomador || taxaPinPct == null) return
     const req: ProducaoRequest = {
       tomadorId:             tomador.id,
       servicoId:             null,
@@ -360,6 +384,21 @@ export function ProducaoNovaPage() {
                 placeholder="Buscar médico por nome..."
               />
             </Field>
+            {medico && (
+              <div className="flex items-center justify-between rounded-lg bg-ds-input/60 border border-ds-border px-4 py-2.5">
+                <span className="text-xs text-ds-light">Taxa Pin Saúde acordada</span>
+                {medicoDetalheLoading
+                  ? <Loader2 size={14} className="animate-spin text-ds-light" />
+                  : taxaPinPct != null
+                    ? <span className="text-sm font-bold text-ds-mid">{formatPct(taxaPinPct)}</span>
+                    : <span className="text-xs text-red-500">indisponível</span>}
+              </div>
+            )}
+            {medicoDetalheErro && (
+              <p className="text-xs text-red-500 flex items-center gap-1">
+                <AlertCircle size={11} /> {medicoDetalheErro}
+              </p>
+            )}
             {medicos.length === 0 && (
               <p className="text-xs text-amber-600 flex items-center gap-1">
                 <AlertCircle size={11} /> Nenhum médico ativo encontrado. Ative um médico primeiro.
@@ -519,10 +558,10 @@ export function ProducaoNovaPage() {
                 <span className="text-sm font-semibold text-ds-mid">Valor Bruto</span>
                 <span className="text-lg font-black text-ds-mid">{formatBRL(valorCentavos)}</span>
               </div>
-              {valorCentavos > 0 && (
+              {valorCentavos > 0 && taxaPinPct != null && (
                 <>
                   <div className="flex items-center justify-between text-xs text-ds-light">
-                    <span>Taxa Pin Saúde ({(taxaPinPct * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%)</span>
+                    <span>Taxa Pin Saúde ({formatPct(taxaPinPct)})</span>
                     <span>− {formatBRL(taxaPin)}</span>
                   </div>
                   <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-lg">
