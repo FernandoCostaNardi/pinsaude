@@ -331,6 +331,42 @@ class TomadorServiceTest {
     }
 
     @Test
+    void atualizar_cnpjLegadoInvalidoSemAlteracao_naoBloqueiaEdicao() {
+        // Tomador antigo gravado com CNPJ que não passa no dígito verificador: editar outros
+        // campos (ex.: nome) mantendo o mesmo documento e tipo não pode lançar "CNPJ inválido".
+        UUID id = UUID.randomUUID();
+        Tomador existente = tomadorFixture(TENANT); // tipo HOSPITAL
+        TomadorRequest req = new TomadorRequest(
+            "HOSPITAL", CNPJ_INVALIDO, "Hospital Renomeado",
+            null, null, null, true, false, null, null, null, null, null, null, null, null);
+
+        when(repo.findById(id)).thenReturn(Optional.of(existente));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_INVALIDO);
+        when(crypto.encrypt(CNPJ_INVALIDO)).thenReturn(new byte[]{1, 2, 3});
+        when(repo.save(any())).thenReturn(existente);
+
+        service.atualizar(id, req);
+
+        verify(repo).save(existente);
+    }
+
+    @Test
+    void atualizar_trocandoParaCnpjInvalido_lanca400() {
+        UUID id = UUID.randomUUID();
+        Tomador existente = tomadorFixture(TENANT);
+        TomadorRequest req = new TomadorRequest(
+            "HOSPITAL", CNPJ_INVALIDO, "Hospital Teste",
+            null, null, null, true, false, null, null, null, null, null, null, null, null);
+
+        when(repo.findById(id)).thenReturn(Optional.of(existente));
+        when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
+
+        assertThatThrownBy(() -> service.atualizar(id, req))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("CNPJ inválido");
+    }
+
+    @Test
     void atualizar_comCnpjDuplicadoDeOutroTomador_lanca409() {
         UUID id = UUID.randomUUID();
         // existente tem um CNPJ atual diferente; a atualização quer mudá-lo para CNPJ_VALIDO,

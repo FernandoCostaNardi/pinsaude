@@ -226,9 +226,15 @@ public class TomadorService {
 
         TipoTomador tipo = parseTipo(req.tipo());
         String cnpjCpfLimpo = req.cnpjCpf().replaceAll("\\D", "");
-        validarDocumento(tipo, cnpjCpfLimpo);
 
+        // Só revalida o documento quando ele (ou o tipo PF/PJ) muda: tomadores antigos podem ter um
+        // CNPJ gravado que não passa no dígito verificador, e isso não pode travar a edição dos
+        // demais campos (nome, endereço, retenções...).
         String cnpjAtual = crypto.decrypt(t.getCnpjCpfTomadorCriptografado());
+        boolean documentoMudou = !cnpjCpfLimpo.equals(cnpjAtual) || tipo != t.getTipo();
+        if (documentoMudou) {
+            validarDocumento(tipo, cnpjCpfLimpo);
+        }
         if (!cnpjCpfLimpo.equals(cnpjAtual)) {
             validarDocumentoDuplicado(cnpjCpfLimpo, id);
         }
