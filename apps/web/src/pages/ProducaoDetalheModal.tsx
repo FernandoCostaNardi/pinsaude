@@ -1,4 +1,4 @@
-import { X, CheckCircle2, Clock, FileText, XCircle, Building2, Stethoscope, Tag, Calendar, Send } from 'lucide-react'
+import { X, CheckCircle2, Clock, FileText, XCircle, Building2, Stethoscope, Calendar, Send } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Producao } from '../api/producoesApi'
 
@@ -12,6 +12,10 @@ function formatCompetencia(comp: string): string {
   const [ano, mes] = comp.split('-')
   const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
   return `${meses[parseInt(mes, 10) - 1]}/${ano}`
+}
+
+function formatPct(fracao: number): string {
+  return `${(fracao * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
 }
 
 function calcPct(valorCentavos: number, aliquotaPct: number): number {
@@ -73,19 +77,22 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
   const { tomador, servico, valorBruto, status } = producao
   const { label: statusLabel, cls: statusCls, Icon: StatusIcon } = STATUS_CFG[status]
 
-  // servico pode ser null — produções vindas do Portal do Médico nascem sem serviço (LC
-  // 116/2003) definido, a operação atribui depois (ver "Emitir NFS-e"). Sem serviço não dá
-  // pra calcular retenções ainda; os cálculos abaixo caem para 0 e a seção de composição
-  // fiscal mostra um aviso no lugar do breakdown.
-  const taxaPin        = calcPct(valorBruto, 15)
+  // Taxa Pin: vem de cada participação, com o percentual acordado com o médico gravado no
+  // lançamento (participacoes_producao.taxa_pin_pct) — nunca um 15% fixo.
+  const taxaPin      = producao.participantes.reduce((s, p) => s + p.taxaPin, 0)
+  const valorLiquido = producao.participantes.reduce((s, p) => s + p.valorLiquido, 0)
+  const pcts         = Array.from(new Set(producao.participantes.map(p => Number(p.taxaPinPct))))
+  const taxaPinLabel = pcts.length === 1 ? formatPct(pcts[0]) : 'conforme cada médico'
+  const pctLiquido   = pcts.length === 1 ? formatPct(1 - pcts[0]) : null
+
+  // servico pode ser null — o Serviço (LC 116/2003) é definido na emissão da NFS-e. Sem ele
+  // não dá pra calcular retenções ainda; a apuração mostra um aviso no lugar dos tributos.
   const issRetido      = servico && tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
   const irRetido       = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
   const csllRetido     = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
   const pisRetido      = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
   const cofinsRetido   = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
   const totalRetencoes = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
-  const valorLiquido   = valorBruto - taxaPin          // médico sempre recebe 85%
-  const resultadoPin   = taxaPin - totalRetencoes      // lucro Pin após tributos
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -174,41 +181,6 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
             />
           </div>
 
-          {/* Serviço */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Tag size={14} className="text-primary" />
-              <SectionTitle>Serviço (LC 116/2003)</SectionTitle>
-            </div>
-            {servico ? (
-              <>
-                <InfoRow label="Código" value={<span className="font-mono">{servico.codigoLc116}</span>} />
-                <InfoRow label="Descrição" value={servico.descricaoPadrao} />
-                <div className="mt-2 bg-ds-surface rounded-lg p-3 grid grid-cols-5 gap-2">
-                  {[
-                    { label: 'ISS', value: servico.aliquotaIss },
-                    { label: 'IR', value: servico.aliquotaIr },
-                    { label: 'CSLL', value: servico.aliquotaCsll },
-                    { label: 'PIS', value: servico.aliquotaPis },
-                    { label: 'COFINS', value: servico.aliquotaCofins },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="text-center">
-                      <p className="text-[10px] text-ds-light font-medium">{label}</p>
-                      <p className="text-sm font-semibold text-ds-mid">{Number(value).toFixed(2)}%</p>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
-                <p className="text-xs text-orange-700">
-                  Ainda não definido — esta produção veio do Portal do Médico. Defina o serviço na
-                  tela de Emissão de NFS-e antes de emitir.
-                </p>
-              </div>
-            )}
-          </div>
-
           {/* Competência */}
           <div>
             <div className="flex items-center gap-2 mb-3">
@@ -230,18 +202,20 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
             <div className="bg-green-50 border border-green-200 rounded-xl p-4">
               <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-3">Repasse ao Médico</p>
               <FiscalRow label="Valor Bruto (contrato)" value={valorBruto} />
-              <FiscalRow label="Taxa Pin Saúde (15%)" value={taxaPin} indent negative />
+              <FiscalRow label={`Taxa Pin Saúde (${taxaPinLabel})`} value={taxaPin} indent negative />
               <div className="border-t-2 border-green-300 mt-2 pt-2.5 flex items-center justify-between">
                 <span className="font-bold text-green-800 text-sm">Valor Líquido ao Médico</span>
                 <span className="font-bold text-green-700 text-base">{formatBRL(valorLiquido)}</span>
               </div>
-              <p className="text-right text-xs text-green-600 mt-1">Sempre 85% do valor bruto</p>
+              {pctLiquido && (
+                <p className="text-right text-xs text-green-600 mt-1">{pctLiquido} do valor bruto</p>
+              )}
             </div>
 
             {/* Apuração fiscal Pin */}
             <div className="bg-ds-surface rounded-xl p-4">
               <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-3">Apuração Fiscal Pin Saúde</p>
-              <FiscalRow label="Pin Saúde retém (15%)" value={taxaPin} />
+              <FiscalRow label={`Pin Saúde retém (${taxaPinLabel})`} value={taxaPin} />
               {servico && issRetido > 0 && (
                 <FiscalRow label={`ISS (${Number(servico.aliquotaIss).toFixed(2)}%)`} value={issRetido} indent negative />
               )}
@@ -257,18 +231,12 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
               {servico && cofinsRetido > 0 && (
                 <FiscalRow label={`COFINS (${Number(servico.aliquotaCofins).toFixed(2)}%)`} value={cofinsRetido} indent negative />
               )}
-              <div className="border-t border-ds-border mt-2 pt-2.5 flex items-center justify-between">
-                <span className="font-semibold text-ds-mid text-sm">Resultado Pin Saúde</span>
-                <span className={`font-bold text-sm ${resultadoPin >= 0 ? 'text-primary' : 'text-red-600'}`}>
-                  {formatBRL(resultadoPin)}
-                </span>
-              </div>
               {!servico ? (
                 <p className="text-xs text-orange-600 mt-1">
-                  Serviço ainda não definido — retenções serão recalculadas quando a operação definir o serviço, antes da emissão.
+                  Serviço (LC 116/2003) ainda não definido — as retenções aparecem depois que ele for definido na emissão da NFS-e.
                 </p>
               ) : totalRetencoes === 0 && (
-                <p className="text-xs text-ds-light mt-1">Tomador não faz retenções — Pin fica com os 15% integrais</p>
+                <p className="text-xs text-ds-light mt-1">Tomador não faz retenções sobre esta nota.</p>
               )}
             </div>
           </div>
