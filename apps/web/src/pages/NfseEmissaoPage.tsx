@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, CheckCircle2, Clock, XCircle, AlertTriangle,
-  FileDown, FileText, RotateCcw, ShieldCheck, Loader2, Eye,
+  FileDown, FileText, RotateCcw, ShieldCheck, Loader2, Eye, Stethoscope,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import { useAuth } from '../auth/useAuth'
@@ -532,6 +532,26 @@ export function NfseEmissaoPage() {
             <div className="bg-ds-surface rounded-xl p-4">
               <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-1">Controle Interno — Repasse</p>
               <p className="text-[10px] text-ds-light mb-3">Não consta na NFS-e. Base para o módulo de Repasses (EPIC-09).</p>
+
+              {/* Médico(s) da produção */}
+              <div className="flex items-start gap-2 bg-white border border-ds-border rounded-lg px-3 py-2 mb-3">
+                <Stethoscope size={14} className="text-primary mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold text-ds-light uppercase tracking-wide">
+                    {producao.participantes.length === 1 ? 'Médico' : 'Médicos'}
+                  </p>
+                  {producao.participantes.map(p => (
+                    <div key={p.id} className="flex justify-between gap-3">
+                      <span className="text-sm font-semibold text-ds-mid truncate">
+                        {medicoNomeMap[p.medicoId] ?? 'Carregando...'}
+                      </span>
+                      {producao.participantes.length > 1 && (
+                        <span className="text-xs text-ds-mid shrink-0">{formatBRL(p.valorBruto)}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               {/* Distribuição do bruto */}
               <div className="mb-3">
