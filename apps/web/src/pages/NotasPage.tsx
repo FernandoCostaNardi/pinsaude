@@ -5,7 +5,7 @@ import {
   Loader2, Search, RefreshCw, Download, X, ChevronRight, Send,
   Ban, FileX, ThumbsUp, ThumbsDown,
 } from 'lucide-react'
-import { Spinner, Alert } from '@pinsaude/ui'
+import { Button, Spinner, Alert } from '@pinsaude/ui'
 import {
   listarNotas, listarExcecoes, aprovarNota, cancelarNota, rejeitarNota,
   downloadComAuth, downloadXmlUrl, downloadPdfUrl,
@@ -409,6 +409,7 @@ export function NotasPage() {
   const [filtroStatus, setFiltroStatus] = useState<StatusNota | ''>('')
   const [filtroCompInicio, setFiltroCompInicio] = useState('')
   const [filtroCompFim, setFiltroCompFim] = useState('')
+  const [page, setPage] = useState(0)
 
   // Modais
   const [cancelarNota_, setCancelarNota] = useState<NotaFiscal | null>(null)
@@ -472,6 +473,17 @@ export function NotasPage() {
       (n.observacoes ?? '').toLowerCase().includes(qLow)
     )
   })
+    // Competência mais atual primeiro (YYYY-MM compara como string); desempate pela mais recente.
+    .sort((a, b) => b.competencia.localeCompare(a.competencia) || (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+
+  // ─── Paginação ────────────────────────────────────────────────────────────────
+
+  const PAGE_SIZE  = 10
+  const totalPages = Math.max(1, Math.ceil(filtradas.length / PAGE_SIZE))
+  const pageAtual  = Math.min(page, totalPages - 1)
+  const paginadas  = filtradas.slice(pageAtual * PAGE_SIZE, (pageAtual + 1) * PAGE_SIZE)
+
+  useEffect(() => { setPage(0) }, [q, filtroStatus, filtroCompInicio, filtroCompFim])
 
   // ─── Stats ────────────────────────────────────────────────────────────────────
 
@@ -704,7 +716,7 @@ export function NotasPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-ds-border">
-                        {filtradas.map(nota => {
+                        {paginadas.map(nota => {
                           const aguardandoEmissao = nota.status === 'AGUARDANDO_EMISSAO'
                           return (
                             <tr
@@ -748,9 +760,21 @@ export function NotasPage() {
                 {filtradas.length > 0 && (
                   <div className="flex items-center justify-between px-5 py-3 border-t border-ds-border text-xs text-ds-light">
                     <span>
-                      Exibindo <strong className="text-ds-mid">{filtradas.length}</strong> de{' '}
-                      <strong className="text-ds-mid">{notas.length}</strong> notas
+                      Exibindo <strong className="text-ds-mid">{paginadas.length}</strong> de{' '}
+                      <strong className="text-ds-mid">{filtradas.length}</strong> nota{filtradas.length !== 1 ? 's' : ''}
+                      {filtradas.length !== notas.length && <> (total: {notas.length})</>}
                     </span>
+                    {totalPages > 1 && (
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="sm" disabled={pageAtual === 0} onClick={() => setPage(pageAtual - 1)}>
+                          Anterior
+                        </Button>
+                        <span className="px-2 text-ds-mid font-medium">{pageAtual + 1} / {totalPages}</span>
+                        <Button variant="ghost" size="sm" disabled={pageAtual >= totalPages - 1} onClick={() => setPage(pageAtual + 1)}>
+                          Próximo
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
