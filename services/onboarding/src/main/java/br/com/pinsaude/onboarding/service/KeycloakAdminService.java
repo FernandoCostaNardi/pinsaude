@@ -79,7 +79,10 @@ public class KeycloakAdminService {
         body.put("lastName", partes.length > 1 ? partes[1] : "");
         body.put("enabled", false);
         body.put("emailVerified", false);
-        body.put("requiredActions", List.of("UPDATE_PASSWORD", "VERIFY_EMAIL"));
+        // Só UPDATE_PASSWORD: o médico define a senha pelo link enviado ao próprio e-mail
+        // (reset-credentials), o que já prova a posse do endereço. VERIFY_EMAIL pendente faz o
+        // login ROPC do frontend falhar com "Account is not fully set up" mesmo com senha válida.
+        body.put("requiredActions", List.of("UPDATE_PASSWORD"));
         if (cnpjId != null && !cnpjId.isBlank()) {
             body.put("attributes", Map.of("cnpj_id", List.of(cnpjId)));
         }
@@ -134,12 +137,37 @@ public class KeycloakAdminService {
             .toBodilessEntity();
     }
 
+    /**
+     * Habilita/desabilita o usuário. Ao habilitar, também marca o e-mail como verificado e
+     * remove VERIFY_EMAIL das required actions — contas criadas antes desta correção nasceram
+     * com [UPDATE_PASSWORD, VERIFY_EMAIL], e o VERIFY_EMAIL pendente bloqueia o login ROPC do
+     * frontend mesmo depois de o médico definir a senha. Faz GET da representação completa e
+     * reenvia tudo no PUT (mesmo motivo de updateUserAttributeCnpjId: não zerar campos do perfil).
+     */
     public void updateUserEnabled(String userId, boolean enabled) {
+        Map<String, Object> atual = restClient.get()
+            .uri(adminUrl("/users/" + userId))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
+            .retrieve()
+            .body(new ParameterizedTypeReference<>() {});
+
+        Map<String, Object> body = new LinkedHashMap<>(atual != null ? atual : Map.of());
+        body.put("enabled", enabled);
+        if (enabled) {
+            body.put("emailVerified", true);
+            Object acoes = body.get("requiredActions");
+            if (acoes instanceof List<?> lista) {
+                body.put("requiredActions", lista.stream()
+                    .filter(a -> !"VERIFY_EMAIL".equals(a))
+                    .toList());
+            }
+        }
+
         restClient.put()
             .uri(adminUrl("/users/" + userId))
             .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
             .contentType(MediaType.APPLICATION_JSON)
-            .body(Map.of("enabled", enabled))
+            .body(body)
             .retrieve()
             .toBodilessEntity();
     }
@@ -156,8 +184,8 @@ public class KeycloakAdminService {
      * completa do formulário de perfil e ZERA qualquer campo do perfil ausente do corpo —
      * confirmado empiricamente que isso inclui firstName/lastName **e também email** (uma
      * primeira versão deste método só reenviava firstName/lastName e ainda assim zerou o
-     * email de dois usuários reais). updateUserEnabled (só "enabled") não tem esse problema —
-     * o bug é específico de enviar "attributes". Copiar a representação inteira (em vez de
+     * email de dois usuários reais). updateUserEnabled também reenvia a representação
+     * completa, pelo mesmo cuidado. Copiar a representação inteira (em vez de
      * escolher campos a dedo) evita essa classe de bug se o Keycloak um dia gerenciar mais
      * campos do perfil.
      */

@@ -818,7 +818,12 @@ export function MedicoPerfilPage() {
               ) : (
                 <p className="text-xs text-ds-light mb-3">Nenhum convite enviado ainda.</p>
               )}
-              {canEdit && (
+              {canEdit && medico.status === 'ATIVO' && (
+                <p className="text-xs text-ds-light mt-3">
+                  Médico já ativo — para enviar o acesso ao portal, use "Reenviar boas-vindas" acima.
+                </p>
+              )}
+              {canEdit && medico.status !== 'ATIVO' && (
                 <div className="mt-3">
                   <Button
                     size="sm"

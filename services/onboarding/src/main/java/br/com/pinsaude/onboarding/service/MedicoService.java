@@ -250,6 +250,13 @@ public class MedicoService {
     @Transactional
     public EnviarConviteResponse enviarConvite(UUID medicoId) {
         Medico medico = findOrThrow(medicoId);
+        // O convite leva a um link de autoatendimento de cadastro — não serve para dar acesso
+        // ao portal. Para médico já ativo o caminho certo é reenviarBoasVindas (garante a conta
+        // Keycloak e envia o link de definição de senha).
+        if (medico.getStatus() == StatusMedico.ATIVO) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Médico já está ativo. Use \"Reenviar boas-vindas\" para enviar o acesso ao portal.");
+        }
         var convite = conviteService.enviarConvite(medico);
         registrarHistorico(medicoId, TipoAcaoMedico.ENVIO_CONVITE,
             "Convite enviado para " + medico.getEmail());

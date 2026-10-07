@@ -101,6 +101,20 @@ class OnboardingFluxoTest {
     }
 
     @Test
+    void enviarConvite_medicoAtivo_lanca422ESemEnviar() {
+        UUID medicoId = UUID.randomUUID();
+        var medico = medicoComEmail(medicoId);
+        medico.setStatus(StatusMedico.ATIVO);
+        when(medicoRepo.findById(medicoId)).thenReturn(Optional.of(medico));
+
+        assertThatThrownBy(() -> medicoService.enviarConvite(medicoId))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(org.springframework.http.HttpStatusCode.valueOf(422));
+        verify(conviteService, never()).enviarConvite(any());
+    }
+
+    @Test
     void enviarConvite_medicoNaoEncontrado_lancaNotFound() {
         UUID id = UUID.randomUUID();
         when(medicoRepo.findById(id)).thenReturn(Optional.empty());
