@@ -7,8 +7,6 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -108,8 +106,10 @@ public class KeycloakAdminService {
      */
     public Optional<String> findUserIdByEmail(String email) {
         List<Map<String, Object>> encontrados = restClient.get()
-            .uri(adminUrl("/users?exact=true&email="
-                + URLEncoder.encode(email.toLowerCase(), StandardCharsets.UTF_8)))
+            // Variável de template (não URLEncoder): o RestClient já codifica a URI, então
+            // codificar antes gerava "%2540" no lugar de "@" e a busca nunca achava a conta —
+            // a criação seguia e o Keycloak devolvia 409 "User exists with same email".
+            .uri(adminUrl("/users") + "?exact=true&email={email}", email.toLowerCase())
             .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken())
             .retrieve()
             .body(new ParameterizedTypeReference<>() {});
