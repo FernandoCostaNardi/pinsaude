@@ -45,6 +45,8 @@ GRANT CREATE, USAGE ON SCHEMA gestao       TO svc_gestao;
 GRANT USAGE ON SCHEMA onboarding  TO svc_portal;
 GRANT USAGE ON SCHEMA fiscal      TO svc_portal;
 GRANT USAGE ON SCHEMA faturamento TO svc_portal;
+-- Extrato do portal: status "Pago" vem dos repasses no ledger (SELECT na tabela via migration V5 do ledger)
+GRANT USAGE ON SCHEMA ledger      TO svc_portal;
 
 -- search_path padrão por usuário (Flyway encontra o schema sem prefixo)
 ALTER USER svc_fiscal       SET search_path TO fiscal, public;
