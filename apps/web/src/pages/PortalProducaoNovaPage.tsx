@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Calculator, CheckCircle2, ChevronDown,
-  Plus, Loader2, ClipboardList, AlertCircle,
+  Plus, Loader2, ClipboardList,
   TrendingDown, DollarSign,
 } from 'lucide-react'
 import { Button, Spinner, Alert, Modal } from '@pinsaude/ui'
@@ -186,18 +186,6 @@ function PreviewCard({ valorBruto, taxaPinPct }: { valorBruto: number; taxaPinPc
             <span className="text-xs text-ds-mid">Taxa Pin Saúde ({formatPct(taxaPinPct)})</span>
           </div>
           <span className="text-xs tabular-nums text-purple-700">({formatBRL(taxaPin)})</span>
-        </div>
-
-        {/* Tributos */}
-        <div className="py-2 border-b border-ds-border/50">
-          <div className="flex items-start gap-1.5">
-            <AlertCircle size={11} className="text-orange-400 mt-0.5 shrink-0" />
-            <p className="text-[11px] text-ds-light leading-relaxed">
-              ISS, IR, CSLL, PIS e COFINS calculados na emissão
-              conforme regime do tomador. <strong>Esses tributos são custo
-              fiscal da Pin Saúde</strong>, não afetam seu valor líquido.
-            </p>
-          </div>
         </div>
 
         {/* Valor líquido — destaque */}
