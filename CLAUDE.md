@@ -1792,6 +1792,25 @@ import { ReactNode } from 'react'
 sub: ReactNode  // NOT sub: string
 ```
 
+
+### Extrato do Portal por Lançamento — substitui os lançamentos virtuais acima
+`GET /api/portal/extrato?competencia=YYYY-MM` não deriva mais débitos/créditos das NFS-e. Retorna
+um item por **Produção** (participação do médico) e um por **Frequência Médica**, com valor bruto,
+Taxa Pin (`participacoes_producao.taxa_pin_pct` → `medicos.taxa_pin_pct` → 15%, HALF_UP), valor
+previsto (bruto − taxa) e status:
+- **PROVISIONADO**: lançado pelo médico, sem NFS-e `EMITIDA` para a produção.
+- **FATURADO**: existe NFS-e `EMITIDA` com `producao_id` da produção (na frequência, o
+  `producao_id` gravado pelo Fechamento por Grupo).
+- **PAGO**: faturado e há lançamento `REPASSE` no `ledger.lancamentos_ledger` do médico naquela
+  competência. O módulo de repasse (EPIC-09) ainda é stub, então "Pago" só aparece quando houver
+  repasse no ledger. A consulta ao ledger é tolerante a falha (sem grant, o extrato segue sem "Pago").
+
+Produções geradas pelo Fechamento por Grupo são excluídas da lista de produção
+(`NOT EXISTS frequencias_medicas fm WHERE fm.producao_id = p.id AND fm.medico_id = pp.medico_id`)
+para não contar duas vezes: o valor aparece pela frequência. O bruto da frequência replica
+`FrequenciaMedicaResponse.from()` (itens + valor mensal Diarista + ocorrência fixa) em SQL.
+O portal precisa de `SELECT` em `ledger.lancamentos_ledger`: migration `ledger/V5__grant_select_portal.sql`
+(condicional à existência de `svc_portal`) + `GRANT USAGE ON SCHEMA ledger TO svc_portal` no `init.sql`.
 ---
 
 ## Notificações por E-mail — Fila RabbitMQ + Thymeleaf (EPIC-06.6)
@@ -3666,12 +3685,10 @@ EPIC-15.2 normalmente já populou vínculos reais o suficiente para testar sem p
 fake. `SELECT id FROM onboarding.medicos WHERE email = '...'` seguido de `SELECT * FROM
 faturamento.medico_tomadores WHERE medico_id = '<id>'`.
 
-### ⚠️ Teste pré-existente quebrado no portal — não relacionado a esta task
-`PortalMedicoControllerTest.extrato_semImplementacao_retornaListaVazia` falha desde o EPIC-06.4
-(quando `GET /api/portal/extrato` passou a retornar um `ExtratoResponse` de verdade, não mais uma
-lista vazia) — o teste nunca foi atualizado e ainda espera `$` como array vazio. `git log` confirma
-que o arquivo de teste só foi tocado no commit inicial do EPIC-06.1, nunca depois. Não corrigido
-nesta task (fora de escopo) — sinalizado aqui para quem for mexer nesse arquivo de teste no futuro.
+### Teste pré-existente quebrado no portal — corrigido no Extrato por lançamento
+`PortalMedicoControllerTest.extrato_semImplementacao_retornaListaVazia` falhava desde o EPIC-06.4.
+Foi substituído por `extrato_comRoleMedico_retornaLancamentosComStatus` quando o extrato passou a
+ser por lançamento (seção "Extrato do Portal por Lançamento" abaixo).
 
 ### ⚠️ `ProducaoService` nunca teve testes unitários antes do EPIC-15.7
 Ao adicionar a validação de bloqueio em `ProducaoService.criar()`, descobri que **não existia

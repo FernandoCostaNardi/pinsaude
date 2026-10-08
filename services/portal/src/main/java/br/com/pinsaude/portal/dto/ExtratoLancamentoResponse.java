@@ -1,12 +1,23 @@
 package br.com.pinsaude.portal.dto;
 
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/**
+ * Um lançamento do médico no Extrato do portal: uma Produção (lançada manualmente) ou uma
+ * Frequência Médica (plantões/diárias do mês). Valores em centavos.
+ */
 public record ExtratoLancamentoResponse(
-    String tipo,        // "CREDITO" ou "DEBITO"
-    String categoria,   // "NFS_E", "ISS", "IR", "CSLL", "PIS", "COFINS", "TAXA_PIN"
-    String descricao,
-    long valor,         // centavos, sempre positivo
-    long saldoApos,     // saldo running após este lançamento
-    String competencia, // YYYY-MM
-    String referencia,  // número da nota ou UUID truncado
-    String dataRef      // ISO datetime
+    UUID id,
+    String origem,          // "PRODUCAO" | "FREQUENCIA"
+    String competencia,     // YYYY-MM
+    String tomadorNome,
+    String descricao,       // serviço (produção) ou setor operacional (frequência)
+    int quantidade,         // plantões lançados (frequência); 1 para produção
+    long valorBruto,
+    long taxaPin,
+    long valorPrevisto,     // o que o médico recebe: bruto − taxa Pin
+    String status,          // "PROVISIONADO" | "FATURADO" | "PAGO"
+    String numeroNota,      // número da NFS-e quando já faturado
+    OffsetDateTime dataRef
 ) {}

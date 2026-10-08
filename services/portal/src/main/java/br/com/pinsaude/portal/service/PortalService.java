@@ -8,27 +8,38 @@ import br.com.pinsaude.portal.dto.PerfilMedicoResponse;
 import br.com.pinsaude.portal.dto.ProducaoPortalResponse;
 import br.com.pinsaude.portal.dto.SetorOperacionalPortalResponse;
 import br.com.pinsaude.portal.dto.TomadorPortalResponse;
+import br.com.pinsaude.portal.dto.ExtratoLancamentoResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class PortalService {
+
+    private static final Logger log = LoggerFactory.getLogger(PortalService.class);
 
     private final JdbcTemplate jdbc;
 
@@ -241,10 +252,207 @@ public class PortalService {
                 medicoId, tomadorId);
     }
 
-    public ExtratoResponse getExtrato(UUID medicoId, LocalDate dtInicio, LocalDate dtFim) {
-        // Repasses efetivos serão consultados aqui quando EPIC-09 for implementado.
-        // Apenas transferências liquidadas para a conta do médico devem aparecer.
-        return new ExtratoResponse(0L, 0L, 0L, 0L, 0L, List.of());
+    /**
+     * Extrato do médico: cada Produção e cada Frequência Médica que ele lançou, com o valor
+     * previsto a receber (bruto − taxa Pin) e o status:
+     * <ul>
+     *   <li>PROVISIONADO — só lançado pelo médico (ou já fechado, mas sem NFS-e emitida);</li>
+     *   <li>FATURADO — a NFS-e da produção (ou do fechamento da frequência) foi emitida;</li>
+     *   <li>PAGO — já faturado e existe repasse registrado no ledger para o médico naquela
+     *       competência.</li>
+     * </ul>
+     * Produções geradas pelo Fechamento por Grupo não aparecem separadas: são representadas
+     * pelas frequências que as originaram (evita contar o mesmo valor duas vezes).
+     */
+    public ExtratoResponse getExtrato(UUID medicoId, String competencia) {
+        Set<String> competenciasPagas = competenciasComRepasse(medicoId);
+
+        List<ExtratoLancamentoResponse> todos = new ArrayList<>();
+        todos.addAll(lancamentosDeProducao(medicoId, competenciasPagas));
+        todos.addAll(lancamentosDeFrequencia(medicoId, competenciasPagas));
+        todos.sort(Comparator.comparing(ExtratoLancamentoResponse::competencia).reversed()
+                .thenComparing(ExtratoLancamentoResponse::dataRef,
+                        Comparator.nullsLast(Comparator.reverseOrder())));
+
+        List<String> competencias = todos.stream()
+                .map(ExtratoLancamentoResponse::competencia)
+                .distinct()
+                .toList();
+
+        String filtro = competencia != null && !competencia.isBlank() ? competencia : null;
+        List<ExtratoLancamentoResponse> lancamentos = filtro == null ? todos
+                : todos.stream().filter(l -> filtro.equals(l.competencia())).toList();
+
+        long previsto = 0, provisionado = 0, faturado = 0, pago = 0;
+        for (ExtratoLancamentoResponse l : lancamentos) {
+            previsto += l.valorPrevisto();
+            switch (l.status()) {
+                case STATUS_PAGO -> pago += l.valorPrevisto();
+                case STATUS_FATURADO -> faturado += l.valorPrevisto();
+                default -> provisionado += l.valorPrevisto();
+            }
+        }
+        return new ExtratoResponse(filtro, previsto, provisionado, faturado, pago, competencias, lancamentos);
+    }
+
+    static final String STATUS_PROVISIONADO = "PROVISIONADO";
+    static final String STATUS_FATURADO     = "FATURADO";
+    static final String STATUS_PAGO         = "PAGO";
+
+    private List<ExtratoLancamentoResponse> lancamentosDeProducao(UUID medicoId, Set<String> competenciasPagas) {
+        return jdbc.query("""
+                SELECT p.id, p.competencia, p.created_at,
+                       t.razao_social_nome AS tomador_nome,
+                       s.descricao_padrao AS servico_descricao,
+                       pp.valor_bruto,
+                       COALESCE(pp.taxa_pin_pct, 0.15) AS taxa_pin_pct,
+                       nf.numero_nota, (nf.id IS NOT NULL) AS faturado
+                FROM faturamento.participacoes_producao pp
+                JOIN faturamento.producoes p ON p.id = pp.producao_id
+                JOIN faturamento.tomadores t ON t.id = p.tomador_id
+                LEFT JOIN faturamento.servicos s ON s.id = p.servico_id
+                LEFT JOIN LATERAL (
+                    SELECT n.id, n.numero_nota
+                    FROM fiscal.notas_fiscais n
+                    WHERE n.producao_id = p.id AND n.status = 'EMITIDA'
+                    ORDER BY n.emitida_at DESC NULLS LAST
+                    LIMIT 1
+                ) nf ON TRUE
+                WHERE pp.medico_id = ?
+                  AND p.status <> 'CANCELADA'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM faturamento.frequencias_medicas fm
+                      WHERE fm.producao_id = p.id AND fm.medico_id = pp.medico_id
+                  )
+                """,
+                (rs, row) -> {
+                    String comp = rs.getString("competencia");
+                    long bruto = rs.getLong("valor_bruto");
+                    long taxa = calcularTaxaPin(bruto, rs.getBigDecimal("taxa_pin_pct"));
+                    return new ExtratoLancamentoResponse(
+                            rs.getObject("id", UUID.class),
+                            "PRODUCAO",
+                            comp,
+                            rs.getString("tomador_nome"),
+                            rs.getString("servico_descricao"),
+                            1,
+                            bruto,
+                            taxa,
+                            bruto - taxa,
+                            resolverStatus(rs.getBoolean("faturado"), comp, competenciasPagas),
+                            rs.getString("numero_nota"),
+                            toOffsetDateTime(rs.getTimestamp("created_at")));
+                },
+                medicoId);
+    }
+
+    /**
+     * Valor bruto de cada frequência calculado com as mesmas regras do faturamento
+     * (FrequenciaMedicaResponse.from): soma dos itens (valor + deslocamento + ocorrência por
+     * item) + valor mensal da modalidade fixa (Diarista/Evolucionista) + ocorrência fixa da
+     * frequência, aplicada uma única vez. Frequências legadas sem modalidade fixa resolvem o
+     * valor mensal pelas modalidades fixas usadas nos itens.
+     */
+    private List<ExtratoLancamentoResponse> lancamentosDeFrequencia(UUID medicoId, Set<String> competenciasPagas) {
+        return jdbc.query("""
+                SELECT fm.id, fm.competencia, fm.created_at,
+                       t.razao_social_nome AS tomador_nome,
+                       so.nome AS setor_nome,
+                       itens.qtd,
+                       itens.total AS total_itens,
+                       CASE
+                         WHEN fm.modalidade_id IS NOT NULL THEN
+                             (CASE WHEN m.tipos[1] IN ('DIARISTA', 'EVOLUCIONISTA') THEN m.valor_centavos ELSE 0 END)
+                             + (CASE WHEN o.id IS NOT NULL
+                                     THEN COALESCE(ROUND(m.valor_centavos * o.valor_percentual / 100), 0)
+                                          + COALESCE(o.valor_centavos, 0)
+                                     ELSE 0 END)
+                         ELSE COALESCE((
+                             SELECT SUM(m2.valor_centavos)
+                             FROM faturamento.tomador_modalidades m2
+                             WHERE m2.tipos[1] IN ('DIARISTA', 'EVOLUCIONISTA')
+                               AND m2.id IN (SELECT i2.modalidade_id FROM faturamento.frequencia_itens i2
+                                             WHERE i2.frequencia_id = fm.id)
+                         ), 0)
+                       END AS valor_fixo,
+                       COALESCE(pp.taxa_pin_pct, med.taxa_pin_pct, 0.15) AS taxa_pin_pct,
+                       nf.numero_nota, (nf.id IS NOT NULL) AS faturado
+                FROM faturamento.frequencias_medicas fm
+                JOIN faturamento.tomadores t ON t.id = fm.tomador_id
+                LEFT JOIN faturamento.tomador_servicos_operacionais so ON so.id = fm.servico_operacional_id
+                LEFT JOIN faturamento.tomador_modalidades m ON m.id = fm.modalidade_id
+                LEFT JOIN faturamento.tomador_ocorrencias o ON o.id = fm.ocorrencia_id
+                LEFT JOIN onboarding.medicos med ON med.id = fm.medico_id
+                LEFT JOIN faturamento.participacoes_producao pp
+                       ON pp.producao_id = fm.producao_id AND pp.medico_id = fm.medico_id
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) AS qtd,
+                           COALESCE(SUM(i.valor_unitario_centavos + i.deslocamento_centavos
+                                        + COALESCE(i.ocorrencia_valor_centavos, 0)), 0) AS total
+                    FROM faturamento.frequencia_itens i
+                    WHERE i.frequencia_id = fm.id
+                ) itens ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT n.id, n.numero_nota
+                    FROM fiscal.notas_fiscais n
+                    WHERE fm.producao_id IS NOT NULL
+                      AND n.producao_id = fm.producao_id AND n.status = 'EMITIDA'
+                    ORDER BY n.emitida_at DESC NULLS LAST
+                    LIMIT 1
+                ) nf ON TRUE
+                WHERE fm.medico_id = ?
+                """,
+                (rs, row) -> {
+                    String comp = rs.getString("competencia");
+                    int qtd = rs.getInt("qtd");
+                    long bruto = rs.getLong("total_itens") + rs.getLong("valor_fixo");
+                    if (qtd == 0 && bruto == 0) return null; // frequência aberta sem nada lançado
+                    long taxa = calcularTaxaPin(bruto, rs.getBigDecimal("taxa_pin_pct"));
+                    return new ExtratoLancamentoResponse(
+                            rs.getObject("id", UUID.class),
+                            "FREQUENCIA",
+                            comp,
+                            rs.getString("tomador_nome"),
+                            rs.getString("setor_nome"),
+                            qtd,
+                            bruto,
+                            taxa,
+                            bruto - taxa,
+                            resolverStatus(rs.getBoolean("faturado"), comp, competenciasPagas),
+                            rs.getString("numero_nota"),
+                            toOffsetDateTime(rs.getTimestamp("created_at")));
+                },
+                medicoId).stream().filter(Objects::nonNull).toList();
+    }
+
+    /**
+     * Competências em que o médico já recebeu repasse — lançamentos REPASSE no ledger
+     * (gerados pelo evento ledger.repasse.efetuado). Tolerante a falha: se o portal ainda não
+     * tiver acesso de leitura ao schema ledger, o extrato continua funcionando, só sem "Pago".
+     */
+    private Set<String> competenciasComRepasse(UUID medicoId) {
+        try {
+            return new HashSet<>(jdbc.query("""
+                    SELECT DISTINCT competencia
+                    FROM ledger.lancamentos_ledger
+                    WHERE medico_id = ? AND tipo_origem = 'REPASSE'
+                    """,
+                    (rs, row) -> rs.getString("competencia"),
+                    medicoId));
+        } catch (DataAccessException e) {
+            log.warn("Extrato: não foi possível consultar repasses no ledger — {}", e.getMessage());
+            return Set.of();
+        }
+    }
+
+    static String resolverStatus(boolean faturado, String competencia, Set<String> competenciasPagas) {
+        if (!faturado) return STATUS_PROVISIONADO;
+        return competenciasPagas.contains(competencia) ? STATUS_PAGO : STATUS_FATURADO;
+    }
+
+    static long calcularTaxaPin(long bruto, BigDecimal pct) {
+        BigDecimal fator = pct != null ? pct : new BigDecimal("0.15");
+        return BigDecimal.valueOf(bruto).multiply(fator).setScale(0, RoundingMode.HALF_UP).longValue();
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────────

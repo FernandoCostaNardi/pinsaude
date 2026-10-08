@@ -69,23 +69,31 @@ export interface EmpresaPortal {
   inscricaoMunicipal: string | null
 }
 
+export type ExtratoStatus = 'PROVISIONADO' | 'FATURADO' | 'PAGO'
+
+// Um lançamento do médico (Produção ou Frequência) com o valor previsto a receber.
 export interface ExtratoLancamento {
-  tipo: 'CREDITO' | 'DEBITO'
-  categoria: 'NFS_E' | 'ISS' | 'IR' | 'CSLL' | 'PIS' | 'COFINS' | 'TAXA_PIN'
-  descricao: string
-  valor: number       // centavos, sempre positivo
-  saldoApos: number   // centavos
-  competencia: string
-  referencia: string
-  dataRef: string     // ISO datetime
+  id: string
+  origem: 'PRODUCAO' | 'FREQUENCIA'
+  competencia: string        // YYYY-MM
+  tomadorNome: string | null
+  descricao: string | null   // serviço (produção) ou setor (frequência)
+  quantidade: number         // plantões lançados (frequência); 1 para produção
+  valorBruto: number         // centavos
+  taxaPin: number            // centavos
+  valorPrevisto: number      // centavos — bruto − taxa Pin
+  status: ExtratoStatus
+  numeroNota: string | null
+  dataRef: string | null     // ISO datetime
 }
 
 export interface ExtratoPortal {
-  saldoPeriodo: number
-  totalCreditos: number
-  totalDebitos: number
-  totalRetencoes: number
-  totalTaxaPin: number
+  competencia: string | null
+  totalPrevisto: number
+  totalProvisionado: number
+  totalFaturado: number
+  totalPago: number
+  competenciasDisponiveis: string[]   // mais recente primeiro
   lancamentos: ExtratoLancamento[]
 }
 
@@ -182,11 +190,8 @@ async function downloadPdf(notaId: string): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
-async function getExtrato(params?: { dtInicio?: string; dtFim?: string }): Promise<ExtratoPortal> {
-  const search = new URLSearchParams()
-  if (params?.dtInicio) search.set('dtInicio', params.dtInicio)
-  if (params?.dtFim)    search.set('dtFim',    params.dtFim)
-  const qs = search.toString() ? `?${search}` : ''
+async function getExtrato(params?: { competencia?: string }): Promise<ExtratoPortal> {
+  const qs = params?.competencia ? `?competencia=${encodeURIComponent(params.competencia)}` : ''
   const res = await fetch(`/api/portal/extrato${qs}`, { headers: authHeaders() })
   return handleResponse<ExtratoPortal>(res)
 }
