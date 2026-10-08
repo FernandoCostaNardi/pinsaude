@@ -144,8 +144,15 @@ function SearchDropdown<T extends { id: string }>({
 
 // ─── Preview card ─────────────────────────────────────────────────────────────
 
-function PreviewCard({ valorBruto }: { valorBruto: number }) {
-  const taxaPin     = Math.round(valorBruto * 0.15)
+const TAXA_PIN_PADRAO = 0.15
+
+function formatPct(fracao: number): string {
+  return `${(fracao * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
+}
+
+// Taxa Pin com o percentual acordado no cadastro do médico; 15% só como fallback
+function PreviewCard({ valorBruto, taxaPinPct }: { valorBruto: number; taxaPinPct: number }) {
+  const taxaPin     = Math.round(valorBruto * taxaPinPct)
   const valorLiquid = valorBruto - taxaPin
 
   if (valorBruto <= 0) {
@@ -176,7 +183,7 @@ function PreviewCard({ valorBruto }: { valorBruto: number }) {
         <div className="flex justify-between py-2 border-b border-ds-border/50">
           <div className="flex items-center gap-1">
             <TrendingDown size={11} className="text-purple-500" />
-            <span className="text-xs text-ds-mid">Taxa Pin Saúde (15%)</span>
+            <span className="text-xs text-ds-mid">Taxa Pin Saúde ({formatPct(taxaPinPct)})</span>
           </div>
           <span className="text-xs tabular-nums text-purple-700">({formatBRL(taxaPin)})</span>
         </div>
@@ -202,7 +209,7 @@ function PreviewCard({ valorBruto }: { valorBruto: number }) {
               </div>
               <div>
                 <p className="text-[10px] font-bold text-green-700 uppercase tracking-wide">
-                  Você Recebe (85%)
+                  Você Recebe ({formatPct(1 - taxaPinPct)})
                 </p>
                 <p className="text-[11px] text-green-600">Garantido independente de tributos</p>
               </div>
@@ -342,6 +349,7 @@ function NovaProducaoModal({
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const totalCentavos = parseBRL(valorStr)
+  const taxaPinPct = perfil.taxaPinPct != null ? Number(perfil.taxaPinPct) : TAXA_PIN_PADRAO
   const canConfirm = !!tomador && totalCentavos > 0
 
   const servicosDoTomador = tomador?.servicos ?? []
@@ -372,7 +380,7 @@ function NovaProducaoModal({
         descricaoComplementar: descricao || undefined,
         cnaeCodigo: cnaeCodigo || undefined,
         empresaId: empresaIdResolvida,
-        participantes: [{ medicoId: perfil.id, valorBruto: totalCentavos }],
+        participantes: [{ medicoId: perfil.id, valorBruto: totalCentavos, taxaPinPct }],
       })
       fecharEResetar()
       onCriada()
@@ -467,7 +475,7 @@ function NovaProducaoModal({
           </div>
         </div>
 
-        <PreviewCard valorBruto={totalCentavos} />
+        <PreviewCard valorBruto={totalCentavos} taxaPinPct={taxaPinPct} />
 
         {/* Descrição */}
         <div>

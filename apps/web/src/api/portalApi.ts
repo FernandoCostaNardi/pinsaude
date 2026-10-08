@@ -57,6 +57,8 @@ export interface PerfilMedico {
   crmUf: string
   especialidade: string | null
   status: string
+  // Percentual da Taxa Pin acordado no cadastro do médico (fração: 0.12 = 12%)
+  taxaPinPct: number | null
 }
 
 export interface EmpresaPortal {
