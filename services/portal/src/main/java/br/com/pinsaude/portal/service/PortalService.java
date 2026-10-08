@@ -145,7 +145,7 @@ public class PortalService {
 
     public PerfilMedicoResponse getPerfil(UUID medicoId) {
         return jdbc.query("""
-                SELECT id, nome, email, crm, crm_uf, especialidade, status
+                SELECT id, nome, email, crm, crm_uf, especialidade, status, taxa_pin_pct
                 FROM onboarding.medicos
                 WHERE id = ?
                 """,
@@ -156,7 +156,8 @@ public class PortalService {
                         rs.getString("crm"),
                         rs.getString("crm_uf"),
                         rs.getString("especialidade"),
-                        rs.getString("status")),
+                        rs.getString("status"),
+                        rs.getBigDecimal("taxa_pin_pct")),
                 medicoId).stream().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Médico não encontrado"));

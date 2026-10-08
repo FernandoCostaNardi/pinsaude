@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Calculator, CheckCircle2, ChevronDown,
-  Plus, Loader2, ClipboardList, AlertCircle,
+  Plus, Loader2, ClipboardList,
   TrendingDown, DollarSign,
 } from 'lucide-react'
 import { Button, Spinner, Alert, Modal } from '@pinsaude/ui'
@@ -144,8 +144,15 @@ function SearchDropdown<T extends { id: string }>({
 
 // ─── Preview card ─────────────────────────────────────────────────────────────
 
-function PreviewCard({ valorBruto }: { valorBruto: number }) {
-  const taxaPin     = Math.round(valorBruto * 0.15)
+const TAXA_PIN_PADRAO = 0.15
+
+function formatPct(fracao: number): string {
+  return `${(fracao * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
+}
+
+// Taxa Pin com o percentual acordado no cadastro do médico; 15% só como fallback
+function PreviewCard({ valorBruto, taxaPinPct }: { valorBruto: number; taxaPinPct: number }) {
+  const taxaPin     = Math.round(valorBruto * taxaPinPct)
   const valorLiquid = valorBruto - taxaPin
 
   if (valorBruto <= 0) {
@@ -176,21 +183,9 @@ function PreviewCard({ valorBruto }: { valorBruto: number }) {
         <div className="flex justify-between py-2 border-b border-ds-border/50">
           <div className="flex items-center gap-1">
             <TrendingDown size={11} className="text-purple-500" />
-            <span className="text-xs text-ds-mid">Taxa Pin Saúde (15%)</span>
+            <span className="text-xs text-ds-mid">Taxa Pin Saúde ({formatPct(taxaPinPct)})</span>
           </div>
           <span className="text-xs tabular-nums text-purple-700">({formatBRL(taxaPin)})</span>
-        </div>
-
-        {/* Tributos */}
-        <div className="py-2 border-b border-ds-border/50">
-          <div className="flex items-start gap-1.5">
-            <AlertCircle size={11} className="text-orange-400 mt-0.5 shrink-0" />
-            <p className="text-[11px] text-ds-light leading-relaxed">
-              ISS, IR, CSLL, PIS e COFINS calculados na emissão
-              conforme regime do tomador. <strong>Esses tributos são custo
-              fiscal da Pin Saúde</strong>, não afetam seu valor líquido.
-            </p>
-          </div>
         </div>
 
         {/* Valor líquido — destaque */}
@@ -202,7 +197,7 @@ function PreviewCard({ valorBruto }: { valorBruto: number }) {
               </div>
               <div>
                 <p className="text-[10px] font-bold text-green-700 uppercase tracking-wide">
-                  Você Recebe (85%)
+                  Você Recebe ({formatPct(1 - taxaPinPct)})
                 </p>
                 <p className="text-[11px] text-green-600">Garantido independente de tributos</p>
               </div>
@@ -342,6 +337,7 @@ function NovaProducaoModal({
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const totalCentavos = parseBRL(valorStr)
+  const taxaPinPct = perfil.taxaPinPct != null ? Number(perfil.taxaPinPct) : TAXA_PIN_PADRAO
   const canConfirm = !!tomador && totalCentavos > 0
 
   const servicosDoTomador = tomador?.servicos ?? []
@@ -372,7 +368,7 @@ function NovaProducaoModal({
         descricaoComplementar: descricao || undefined,
         cnaeCodigo: cnaeCodigo || undefined,
         empresaId: empresaIdResolvida,
-        participantes: [{ medicoId: perfil.id, valorBruto: totalCentavos }],
+        participantes: [{ medicoId: perfil.id, valorBruto: totalCentavos, taxaPinPct }],
       })
       fecharEResetar()
       onCriada()
@@ -467,7 +463,7 @@ function NovaProducaoModal({
           </div>
         </div>
 
-        <PreviewCard valorBruto={totalCentavos} />
+        <PreviewCard valorBruto={totalCentavos} taxaPinPct={taxaPinPct} />
 
         {/* Descrição */}
         <div>
