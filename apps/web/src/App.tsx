@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider }      from './auth/AuthContext'
+import { AuthProvider, useAuth } from './auth/AuthContext'
 import { ProtectedRoute }    from './components/ProtectedRoute'
 import { Shell }             from './layouts/Shell'
 import { LoginPage }         from './pages/LoginPage'
@@ -18,7 +18,6 @@ import { NotasPage }               from './pages/NotasPage'
 import { NfseEmissaoPage }         from './pages/NfseEmissaoPage'
 import { LotePage }                from './pages/LotePage'
 import { UnderConstruction }        from './pages/UnderConstruction'
-import { DashboardMedicoPage }      from './pages/DashboardMedicoPage'
 import { MinhasNotasPage }           from './pages/MinhasNotasPage'
 import { ExtratoPage }               from './pages/ExtratoPage'
 import { PortalProducaoNovaPage }    from './pages/PortalProducaoNovaPage'
@@ -29,6 +28,14 @@ import { LedgerExtratoPage }         from './pages/LedgerExtratoPage'
 import { FrequenciasPage }           from './pages/FrequenciasPage'
 import { PortalFrequenciaPage }      from './pages/PortalFrequenciaPage'
 import { FechamentoPage }            from './pages/FechamentoPage'
+
+/** Médico não tem dashboard: a tela inicial do portal é o Extrato. */
+function HomePage() {
+  const { user } = useAuth()
+  const roles = user?.realm_access?.roles ?? []
+  if (roles.includes('medico')) return <Navigate replace to="/portal/extrato" />
+  return <Dashboard />
+}
 
 export default function App() {
   return (
@@ -44,7 +51,7 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/"            element={<Dashboard />} />
+            <Route path="/"            element={<HomePage />} />
             <Route path="/usuarios"    element={<UsuariosShellPage />} />
             <Route path="/medicos"             element={<MedicosPage />} />
             <Route path="/medicos/aprovacao"  element={<AprovacaoOnboardingPage />} />
@@ -58,7 +65,7 @@ export default function App() {
             <Route path="/notas"                      element={<NotasPage />} />
             <Route path="/notas/emitir/:producaoId"   element={<NfseEmissaoPage />} />
             <Route path="/notas/lote"                 element={<LotePage />} />
-            <Route path="/portal/dashboard" element={<DashboardMedicoPage />} />
+            <Route path="/portal/dashboard" element={<Navigate replace to="/portal/extrato" />} />
             <Route path="/portal/notas"     element={<MinhasNotasPage />} />
             <Route path="/portal/extrato"        element={<ExtratoPage />} />
             <Route path="/portal/producao/nova"  element={<PortalProducaoNovaPage />} />
