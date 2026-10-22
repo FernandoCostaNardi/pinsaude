@@ -97,16 +97,6 @@ export interface ExtratoPortal {
   lancamentos: ExtratoLancamento[]
 }
 
-export interface DashboardPortal {
-  saldoDisponivelCentavos: number
-  valorAReceberCentavos: number
-  totalProduzidoCentavos: number
-  totalNotasEmitidas: number
-  totalProducoes: number
-  ultimasNotas: NotaPortal[]
-  ultimosRepasses: unknown[]
-}
-
 export interface TomadorPortal {
   id: string
   razaoSocial: string
@@ -142,11 +132,6 @@ export interface ProducaoPortal {
   valorLiquidoEstimadoCentavos: number
   status: string
   createdAt: string
-}
-
-async function getDashboard(): Promise<DashboardPortal> {
-  const res = await fetch('/api/portal/dashboard', { headers: authHeaders() })
-  return handleResponse<DashboardPortal>(res)
 }
 
 async function getNotas(params?: { competencia?: string; status?: string }): Promise<NotaPortal[]> {
@@ -219,6 +204,6 @@ async function getSetoresDoMedicoNoTomador(tomadorId: string): Promise<SetorOper
 }
 
 export const portalApi = {
-  getDashboard, getNotas, getProducao, downloadXml, downloadPdf,
+  getNotas, getProducao, downloadXml, downloadPdf,
   getExtrato, getPerfil, getVinculosEmpresa, getTomadoresAlocados, getSetoresDoMedicoNoTomador,
 }

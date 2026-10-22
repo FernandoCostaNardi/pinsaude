@@ -582,7 +582,7 @@ export function PortalProducaoNovaPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <button
-            onClick={() => navigate('/portal/dashboard')}
+            onClick={() => navigate('/portal/extrato')}
             className="shrink-0 p-2 rounded-lg hover:bg-ds-input text-ds-light hover:text-ds-mid transition-colors"
           >
             <ArrowLeft size={18} />

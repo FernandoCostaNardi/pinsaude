@@ -1739,7 +1739,7 @@ export function PortalFrequenciaPage() {
 
       {/* Header — botão vira só ícone no mobile */}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/portal/dashboard')}
+        <button onClick={() => navigate('/portal/extrato')}
           className="p-2 rounded-lg hover:bg-ds-input text-ds-light hover:text-ds-mid transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center">
           <ArrowLeft size={18} />
         </button>

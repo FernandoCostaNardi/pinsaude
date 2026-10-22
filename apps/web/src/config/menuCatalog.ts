@@ -14,7 +14,6 @@ import {
   SlidersHorizontal,
   Layers,
   HeartPulse,
-  TrendingUp,
   PlusCircle,
   Upload,
   Wallet,
@@ -46,8 +45,7 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   // ── Portal do Médico ─────────────────────────────────────────────────────────
-  { to: '/portal/dashboard',     label: 'Meu Portal',        icon: HeartPulse,       roles: ['medico'], end: true  },
-  { to: '/portal/extrato',       label: 'Extrato',           icon: TrendingUp,       roles: ['medico'], end: true  },
+  { to: '/portal/extrato',       label: 'Meu Portal',        icon: HeartPulse,       roles: ['medico'], end: true  },
   { to: '/portal/producao/nova', label: 'Informar Produção', icon: PlusCircle,       roles: ['medico'], end: true  },
   { to: '/portal/frequencias',   label: 'Frequências',       icon: CalendarDays,     roles: ['medico'], end: true  },
   // ── Backoffice ───────────────────────────────────────────────────────────────
