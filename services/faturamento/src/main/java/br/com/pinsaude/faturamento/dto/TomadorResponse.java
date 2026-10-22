@@ -13,8 +13,6 @@ public record TomadorResponse(
     String inscricaoMunicipal,
     boolean indicadorRetencaoFederal,
     boolean indicadorRetencaoIss,
-    String email,
-    String telefone,
     String logradouro,
     String bairro,
     String cep,
@@ -25,5 +23,7 @@ public record TomadorResponse(
     List<TomadorServicoResponse> servicos,
     boolean temGrupoFaturamento,
     List<TomadorEmpresaResponse> empresas,
-    boolean exigeFrequencia
+    boolean exigeFrequencia,
+    // Contatos do tomador (V51) — ordem de cadastro.
+    List<TomadorContatoResponse> contatos
 ) {}

@@ -31,6 +31,7 @@ import br.com.pinsaude.faturamento.repository.SetorOperacionalOcorrenciaReposito
 import br.com.pinsaude.faturamento.repository.TomadorModalidadeRepository;
 import br.com.pinsaude.faturamento.repository.TomadorHorarioPadraoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorOcorrenciaRepository;
+import br.com.pinsaude.faturamento.repository.TomadorContatoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoOperacionalRepository;
 import br.com.pinsaude.faturamento.repository.TomadorServicoRepository;
@@ -84,6 +85,7 @@ class TomadorServiceTest {
     @Mock TomadorHorarioPadraoRepository horarioPadraoRepo;
     @Mock FrequenciaMedicaRepository frequenciaMedicaRepo;
     @Mock FrequenciaItemRepository frequenciaItemRepo;
+    @Mock TomadorContatoRepository contatoRepo;
 
     @InjectMocks TomadorService service;
 
@@ -201,7 +203,7 @@ class TomadorServiceTest {
     void criar_comCnpjValido_salvaRetornaResponse() {
         TomadorRequest req = new TomadorRequest(
             "HOSPITAL", CNPJ_VALIDO, "Hospital Novo",
-            null, null, null, false, false, null, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null);
 
         Tomador saved = tomadorFixture(TENANT);
         when(crypto.encrypt(CNPJ_VALIDO)).thenReturn(new byte[]{1, 2, 3});
@@ -219,7 +221,7 @@ class TomadorServiceTest {
     void criar_comExigeFrequenciaTrue_persisteFlag() {
         TomadorRequest req = new TomadorRequest(
             "HOSPITAL", CNPJ_VALIDO, "Hospital Novo",
-            null, null, null, false, false, null, null, null, null, null, null, null, true);
+            null, null, null, false, false, null, null, null, null, null, true);
 
         when(crypto.encrypt(CNPJ_VALIDO)).thenReturn(new byte[]{1, 2, 3});
         when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
@@ -241,7 +243,7 @@ class TomadorServiceTest {
 
         TomadorRequest req = new TomadorRequest(
             "CLINICA", CNPJ_VALIDO, "Outra Clínica",
-            null, null, null, false, false, null, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -252,7 +254,7 @@ class TomadorServiceTest {
     void criar_comCnpjInvalido_lanca400() {
         TomadorRequest req = new TomadorRequest(
             "CLINICA", CNPJ_INVALIDO, "Clínica Inválida",
-            null, null, null, false, false, null, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -263,7 +265,7 @@ class TomadorServiceTest {
     void criar_pacientePfComCpfValido_salva() {
         TomadorRequest req = new TomadorRequest(
             "PACIENTE_PF", CPF_VALIDO, "João da Silva",
-            null, null, null, false, false, null, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null);
 
         Tomador saved = tomadorPfFixture(TENANT);
         when(crypto.encrypt(CPF_VALIDO)).thenReturn(new byte[]{4, 5, 6});
@@ -280,7 +282,7 @@ class TomadorServiceTest {
     void criar_pacientePfComCpfInvalido_lanca400() {
         TomadorRequest req = new TomadorRequest(
             "PACIENTE_PF", "11111111111", "Nome",
-            null, null, null, false, false, null, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -291,7 +293,7 @@ class TomadorServiceTest {
     void criar_tipoInvalido_lanca400() {
         TomadorRequest req = new TomadorRequest(
             "INVALIDO", CNPJ_VALIDO, "Teste",
-            null, null, null, false, false, null, null, null, null, null, null, null, null);
+            null, null, null, false, false, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.criar(req))
             .isInstanceOf(ResponseStatusException.class)
@@ -317,7 +319,7 @@ class TomadorServiceTest {
         Tomador existente = tomadorFixture(TENANT);
         TomadorRequest req = new TomadorRequest(
             "OPERADORA", CNPJ_VALIDO, "Operadora Nova",
-            null, null, null, true, false, null, null, null, null, null, null, null, null);
+            null, null, null, true, false, null, null, null, null, null, null);
 
         when(repo.findById(id)).thenReturn(Optional.of(existente));
         when(crypto.encrypt(CNPJ_VALIDO)).thenReturn(new byte[]{7, 8, 9});
@@ -338,7 +340,7 @@ class TomadorServiceTest {
         Tomador existente = tomadorFixture(TENANT); // tipo HOSPITAL
         TomadorRequest req = new TomadorRequest(
             "HOSPITAL", CNPJ_INVALIDO, "Hospital Renomeado",
-            null, null, null, true, false, null, null, null, null, null, null, null, null);
+            null, null, null, true, false, null, null, null, null, null, null);
 
         when(repo.findById(id)).thenReturn(Optional.of(existente));
         when(crypto.decrypt(any())).thenReturn(CNPJ_INVALIDO);
@@ -356,7 +358,7 @@ class TomadorServiceTest {
         Tomador existente = tomadorFixture(TENANT);
         TomadorRequest req = new TomadorRequest(
             "HOSPITAL", CNPJ_INVALIDO, "Hospital Teste",
-            null, null, null, true, false, null, null, null, null, null, null, null, null);
+            null, null, null, true, false, null, null, null, null, null, null);
 
         when(repo.findById(id)).thenReturn(Optional.of(existente));
         when(crypto.decrypt(any())).thenReturn(CNPJ_VALIDO);
@@ -387,7 +389,7 @@ class TomadorServiceTest {
 
         TomadorRequest req = new TomadorRequest(
             "OPERADORA", CNPJ_VALIDO, "Operadora Nova",
-            null, null, null, true, false, null, null, null, null, null, null, null, null);
+            null, null, null, true, false, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.atualizar(id, req))
             .isInstanceOf(ResponseStatusException.class)

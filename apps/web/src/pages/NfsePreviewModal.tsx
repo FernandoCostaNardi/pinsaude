@@ -159,6 +159,10 @@ export function NfsePreviewModal({
     tomador?.uf,
   ].filter(Boolean).join(' - ')
 
+  // Telefone/e-mail do tomador: primeiro contato cadastrado que tiver cada um
+  const tomadorTelefone = tomador?.contatos?.find(c => c.telefone)?.telefone
+  const tomadorEmail    = tomador?.contatos?.find(c => c.email)?.email
+
   const handlePrint = () => {
     const node = documentRef.current
     if (!node) return
@@ -340,8 +344,8 @@ ${outerHtml}
               <CamposGrid cols={4}>
                 <Campo label="CNPJ / CPF / NIF" value={tomador ? formatCnpj(tomador.cnpjCpf) : '—'} />
                 <Campo label="Inscrição Municipal" value={tomador?.inscricaoMunicipal || '—'} />
-                <Campo label="Telefone" value={tomador?.telefone || '—'} />
-                <Campo label="E-mail" value={tomador?.email || '—'} />
+                <Campo label="Telefone" value={tomadorTelefone || '—'} />
+                <Campo label="E-mail" value={tomadorEmail || '—'} />
                 <Campo label="Nome / Razão Social" value={producao.tomador.razaoSocialNome} span={3} />
                 <Campo label="País" value={tomador?.pais || 'Brasil'} />
                 <Campo
