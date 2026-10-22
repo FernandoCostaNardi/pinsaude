@@ -8,6 +8,7 @@ import { Tomador, TomadorRequest, TipoTomador, TomadorCnae, TomadorServico, Toma
 import { Servico, servicosApi } from '../api/servicosApi'
 import { Empresa, empresasApi } from '../api/empresasApi'
 import { CnaeSelect, formatCnae } from './CnaeSelect'
+import { ContatoItem, TomadorContatosSection, contatoItemFrom, novoContatoItem } from './TomadorContatosSection'
 
 const TIPO_OPTIONS: { value: TipoTomador; label: string }[] = [
   { value: 'HOSPITAL',    label: 'Hospital'    },
@@ -32,11 +33,12 @@ interface PendingCnae { codigo: string; descricao: string; key: number }
 interface PendingServico { servicoId: string; key: number }
 interface PendingEmpresa { empresaId: string; key: number }
 
-type Aba = 'identificacao' | 'contato' | 'fiscal' | 'servicos' | 'empresas'
+type Aba = 'identificacao' | 'endereco' | 'contatos' | 'fiscal' | 'servicos' | 'empresas'
 
 const ABAS: { key: Aba; label: string }[] = [
   { key: 'identificacao', label: 'Identificação' },
-  { key: 'contato',       label: 'Contato e Endereço' },
+  { key: 'endereco',      label: 'Endereço' },
+  { key: 'contatos',      label: 'Contatos' },
   { key: 'fiscal',        label: 'Fiscal' },
   { key: 'servicos',      label: 'CNAEs e Serviços' },
   { key: 'empresas',      label: 'Empresas Pin' },
@@ -57,8 +59,6 @@ const emptyForm = (): TomadorRequest => ({
   inscricaoMunicipal: '',
   indicadorRetencaoFederal: false,
   indicadorRetencaoIss: false,
-  email: '',
-  telefone: '',
   logradouro: '',
   bairro: '',
   cep: '',
@@ -108,6 +108,9 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
   const [empresaLoading, setEmpresaLoading]     = useState(false)
   const [empresaError, setEmpresaError]         = useState<string | null>(null)
 
+  // Contatos — no cadastro ficam pendentes até o tomador ser criado; na edição salvam na hora
+  const [contatos, setContatos] = useState<ContatoItem[]>([])
+
   useEffect(() => {
     servicosApi.listar().then(setCatalogoServicos).catch(() => setCatalogoServicos([]))
     empresasApi.listar(0, 1000).then(p => setTodasEmpresas(p.content)).catch(() => setTodasEmpresas([]))
@@ -124,8 +127,6 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
         inscricaoMunicipal: tomador.inscricaoMunicipal ?? '',
         indicadorRetencaoFederal: tomador.indicadorRetencaoFederal,
         indicadorRetencaoIss: tomador.indicadorRetencaoIss,
-        email: tomador.email ?? '',
-        telefone: tomador.telefone ?? '',
         logradouro: tomador.logradouro ?? '',
         bairro: tomador.bairro ?? '',
         cep: tomador.cep ?? '',
@@ -144,6 +145,7 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
       setPendingServicos([])
       setVinculadas(tomador.empresas ?? [])
       setPendingEmpresas([])
+      setContatos((tomador.contatos ?? []).map(contatoItemFrom))
     } else {
       setForm(emptyForm())
       setAliqForm({ ...EMPTY_ALIQ })
@@ -153,6 +155,7 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
       setPendingServicos([])
       setVinculadas([])
       setPendingEmpresas([])
+      setContatos([])
     }
     setAba('identificacao')
     setErrors({})
@@ -188,9 +191,18 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
             logradouro:      logradouroCompleto || f.logradouro,
             bairro:          data.bairro       ?? f.bairro,
             cep:             data.cep          ?? f.cep,
-            email:           data.email        ?? f.email,
-            telefone:        data.telefone     ?? f.telefone,
           }))
+          // E-mail/telefone da Receita viram um contato "Geral" no cadastro de tomador novo,
+          // se ainda não houver nenhum contato digitado
+          if (!isEditing && (data.email || data.telefone)) {
+            setContatos(prev => prev.length > 0 ? prev : [novoContatoItem({
+              apelido: 'Geral',
+              nome: '',
+              email: data.email ?? '',
+              telefone: data.telefone ?? '',
+              observacao: 'Dados da Receita Federal',
+            })])
+          }
           setReceitaOk(true)
         }
       } catch { /* silent fail */ } finally {
@@ -253,6 +265,11 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
         }
         for (const empresa of pendingEmpresas) {
           await tomadoresApi.adicionarEmpresa(id, empresa.empresaId)
+        }
+        for (const c of contatos) {
+          await tomadoresApi.criarContato(id, {
+            apelido: c.apelido, nome: c.nome, email: c.email, telefone: c.telefone, observacao: c.observacao,
+          })
         }
       }
 
@@ -565,24 +582,11 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
         </div>
         {/* ── /Identificação ── */}
 
-        {/* ── Contato e Endereço ── */}
-        <div className={abaClass('contato')}>
+        {/* ── Endereço ── */}
+        <div className={abaClass('endereco')}>
         <div className="rounded-xl border border-ds-border p-4 bg-ds-input">
-          <p className="text-xs font-semibold text-ds-mid mb-3 uppercase tracking-wide">Contato e Endereço</p>
+          <p className="text-xs font-semibold text-ds-mid mb-3 uppercase tracking-wide">Endereço</p>
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="E-mail"
-              type="email"
-              value={form.email}
-              onChange={e => set('email', e.target.value)}
-              placeholder="email@empresa.com.br"
-            />
-            <Input
-              label="Telefone"
-              value={form.telefone}
-              onChange={e => set('telefone', e.target.value)}
-              placeholder="(XX) XXXXX-XXXX"
-            />
             <Input
               label="Logradouro"
               value={form.logradouro}
@@ -618,7 +622,17 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
           </div>
         </div>
         </div>
-        {/* ── /Contato e Endereço ── */}
+        {/* ── /Endereço ── */}
+
+        {/* ── Contatos ── */}
+        <div className={abaClass('contatos')}>
+          <TomadorContatosSection
+            tomadorId={isEditing ? tomador!.id : null}
+            contatos={contatos}
+            onChange={setContatos}
+          />
+        </div>
+        {/* ── /Contatos ── */}
 
         {/* ── Fiscal (Retenções + Alíquotas) ── */}
         <div className={abaClass('fiscal')}>

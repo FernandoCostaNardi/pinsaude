@@ -59,8 +59,6 @@ export interface Tomador {
   inscricaoMunicipal: string | null
   indicadorRetencaoFederal: boolean
   indicadorRetencaoIss: boolean
-  email: string | null
-  telefone: string | null
   logradouro: string | null
   bairro: string | null
   cep: string | null
@@ -75,6 +73,27 @@ export interface Tomador {
   // atuam explicitamente atribuídos (TomadorMedicosModal) — filtra o combo de Setor no Portal
   // ao criar uma nova competência de Frequência.
   exigeFrequencia: boolean
+  // Pessoas de contato do tomador (ex.: "Financeiro" → Fernando), em ordem de cadastro.
+  contatos: TomadorContato[]
+}
+
+export interface TomadorContato {
+  id: string
+  tomadorId: string
+  apelido: string
+  nome: string | null
+  email: string | null
+  telefone: string | null
+  observacao: string | null
+}
+
+// apelido obrigatório; e-mail OU telefone obrigatório (pelo menos um dos dois)
+export interface TomadorContatoRequest {
+  apelido: string
+  nome: string
+  email: string
+  telefone: string
+  observacao: string
 }
 
 export interface TomadorRequest {
@@ -86,8 +105,6 @@ export interface TomadorRequest {
   inscricaoMunicipal: string
   indicadorRetencaoFederal: boolean
   indicadorRetencaoIss: boolean
-  email: string
-  telefone: string
   logradouro: string
   bairro: string
   cep: string
@@ -181,6 +198,37 @@ export const tomadoresApi = {
 
   async removerAliquota(tomadorId: string, aliquotaId: string): Promise<void> {
     const res = await fetch(`/api/tomadores/${tomadorId}/aliquotas/${aliquotaId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    return handleResponse<void>(res)
+  },
+
+  async listarContatos(tomadorId: string): Promise<TomadorContato[]> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/contatos`, { headers: authHeaders() })
+    return handleResponse<TomadorContato[]>(res)
+  },
+
+  async criarContato(tomadorId: string, req: TomadorContatoRequest): Promise<TomadorContato> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/contatos`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorContato>(res)
+  },
+
+  async atualizarContato(tomadorId: string, contatoId: string, req: TomadorContatoRequest): Promise<TomadorContato> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/contatos/${contatoId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(req),
+    })
+    return handleResponse<TomadorContato>(res)
+  },
+
+  async removerContato(tomadorId: string, contatoId: string): Promise<void> {
+    const res = await fetch(`/api/tomadores/${tomadorId}/contatos/${contatoId}`, {
       method: 'DELETE',
       headers: authHeaders(),
     })

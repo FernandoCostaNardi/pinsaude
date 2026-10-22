@@ -45,12 +45,6 @@ public class Tomador {
     @Column(name = "municipio", length = 100)
     private String municipio;
 
-    @Column(name = "email", length = 255)
-    private String email;
-
-    @Column(name = "telefone", length = 20)
-    private String telefone;
-
     @Column(name = "logradouro", length = 255)
     private String logradouro;
 
@@ -101,10 +95,6 @@ public class Tomador {
     public void setIndicadorRetencaoIss(boolean v) { this.indicadorRetencaoIss = v; }
     public String getMunicipio() { return municipio; }
     public void setMunicipio(String municipio) { this.municipio = municipio; }
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-    public String getTelefone() { return telefone; }
-    public void setTelefone(String telefone) { this.telefone = telefone; }
     public String getLogradouro() { return logradouro; }
     public void setLogradouro(String logradouro) { this.logradouro = logradouro; }
     public String getBairro() { return bairro; }

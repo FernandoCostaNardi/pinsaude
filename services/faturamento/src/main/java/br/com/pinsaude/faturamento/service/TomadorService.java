@@ -30,6 +30,7 @@ import br.com.pinsaude.faturamento.dto.TomadorAliquotaRequest;
 import br.com.pinsaude.faturamento.dto.TomadorAliquotaResponse;
 import br.com.pinsaude.faturamento.dto.TomadorCnaeRequest;
 import br.com.pinsaude.faturamento.dto.TomadorCnaeResponse;
+import br.com.pinsaude.faturamento.dto.TomadorContatoResponse;
 import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoRequest;
 import br.com.pinsaude.faturamento.dto.TomadorGrupoFaturamentoResponse;
 import br.com.pinsaude.faturamento.dto.TomadorModalidadeRequest;
@@ -53,6 +54,7 @@ import br.com.pinsaude.faturamento.repository.MedicoTomadorSetorRepository;
 import br.com.pinsaude.faturamento.repository.ServicoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorCnaeRepository;
+import br.com.pinsaude.faturamento.repository.TomadorContatoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorEmpresaRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoFaturamentoRepository;
 import br.com.pinsaude.faturamento.repository.TomadorGrupoSetorRepository;
@@ -106,6 +108,7 @@ public class TomadorService {
     private final TomadorHorarioPadraoRepository horarioPadraoRepo;
     private final FrequenciaMedicaRepository frequenciaMedicaRepo;
     private final FrequenciaItemRepository frequenciaItemRepo;
+    private final TomadorContatoRepository contatoRepo;
 
     public TomadorService(TomadorRepository repo,
                           CryptoService crypto,
@@ -126,7 +129,8 @@ public class TomadorService {
                           SetorOperacionalOcorrenciaRepository ocorrenciaSetorRepo,
                           TomadorHorarioPadraoRepository horarioPadraoRepo,
                           FrequenciaMedicaRepository frequenciaMedicaRepo,
-                          FrequenciaItemRepository frequenciaItemRepo) {
+                          FrequenciaItemRepository frequenciaItemRepo,
+                          TomadorContatoRepository contatoRepo) {
         this.repo = repo;
         this.crypto = crypto;
         this.consultaCnpjPort = consultaCnpjPort;
@@ -147,6 +151,7 @@ public class TomadorService {
         this.ocorrenciaSetorRepo = ocorrenciaSetorRepo;
         this.frequenciaMedicaRepo = frequenciaMedicaRepo;
         this.frequenciaItemRepo = frequenciaItemRepo;
+        this.contatoRepo = contatoRepo;
     }
 
     public List<TomadorResponse> buscar(String q, UUID medicoId) {
@@ -208,8 +213,6 @@ public class TomadorService {
         t.setInscricaoMunicipal(req.inscricaoMunicipal());
         t.setIndicadorRetencaoFederal(req.indicadorRetencaoFederal());
         t.setIndicadorRetencaoIss(req.indicadorRetencaoIss());
-        t.setEmail(req.email());
-        t.setTelefone(req.telefone());
         t.setLogradouro(req.logradouro());
         t.setBairro(req.bairro());
         t.setCep(req.cep());
@@ -247,8 +250,6 @@ public class TomadorService {
         t.setInscricaoMunicipal(req.inscricaoMunicipal());
         t.setIndicadorRetencaoFederal(req.indicadorRetencaoFederal());
         t.setIndicadorRetencaoIss(req.indicadorRetencaoIss());
-        t.setEmail(req.email());
-        t.setTelefone(req.telefone());
         t.setLogradouro(req.logradouro());
         t.setBairro(req.bairro());
         t.setCep(req.cep());
@@ -970,6 +971,8 @@ public class TomadorService {
         boolean temGrupoFaturamento = grupoRepo.existsByTomadorIdAndAtivoTrue(t.getId());
         List<TomadorEmpresaResponse> empresas = empresaTomadorRepo.findByTomadorId(t.getId()).stream()
             .map(TomadorEmpresaResponse::from).toList();
+        List<TomadorContatoResponse> contatos = contatoRepo.findByTomadorIdOrderByCreatedAtAsc(t.getId()).stream()
+            .map(TomadorContatoResponse::from).toList();
         return new TomadorResponse(
             t.getId(),
             t.getTipo().name(),
@@ -980,8 +983,6 @@ public class TomadorService {
             t.getInscricaoMunicipal(),
             t.isIndicadorRetencaoFederal(),
             t.isIndicadorRetencaoIss(),
-            t.getEmail(),
-            t.getTelefone(),
             t.getLogradouro(),
             t.getBairro(),
             t.getCep(),
@@ -992,7 +993,8 @@ public class TomadorService {
             servicos,
             temGrupoFaturamento,
             empresas,
-            t.isExigeFrequencia()
+            t.isExigeFrequencia(),
+            contatos
         );
     }
 

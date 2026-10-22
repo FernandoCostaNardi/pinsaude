@@ -12,8 +12,6 @@ public record TomadorRequest(
     String inscricaoMunicipal,
     @NotNull Boolean indicadorRetencaoFederal,
     @NotNull Boolean indicadorRetencaoIss,
-    String email,
-    String telefone,
     String logradouro,
     String bairro,
     String cep,
