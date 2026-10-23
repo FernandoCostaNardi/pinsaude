@@ -269,7 +269,7 @@ function DetalhePanel({ nota, onClose, onAprovar, onCancelar, onRejeitar, isGest
             </div>
             <div className="flex justify-between gap-2">
               <span className="text-xs text-ds-light">Médico ID</span>
-              <span className="text-xs text-ds-mid font-mono">{nota.medicoId.substring(0, 8)}...</span>
+              <span className="text-xs text-ds-mid font-mono">{nota.medicoId ? `${nota.medicoId.substring(0, 8)}...` : 'Vários médicos'}</span>
             </div>
           </div>
         </div>
@@ -830,7 +830,7 @@ export function NotasPage() {
                               Competência {formatCompetencia(nota.competencia)} · {formatBRL(nota.valorBruto)} bruto
                             </p>
                             <p className="text-xs text-ds-light font-mono mt-1">
-                              Médico: {nota.medicoId.substring(0, 8)}…
+                              Médico: {nota.medicoId ? `${nota.medicoId.substring(0, 8)}…` : 'vários'}
                             </p>
                           </div>
                           <div className="flex gap-2 shrink-0">
