@@ -2,20 +2,22 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, CheckCircle2, Clock, XCircle, AlertTriangle,
-  FileDown, FileText, RotateCcw, ShieldCheck, Loader2, Eye, Stethoscope,
+  FileDown, FileText, RotateCcw, ShieldCheck, Loader2, Eye, Stethoscope, Paperclip,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import { useAuth } from '../auth/useAuth'
 import { producoesApi, Producao } from '../api/producoesApi'
 import { servicosApi, Servico } from '../api/servicosApi'
 import {
-  emitirNfse, getNotaStatus, aprovarNota, downloadComAuth, downloadXmlUrl, downloadPdfUrl,
-  NotaFiscal, StatusNota,
+  getNotaStatus, aprovarNota, downloadComAuth, downloadXmlUrl, downloadPdfUrl,
+  registrarEmissaoExterna, anexarArquivosNota,
+  NotaFiscal, StatusNota, EmitirNfseRequest,
 } from '../api/nfseApi'
 import { medicosApi } from '../api/medicosApi'
 import { empresasApi, Empresa } from '../api/empresasApi'
 import { tomadoresApi, Tomador } from '../api/tomadoresApi'
 import { NfsePreviewModal } from './NfsePreviewModal'
+import { NotaEmitidaArquivosModal, DadosNotaEmitida } from './NotaEmitidaArquivosModal'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -237,11 +239,11 @@ export function NfseEmissaoPage() {
   const [cnaeSelecionado, setCnaeSelecionado] = useState<string>('')
   const [nota, setNota] = useState<NotaFiscal | null>(null)
   const [loading, setLoading] = useState(true)
-  const [emitindo, setEmitindo] = useState(false)
   const [aprovando, setAprovando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [primeiraNotaMedico, setPrimeiraNotaMedico] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  // 'registrar': nota emitida no portal da prefeitura; 'anexar': incluir/substituir PDF/XML de nota emitida
+  const [modalArquivos, setModalArquivos] = useState<'registrar' | 'anexar' | null>(null)
   const [empresaInfo, setEmpresaInfo] = useState<Empresa | null>(null)
   const [medicoNomeMap, setMedicoNomeMap] = useState<Record<string, string>>({})
   const [taxaCadastro, setTaxaCadastro] = useState<Record<string, number>>({})
@@ -328,50 +330,55 @@ export function NfseEmissaoPage() {
     return pararPolling
   }, [producaoId, atualizarStatus, pararPolling])
 
-  const handleEmitir = async () => {
-    if (!producao || !producaoId || !producao.servico) return
-    setEmitindo(true)
-    setErro(null)
-    try {
-      const { tomador, servico, valorBruto, competencia } = producao
-      const medicoId = producao.participantes.length === 1
-        ? producao.participantes[0].medicoId
-        : null
+  // Dados fiscais da nota (mesmo cálculo exibido na Composição da NFS-e)
+  const montarDadosNota = (): EmitirNfseRequest | null => {
+    if (!producao || !producaoId || !producao.servico) return null
+    const { tomador, servico, valorBruto, competencia } = producao
+    const medicoId = producao.participantes.length === 1
+      ? producao.participantes[0].medicoId
+      : null
 
-      // Alíquotas efetivas: tomador substitui serviço quando configurado
-      const efAliq = (tipo: string, servicoAliq: number): number => {
-        const override = tomadorFull?.aliquotas?.find(a => a.tipoTributo === tipo)
-        return override !== undefined ? Number(override.valorAliquota) : servicoAliq
-      }
-
-      const { taxaPin }   = calcTaxaPin(producao, taxaCadastro)
-      const issRetido     = tomador.retencaoIss     ? calcPct(valorBruto, efAliq('ISS',    servico.aliquotaIss))    : 0
-      const irRetido      = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('IR',     servico.aliquotaIr))     : 0
-      const csllRetido    = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('CSLL',   servico.aliquotaCsll))   : 0
-      const pisRetido     = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('PIS',    servico.aliquotaPis))    : 0
-      const cofinsRetido  = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('COFINS', servico.aliquotaCofins)) : 0
-
-      const res = await emitirNfse({
-        producaoId, medicoId, tomadorId: tomador.id,
-        competencia, valorBruto, taxaPin,
-        valorIss: issRetido, valorIr: irRetido, valorCsll: csllRetido,
-        valorPis: pisRetido, valorCofins: cofinsRetido,
-        tomadorNome: tomador.razaoSocialNome ?? null,
-        cnaeCodigo: cnaeSelecionado || null,
-        discriminacao: producao.descricaoComplementar ?? null,
-      })
-      setPrimeiraNotaMedico(res.primeiraNotaMedico)
-      await atualizarStatus()
-
-      // Inicia polling se nota ainda está em processamento
-      if (!STATUS_META[res.status].isTerminal && res.status !== 'AGUARDANDO_VALIDACAO') {
-        pollingRef.current = setInterval(atualizarStatus, 3000)
-      }
-    } catch (e: unknown) {
-      setErro(e instanceof Error ? e.message : 'Erro ao emitir NFS-e')
-    } finally {
-      setEmitindo(false)
+    // Alíquotas efetivas: tomador substitui serviço quando configurado
+    const efAliq = (tipo: string, servicoAliq: number): number => {
+      const override = tomadorFull?.aliquotas?.find(a => a.tipoTributo === tipo)
+      return override !== undefined ? Number(override.valorAliquota) : servicoAliq
     }
+
+    const { taxaPin }   = calcTaxaPin(producao, taxaCadastro)
+    const issRetido     = tomador.retencaoIss     ? calcPct(valorBruto, efAliq('ISS',    servico.aliquotaIss))    : 0
+    const irRetido      = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('IR',     servico.aliquotaIr))     : 0
+    const csllRetido    = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('CSLL',   servico.aliquotaCsll))   : 0
+    const pisRetido     = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('PIS',    servico.aliquotaPis))    : 0
+    const cofinsRetido  = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('COFINS', servico.aliquotaCofins)) : 0
+
+    return {
+      producaoId, medicoId, tomadorId: tomador.id,
+      competencia, valorBruto, taxaPin,
+      valorIss: issRetido, valorIr: irRetido, valorCsll: csllRetido,
+      valorPis: pisRetido, valorCofins: cofinsRetido,
+      tomadorNome: tomador.razaoSocialNome ?? null,
+      cnaeCodigo: cnaeSelecionado || null,
+      discriminacao: producao.descricaoComplementar ?? null,
+    }
+  }
+
+  // Erros sobem para o modal, que os mostra sem fechar (o usuário não perde os arquivos escolhidos)
+  const handleRegistrarNotaEmitida = async ({ numeroNota, dataEmissao, arquivos }: DadosNotaEmitida) => {
+    const dados = montarDadosNota()
+    if (!dados) throw new Error('Produção sem serviço definido')
+    pararPolling()
+    const n = await registrarEmissaoExterna(dados, numeroNota, dataEmissao, arquivos)
+    setNota(n)
+    setErro(null)
+    setModalArquivos(null)
+  }
+
+  const handleAnexarArquivos = async ({ arquivos }: DadosNotaEmitida) => {
+    if (!nota) return
+    const n = await anexarArquivosNota(nota.notaId, arquivos)
+    setNota(n)
+    setErro(null)
+    setModalArquivos(null)
   }
 
   const handleAprovar = async () => {
@@ -623,7 +630,7 @@ export function NfseEmissaoPage() {
                 <FileText size={40} className="mx-auto text-ds-light mb-3" />
                 <p className="text-ds-mid font-medium mb-1">NFS-e não emitida</p>
                 <p className="text-ds-light text-sm mb-5">
-                  Revise o preview da nota antes de enviar para emissão.
+                  Revise a prévia, emita a nota no portal da prefeitura e anexe o PDF e/ou o XML recebidos.
                 </p>
 
                 {/* Seletor de CNAE — exibido quando o tomador tem CNAEs cadastrados */}
@@ -673,7 +680,7 @@ export function NfseEmissaoPage() {
                 )}
 
                 {/* Stepper (só para fluxo normal) */}
-                {currentStatus !== 'AGUARDANDO_VALIDACAO' && currentStatus !== 'AGUARDANDO_EMISSAO_MANUAL' && (
+                {currentStatus !== 'AGUARDANDO_VALIDACAO' && currentStatus !== 'AGUARDANDO_EMISSAO_MANUAL' && !nota.emissaoExterna && (
                   <div className="space-y-0">
                     {STEPS.map((step, i) => (
                       <StepItem
@@ -695,7 +702,6 @@ export function NfseEmissaoPage() {
                         <p className="font-semibold text-yellow-800 text-sm">1ª nota deste médico</p>
                         <p className="text-yellow-700 text-xs mt-0.5">
                           A primeira nota de um médico novo requer validação manual antes da emissão.
-                          {primeiraNotaMedico && ' Notifique a equipe contábil.'}
                         </p>
                       </div>
                     </div>
@@ -743,23 +749,47 @@ export function NfseEmissaoPage() {
                 {/* Número e protocolo quando emitida */}
                 {currentStatus === 'EMITIDA' && (
                   <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-1.5">
-                    <p className="text-xs font-semibold text-green-700 uppercase">Nota Emitida</p>
+                    <p className="text-xs font-semibold text-green-700 uppercase">
+                      {nota.emissaoExterna ? 'Nota emitida no portal da prefeitura' : 'Nota Emitida'}
+                    </p>
                     <div className="flex justify-between text-sm">
                       <span className="text-green-600">Número</span>
                       <span className="font-mono font-bold text-green-800">{nota.numeroNota}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-green-600">Protocolo</span>
-                      <span className="font-mono text-xs text-green-700">{nota.protocolo}</span>
-                    </div>
+                    {nota.protocolo && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Protocolo</span>
+                        <span className="font-mono text-xs text-green-700">{nota.protocolo}</span>
+                      </div>
+                    )}
                     {nota.emitidaAt && (
                       <div className="flex justify-between text-sm">
                         <span className="text-green-600">Emitida em</span>
                         <span className="text-green-700">
-                          {new Date(nota.emitidaAt).toLocaleString('pt-BR')}
+                          {nota.emissaoExterna
+                            ? new Date(nota.emitidaAt).toLocaleDateString('pt-BR')
+                            : new Date(nota.emitidaAt).toLocaleString('pt-BR')}
                         </span>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Nota do fluxo antigo (fila do agregador) que não chegou a ser emitida: pode ser
+                    emitida no portal da prefeitura e registrada aqui, como uma nota nova */}
+                {(currentStatus === 'AGUARDANDO_EMISSAO_MANUAL' || currentStatus === 'ERRO'
+                  || currentStatus === 'REJEITADA' || currentStatus === 'AGUARDANDO_VALIDACAO') && (
+                  <div className="flex flex-col items-center gap-2 pt-1">
+                    <button
+                      onClick={() => setShowPreview(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-primary text-primary font-semibold text-sm hover:bg-primary-50 transition-colors"
+                    >
+                      <Paperclip size={15} />
+                      Revisar e anexar nota emitida
+                    </button>
+                    <p className="text-[11px] text-ds-light text-center">
+                      Se a nota já foi emitida no portal da prefeitura, registre o número e anexe o PDF/XML.
+                    </p>
                   </div>
                 )}
 
@@ -775,25 +805,43 @@ export function NfseEmissaoPage() {
           </div>
 
           {/* Downloads — só quando emitida */}
-          {currentStatus === 'EMITIDA' && (
+          {currentStatus === 'EMITIDA' && nota && (
             <div className="bg-white rounded-2xl border border-ds-border p-5">
-              <h2 className="text-sm font-bold text-ds-mid uppercase tracking-wider mb-3">Downloads</h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-bold text-ds-mid uppercase tracking-wider">Arquivos da Nota</h2>
+                <button
+                  onClick={() => setModalArquivos('anexar')}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                >
+                  <Paperclip size={12} />
+                  {nota.temPdf === false || nota.temXml === false ? 'Anexar arquivo' : 'Substituir arquivos'}
+                </button>
+              </div>
               <div className="flex gap-3">
                 <button
                   onClick={() => handleDownload('xml')}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-ds-border text-ds-mid text-sm font-medium hover:bg-ds-input transition-colors"
+                  disabled={nota.temXml === false}
+                  title={nota.temXml === false ? 'XML não anexado' : undefined}
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-ds-border text-ds-mid text-sm font-medium hover:bg-ds-input disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   <FileDown size={16} />
                   XML
                 </button>
                 <button
                   onClick={() => handleDownload('pdf')}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-600 transition-colors"
+                  disabled={nota.temPdf === false}
+                  title={nota.temPdf === false ? 'PDF não anexado' : undefined}
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   <FileText size={16} />
                   PDF (DANFSE)
                 </button>
               </div>
+              {(nota.temPdf === false || nota.temXml === false) && (
+                <p className="text-[11px] text-ds-light mt-2">
+                  {nota.temPdf === false ? 'PDF' : 'XML'} ainda não anexado.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -813,11 +861,21 @@ export function NfseEmissaoPage() {
             ...acc, [a.tipoTributo]: Number(a.valorAliquota)
           }), {} as Record<string, number>) : undefined}
           onClose={() => setShowPreview(false)}
-          onConfirmar={() => {
+          onAnexarNota={() => {
             setShowPreview(false)
-            handleEmitir()
+            setModalArquivos('registrar')
           }}
-          emitindo={emitindo}
+        />
+      )}
+
+      {modalArquivos && (
+        <NotaEmitidaArquivosModal
+          modo={modalArquivos}
+          numeroAtual={nota?.numeroNota}
+          temPdf={modalArquivos === 'anexar' ? nota?.temPdf : undefined}
+          temXml={modalArquivos === 'anexar' ? nota?.temXml : undefined}
+          onClose={() => setModalArquivos(null)}
+          onSalvar={modalArquivos === 'registrar' ? handleRegistrarNotaEmitida : handleAnexarArquivos}
         />
       )}
     </div>

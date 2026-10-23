@@ -5,6 +5,8 @@ import br.com.pinsaude.fiscal.dto.EmitirNfseRequest;
 import br.com.pinsaude.fiscal.dto.EmitirNfseResponse;
 import br.com.pinsaude.fiscal.dto.MotivoRequest;
 import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
+import br.com.pinsaude.fiscal.dto.RegistrarEmissaoExternaRequest;
+import br.com.pinsaude.fiscal.service.NfseEmissaoExternaService;
 import br.com.pinsaude.fiscal.service.NfseService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -12,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -21,9 +24,11 @@ import java.util.UUID;
 public class NfseController {
 
     private final NfseService nfseService;
+    private final NfseEmissaoExternaService emissaoExternaService;
 
-    public NfseController(NfseService nfseService) {
-        this.nfseService = nfseService;
+    public NfseController(NfseService nfseService, NfseEmissaoExternaService emissaoExternaService) {
+        this.nfseService           = nfseService;
+        this.emissaoExternaService = emissaoExternaService;
     }
 
     /**
@@ -36,6 +41,32 @@ public class NfseController {
         String cnpjTenant = SecurityUtils.currentCnpjTenant();
         EmitirNfseResponse response = nfseService.emitir(request, cnpjTenant);
         return ResponseEntity.accepted().body(response);
+    }
+
+    /**
+     * Registra uma NFS-e emitida fora do sistema (portal da prefeitura): dados da nota + número e
+     * data de emissão na parte "dados" (JSON) e o PDF e/ou XML recebidos (ao menos um).
+     */
+    @PostMapping(value = "/emissao-externa", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro') or hasRole('perm_notas')")
+    public ResponseEntity<NotaFiscalStatusResponse> registrarEmissaoExterna(
+            @Valid @RequestPart("dados") RegistrarEmissaoExternaRequest dados,
+            @RequestPart(value = "pdf", required = false) MultipartFile pdf,
+            @RequestPart(value = "xml", required = false) MultipartFile xml) {
+        String cnpjTenant = SecurityUtils.currentCnpjTenant();
+        return ResponseEntity.status(201).body(emissaoExternaService.registrar(dados, pdf, xml, cnpjTenant));
+    }
+
+    /**
+     * Anexa ou substitui o PDF e/ou XML de uma nota emitida.
+     */
+    @PutMapping(value = "/{notaId}/arquivos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro') or hasRole('perm_notas')")
+    public ResponseEntity<NotaFiscalStatusResponse> anexarArquivos(
+            @PathVariable UUID notaId,
+            @RequestPart(value = "pdf", required = false) MultipartFile pdf,
+            @RequestPart(value = "xml", required = false) MultipartFile xml) {
+        return ResponseEntity.ok(emissaoExternaService.anexarArquivos(notaId, pdf, xml));
     }
 
     /**
@@ -61,12 +92,14 @@ public class NfseController {
      */
     @GetMapping("/{notaId}/download/xml")
     @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro', 'medico') or hasRole('perm_notas')")
-    public ResponseEntity<String> downloadXml(@PathVariable UUID notaId) {
+    public ResponseEntity<byte[]> downloadXml(@PathVariable UUID notaId) {
         String xml = nfseService.getXml(notaId);
+        // Devolve os bytes no encoding que o próprio XML declara (XML da prefeitura pode ser ISO-8859-1)
+        var charset = NfseEmissaoExternaService.charsetDeclarado(xml);
         return ResponseEntity.ok()
-            .contentType(MediaType.APPLICATION_XML)
+            .contentType(new MediaType(MediaType.APPLICATION_XML, charset))
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"nfse-" + notaId + ".xml\"")
-            .body(xml);
+            .body(xml.getBytes(charset));
     }
 
     /**
