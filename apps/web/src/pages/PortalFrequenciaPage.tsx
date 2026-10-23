@@ -997,7 +997,7 @@ function PlantaoFormPanel({
         </label>
         <input type="text" value={ocorrencia} onChange={e => setOcorrencia(e.target.value)}
           placeholder="Descreva alguma ocorrência especial..."
-          className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white" />
+          className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]" />
       </div>
 
       {err && <p className="text-xs text-red-600 mb-2">{err}</p>}
@@ -1215,11 +1215,11 @@ function FrequenciaItensPanel({
             {excluirErr && <p className="mb-4 text-xs text-red-600">{excluirErr}</p>}
             <div className="flex gap-3">
               <button type="button" onClick={() => setConfirmExcluir(false)} disabled={excluindo}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-ds-border text-sm font-semibold text-ds-mid hover:bg-ds-surface transition-colors disabled:opacity-50">
+                className="flex-1 px-4 py-2.5 rounded-xl border border-ds-border text-sm font-semibold text-ds-mid hover:bg-ds-surface transition-colors disabled:opacity-50 min-h-[48px]">
                 Cancelar
               </button>
               <button type="button" onClick={handleExcluir} disabled={excluindo}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[48px]">
                 {excluindo ? <><Loader2 size={14} className="animate-spin" />Excluindo...</> : 'Excluir'}
               </button>
             </div>
@@ -1355,10 +1355,10 @@ function FrequenciaItensPanel({
                   </div>
                   {!isFaturada && (
                     <button onClick={() => handleRemove(item.id)} disabled={removendo === item.id}
-                      className="p-2 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors -mr-1 shrink-0">
+                      className="p-2 rounded-lg text-ds-light hover:text-red-500 hover:bg-red-50 transition-colors -mr-2 -mt-2 shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center">
                       {removendo === item.id
-                        ? <Loader2 size={14} className="animate-spin" />
-                        : <Trash2 size={14} />
+                        ? <Loader2 size={16} className="animate-spin" />
+                        : <Trash2 size={16} />
                       }
                     </button>
                   )}
@@ -1790,7 +1790,7 @@ export function PortalFrequenciaPage() {
         <div className="flex items-center justify-between">
           {temFiltro && (
             <button onClick={() => { setFiltroComp(''); setFiltroStatus('') }}
-              className="text-sm text-primary hover:text-primary-700 font-semibold transition-colors">
+              className="text-sm text-primary hover:text-primary-700 font-semibold transition-colors min-h-[44px]">
               Limpar filtros
             </button>
           )}

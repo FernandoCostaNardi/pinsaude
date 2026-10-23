@@ -16,6 +16,10 @@ const PAGE_NAMES: Record<string, string> = {
   '/conciliacao': 'Conciliação',
   '/gestao':      'Gestão',
   '/usuarios':    'Usuários',
+  '/portal/extrato':       'Extrato',
+  '/portal/producao/nova': 'Informar Produção',
+  '/portal/frequencias':   'Frequências',
+  '/portal/notas':         'Minhas Notas',
 }
 
 function userInitials(user: AuthUser): string {
