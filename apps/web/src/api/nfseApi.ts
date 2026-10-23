@@ -40,6 +40,10 @@ export interface NotaFiscal {
   emitidaAt: string | null
   createdAt: string
   discriminacao?: string | null
+  // Nota emitida fora do sistema (portal da prefeitura) e registrada com PDF/XML anexados
+  emissaoExterna?: boolean
+  temPdf?: boolean
+  temXml?: boolean
 }
 
 export interface EmitirNfseRequest {
@@ -79,6 +83,45 @@ export async function emitirNfse(req: EmitirNfseRequest): Promise<EmitirNfseResp
     throw new Error(txt || `Erro ${r.status}`)
   }
   return r.json()
+}
+
+async function enviarMultipart(url: string, method: 'POST' | 'PUT', form: FormData): Promise<NotaFiscal> {
+  // Sem Content-Type: o navegador monta o boundary do multipart
+  const r = await fetch(url, { method, headers: { Authorization: `Bearer ${getToken()}` }, body: form })
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '')
+    let msg = txt
+    try { msg = JSON.parse(txt).message || txt } catch { /* resposta não-JSON */ }
+    throw new Error(msg || `Erro ${r.status}`)
+  }
+  return r.json()
+}
+
+export interface ArquivosNota {
+  pdf: File | null
+  xml: File | null
+}
+
+/**
+ * Registra a NFS-e emitida no portal da prefeitura: mesmos dados da emissão pelo sistema, mais o
+ * número e a data da nota e o PDF e/ou XML recebidos (ao menos um). A nota já nasce EMITIDA.
+ */
+export async function registrarEmissaoExterna(
+  nota: EmitirNfseRequest, numeroNota: string, dataEmissao: string, arquivos: ArquivosNota,
+): Promise<NotaFiscal> {
+  const form = new FormData()
+  form.append('dados', new Blob([JSON.stringify({ nota, numeroNota, dataEmissao })], { type: 'application/json' }))
+  if (arquivos.pdf) form.append('pdf', arquivos.pdf)
+  if (arquivos.xml) form.append('xml', arquivos.xml)
+  return enviarMultipart('/api/nfse/emissao-externa', 'POST', form)
+}
+
+/** Anexa ou substitui o PDF e/ou XML de uma nota emitida; o que não for enviado é mantido. */
+export async function anexarArquivosNota(notaId: string, arquivos: ArquivosNota): Promise<NotaFiscal> {
+  const form = new FormData()
+  if (arquivos.pdf) form.append('pdf', arquivos.pdf)
+  if (arquivos.xml) form.append('xml', arquivos.xml)
+  return enviarMultipart(`/api/nfse/${notaId}/arquivos`, 'PUT', form)
 }
 
 export async function getNotaStatus(producaoId: string): Promise<NotaFiscal> {

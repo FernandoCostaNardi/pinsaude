@@ -339,13 +339,17 @@ function DetalhePanel({ nota, onClose, onAprovar, onCancelar, onRejeitar, isGest
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => handleDownload('xml')}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs hover:bg-ds-surface transition-colors"
+                disabled={nota.temXml === false}
+                title={nota.temXml === false ? 'XML não anexado' : undefined}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs hover:bg-ds-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Download size={13} /> XML
               </button>
               <button
                 onClick={() => handleDownload('pdf')}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs hover:bg-ds-surface transition-colors"
+                disabled={nota.temPdf === false}
+                title={nota.temPdf === false ? 'PDF não anexado' : undefined}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-ds-border text-ds-mid text-xs hover:bg-ds-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <FileText size={13} /> PDF
               </button>

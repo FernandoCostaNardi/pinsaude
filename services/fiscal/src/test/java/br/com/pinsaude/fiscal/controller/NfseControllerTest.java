@@ -2,6 +2,7 @@ package br.com.pinsaude.fiscal.controller;
 
 import br.com.pinsaude.fiscal.config.SecurityConfig;
 import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
+import br.com.pinsaude.fiscal.service.NfseEmissaoExternaService;
 import br.com.pinsaude.fiscal.service.NfseService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -11,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -23,6 +25,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -40,6 +43,9 @@ class NfseControllerTest {
 
     @MockBean
     NfseService service;
+
+    @MockBean
+    NfseEmissaoExternaService emissaoExternaService;
 
     private static final SimpleGrantedAuthority PERM_NOTAS = new SimpleGrantedAuthority("ROLE_perm_notas");
     private static final SimpleGrantedAuthority PERM_OUTRO_DOMINIO = new SimpleGrantedAuthority("ROLE_perm_notas_lote");
@@ -206,5 +212,57 @@ class NfseControllerTest {
     void semAutenticacao_retorna401() throws Exception {
         mockMvc.perform(get("/api/nfse"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ─── Emissão externa: contabil,gestao,operacao,financeiro (mesmo grupo de /emitir) ──
+
+    private static final String DADOS_EMISSAO_EXTERNA = """
+        {"nota":{"producaoId":"%s","tomadorId":"%s","competencia":"2026-10","valorBruto":100000,"taxaPin":15000},
+         "numeroNota":"2026123","dataEmissao":"2026-10-20"}
+        """.formatted(UUID.randomUUID(), UUID.randomUUID());
+
+    private static MockMultipartFile dadosPart(String json) {
+        return new MockMultipartFile("dados", "", MediaType.APPLICATION_JSON_VALUE, json.getBytes());
+    }
+
+    private static MockMultipartFile pdfPart() {
+        return new MockMultipartFile("pdf", "nota.pdf", MediaType.APPLICATION_PDF_VALUE, "%PDF-1.4".getBytes());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"contabil", "gestao", "operacao", "financeiro"})
+    void emissaoExterna_papelLegado_retorna201(String role) throws Exception {
+        when(emissaoExternaService.registrar(any(), any(), any(), any())).thenReturn(mock(NotaFiscalStatusResponse.class));
+        mockMvc.perform(multipart("/api/nfse/emissao-externa")
+                        .file(dadosPart(DADOS_EMISSAO_EXTERNA)).file(pdfPart())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_" + role))))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void emissaoExterna_medico_retorna403() throws Exception {
+        mockMvc.perform(multipart("/api/nfse/emissao-externa")
+                        .file(dadosPart(DADOS_EMISSAO_EXTERNA)).file(pdfPart())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_medico"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void emissaoExterna_semNumero_retorna400() throws Exception {
+        String semNumero = DADOS_EMISSAO_EXTERNA.replace("\"numeroNota\":\"2026123\",", "");
+        mockMvc.perform(multipart("/api/nfse/emissao-externa")
+                        .file(dadosPart(semNumero)).file(pdfPart())
+                        .with(jwt().authorities(PERM_NOTAS)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void anexarArquivos_permNotas_retorna200() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        when(emissaoExternaService.anexarArquivos(any(), any(), any())).thenReturn(mock(NotaFiscalStatusResponse.class));
+        mockMvc.perform(multipart("/api/nfse/{notaId}/arquivos", notaId).file(pdfPart())
+                        .with(r -> { r.setMethod("PUT"); return r; })
+                        .with(jwt().authorities(PERM_NOTAS)))
+                .andExpect(status().isOk());
     }
 }

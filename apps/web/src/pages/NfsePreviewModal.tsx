@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Printer, Send, Loader2, AlertTriangle } from 'lucide-react'
+import { X, Printer, Paperclip, Loader2, AlertTriangle } from 'lucide-react'
 import { Producao, ServicoResumo } from '../api/producoesApi'
 import { Empresa } from '../api/empresasApi'
 import { tomadoresApi, Tomador } from '../api/tomadoresApi'
@@ -91,8 +91,9 @@ interface Props {
   cnaeCodigo?: string | null
   aliquotasOverride?: Record<string, number>
   onClose: () => void
-  onConfirmar: () => void
-  emitindo: boolean
+  // A NFS-e é emitida no portal da prefeitura com base nesta prévia; depois a operação
+  // anexa o PDF/XML recebidos (NotaEmitidaArquivosModal).
+  onAnexarNota: () => void
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
@@ -100,7 +101,7 @@ interface Props {
 export function NfsePreviewModal({
   producao, cnpjPrestador, empresaInfo, medicoNomeMap,
   cnaeCodigo, aliquotasOverride,
-  onClose, onConfirmar, emitindo,
+  onClose, onAnexarNota,
 }: Props) {
   const [tomador, setTomador] = useState<Tomador | null>(null)
   const [loadingTomador, setLoadingTomador] = useState(true)
@@ -227,7 +228,7 @@ ${outerHtml}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 shrink-0">
           <div>
             <h2 className="text-base font-bold text-gray-800">Prévia da NFS-e (DANFSe)</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Revise os dados antes de confirmar a emissão</p>
+            <p className="text-xs text-gray-500 mt-0.5">Use estes dados para emitir a nota no portal da prefeitura</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -238,12 +239,11 @@ ${outerHtml}
               Imprimir
             </button>
             <button
-              onClick={onConfirmar}
-              disabled={emitindo}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-600 disabled:opacity-50 transition-colors"
+              onClick={onAnexarNota}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-600 transition-colors"
             >
-              {emitindo ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-              {emitindo ? 'Emitindo...' : 'Confirmar e Emitir'}
+              <Paperclip size={13} />
+              Anexar nota emitida
             </button>
             <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
               <X size={16} />
@@ -255,7 +255,8 @@ ${outerHtml}
         <div className="mx-5 mt-3 shrink-0 flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
           <AlertTriangle size={13} className="text-yellow-600 shrink-0" />
           <p className="text-xs text-yellow-800">
-            Prévia para validação. O número e protocolo definitivos serão gerados pela prefeitura na emissão.
+            Prévia para conferência. Emita a NFS-e no portal da prefeitura com estes dados e depois
+            clique em "Anexar nota emitida" para registrar o número e anexar o PDF e/ou o XML.
           </p>
         </div>
 

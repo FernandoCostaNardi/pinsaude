@@ -84,6 +84,9 @@ public class NotaFiscal {
     @Column(name = "observacoes")
     private String observacoes;
 
+    @Column(name = "emissao_externa", nullable = false)
+    private boolean emissaoExterna;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -144,6 +147,8 @@ public class NotaFiscal {
     public void setDiscriminacao(String v)           { this.discriminacao = v; }
     public String getObservacoes()                   { return observacoes; }
     public void setObservacoes(String v)             { this.observacoes = v; }
+    public boolean isEmissaoExterna()                { return emissaoExterna; }
+    public void setEmissaoExterna(boolean v)         { this.emissaoExterna = v; }
     public OffsetDateTime getCreatedAt()             { return createdAt; }
     public OffsetDateTime getEmitidaAt()             { return emitidaAt; }
     public void setEmitidaAt(OffsetDateTime v)       { this.emitidaAt = v; }
