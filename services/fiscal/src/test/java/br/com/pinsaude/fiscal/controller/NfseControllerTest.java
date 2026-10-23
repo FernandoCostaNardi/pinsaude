@@ -20,8 +20,10 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -217,7 +219,8 @@ class NfseControllerTest {
     // ─── Emissão externa: contabil,gestao,operacao,financeiro (mesmo grupo de /emitir) ──
 
     private static final String DADOS_EMISSAO_EXTERNA = """
-        {"nota":{"producaoId":"%s","tomadorId":"%s","competencia":"2026-10","valorBruto":100000,"taxaPin":15000},
+        {"nota":{"producaoId":"%s","tomadorId":"%s","competencia":"2026-10","valorBruto":100000,"taxaPin":15000,
+                 "cnpjEmpresaEmissora":"11.222.333/0001-81"},
          "numeroNota":"2026123","dataEmissao":"2026-10-20"}
         """.formatted(UUID.randomUUID(), UUID.randomUUID());
 
@@ -264,5 +267,49 @@ class NfseControllerTest {
                         .with(r -> { r.setMethod("PUT"); return r; })
                         .with(jwt().authorities(PERM_NOTAS)))
                 .andExpect(status().isOk());
+    }
+
+    // ─── Tenant da nota: JWT cnpj_id ou, sem ele, o CNPJ da empresa emissora ──
+
+    @Test
+    void emissaoExterna_semCnpjNoJwt_usaCnpjDaEmpresaEmissora() throws Exception {
+        when(emissaoExternaService.registrar(any(), any(), any(), any())).thenReturn(mock(NotaFiscalStatusResponse.class));
+        mockMvc.perform(multipart("/api/nfse/emissao-externa")
+                        .file(dadosPart(DADOS_EMISSAO_EXTERNA)).file(pdfPart())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .andExpect(status().isCreated());
+        verify(emissaoExternaService).registrar(any(), any(), any(), eq("11222333000181"));
+    }
+
+    @Test
+    void emissaoExterna_cnpjNoJwt_temPrioridade() throws Exception {
+        when(emissaoExternaService.registrar(any(), any(), any(), any())).thenReturn(mock(NotaFiscalStatusResponse.class));
+        mockMvc.perform(multipart("/api/nfse/emissao-externa")
+                        .file(dadosPart(DADOS_EMISSAO_EXTERNA)).file(pdfPart())
+                        .with(jwt().jwt(j -> j.claim("cnpj_id", "99.888.777/0001-66"))
+                                .authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
+                .andExpect(status().isCreated());
+        verify(emissaoExternaService).registrar(any(), any(), any(), eq("99888777000166"));
+    }
+
+    @Test
+    void emissaoExterna_semCnpjNoJwtNemEmpresa_retorna422() throws Exception {
+        String semEmpresa = DADOS_EMISSAO_EXTERNA.replaceAll(",\\s*\"cnpjEmpresaEmissora\":\"[^\"]*\"", "");
+        mockMvc.perform(multipart("/api/nfse/emissao-externa")
+                        .file(dadosPart(semEmpresa)).file(pdfPart())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void emitir_semCnpjNoJwt_usaCnpjDaEmpresaEmissora() throws Exception {
+        String body = """
+            {"producaoId":"%s","tomadorId":"%s","competencia":"2026-10","valorBruto":100000,"taxaPin":15000,
+             "cnpjEmpresaEmissora":"11222333000181"}
+            """.formatted(UUID.randomUUID(), UUID.randomUUID());
+        mockMvc.perform(post("/api/nfse/emitir").contentType(MediaType.APPLICATION_JSON).content(body)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .andExpect(status().isAccepted());
+        verify(service).emitir(any(), eq("11222333000181"));
     }
 }

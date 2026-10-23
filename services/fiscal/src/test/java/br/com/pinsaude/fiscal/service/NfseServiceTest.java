@@ -341,7 +341,7 @@ class NfseServiceTest {
         var req = new EmitirNfseRequest(
             producaoId, medicoId, UUID.randomUUID(),
             "2026-07", 1000000L, 150000L,
-            50000L, 15000L, 10000L, 6500L, 30000L, "Hospital Teste", null, descricao
+            50000L, 15000L, 10000L, 6500L, 30000L, "Hospital Teste", null, descricao, null
         );
 
         nfseService.emitir(req, CNPJ_TENANT);
@@ -397,7 +397,7 @@ class NfseServiceTest {
         return new EmitirNfseRequest(
             producaoId, medicoId, UUID.randomUUID(),
             "2026-06", 1000000L, 150000L,
-            50000L, 15000L, 10000L, 6500L, 30000L, "Clínica Exemplo", null, null
+            50000L, 15000L, 10000L, 6500L, 30000L, "Clínica Exemplo", null, null, null
         );
     }
 

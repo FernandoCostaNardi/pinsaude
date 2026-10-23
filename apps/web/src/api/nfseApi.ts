@@ -61,6 +61,7 @@ export interface EmitirNfseRequest {
   tomadorNome: string | null
   cnaeCodigo?: string | null
   discriminacao?: string | null
+  cnpjEmpresaEmissora?: string | null  // tenant da nota quando o usuário não tem cnpj_id no token
 }
 
 export interface EmitirNfseResponse {

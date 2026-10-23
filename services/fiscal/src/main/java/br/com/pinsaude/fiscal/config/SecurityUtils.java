@@ -1,9 +1,11 @@
 package br.com.pinsaude.fiscal.config;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 @Component
 public class SecurityUtils {
@@ -46,6 +48,19 @@ public class SecurityUtils {
             return raw != null ? raw.replaceAll("[^0-9]", "") : null;
         }
         return null;
+    }
+
+    /**
+     * Tenant da nota: o cnpj_id do JWT ou, quando o usuário não tem (gestão e perfis
+     * cross-tenant), o CNPJ da empresa emissora informado na emissão. Sem nenhum dos dois, 422.
+     */
+    public static String resolverTenantNota(String cnpjEmpresaEmissora) {
+        String jwt = currentCnpjTenant();
+        if (jwt != null && !jwt.isBlank()) return jwt;
+        String emissora = cnpjEmpresaEmissora != null ? cnpjEmpresaEmissora.replaceAll("[^0-9]", "") : "";
+        if (emissora.length() == 14) return emissora;
+        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            "Informe a empresa emissora da nota: seu usuário não está vinculado a um CNPJ");
     }
 
     private static boolean hasRole(String role) {

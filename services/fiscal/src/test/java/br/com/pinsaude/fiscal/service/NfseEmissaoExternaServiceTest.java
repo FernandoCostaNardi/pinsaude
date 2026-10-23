@@ -46,7 +46,7 @@ class NfseEmissaoExternaServiceTest {
 
     private static RegistrarEmissaoExternaRequest request(UUID producaoId) {
         var nota = new EmitirNfseRequest(producaoId, UUID.randomUUID(), UUID.randomUUID(), "2026-10",
-            100_000L, 15_000L, 2_000L, null, null, null, null, "Hospital X", "8610-1/01", "Plantões");
+            100_000L, 15_000L, 2_000L, null, null, null, null, "Hospital X", "8610-1/01", "Plantões", null);
         return new RegistrarEmissaoExternaRequest(nota, " 2026123 ", LocalDate.of(2026, 10, 20));
     }
 

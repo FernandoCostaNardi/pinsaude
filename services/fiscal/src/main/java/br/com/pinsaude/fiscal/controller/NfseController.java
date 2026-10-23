@@ -38,7 +38,7 @@ public class NfseController {
     @PostMapping("/emitir")
     @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro') or hasRole('perm_notas')")
     public ResponseEntity<EmitirNfseResponse> emitir(@Valid @RequestBody EmitirNfseRequest request) {
-        String cnpjTenant = SecurityUtils.currentCnpjTenant();
+        String cnpjTenant = SecurityUtils.resolverTenantNota(request.cnpjEmpresaEmissora());
         EmitirNfseResponse response = nfseService.emitir(request, cnpjTenant);
         return ResponseEntity.accepted().body(response);
     }
@@ -53,7 +53,7 @@ public class NfseController {
             @Valid @RequestPart("dados") RegistrarEmissaoExternaRequest dados,
             @RequestPart(value = "pdf", required = false) MultipartFile pdf,
             @RequestPart(value = "xml", required = false) MultipartFile xml) {
-        String cnpjTenant = SecurityUtils.currentCnpjTenant();
+        String cnpjTenant = SecurityUtils.resolverTenantNota(dados.nota().cnpjEmpresaEmissora());
         return ResponseEntity.status(201).body(emissaoExternaService.registrar(dados, pdf, xml, cnpjTenant));
     }
 
