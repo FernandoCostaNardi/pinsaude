@@ -359,6 +359,7 @@ export function NfseEmissaoPage() {
       tomadorNome: tomador.razaoSocialNome ?? null,
       cnaeCodigo: cnaeSelecionado || null,
       discriminacao: producao.descricaoComplementar ?? null,
+      cnpjEmpresaEmissora: empresaInfo?.cnpj?.replace(/\D/g, '') || null,
     }
   }
 
@@ -464,7 +465,7 @@ export function NfseEmissaoPage() {
   const currentStatus  = nota?.status ?? null
   const meta           = currentStatus ? STATUS_META[currentStatus] : null
   const isGestaoOrContabil = user?.realm_access?.roles.some(r => r === 'gestao' || r === 'contabil') ?? false
-  const cnpjPrestador  = user?.cnpj_id?.replace(/\D/g, '') ?? null
+  const cnpjPrestador  = empresaInfo?.cnpj?.replace(/\D/g, '') || user?.cnpj_id?.replace(/\D/g, '') || null
 
   return (
     <div className="flex-1 overflow-auto bg-ds-surface">

@@ -20,5 +20,6 @@ public record EmitirNfseRequest(
     Long valorCofins,
     String tomadorNome,
     String cnaeCodigo,          // CNAE selecionado na emissão (opcional)
-    String discriminacao        // Descrição/discriminação da nota (grupo de faturamento, opcional)
+    String discriminacao,       // Descrição/discriminação da nota (grupo de faturamento, opcional)
+    String cnpjEmpresaEmissora  // CNPJ da empresa Pin emissora; tenant quando o JWT não traz cnpj_id
 ) {}
