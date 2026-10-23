@@ -26,7 +26,7 @@ export type StatusNota =
 export interface NotaFiscal {
   notaId: string
   producaoId: string
-  medicoId: string
+  medicoId: string | null   // null em notas multi-médico
   tomadorId: string
   tomadorNome: string | null
   competencia: string
