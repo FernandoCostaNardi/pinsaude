@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 import { AlertTriangle, X } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
@@ -41,6 +41,14 @@ export function Shell() {
   const [bannerFechado, setBannerFechado] = useState(false)
   const alertas = useAlertasVencimento()
   const mostrarBanner = !bannerFechado && alertas.length > 0
+  const { pathname } = useLocation()
+  const isPortal = pathname.startsWith('/portal')
+
+  // Escala tipográfica maior no celular só no Portal do Médico (ver index.css).
+  useEffect(() => {
+    document.documentElement.classList.toggle('portal-medico', isPortal)
+    return () => document.documentElement.classList.remove('portal-medico')
+  }, [isPortal])
 
   return (
     <div className="flex h-screen bg-ds-bg overflow-hidden">
@@ -74,7 +82,7 @@ export function Shell() {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className={`flex-1 overflow-y-auto ${isPortal ? 'p-4 sm:p-6' : 'p-6'}`}>
           <Outlet />
         </main>
       </div>

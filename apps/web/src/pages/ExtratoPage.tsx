@@ -82,9 +82,9 @@ export function ExtratoPage() {
   const lancamentos = extrato?.lancamentos ?? []
 
   return (
-    <div className="flex flex-col h-full -m-6">
+    <div className="flex flex-col h-full -m-4 sm:-m-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="px-6 pt-6 pb-4 bg-white border-b border-ds-border shrink-0">
+      <div className="px-4 pt-4 sm:px-6 sm:pt-6 pb-4 bg-white border-b border-ds-border shrink-0">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-xl font-black text-ds-text">Extrato</h1>
@@ -92,12 +92,13 @@ export function ExtratoPage() {
               O que você lançou em produção e frequência, e quanto tem previsto para receber
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          {/* Celular: seletor ocupa a linha toda e os dois controles ganham altura de toque. */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             {competencias.length > 0 && (
               <select
                 value={competencia ?? ''}
                 onChange={e => handleCompetencia(e.target.value)}
-                className="h-8 rounded-lg border border-ds-border bg-white px-2 text-xs font-medium text-ds-text"
+                className="flex-1 sm:flex-none h-11 sm:h-8 rounded-lg border border-ds-border bg-white px-2 text-xs font-medium text-ds-text"
               >
                 {competencias.map(c => (
                   <option key={c} value={c}>{formatCompetencia(c)}</option>
@@ -107,7 +108,7 @@ export function ExtratoPage() {
             <button
               onClick={() => carregar(competencia)}
               disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ds-border text-xs font-medium text-ds-mid hover:bg-ds-input disabled:opacity-40 transition-colors shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] sm:min-h-0 rounded-lg border border-ds-border text-xs font-medium text-ds-mid hover:bg-ds-input disabled:opacity-40 transition-colors shrink-0"
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
               Atualizar
@@ -130,7 +131,7 @@ export function ExtratoPage() {
       </div>
 
       {/* ── Body ────────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
         {error && (
           <Alert variant="error" onClose={() => setError(null)} className="mb-4">
             {error}

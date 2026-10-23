@@ -349,9 +349,9 @@ export function MinhasNotasPage() {
   }
 
   return (
-    <div className="flex flex-col h-full -m-6">
+    <div className="flex flex-col h-full -m-4 sm:-m-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="px-6 pt-6 pb-4 bg-white border-b border-ds-border shrink-0">
+      <div className="px-4 pt-4 sm:px-6 sm:pt-6 pb-4 bg-white border-b border-ds-border shrink-0">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-black text-ds-text">Minhas Notas Fiscais</h1>
@@ -447,7 +447,7 @@ export function MinhasNotasPage() {
       {/* ── Body ───────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden flex min-h-0">
         {/* Lista */}
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto p-4 sm:p-6">
           {error && (
             <Alert variant="error" onClose={() => setError(null)} className="mb-4">
               {error}

@@ -7,3 +7,32 @@
     font-family: 'Source Sans Pro', system-ui, sans-serif;
   }
 }
+
+/*
+ * Portal do Médico no celular: a maioria dos médicos lança frequência/produção pelo celular e a
+ * escala tipográfica do sistema (text-xs = 12px, text-[10px]...) foi pensada pro desktop. Abaixo
+ * do breakpoint sm, só nas rotas /portal (classe aplicada no <html> pelo Shell — no <html> e não
+ * no <main> porque dropdowns e modais renderizam via portal direto no <body>), sobe um degrau
+ * a escala inteira. Desktop e telas internas não mudam.
+ */
+@media (max-width: 639.98px) {
+  html.portal-medico .text-\[9px\],
+  html.portal-medico .text-\[10px\] { font-size: 12px; }
+  html.portal-medico .text-\[11px\] { font-size: 13px; }
+  html.portal-medico .text-xs       { font-size: 14px;   line-height: 1.25rem; }
+  html.portal-medico .text-sm       { font-size: 16px;   line-height: 1.5rem; }
+  html.portal-medico .text-base     { font-size: 17px;   line-height: 1.5rem; }
+  html.portal-medico .text-xl       { font-size: 1.375rem; line-height: 1.75rem; }
+
+  /* Os line-heights acima ganhariam dos leading-* por especificidade — reafirma os usados. */
+  html.portal-medico .leading-none  { line-height: 1; }
+  html.portal-medico .leading-tight { line-height: 1.25; }
+
+  /* iOS dá zoom na página ao focar qualquer campo com fonte < 16px. */
+  html.portal-medico input:not([type='checkbox']):not([type='radio']),
+  html.portal-medico select,
+  html.portal-medico textarea { font-size: 16px !important; }
+
+  html.portal-medico input[type='checkbox'],
+  html.portal-medico input[type='radio'] { width: 1.25rem; height: 1.25rem; }
+}

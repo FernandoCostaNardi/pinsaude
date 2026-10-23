@@ -102,7 +102,7 @@ function SearchDropdown<T extends { id: string }>({
         type="button"
         disabled={disabled}
         onClick={() => { setOpen(!open); setQ('') }}
-        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm transition-colors min-h-[44px] ${
           selected
             ? 'border-primary/40 bg-primary-50 text-ds-text font-medium'
             : 'border-ds-border bg-white text-ds-light'
@@ -119,7 +119,7 @@ function SearchDropdown<T extends { id: string }>({
               value={q}
               onChange={e => setQ(e.target.value)}
               placeholder="Buscar..."
-              className="w-full text-xs px-2 py-1.5 border border-ds-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="w-full text-xs px-2 py-1.5 min-h-[40px] border border-ds-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
           <div className="max-h-52 overflow-y-auto divide-y divide-ds-border">
@@ -130,7 +130,7 @@ function SearchDropdown<T extends { id: string }>({
                 key={item.id}
                 type="button"
                 onClick={() => { onSelect(item); setOpen(false); setQ('') }}
-                className="w-full text-left px-3 py-2.5 text-sm hover:bg-ds-surface transition-colors"
+                className="w-full text-left px-3 py-3 text-sm hover:bg-ds-surface transition-colors"
               >
                 {getLabel(item)}
               </button>
@@ -190,7 +190,7 @@ function PreviewCard({ valorBruto, taxaPinPct }: { valorBruto: number; taxaPinPc
 
         {/* Valor líquido — destaque */}
         <div className="pt-3 pb-1">
-          <div className="bg-green-50 rounded-xl p-4 flex items-center justify-between border border-green-200">
+          <div className="bg-green-50 rounded-xl p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border border-green-200">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
                 <DollarSign size={16} className="text-green-700" />
@@ -417,7 +417,7 @@ function NovaProducaoModal({
             <select
               value={cnaeCodigo}
               onChange={e => setCnaeCodigo(e.target.value)}
-              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]"
             >
               <option value="">Selecione o CNAE...</option>
               {tomador.cnaes.map(c => (
@@ -435,7 +435,7 @@ function NovaProducaoModal({
           <select
             value={competencia}
             onChange={e => setCompetencia(e.target.value)}
-            className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className="w-full border border-ds-border rounded-lg px-3 py-2.5 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white min-h-[44px]"
           >
             {COMPETENCIAS.map(c => (
               <option key={c} value={c}>{formatCompetencia(c)}</option>
@@ -458,7 +458,7 @@ function NovaProducaoModal({
                 setValorStr(cents === 0 ? '' : maskBRL(cents))
               }}
               placeholder="0,00"
-              className="w-full pl-9 pr-3 py-2.5 border border-ds-border rounded-lg text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="w-full pl-10 pr-3 py-2.5 min-h-[44px] border border-ds-border rounded-lg text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
         </div>
@@ -583,18 +583,18 @@ export function PortalProducaoNovaPage() {
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => navigate('/portal/extrato')}
-            className="shrink-0 p-2 rounded-lg hover:bg-ds-input text-ds-light hover:text-ds-mid transition-colors"
+            className="shrink-0 p-2 rounded-lg hover:bg-ds-input text-ds-light hover:text-ds-mid transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
           >
             <ArrowLeft size={18} />
           </button>
           <div className="min-w-0">
             <h1 className="text-xl font-black text-ds-text truncate">Informar Produção</h1>
-            <p className="text-sm text-ds-light mt-0.5 truncate">
+            <p className="text-sm text-ds-light mt-0.5 sm:truncate">
               Solicite a emissão de uma nova nota fiscal em seu nome
             </p>
           </div>
         </div>
-        <Button onClick={() => { setSucesso(false); setModalAberto(true) }} className="w-full sm:w-auto shrink-0">
+        <Button onClick={() => { setSucesso(false); setModalAberto(true) }} className="w-full sm:w-auto shrink-0 min-h-[48px] sm:min-h-0">
           <Plus size={15} className="mr-1.5" />
           Nova Produção
         </Button>
