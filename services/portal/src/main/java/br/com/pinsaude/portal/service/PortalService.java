@@ -23,11 +23,13 @@ import java.math.RoundingMode;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -258,6 +260,8 @@ public class PortalService {
      * <ul>
      *   <li>PROVISIONADO — só lançado pelo médico (ou já fechado, mas sem NFS-e emitida);</li>
      *   <li>FATURADO — a NFS-e da produção (ou do fechamento da frequência) foi emitida;</li>
+     *   <li>RECEBIDO — o tomador já pagou: a produção foi conciliada com um crédito do extrato
+     *       bancário (faturamento.conciliacoes);</li>
      *   <li>PAGO — já faturado e existe repasse registrado no ledger para o médico naquela
      *       competência.</li>
      * </ul>
@@ -266,10 +270,11 @@ public class PortalService {
      */
     public ExtratoResponse getExtrato(UUID medicoId, String competencia) {
         Set<String> competenciasPagas = competenciasComRepasse(medicoId);
+        Map<UUID, LocalDate> recebimentos = producoesRecebidas(medicoId);
 
         List<ExtratoLancamentoResponse> todos = new ArrayList<>();
-        todos.addAll(lancamentosDeProducao(medicoId, competenciasPagas));
-        todos.addAll(lancamentosDeFrequencia(medicoId, competenciasPagas));
+        todos.addAll(lancamentosDeProducao(medicoId, competenciasPagas, recebimentos));
+        todos.addAll(lancamentosDeFrequencia(medicoId, competenciasPagas, recebimentos));
         todos.sort(Comparator.comparing(ExtratoLancamentoResponse::competencia).reversed()
                 .thenComparing(ExtratoLancamentoResponse::dataRef,
                         Comparator.nullsLast(Comparator.reverseOrder())));
@@ -283,23 +288,27 @@ public class PortalService {
         List<ExtratoLancamentoResponse> lancamentos = filtro == null ? todos
                 : todos.stream().filter(l -> filtro.equals(l.competencia())).toList();
 
-        long previsto = 0, provisionado = 0, faturado = 0, pago = 0;
+        long previsto = 0, provisionado = 0, faturado = 0, recebido = 0, pago = 0;
         for (ExtratoLancamentoResponse l : lancamentos) {
             previsto += l.valorPrevisto();
             switch (l.status()) {
                 case STATUS_PAGO -> pago += l.valorPrevisto();
+                case STATUS_RECEBIDO -> recebido += l.valorPrevisto();
                 case STATUS_FATURADO -> faturado += l.valorPrevisto();
                 default -> provisionado += l.valorPrevisto();
             }
         }
-        return new ExtratoResponse(filtro, previsto, provisionado, faturado, pago, competencias, lancamentos);
+        return new ExtratoResponse(filtro, previsto, provisionado, faturado, recebido, pago,
+                competencias, lancamentos);
     }
 
     static final String STATUS_PROVISIONADO = "PROVISIONADO";
     static final String STATUS_FATURADO     = "FATURADO";
+    static final String STATUS_RECEBIDO     = "RECEBIDO";
     static final String STATUS_PAGO         = "PAGO";
 
-    private List<ExtratoLancamentoResponse> lancamentosDeProducao(UUID medicoId, Set<String> competenciasPagas) {
+    private List<ExtratoLancamentoResponse> lancamentosDeProducao(UUID medicoId, Set<String> competenciasPagas,
+                                                                Map<UUID, LocalDate> recebimentos) {
         return jdbc.query("""
                 SELECT p.id, p.competencia, p.created_at,
                        t.razao_social_nome AS tomador_nome,
@@ -329,8 +338,10 @@ public class PortalService {
                     String comp = rs.getString("competencia");
                     long bruto = rs.getLong("valor_bruto");
                     long taxa = calcularTaxaPin(bruto, rs.getBigDecimal("taxa_pin_pct"));
+                    UUID producaoId = rs.getObject("id", UUID.class);
+                    LocalDate recebidoEm = recebimentos.get(producaoId);
                     return new ExtratoLancamentoResponse(
-                            rs.getObject("id", UUID.class),
+                            producaoId,
                             "PRODUCAO",
                             comp,
                             rs.getString("tomador_nome"),
@@ -339,8 +350,9 @@ public class PortalService {
                             bruto,
                             taxa,
                             bruto - taxa,
-                            resolverStatus(rs.getBoolean("faturado"), comp, competenciasPagas),
+                            resolverStatus(rs.getBoolean("faturado"), recebidoEm != null, comp, competenciasPagas),
                             rs.getString("numero_nota"),
+                            recebidoEm,
                             toOffsetDateTime(rs.getTimestamp("created_at")));
                 },
                 medicoId);
@@ -353,9 +365,10 @@ public class PortalService {
      * frequência, aplicada uma única vez. Frequências legadas sem modalidade fixa resolvem o
      * valor mensal pelas modalidades fixas usadas nos itens.
      */
-    private List<ExtratoLancamentoResponse> lancamentosDeFrequencia(UUID medicoId, Set<String> competenciasPagas) {
+    private List<ExtratoLancamentoResponse> lancamentosDeFrequencia(UUID medicoId, Set<String> competenciasPagas,
+                                                                  Map<UUID, LocalDate> recebimentos) {
         return jdbc.query("""
-                SELECT fm.id, fm.competencia, fm.created_at,
+                SELECT fm.id, fm.producao_id, fm.competencia, fm.created_at,
                        t.razao_social_nome AS tomador_nome,
                        so.nome AS setor_nome,
                        itens.qtd,
@@ -408,6 +421,8 @@ public class PortalService {
                     long bruto = rs.getLong("total_itens") + rs.getLong("valor_fixo");
                     if (qtd == 0 && bruto == 0) return null; // frequência aberta sem nada lançado
                     long taxa = calcularTaxaPin(bruto, rs.getBigDecimal("taxa_pin_pct"));
+                    UUID producaoId = rs.getObject("producao_id", UUID.class);
+                    LocalDate recebidoEm = producaoId != null ? recebimentos.get(producaoId) : null;
                     return new ExtratoLancamentoResponse(
                             rs.getObject("id", UUID.class),
                             "FREQUENCIA",
@@ -418,8 +433,9 @@ public class PortalService {
                             bruto,
                             taxa,
                             bruto - taxa,
-                            resolverStatus(rs.getBoolean("faturado"), comp, competenciasPagas),
+                            resolverStatus(rs.getBoolean("faturado"), recebidoEm != null, comp, competenciasPagas),
                             rs.getString("numero_nota"),
+                            recebidoEm,
                             toOffsetDateTime(rs.getTimestamp("created_at")));
                 },
                 medicoId).stream().filter(Objects::nonNull).toList();
@@ -445,9 +461,46 @@ public class PortalService {
         }
     }
 
-    static String resolverStatus(boolean faturado, String competencia, Set<String> competenciasPagas) {
+    /**
+     * Produções do médico (lançadas por ele ou geradas pelo fechamento das frequências dele) já
+     * conciliadas com um crédito do extrato bancário, com a data do depósito. Tolerante a falha,
+     * como o ledger: sem leitura das tabelas de conciliação o extrato segue, só sem "Recebido".
+     */
+    private Map<UUID, LocalDate> producoesRecebidas(UUID medicoId) {
+        try {
+            Map<UUID, LocalDate> result = new HashMap<>();
+            jdbc.query("""
+                    SELECT c.nota_id AS producao_id, MAX(le.data_lancamento) AS recebido_em
+                    FROM faturamento.conciliacoes c
+                    JOIN faturamento.lancamentos_extrato le ON le.id = c.lancamento_extrato_id
+                    WHERE le.status_conciliacao = 'CONCILIADO'
+                      AND c.nota_id IN (
+                          SELECT pp.producao_id FROM faturamento.participacoes_producao pp
+                          WHERE pp.medico_id = ?
+                          UNION
+                          SELECT fm.producao_id FROM faturamento.frequencias_medicas fm
+                          WHERE fm.medico_id = ? AND fm.producao_id IS NOT NULL
+                      )
+                    GROUP BY c.nota_id
+                    """,
+                    (ResultSet rs) -> {
+                        result.put(rs.getObject("producao_id", UUID.class),
+                                rs.getDate("recebido_em").toLocalDate());
+                    },
+                    medicoId, medicoId);
+            return result;
+        } catch (DataAccessException e) {
+            log.warn("Extrato: não foi possível consultar recebimentos conciliados — {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /** Pago vale mais que Recebido: se já houve repasse, o tomador necessariamente pagou. */
+    static String resolverStatus(boolean faturado, boolean recebido, String competencia,
+                                 Set<String> competenciasPagas) {
         if (!faturado) return STATUS_PROVISIONADO;
-        return competenciasPagas.contains(competencia) ? STATUS_PAGO : STATUS_FATURADO;
+        if (competenciasPagas.contains(competencia)) return STATUS_PAGO;
+        return recebido ? STATUS_RECEBIDO : STATUS_FATURADO;
     }
 
     static long calcularTaxaPin(long bruto, BigDecimal pct) {

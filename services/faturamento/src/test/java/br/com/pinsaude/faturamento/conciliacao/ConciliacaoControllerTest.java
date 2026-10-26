@@ -259,4 +259,21 @@ class ConciliacaoControllerTest {
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_caixa"))))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    void listarRecebimentos_permNotas_retorna200() throws Exception {
+        // A tela de Notas marca as notas recebidas — quem vê notas precisa ler os recebimentos.
+        when(posicaoCaixaService.listarRecebimentos()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/conciliacao/recebimentos")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_notas"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void listarRecebimentos_medico_retorna403() throws Exception {
+        mockMvc.perform(get("/api/conciliacao/recebimentos")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_medico"))))
+                .andExpect(status().isForbidden());
+    }
 }

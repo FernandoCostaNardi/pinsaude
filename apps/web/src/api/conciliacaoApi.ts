@@ -170,9 +170,11 @@ export async function listarProducoesParaBusca(): Promise<ProducaoResumo[]> {
 export interface PosicaoCaixaResponse {
   aReceber: number
   recebidoNaoRepassado: number
+  aRepassar: number                 // parte dos médicos nas produções recebidas e não repassadas
   repassadoNoMes: number
   saldoEstimado: number
   notasEmAberto: NotaEmAberto[]
+  recebidasAguardandoRepasse: RecebidaAguardandoRepasse[]
   recebimentosPorSemana: RecebimentoSemana[]
 }
 
@@ -183,6 +185,31 @@ export interface NotaEmAberto {
   valorBruto: number
   dataReferencia: string
   diasEmAberto: number
+}
+
+export interface RecebidaAguardandoRepasse {
+  producaoId: string
+  tomadorNome: string
+  competencia: string
+  recebidoEm: string       // YYYY-MM-DD
+  valorBruto: number
+  valorRecebido: number    // crédito do extrato (líquido das retenções)
+  aRepassar: number        // bruto − taxa Pin, somado entre os médicos
+  qtdMedicos: number
+}
+
+// Produção já recebida do tomador (conciliada com um crédito do extrato).
+export interface RecebimentoProducao {
+  producaoId: string
+  recebidoEm: string       // YYYY-MM-DD
+  valorRecebido: number
+  tipoMatch: 'AUTOMATICO' | 'MANUAL'
+}
+
+export async function getRecebimentos(): Promise<RecebimentoProducao[]> {
+  const res = await fetch('/api/conciliacao/recebimentos', { headers: authHeaders() })
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`)
+  return res.json()
 }
 
 export interface RecebimentoSemana {

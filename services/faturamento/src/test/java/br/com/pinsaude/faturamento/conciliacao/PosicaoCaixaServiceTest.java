@@ -1,6 +1,7 @@
 package br.com.pinsaude.faturamento.conciliacao;
 
 import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse;
+import br.com.pinsaude.faturamento.dto.RecebimentoProducaoResponse;
 import br.com.pinsaude.faturamento.service.PosicaoCaixaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -99,5 +100,47 @@ class PosicaoCaixaServiceTest {
         assertThat(resp.aReceber()).isEqualTo(0L);
         assertThat(resp.recebidoNaoRepassado()).isEqualTo(250_000L);
         assertThat(resp.notasEmAberto()).isEmpty();
+    }
+
+    @Test
+    void calcular_aRepassar_somaParteDosMedicosDasRecebidas() {
+        when(jdbc.queryForObject(contains("SUM(p.valor_bruto)"), eq(Long.class))).thenReturn(0L);
+        when(jdbc.queryForObject(contains("SUM(le.valor)"), eq(Long.class))).thenReturn(1_876_998L);
+        // O alias da produção nessa query não pode casar com contains("producoes p") dos outros testes.
+        // Nota de R$ 10.000 (2 médicos, taxa 15%) recebida líquida de 6,15% → R$ 9.385
+        var r1 = new PosicaoCaixaResponse.RecebidaAguardandoRepasse(UUID.randomUUID(), "Hospital A",
+                "2026-10", "2026-10-20", 1_000_000L, 938_500L, 850_000L, 2);
+        // Nota de R$ 10.000 de um médico com taxa 12% → R$ 8.800 a repassar
+        var r2 = new PosicaoCaixaResponse.RecebidaAguardandoRepasse(UUID.randomUUID(), "Hospital B",
+                "2026-10", "2026-10-22", 1_000_000L, 938_498L, 880_000L, 1);
+        when(jdbc.query(contains("a_repassar"), any(RowMapper.class))).thenReturn(List.of(r1, r2));
+        when(jdbc.query(contains("FROM faturamento.producoes p"), any(RowMapper.class))).thenReturn(List.of());
+        when(jdbc.query(contains("semana_key"), any(RowMapper.class))).thenReturn(List.of());
+
+        PosicaoCaixaResponse resp = service.calcular();
+
+        assertThat(resp.aRepassar()).isEqualTo(1_730_000L);
+        assertThat(resp.recebidasAguardandoRepasse()).hasSize(2);
+        assertThat(resp.recebidoNaoRepassado()).isEqualTo(1_876_998L);
+    }
+
+    @Test
+    void calcular_semRecebidas_aRepassarZero() {
+        when(jdbc.queryForObject(contains("SUM(p.valor_bruto)"), eq(Long.class))).thenReturn(100L);
+        when(jdbc.queryForObject(contains("SUM(le.valor)"), eq(Long.class))).thenReturn(0L);
+
+        PosicaoCaixaResponse resp = service.calcular();
+
+        assertThat(resp.aRepassar()).isZero();
+        assertThat(resp.recebidasAguardandoRepasse()).isEmpty();
+    }
+
+    @Test
+    void listarRecebimentos_consultaSoConciliados() {
+        var rec = new RecebimentoProducaoResponse(UUID.randomUUID(), "2026-10-20", 938_500L, "MANUAL");
+        when(jdbc.query(contains("status_conciliacao = 'CONCILIADO'"), any(RowMapper.class)))
+                .thenReturn(List.of(rec));
+
+        assertThat(service.listarRecebimentos()).containsExactly(rec);
     }
 }

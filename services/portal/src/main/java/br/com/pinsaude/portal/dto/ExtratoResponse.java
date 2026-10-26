@@ -11,6 +11,7 @@ public record ExtratoResponse(
     long totalPrevisto,
     long totalProvisionado,
     long totalFaturado,
+    long totalRecebido,
     long totalPago,
     List<String> competenciasDisponiveis, // competências com algum lançamento, mais recente primeiro
     List<ExtratoLancamentoResponse> lancamentos

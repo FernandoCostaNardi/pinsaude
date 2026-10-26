@@ -11,19 +11,37 @@ class PortalServiceExtratoTest {
 
     @Test
     void semNotaEmitida_ficaProvisionado_mesmoComRepasseNaCompetencia() {
-        assertThat(PortalService.resolverStatus(false, "2026-10", Set.of("2026-10")))
+        assertThat(PortalService.resolverStatus(false, false, "2026-10", Set.of("2026-10")))
+                .isEqualTo(PortalService.STATUS_PROVISIONADO);
+    }
+
+    @Test
+    void semNotaEmitida_ficaProvisionado_mesmoConciliada() {
+        assertThat(PortalService.resolverStatus(false, true, "2026-10", Set.of()))
                 .isEqualTo(PortalService.STATUS_PROVISIONADO);
     }
 
     @Test
     void comNotaEmitida_semRepasse_ficaFaturado() {
-        assertThat(PortalService.resolverStatus(true, "2026-10", Set.of("2026-09")))
+        assertThat(PortalService.resolverStatus(true, false, "2026-10", Set.of("2026-09")))
                 .isEqualTo(PortalService.STATUS_FATURADO);
     }
 
     @Test
+    void comNotaEmitida_eConciliada_semRepasse_ficaRecebido() {
+        assertThat(PortalService.resolverStatus(true, true, "2026-10", Set.of("2026-09")))
+                .isEqualTo(PortalService.STATUS_RECEBIDO);
+    }
+
+    @Test
     void comNotaEmitida_eRepasseNaCompetencia_ficaPago() {
-        assertThat(PortalService.resolverStatus(true, "2026-10", Set.of("2026-10")))
+        assertThat(PortalService.resolverStatus(true, false, "2026-10", Set.of("2026-10")))
+                .isEqualTo(PortalService.STATUS_PAGO);
+    }
+
+    @Test
+    void conciliada_eComRepasse_pagoPrevaleceSobreRecebido() {
+        assertThat(PortalService.resolverStatus(true, true, "2026-10", Set.of("2026-10")))
                 .isEqualTo(PortalService.STATUS_PAGO);
     }
 

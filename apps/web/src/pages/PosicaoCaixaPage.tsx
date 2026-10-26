@@ -1,12 +1,16 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Wallet, TrendingUp, ArrowDownCircle, BarChart2,
-  RefreshCw, AlertTriangle, Loader2, Clock,
+  RefreshCw, AlertTriangle, Loader2, Clock, HandCoins,
 } from 'lucide-react'
 import { getPosicaoCaixa, type PosicaoCaixaResponse } from '../api/conciliacaoApi'
 
 function formatBRL(centavos: number): string {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function formatData(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR')
 }
 
 function diasEmAbertoClass(dias: number): string {
@@ -143,7 +147,7 @@ export function PosicaoCaixaPage() {
       {dados && !carregando && (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
             <KpiCard
               label="A Receber"
               value={dados.aReceber}
@@ -156,7 +160,14 @@ export function PosicaoCaixaPage() {
               value={dados.recebidoNaoRepassado}
               icon={TrendingUp}
               color="bg-green-500"
-              sub="Aguardando liquidação EPIC-09"
+              sub="Créditos conciliados, líquidos de retenção"
+            />
+            <KpiCard
+              label="A Repassar aos Médicos"
+              value={dados.aRepassar}
+              icon={HandCoins}
+              color="bg-teal-500"
+              sub={`${dados.recebidasAguardandoRepasse.length} nota(s) recebida(s) · bruto − taxa Pin`}
             />
             <KpiCard
               label="Repassado no Mês"
@@ -182,6 +193,56 @@ export function PosicaoCaixaPage() {
               <span className="ml-auto text-xs text-ds-light">Últimos 3 meses</span>
             </div>
             <BarChart data={dados.recebimentosPorSemana} />
+          </div>
+
+          {/* Recebidas aguardando repasse */}
+          <div className="bg-white rounded-xl border border-ds-border">
+            <div className="px-5 py-4 border-b border-ds-border flex items-center gap-2">
+              <HandCoins size={16} className="text-teal-600" />
+              <h2 className="font-semibold text-ds-text text-sm">Recebidas, Aguardando Repasse</h2>
+              {dados.recebidasAguardandoRepasse.length > 0 && (
+                <span className="ml-auto bg-teal-50 text-teal-700 text-xs px-2 py-0.5 rounded-full font-medium">
+                  {formatBRL(dados.aRepassar)} a repassar
+                </span>
+              )}
+            </div>
+
+            {dados.recebidasAguardandoRepasse.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-ds-light gap-2">
+                <HandCoins size={26} className="text-ds-border" />
+                <p className="text-sm">Nenhuma nota recebida aguardando repasse</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-ds-border bg-ds-surface/50">
+                      <th className="text-left px-5 py-3 font-medium text-ds-light">Tomador</th>
+                      <th className="text-center px-5 py-3 font-medium text-ds-light">Recebido em</th>
+                      <th className="text-right px-5 py-3 font-medium text-ds-light">Valor Bruto</th>
+                      <th className="text-right px-5 py-3 font-medium text-ds-light">Recebido</th>
+                      <th className="text-right px-5 py-3 font-medium text-ds-light">A Repassar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dados.recebidasAguardandoRepasse.map((r) => (
+                      <tr key={r.producaoId} className="border-b border-ds-border last:border-0 hover:bg-ds-surface/30 transition-colors">
+                        <td className="px-5 py-3">
+                          <p className="font-medium text-ds-text">{r.tomadorNome || '—'}</p>
+                          <p className="text-[11px] text-ds-light">
+                            {r.competencia} · {r.qtdMedicos > 1 ? `${r.qtdMedicos} médicos` : '1 médico'}
+                          </p>
+                        </td>
+                        <td className="px-5 py-3 text-center text-ds-mid">{formatData(r.recebidoEm)}</td>
+                        <td className="px-5 py-3 text-right font-mono text-ds-mid">{formatBRL(r.valorBruto)}</td>
+                        <td className="px-5 py-3 text-right font-mono text-ds-text">{formatBRL(r.valorRecebido)}</td>
+                        <td className="px-5 py-3 text-right font-mono font-semibold text-teal-700">{formatBRL(r.aRepassar)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Tabela de notas em aberto */}

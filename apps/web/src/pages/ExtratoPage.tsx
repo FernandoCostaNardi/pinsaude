@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType } from 'react'
-import { RefreshCw, Wallet, Clock, FileCheck, CheckCircle2, TrendingUp } from 'lucide-react'
+import { RefreshCw, Wallet, Clock, FileCheck, CheckCircle2, TrendingUp, Landmark } from 'lucide-react'
 import { Spinner, Alert } from '@pinsaude/ui'
 import { portalApi, ExtratoPortal, ExtratoLancamento, ExtratoStatus } from '../api/portalApi'
 
-// Atualiza sozinho para refletir novos lançamentos e mudanças de status (nota emitida, repasse).
+// Atualiza sozinho para refletir novos lançamentos e mudanças de status (nota emitida, recebimento, repasse).
 const REFRESH_MS = 60_000
 
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -22,6 +22,10 @@ function formatCompetencia(comp: string): string {
   return MESES[idx] ? `${MESES[idx]}/${ano}` : comp
 }
 
+function formatData(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR')
+}
+
 function competenciaAtual(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -30,6 +34,7 @@ function competenciaAtual(): string {
 const STATUS_CONFIG: Record<ExtratoStatus, { label: string; cls: string; icon: ElementType }> = {
   PROVISIONADO: { label: 'Provisionado', cls: 'bg-amber-50 text-amber-700 border-amber-200', icon: Clock },
   FATURADO:     { label: 'Faturado',     cls: 'bg-blue-50 text-blue-700 border-blue-200',    icon: FileCheck },
+  RECEBIDO:     { label: 'Recebido',     cls: 'bg-teal-50 text-teal-700 border-teal-200',    icon: Landmark },
   PAGO:         { label: 'Pago',         cls: 'bg-green-50 text-green-700 border-green-200', icon: CheckCircle2 },
 }
 
@@ -117,13 +122,15 @@ export function ExtratoPage() {
         </div>
 
         {!loading && extrato && lancamentos.length > 0 && (
-          <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="mt-4 grid grid-cols-2 lg:grid-cols-5 gap-3">
             <ResumoCard icon={TrendingUp} label="Previsto no mês" valor={extrato.totalPrevisto}
-              cls="bg-primary-50 border-primary-100 text-primary-700" />
+              cls="col-span-2 lg:col-span-1 bg-primary-50 border-primary-100 text-primary-700" />
             <ResumoCard icon={Clock} label="Provisionado" valor={extrato.totalProvisionado}
               cls="bg-amber-50 border-amber-200 text-amber-700" />
             <ResumoCard icon={FileCheck} label="Faturado" valor={extrato.totalFaturado}
               cls="bg-blue-50 border-blue-200 text-blue-700" />
+            <ResumoCard icon={Landmark} label="Recebido" valor={extrato.totalRecebido}
+              cls="bg-teal-50 border-teal-200 text-teal-700" />
             <ResumoCard icon={CheckCircle2} label="Pago" valor={extrato.totalPago}
               cls="bg-green-50 border-green-200 text-green-700" />
           </div>
@@ -149,7 +156,7 @@ export function ExtratoPage() {
             <LancamentosLista lancamentos={lancamentos} />
             <p className="text-[11px] text-ds-light">
               Provisionado: lançado por você, aguardando a nota fiscal. Faturado: nota fiscal emitida.
-              Pago: repasse feito para sua conta.
+              Recebido: o hospital já pagou a nota e o valor aguarda o repasse. Pago: repasse feito para sua conta.
             </p>
           </div>
         )}
@@ -194,6 +201,7 @@ function detalhe(l: ExtratoLancamento): string {
   const partes = [l.descricao]
   if (l.origem === 'FREQUENCIA') partes.push(`${l.quantidade} ${l.quantidade === 1 ? 'lançamento' : 'lançamentos'}`)
   if (l.numeroNota) partes.push(`NFS-e ${l.numeroNota}`)
+  if (l.status === 'RECEBIDO' && l.recebidoEm) partes.push(`recebido em ${formatData(l.recebidoEm)}`)
   return partes.filter(Boolean).join(' · ')
 }
 

@@ -91,9 +91,9 @@ class PortalMedicoControllerTest {
         UUID medicoId = UUID.randomUUID();
         when(service.resolveMedicoId("medico@test.com")).thenReturn(medicoId);
         when(service.getExtrato(medicoId, "2026-10")).thenReturn(new ExtratoResponse(
-                "2026-10", 85000L, 85000L, 0L, 0L, List.of("2026-10"),
+                "2026-10", 85000L, 85000L, 0L, 0L, 0L, List.of("2026-10"),
                 List.of(new ExtratoLancamentoResponse(UUID.randomUUID(), "FREQUENCIA", "2026-10",
-                        "Hospital X", "UTI", 2, 100000L, 15000L, 85000L, "PROVISIONADO", null, null))));
+                        "Hospital X", "UTI", 2, 100000L, 15000L, 85000L, "PROVISIONADO", null, null, null))));
 
         mockMvc.perform(get("/api/portal/extrato").param("competencia", "2026-10")
                 .with(jwt()

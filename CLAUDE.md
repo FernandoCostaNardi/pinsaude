@@ -1801,8 +1801,11 @@ previsto (bruto − taxa) e status:
 - **PROVISIONADO**: lançado pelo médico, sem NFS-e `EMITIDA` para a produção.
 - **FATURADO**: existe NFS-e `EMITIDA` com `producao_id` da produção (na frequência, o
   `producao_id` gravado pelo Fechamento por Grupo).
+- **RECEBIDO** (REC-04): faturado e a produção está conciliada com um crédito do extrato bancário
+  (`faturamento.conciliacoes` + `lancamentos_extrato.status_conciliacao = 'CONCILIADO'`). O item traz
+  `recebidoEm` (data do depósito) e o resumo traz `totalRecebido`. Consulta tolerante a falha, como a do ledger.
 - **PAGO**: faturado e há lançamento `REPASSE` no `ledger.lancamentos_ledger` do médico naquela
-  competência. O módulo de repasse (EPIC-09) ainda é stub, então "Pago" só aparece quando houver
+  competência. Pago prevalece sobre Recebido (houve repasse ⇒ o tomador pagou). O módulo de repasse (EPIC-09) ainda é stub, então "Pago" só aparece quando houver
   repasse no ledger. A consulta ao ledger é tolerante a falha (sem grant, o extrato segue sem "Pago").
 
 Produções geradas pelo Fechamento por Grupo são excluídas da lista de produção
@@ -1944,6 +1947,32 @@ Padrão documentado: ao esquecer coluna em uma migration já aplicada, criar nov
 ---
 
 ## Conciliação Bancária — Padrões e Armadilhas (EPIC-07.1)
+
+### "Recebido" = produção conciliada — `conciliacoes.nota_id` é o ID da PRODUÇÃO (REC-04)
+Apesar do nome e do comentário da V13 ("FK lógica para fiscal.notas_fiscais"), `conciliacoes.nota_id`
+guarda **`faturamento.producoes.id`** (`MatchingService` e `ExtratoService.conciliarManual` gravam o ID
+da produção). Para saber se uma nota foi recebida: `JOIN fiscal.notas_fiscais n ON n.producao_id = c.nota_id`.
+Enquanto a produção não tiver status próprio de recebimento (REC-02), a fonte de verdade de
+"Recebido" é: existe `conciliacoes` para a produção **e** o lançamento está `CONCILIADO`. Usado em:
+- Portal (`PortalService.producoesRecebidas`) → status RECEBIDO no extrato do médico;
+- `PosicaoCaixaService` → `aRepassar` + `recebidasAguardandoRepasse`;
+- `GET /api/conciliacao/recebimentos` → badge "Recebida" na tela de Notas (o fiscal não lê o
+  schema faturamento; o front cruza `producaoId`). Liberado também para `perm_notas`/`perm_caixa`.
+
+**A repassar** = por participação, `valor_bruto − ROUND(valor_bruto × taxa_pin_pct)` (mesma regra do
+extrato do portal), somado nas produções recebidas. Produção legada sem participações cai no bruto da
+produção com 15%. Não confundir com o crédito recebido no banco, que vem líquido das retenções (6,15%).
+Enquanto o repasse (EPIC-09) não existir, toda recebida está "aguardando repasse"; quando existir,
+excluir as já repassadas nessa query.
+
+### Mockito `contains("producoes p")` casa com qualquer alias que comece com `p`
+`PosicaoCaixaServiceTest` stuba `jdbc.query(contains("producoes p"), …)`. Uma query nova com
+`producoes prod` ou `producoes pr` também casa e recebe a lista errada (ClassCastException no record).
+Use alias que não comece com `p` (ex.: `producoes rp`) e stube a query nova por um trecho único dela.
+
+### `SecurityIntegrationTest` do faturamento falha fora do ambiente completo
+`actuatorHealth_semToken_retorna200` e `tokenValido_cnpjIdPresente` recebem 503 quando não há
+RabbitMQ (health DOWN). Falha também na `main`; não é regressão de quem rodou `mvn test` sem a infra.
 
 ### Schema em `faturamento` service — não em serviço separado
 As tabelas de conciliação ficam no schema `faturamento` (migration V13), pois a conciliação
