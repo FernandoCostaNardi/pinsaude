@@ -1,18 +1,21 @@
 package br.com.pinsaude.faturamento.service;
 
 import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse;
-import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.NotaEmAberto;
-import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.RecebidaAguardandoRepasse;
+import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.Pagina;
+import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.Recebimento;
+import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.RecebimentoMes;
+import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.Resumo;
 import br.com.pinsaude.faturamento.dto.RecebimentoProducaoResponse;
-import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.RecebimentoSemana;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Date;
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
+import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -24,22 +27,146 @@ public class PosicaoCaixaService {
         this.jdbc = jdbc;
     }
 
+    /** Crédito do extrato conciliado com uma produção, já com a parte dos médicos calculada. */
+    private static final String RECEBIMENTOS_CTE = """
+            WITH rec AS (
+                SELECT rp.id AS producao_id, rp.competencia, rp.valor_bruto,
+                       COALESCE(t.nome_fantasia, t.razao_social_nome, '') AS tomador_nome,
+                       le.data_lancamento AS recebido_em,
+                       le.valor AS valor_recebido,
+                       c.tipo_match,
+                       COALESCE(part.qtd, 0) AS qtd_medicos,
+                       COALESCE(part.parte_medicos,
+                                rp.valor_bruto - CAST(ROUND(rp.valor_bruto * 0.15) AS BIGINT)) AS parte_medicos
+                FROM faturamento.conciliacoes c
+                JOIN faturamento.lancamentos_extrato le ON le.id = c.lancamento_extrato_id
+                JOIN faturamento.producoes rp ON rp.id = c.nota_id
+                JOIN faturamento.tomadores t ON t.id = rp.tomador_id
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) AS qtd,
+                           SUM(pp.valor_bruto
+                               - CAST(ROUND(pp.valor_bruto * COALESCE(pp.taxa_pin_pct, 0.15)) AS BIGINT)) AS parte_medicos
+                    FROM faturamento.participacoes_producao pp
+                    WHERE pp.producao_id = rp.id
+                    HAVING COUNT(*) > 0
+                ) part ON TRUE
+                WHERE le.status_conciliacao = 'CONCILIADO'
+                  AND le.tipo = 'CREDITO'
+            )
+            """;
+
+    static final int MESES_HISTORICO = 6;
+    static final int TAMANHO_MAXIMO_PAGINA = 100;
+
+    /**
+     * @param mes  YYYY-MM do depósito; nulo = todos os períodos
+     * @param busca trecho do nome do tomador; nulo/vazio = todos
+     */
     @Transactional(readOnly = true)
-    public PosicaoCaixaResponse calcular() {
+    public PosicaoCaixaResponse calcular(YearMonth mes, String busca, int page, int size) {
+        int tamanho = Math.max(1, Math.min(size, TAMANHO_MAXIMO_PAGINA));
+        int pagina = Math.max(0, page);
 
-        long aReceber = calcularAReceber();
-        long recebido = calcularRecebidoNaoRepassado();
-        long repassado = 0L; // EPIC-09 pendente
-        long saldo = recebido - repassado;
+        List<Object> args = new ArrayList<>();
+        String filtro = montarFiltro(mes, busca, args);
 
-        List<NotaEmAberto> emAberto = listarNotasEmAberto();
-        List<RecebimentoSemana> grafico = listarRecebimentosPorSemana();
-        List<RecebidaAguardandoRepasse> aguardando = listarRecebidasAguardandoRepasse();
-        // Enquanto o repasse (EPIC-09) não existir, toda produção recebida está aguardando repasse.
-        long aRepassar = aguardando.stream().mapToLong(RecebidaAguardandoRepasse::aRepassar).sum();
+        Resumo resumo = calcularResumo(filtro, args);
+        List<Recebimento> content = listarRecebimentosPagina(filtro, args, pagina, tamanho);
+        int totalPages = (int) Math.ceil(resumo.quantidade() / (double) tamanho);
+        Pagina paginaResp = new Pagina(content, pagina, tamanho, resumo.quantidade(), totalPages);
 
-        return new PosicaoCaixaResponse(aReceber, recebido, aRepassar, repassado, saldo,
-                emAberto, aguardando, grafico);
+        long[] emAberto = calcularAReceber();
+
+        return new PosicaoCaixaResponse(resumo, listarRecebimentosPorMes(), paginaResp,
+                emAberto[0], (int) emAberto[1]);
+    }
+
+    private static String montarFiltro(YearMonth mes, String busca, List<Object> args) {
+        StringBuilder sb = new StringBuilder(" WHERE 1 = 1");
+        if (mes != null) {
+            sb.append(" AND recebido_em >= ? AND recebido_em < ?");
+            args.add(Date.valueOf(mes.atDay(1)));
+            args.add(Date.valueOf(mes.plusMonths(1).atDay(1)));
+        }
+        if (busca != null && !busca.isBlank()) {
+            sb.append(" AND tomador_nome ILIKE ?");
+            args.add("%" + busca.trim() + "%");
+        }
+        return sb.toString();
+    }
+
+    private Resumo calcularResumo(String filtro, List<Object> args) {
+        List<Resumo> linhas = jdbc.query(RECEBIMENTOS_CTE + """
+                SELECT COUNT(*) AS qtd,
+                       COALESCE(SUM(valor_bruto), 0)     AS valor_notas,
+                       COALESCE(SUM(valor_recebido), 0)  AS recebido,
+                       COALESCE(SUM(parte_medicos), 0)   AS parte_medicos,
+                       COALESCE(SUM(GREATEST(valor_bruto - valor_recebido, 0)), 0) AS retencoes
+                FROM rec""" + filtro,
+                (rs, i) -> {
+                    long recebido = rs.getLong("recebido");
+                    long parteMedicos = rs.getLong("parte_medicos");
+                    long repassado = 0L; // EPIC-09 pendente
+                    return new Resumo(rs.getInt("qtd"), rs.getLong("valor_notas"), rs.getLong("retencoes"),
+                            recebido, parteMedicos, repassado, parteMedicos - repassado, recebido - parteMedicos);
+                },
+                args.toArray());
+        return linhas.isEmpty() ? new Resumo(0, 0, 0, 0, 0, 0, 0, 0) : linhas.get(0);
+    }
+
+    private List<Recebimento> listarRecebimentosPagina(String filtro, List<Object> args, int page, int size) {
+        List<Object> argsPagina = new ArrayList<>(args);
+        argsPagina.add(size);
+        argsPagina.add((long) page * size);
+        return jdbc.query(RECEBIMENTOS_CTE + """
+                SELECT * FROM rec""" + filtro + """
+                 ORDER BY recebido_em DESC, tomador_nome ASC
+                 LIMIT ? OFFSET ?
+                """,
+                (rs, i) -> {
+                    long bruto = rs.getLong("valor_bruto");
+                    long recebido = rs.getLong("valor_recebido");
+                    long parteMedicos = rs.getLong("parte_medicos");
+                    return new Recebimento(
+                            UUID.fromString(rs.getString("producao_id")),
+                            rs.getString("tomador_nome"),
+                            rs.getString("competencia"),
+                            rs.getDate("recebido_em").toLocalDate().toString(),
+                            bruto,
+                            Math.max(bruto - recebido, 0),
+                            recebido,
+                            parteMedicos,
+                            recebido - parteMedicos,
+                            rs.getInt("qtd_medicos"),
+                            rs.getString("tipo_match"),
+                            "AGUARDANDO" // EPIC-09 pendente: nenhuma produção foi repassada ainda
+                    );
+                },
+                argsPagina.toArray());
+    }
+
+    /** Últimos {@link #MESES_HISTORICO} meses, inclusive o atual, com zero nos meses sem depósito. */
+    private List<RecebimentoMes> listarRecebimentosPorMes() {
+        YearMonth atual = YearMonth.now();
+        YearMonth inicio = atual.minusMonths(MESES_HISTORICO - 1L);
+        Map<String, RecebimentoMes> porMes = new HashMap<>();
+        jdbc.query(RECEBIMENTOS_CTE + """
+                SELECT TO_CHAR(recebido_em, 'YYYY-MM') AS mes,
+                       COALESCE(SUM(valor_recebido), 0) AS valor,
+                       COUNT(*) AS qtd
+                FROM rec
+                WHERE recebido_em >= ?
+                GROUP BY TO_CHAR(recebido_em, 'YYYY-MM')
+                """,
+                (rs, i) -> new RecebimentoMes(rs.getString("mes"), rs.getLong("valor"), rs.getInt("qtd")),
+                Date.valueOf(inicio.atDay(1)))
+            .forEach(m -> porMes.put(m.mes(), m));
+
+        List<RecebimentoMes> meses = new ArrayList<>();
+        for (YearMonth m = inicio; !m.isAfter(atual); m = m.plusMonths(1)) {
+            meses.add(porMes.getOrDefault(m.toString(), new RecebimentoMes(m.toString(), 0L, 0)));
+        }
+        return meses;
     }
 
     /**
@@ -63,118 +190,18 @@ public class PosicaoCaixaService {
                 ));
     }
 
-    private long calcularAReceber() {
-        Long val = jdbc.queryForObject("""
-                SELECT COALESCE(SUM(p.valor_bruto), 0)
+    /** [bruto, quantidade] das notas emitidas que ainda não têm crédito conciliado. */
+    private long[] calcularAReceber() {
+        List<long[]> linhas = jdbc.query("""
+                SELECT COALESCE(SUM(p.valor_bruto), 0) AS valor, COUNT(*) AS qtd
                 FROM faturamento.producoes p
                 WHERE p.status = 'EMITIDA'
                   AND NOT EXISTS (
                       SELECT 1 FROM faturamento.conciliacoes c
                       WHERE c.nota_id = p.id
                   )
-                """, Long.class);
-        return val != null ? val : 0L;
-    }
-
-    private long calcularRecebidoNaoRepassado() {
-        Long val = jdbc.queryForObject("""
-                SELECT COALESCE(SUM(le.valor), 0)
-                FROM faturamento.lancamentos_extrato le
-                WHERE le.status_conciliacao = 'CONCILIADO'
-                  AND le.tipo = 'CREDITO'
-                """, Long.class);
-        return val != null ? val : 0L;
-    }
-
-    private List<NotaEmAberto> listarNotasEmAberto() {
-        LocalDate hoje = LocalDate.now();
-        return jdbc.query("""
-                SELECT p.id, p.medico_id, p.valor_bruto, p.created_at::date AS data_ref,
-                       COALESCE(t.nome_fantasia, t.razao_social_nome, '') AS tomador_nome
-                FROM faturamento.producoes p
-                JOIN faturamento.tomadores t ON t.id = p.tomador_id
-                WHERE p.status = 'EMITIDA'
-                  AND NOT EXISTS (
-                      SELECT 1 FROM faturamento.conciliacoes c
-                      WHERE c.nota_id = p.id
-                  )
-                ORDER BY p.created_at ASC
-                LIMIT 100
                 """,
-                (rs, i) -> {
-                    LocalDate dataRef = rs.getDate("data_ref").toLocalDate();
-                    int dias = (int) ChronoUnit.DAYS.between(dataRef, hoje);
-                    String medicoRaw = rs.getString("medico_id");
-                    return new NotaEmAberto(
-                            UUID.fromString(rs.getString("id")),
-                            medicoRaw != null ? UUID.fromString(medicoRaw) : null,
-                            rs.getString("tomador_nome"),
-                            rs.getLong("valor_bruto"),
-                            dataRef.toString(),
-                            dias
-                    );
-                });
-    }
-
-    /**
-     * Produções recebidas (conciliadas) e ainda não repassadas, com a parte dos médicos:
-     * soma, por participação, de bruto − taxa Pin (mesma regra do extrato do portal). Produção
-     * sem participações (legado de um médico só) usa o bruto da produção e a taxa padrão de 15%.
-     */
-    private List<RecebidaAguardandoRepasse> listarRecebidasAguardandoRepasse() {
-        return jdbc.query("""
-                SELECT rp.id, rp.competencia, rp.valor_bruto,
-                       COALESCE(t.nome_fantasia, t.razao_social_nome, '') AS tomador_nome,
-                       le.data_lancamento AS recebido_em,
-                       le.valor AS valor_recebido,
-                       COALESCE(part.qtd, 0) AS qtd_medicos,
-                       COALESCE(part.a_repassar,
-                                rp.valor_bruto - CAST(ROUND(rp.valor_bruto * 0.15) AS BIGINT)) AS a_repassar
-                FROM faturamento.conciliacoes c
-                JOIN faturamento.lancamentos_extrato le ON le.id = c.lancamento_extrato_id
-                JOIN faturamento.producoes rp ON rp.id = c.nota_id
-                JOIN faturamento.tomadores t ON t.id = rp.tomador_id
-                LEFT JOIN LATERAL (
-                    SELECT COUNT(*) AS qtd,
-                           SUM(pp.valor_bruto
-                               - CAST(ROUND(pp.valor_bruto * COALESCE(pp.taxa_pin_pct, 0.15)) AS BIGINT)) AS a_repassar
-                    FROM faturamento.participacoes_producao pp
-                    WHERE pp.producao_id = rp.id
-                    HAVING COUNT(*) > 0
-                ) part ON TRUE
-                WHERE le.status_conciliacao = 'CONCILIADO'
-                ORDER BY le.data_lancamento ASC
-                LIMIT 100
-                """,
-                (rs, i) -> new RecebidaAguardandoRepasse(
-                        UUID.fromString(rs.getString("id")),
-                        rs.getString("tomador_nome"),
-                        rs.getString("competencia"),
-                        rs.getDate("recebido_em").toLocalDate().toString(),
-                        rs.getLong("valor_bruto"),
-                        rs.getLong("valor_recebido"),
-                        rs.getLong("a_repassar"),
-                        rs.getInt("qtd_medicos")
-                ));
-    }
-
-    private List<RecebimentoSemana> listarRecebimentosPorSemana() {
-        return jdbc.query("""
-                SELECT
-                    TO_CHAR(DATE_TRUNC('week', le.data_lancamento), 'IYYY-"W"IW') AS semana_key,
-                    TO_CHAR(DATE_TRUNC('week', le.data_lancamento), 'DD/MM')       AS semana_label,
-                    COALESCE(SUM(le.valor), 0)                                     AS valor
-                FROM faturamento.lancamentos_extrato le
-                WHERE le.status_conciliacao = 'CONCILIADO'
-                  AND le.tipo = 'CREDITO'
-                  AND le.data_lancamento >= CURRENT_DATE - INTERVAL '3 months'
-                GROUP BY DATE_TRUNC('week', le.data_lancamento)
-                ORDER BY DATE_TRUNC('week', le.data_lancamento) ASC
-                """,
-                (rs, i) -> new RecebimentoSemana(
-                        rs.getString("semana_key"),
-                        rs.getString("semana_label"),
-                        rs.getLong("valor")
-                ));
+                (rs, i) -> new long[] { rs.getLong("valor"), rs.getLong("qtd") });
+        return linhas.isEmpty() ? new long[] { 0L, 0L } : linhas.get(0);
     }
 }

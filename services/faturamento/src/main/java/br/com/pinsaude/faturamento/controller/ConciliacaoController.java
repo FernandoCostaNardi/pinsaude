@@ -21,8 +21,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 
@@ -116,7 +119,19 @@ public class ConciliacaoController {
 
     @GetMapping("/posicao-caixa")
     @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_caixa')")
-    public ResponseEntity<PosicaoCaixaResponse> getPosicaoCaixa() {
-        return ResponseEntity.ok(posicaoCaixaService.calcular());
+    public ResponseEntity<PosicaoCaixaResponse> getPosicaoCaixa(
+            @RequestParam(required = false) String mes,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        YearMonth ym = null;
+        if (mes != null && !mes.isBlank()) {
+            try {
+                ym = YearMonth.parse(mes);
+            } catch (DateTimeParseException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mês inválido. Use o formato AAAA-MM.");
+            }
+        }
+        return ResponseEntity.ok(posicaoCaixaService.calcular(ym, q, page, size));
     }
 }

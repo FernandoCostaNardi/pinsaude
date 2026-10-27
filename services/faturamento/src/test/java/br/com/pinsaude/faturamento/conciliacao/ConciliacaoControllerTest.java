@@ -227,7 +227,7 @@ class ConciliacaoControllerTest {
 
     @Test
     void getPosicaoCaixa_papelLegado_retorna200() throws Exception {
-        when(posicaoCaixaService.calcular()).thenReturn(mock(PosicaoCaixaResponse.class));
+        when(posicaoCaixaService.calcular(any(), any(), anyInt(), anyInt())).thenReturn(mock(PosicaoCaixaResponse.class));
 
         mockMvc.perform(get("/api/conciliacao/posicao-caixa")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_financeiro"))))
@@ -236,7 +236,7 @@ class ConciliacaoControllerTest {
 
     @Test
     void getPosicaoCaixa_permCaixa_retorna200() throws Exception {
-        when(posicaoCaixaService.calcular()).thenReturn(mock(PosicaoCaixaResponse.class));
+        when(posicaoCaixaService.calcular(any(), any(), anyInt(), anyInt())).thenReturn(mock(PosicaoCaixaResponse.class));
 
         mockMvc.perform(get("/api/conciliacao/posicao-caixa")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_caixa"))))

@@ -7922,6 +7922,24 @@ descartavam esse extrato em silêncio (lista vazia, sem erro, `tenant=` vazio no
 
 ---
 
+## Posição de Caixa — só o que já foi conciliado (redesign)
+
+`GET /api/conciliacao/posicao-caixa?mes=AAAA-MM&q=&page=0&size=10` passou a considerar apenas
+créditos de extrato **conciliados** (`lancamentos_extrato.status_conciliacao='CONCILIADO'`, tipo
+CREDITO, ligados via `conciliacoes.nota_id` = id da produção). Um CTE (`RECEBIMENTOS_CTE` em
+`PosicaoCaixaService`) monta um recebimento por produção. A parte dos médicos é calculada por
+participação: `bruto − ROUND(bruto × taxa_pin_pct)`. Produção legada sem participações usa 15%.
+- Resumo: `recebido` (o que entrou no banco), `parteMedicos`, `resultadoPin = recebido − parteMedicos`,
+  `retencoes = max(valorNotas − recebido, 0)` e `repassado = 0` (EPIC-09 pendente).
+- `mes` filtra pela data do depósito (sem `mes` = todos os períodos), `q` busca pelo nome do
+  tomador (ILIKE). Paginação: `size` vai de 1 a 100.
+- O histórico mensal mostra sempre os últimos 6 meses, completando com zero os meses sem depósito.
+- `aReceber`/`notasAguardandoPagamento` (produções EMITIDA ainda não conciliadas) sobram só como
+  um aviso na tela.
+- Com `mes` inválido, o endpoint devolve 400.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`
