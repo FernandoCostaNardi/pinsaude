@@ -169,36 +169,59 @@ export async function listarProducoesParaBusca(): Promise<ProducaoResumo[]> {
 }
 
 // ─── Posição de Caixa ─────────────────────────────────────────────────────────
+// Só o que já entrou no banco: créditos do extrato conciliados com uma produção.
 
-export interface PosicaoCaixaResponse {
-  aReceber: number
-  recebidoNaoRepassado: number
-  aRepassar: number                 // parte dos médicos nas produções recebidas e não repassadas
-  repassadoNoMes: number
-  saldoEstimado: number
-  notasEmAberto: NotaEmAberto[]
-  recebidasAguardandoRepasse: RecebidaAguardandoRepasse[]
-  recebimentosPorSemana: RecebimentoSemana[]
+export interface PosicaoCaixaResumo {
+  quantidade: number
+  valorNotas: number      // bruto das notas recebidas
+  retencoes: number       // impostos retidos pelo tomador (valorNotas − recebido)
+  recebido: number        // o que entrou no banco
+  parteMedicos: number    // bruto − taxa Pin, por participação
+  repassado: number       // repasse (EPIC-09) ainda não existe: sempre 0
+  aRepassar: number
+  resultadoPin: number    // recebido − parteMedicos
 }
 
-export interface NotaEmAberto {
-  producaoId: string
-  medicoId: string | null
-  tomadorNome: string
-  valorBruto: number
-  dataReferencia: string
-  diasEmAberto: number
-}
-
-export interface RecebidaAguardandoRepasse {
+export interface RecebimentoCaixa {
   producaoId: string
   tomadorNome: string
   competencia: string
-  recebidoEm: string       // YYYY-MM-DD
-  valorBruto: number
-  valorRecebido: number    // crédito do extrato (líquido das retenções)
-  aRepassar: number        // bruto − taxa Pin, somado entre os médicos
+  recebidoEm: string      // YYYY-MM-DD (data do depósito)
+  valorNota: number
+  retencoes: number
+  valorRecebido: number
+  parteMedicos: number
+  resultadoPin: number
   qtdMedicos: number
+  tipoMatch: 'AUTOMATICO' | 'MANUAL'
+  statusRepasse: 'AGUARDANDO' | 'REPASSADO'
+}
+
+export interface RecebimentoMes {
+  mes: string             // YYYY-MM
+  valor: number
+  quantidade: number
+}
+
+export interface PosicaoCaixaResponse {
+  resumo: PosicaoCaixaResumo
+  recebimentosPorMes: RecebimentoMes[]
+  recebimentos: {
+    content: RecebimentoCaixa[]
+    page: number
+    size: number
+    totalElements: number
+    totalPages: number
+  }
+  aReceber: number
+  notasAguardandoPagamento: number
+}
+
+export interface PosicaoCaixaFiltro {
+  mes?: string            // YYYY-MM; vazio = todos os períodos
+  q?: string
+  page?: number
+  size?: number
 }
 
 // Produção já recebida do tomador (conciliada com um crédito do extrato).
@@ -215,14 +238,13 @@ export async function getRecebimentos(): Promise<RecebimentoProducao[]> {
   return res.json()
 }
 
-export interface RecebimentoSemana {
-  semanaKey: string
-  semanaLabel: string
-  valor: number
-}
-
-export async function getPosicaoCaixa(): Promise<PosicaoCaixaResponse> {
-  const res = await fetch('/api/conciliacao/posicao-caixa', { headers: authHeaders() })
+export async function getPosicaoCaixa(filtro: PosicaoCaixaFiltro = {}): Promise<PosicaoCaixaResponse> {
+  const params = new URLSearchParams()
+  if (filtro.mes) params.set('mes', filtro.mes)
+  if (filtro.q?.trim()) params.set('q', filtro.q.trim())
+  params.set('page', String(filtro.page ?? 0))
+  params.set('size', String(filtro.size ?? 10))
+  const res = await fetch(`/api/conciliacao/posicao-caixa?${params}`, { headers: authHeaders() })
   if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`)
   return res.json()
 }
