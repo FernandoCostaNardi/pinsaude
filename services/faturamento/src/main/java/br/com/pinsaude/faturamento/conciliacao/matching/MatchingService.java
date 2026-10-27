@@ -53,19 +53,13 @@ public class MatchingService {
 
     @Transactional
     public void processarExtrato(UUID extratoId, String cnpjTenant) {
-        if (cnpjTenant == null || cnpjTenant.isBlank()) {
-            log.debug("Matching ignorado — tenant vazio (gestão sem CNPJ)");
-            return;
-        }
-
         List<LancamentoExtrato> lancamentos = lancamentoRepo
                 .findByExtratoIdAndTipoAndStatusConciliacao(
                         extratoId, TipoLancamentoExtrato.CREDITO.name(), StatusConciliacao.PENDENTE.name());
 
         if (lancamentos.isEmpty()) return;
 
-        List<Producao> candidatas = new ArrayList<>(producaoRepo.findCandidatasParaMatch(
-                cnpjTenant, List.of(StatusProducao.EMITIDA.name())));
+        List<Producao> candidatas = new ArrayList<>(buscarCandidatas(cnpjTenant));
 
         if (candidatas.isEmpty()) return;
 
@@ -124,10 +118,8 @@ public class MatchingService {
                         "Extrato não encontrado"));
 
         String cnpjTenant = extrato.getCnpjIdTenant();
-        if (cnpjTenant == null || cnpjTenant.isBlank()) return List.of();
 
-        List<Producao> candidatas = new ArrayList<>(producaoRepo.findCandidatasParaMatch(
-                cnpjTenant, List.of(StatusProducao.EMITIDA.name())));
+        List<Producao> candidatas = new ArrayList<>(buscarCandidatas(cnpjTenant));
 
         if (candidatas.isEmpty()) return List.of();
 
@@ -146,6 +138,17 @@ public class MatchingService {
                 .sorted(Comparator.comparingInt(CandidatoMatchResponse::score).reversed())
                 .limit(5)
                 .toList();
+    }
+
+    /**
+     * Produções EMITIDA ainda não conciliadas. Extrato sem tenant (importado por gestão antes
+     * de o upload exigir a empresa) procura em todos os tenants, em vez de não sugerir nada.
+     */
+    private List<Producao> buscarCandidatas(String cnpjTenant) {
+        List<String> statuses = List.of(StatusProducao.EMITIDA.name());
+        return cnpjTenant == null || cnpjTenant.isBlank()
+                ? producaoRepo.findCandidatasParaMatchTodosTenants(statuses)
+                : producaoRepo.findCandidatasParaMatch(cnpjTenant, statuses);
     }
 
     public int calcularScore(LancamentoExtrato lancamento, Producao producao, String cnpjDigitosPlain) {

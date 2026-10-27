@@ -72,12 +72,15 @@ export async function uploadExtrato(
   banco: BancoEnum,
   dataInicio: string,
   dataFim: string,
+  empresaCnpj?: string,
 ): Promise<ExtratoResponse> {
   const form = new FormData()
   form.append('arquivo', arquivo)
   form.append('banco', banco)
   form.append('data_inicio', dataInicio)
   form.append('data_fim', dataFim)
+  // Só vale para quem não tem tenant no token (gestão): empresa dona da conta do extrato.
+  if (empresaCnpj) form.append('empresa_cnpj', empresaCnpj)
 
   const res = await fetch('/api/conciliacao/extratos/upload', {
     method: 'POST',

@@ -7901,6 +7901,27 @@ teste que falha é idêntica à já documentada, não uma falha nova por posiç�
 
 ---
 
+## Conciliação feita por gestão — extrato sem tenant
+
+O `TenantFilter` do faturamento força tenant `""` para `gestao` (cross-tenant), mesmo quando o
+token tem `cnpj_id`. Antes desta correção, um extrato importado por gestão nascia com
+`cnpj_id_tenant = ''`, e tanto o matching automático quanto as sugestões e a busca manual
+descartavam esse extrato em silêncio (lista vazia, sem erro, `tenant=` vazio no log do
+`MatchingAutomaticoJob`). Gestão é justamente quem mais concilia.
+
+- **Upload**: `POST /api/conciliacao/extratos/upload` aceita `empresa_cnpj` (opcional). Só vale
+  quando o token não tem tenant; nesse caso é obrigatório (400 "Informe a empresa dona da conta do
+  extrato"). Quem tem tenant no token continua usando o próprio, e o parâmetro é ignorado. A tela de
+  Upload mostra o select "Empresa da conta" para gestão (ou para quem não tem `cnpj_id`).
+- **Extratos órfãos já importados** (tenant vazio): sugestões e matching procuram candidatas em
+  todos os tenants (`ProducaoRepository.findCandidatasParaMatchTodosTenants`). A busca manual
+  (`listarCandidatas`) faz o mesmo para gestão. Ao conciliar manualmente um lançamento de extrato
+  órfão, o extrato adota o tenant da produção.
+- Perfil customizado sem `cnpj_id` e sem `perm_empresas` não consegue listar empresas, então não
+  consegue importar extrato: precisa de `cnpj_id` no usuário.
+
+---
+
 ## Convenções de Commit e Branch
 
 - **Branch:** `feature/pinsaude-<numero>`

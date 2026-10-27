@@ -69,7 +69,7 @@ class ConciliacaoControllerTest {
 
     @Test
     void upload_operacao_interCsv_retorna201() throws Exception {
-        when(service.upload(any(), eq(BancoEnum.INTER), any(), any())).thenReturn(EXTRATO_MOCK);
+        when(service.upload(any(), eq(BancoEnum.INTER), any(), any(), any())).thenReturn(EXTRATO_MOCK);
 
         MockMultipartFile arquivo = new MockMultipartFile("arquivo", "extrato-inter.csv",
                 "text/csv", "Data;Tipo;Desc;Valor;Saldo\n01/06/2026;Entrada;PIX;500,00;1000,00".getBytes());
@@ -93,7 +93,7 @@ class ConciliacaoControllerTest {
                 LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30),
                 StatusImportacao.OK, 1, "financeiro@pinsaude.com.br", OffsetDateTime.now()
         );
-        when(service.upload(any(), eq(BancoEnum.BTG), any(), any())).thenReturn(btgResp);
+        when(service.upload(any(), eq(BancoEnum.BTG), any(), any(), any())).thenReturn(btgResp);
 
         MockMultipartFile arquivo = new MockMultipartFile("arquivo", "extrato-btg.csv",
                 "text/csv", "Data,Lancamento,Valor,Saldo\n01/06/2026,PIX,1500.00,10000.00".getBytes());
@@ -110,7 +110,7 @@ class ConciliacaoControllerTest {
 
     @Test
     void upload_extratoJaExiste_retorna409() throws Exception {
-        when(service.upload(any(), any(), any(), any()))
+        when(service.upload(any(), any(), any(), any(), any()))
                 .thenThrow(new ResponseStatusException(CONFLICT,
                         "Extrato já importado: mesmo arquivo e período já existem para este tenant."));
 
@@ -128,7 +128,7 @@ class ConciliacaoControllerTest {
 
     @Test
     void upload_arquivoInvalido_retorna400() throws Exception {
-        when(service.upload(any(), any(), any(), any()))
+        when(service.upload(any(), any(), any(), any(), any()))
                 .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
                         "Erro ao processar arquivo: CSV inválido"));
 

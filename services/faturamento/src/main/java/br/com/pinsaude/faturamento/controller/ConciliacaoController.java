@@ -48,12 +48,13 @@ public class ConciliacaoController {
             @RequestParam("arquivo") MultipartFile arquivo,
             @RequestParam("banco") BancoEnum banco,
             @RequestParam("data_inicio") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
-            @RequestParam("data_fim")    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim) {
+            @RequestParam("data_fim")    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @RequestParam(value = "empresa_cnpj", required = false) String empresaCnpj) {
 
         if (arquivo.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        ExtratoResponse response = extratoService.upload(arquivo, banco, dataInicio, dataFim);
+        ExtratoResponse response = extratoService.upload(arquivo, banco, dataInicio, dataFim, empresaCnpj);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

@@ -35,6 +35,14 @@ public interface ProducaoRepository extends JpaRepository<Producao, UUID> {
     List<Producao> findCandidatasParaMatch(@Param("tenant") String tenant,
                                            @Param("statuses") List<String> statuses);
 
+    // Gestão (tenant vazio, bypass de RLS): candidatas de todos os tenants.
+    @Query(value = """
+            SELECT * FROM faturamento.producoes
+            WHERE CAST(status AS varchar) IN (:statuses)
+              AND id NOT IN (SELECT nota_id FROM faturamento.conciliacoes WHERE nota_id IS NOT NULL)
+            """, nativeQuery = true)
+    List<Producao> findCandidatasParaMatchTodosTenants(@Param("statuses") List<String> statuses);
+
     @Query("SELECT p FROM Producao p JOIN FETCH p.tomador WHERE p.id IN :ids")
     List<Producao> findAllByIdWithTomador(@Param("ids") List<UUID> ids);
 }
