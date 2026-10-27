@@ -10,6 +10,7 @@ import {
   type BancoEnum, type ExtratoResponse,
 } from '../api/conciliacaoApi'
 import { useAuth } from '../auth/AuthContext'
+import { empresasApi, type Empresa } from '../api/empresasApi'
 
 // ─── Client-side preview types ───────────────────────────────────────────────
 
@@ -246,6 +247,25 @@ export function ConciliacaoUploadPage() {
   const [extratos, setExtratos] = useState<ExtratoResponse[]>([])
   const [loadingExtratos, setLoadingExtratos] = useState(false)
 
+  // Gestão não tem tenant no token (o faturamento força tenant vazio): escolhe a empresa
+  // dona da conta, senão o extrato fica sem tenant e ninguém consegue conciliá-lo.
+  const precisaEmpresa = (user?.realm_access?.roles ?? []).includes('gestao') || !user?.cnpj_id
+  const [empresas, setEmpresas] = useState<Empresa[]>([])
+  const [empresaCnpj, setEmpresaCnpj] = useState('')
+
+  useEffect(() => {
+    if (!precisaEmpresa) return
+    empresasApi.listar()
+      .then(page => {
+        const ativas = page.content.filter(e => e.ativo)
+        setEmpresas(ativas)
+        const doUsuario = user?.cnpj_id?.replace(/\D/g, '')
+        const padrao = ativas.find(e => e.cnpj.replace(/\D/g, '') === doUsuario) ?? (ativas.length === 1 ? ativas[0] : undefined)
+        if (padrao) setEmpresaCnpj(padrao.cnpj)
+      })
+      .catch(() => setEmpresas([]))
+  }, [precisaEmpresa, user?.cnpj_id])
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -303,6 +323,10 @@ export function ConciliacaoUploadPage() {
 
   const importar = async () => {
     if (!arquivo || !dataInicio || !dataFim) return
+    if (precisaEmpresa && !empresaCnpj) {
+      setErro('Selecione a empresa dona da conta do extrato.')
+      return
+    }
     setErro(null)
     setImportando(true)
     setProgresso(10)
@@ -314,7 +338,7 @@ export function ConciliacaoUploadPage() {
     }, 350)
 
     try {
-      await uploadExtrato(arquivo, banco, dataInicio, dataFim)
+      await uploadExtrato(arquivo, banco, dataInicio, dataFim, precisaEmpresa ? empresaCnpj : undefined)
       clearInterval(progressTimerRef.current!)
       setProgresso(95)
       setTimeout(() => {
@@ -377,6 +401,23 @@ export function ConciliacaoUploadPage() {
               <option value="OUTRO">Outro (OFX / QFX)</option>
             </select>
           </div>
+          {precisaEmpresa && (
+            <div className="min-w-[16rem]">
+              <label className="block text-xs font-semibold text-ds-mid mb-1">
+                <Building2 size={12} className="inline mr-1 -mt-0.5" />Empresa da conta *
+              </label>
+              <select
+                value={empresaCnpj}
+                onChange={e => setEmpresaCnpj(e.target.value)}
+                className="w-full border border-ds-border rounded-lg px-3 py-2 text-sm text-ds-text focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                <option value="">Selecione a empresa...</option>
+                {empresas.map(e => (
+                  <option key={e.id} value={e.cnpj}>{e.razaoSocial} — {e.cnpj}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {preview && !showSuccess && (
             <>
               <div>
@@ -524,7 +565,7 @@ export function ConciliacaoUploadPage() {
               )}
               <button
                 onClick={importar}
-                disabled={!dataInicio || !dataFim}
+                disabled={!dataInicio || !dataFim || (precisaEmpresa && !empresaCnpj)}
                 className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Importar extrato

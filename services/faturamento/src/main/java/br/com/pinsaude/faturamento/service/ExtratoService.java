@@ -59,12 +59,23 @@ public class ExtratoService {
     @Transactional
     public ExtratoResponse upload(MultipartFile arquivo, BancoEnum banco,
                                   LocalDate dataInicio, LocalDate dataFim) {
+        return upload(arquivo, banco, dataInicio, dataFim, null);
+    }
+
+    /**
+     * {@code empresaCnpj} só vale para quem não tem tenant no token (gestão): é a empresa Pin
+     * dona da conta do extrato. Sem ele o extrato ficaria sem tenant e ninguém conseguiria
+     * conciliá-lo.
+     */
+    @Transactional
+    public ExtratoResponse upload(MultipartFile arquivo, BancoEnum banco,
+                                  LocalDate dataInicio, LocalDate dataFim, String empresaCnpj) {
         if (dataFim.isBefore(dataInicio)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "data_fim não pode ser anterior a data_inicio");
         }
 
-        String tenant = TenantContext.get();
+        String tenant = resolverTenantUpload(empresaCnpj);
         String nomeArquivo = arquivo.getOriginalFilename() != null
                 ? arquivo.getOriginalFilename()
                 : arquivo.getName();
@@ -198,9 +209,12 @@ public class ExtratoService {
     @Transactional(readOnly = true)
     public List<ProducaoCandidataResponse> listarCandidatas() {
         String tenant = TenantContext.get();
-        if (tenant == null || tenant.isBlank()) return List.of();
-        return producaoRepo
-                .findCandidatasParaMatch(tenant, List.of(StatusProducao.EMITIDA.name()))
+        List<String> statuses = List.of(StatusProducao.EMITIDA.name());
+        // Gestão (tenant vazio) enxerga as candidatas de todos os tenants.
+        List<Producao> candidatas = tenant == null || tenant.isBlank()
+                ? producaoRepo.findCandidatasParaMatchTodosTenants(statuses)
+                : producaoRepo.findCandidatasParaMatch(tenant, statuses);
+        return candidatas
                 .stream()
                 .map(ProducaoCandidataResponse::from)
                 .toList();
@@ -233,6 +247,8 @@ public class ExtratoService {
                     "Esta produção já está conciliada com outro lançamento bancário.");
         }
 
+        adotarTenantDaProducao(lancamento, producao);
+
         Conciliacao c = new Conciliacao();
         c.setLancamentoExtratoId(lancamentoId);
         c.setNotaId(producaoId);
@@ -244,6 +260,28 @@ public class ExtratoService {
 
         lancamento.setStatusConciliacao(StatusConciliacao.CONCILIADO);
         lancamentoRepo.save(lancamento);
+    }
+
+    private String resolverTenantUpload(String empresaCnpj) {
+        String tenant = TenantContext.get();
+        if (tenant != null && !tenant.isBlank()) return tenant;
+        String digitos = empresaCnpj == null ? "" : empresaCnpj.replaceAll("\\D", "");
+        if (digitos.length() != 14) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Informe a empresa dona da conta do extrato.");
+        }
+        return digitos;
+    }
+
+    /** Extrato importado sem tenant (gestão, antes da escolha de empresa) passa a ser da empresa da produção. */
+    private void adotarTenantDaProducao(LancamentoExtrato lancamento, Producao producao) {
+        if (producao.getCnpjIdTenant() == null || producao.getCnpjIdTenant().isBlank()) return;
+        extratoRepo.findById(lancamento.getExtratoId())
+                .filter(e -> e.getCnpjIdTenant() == null || e.getCnpjIdTenant().isBlank())
+                .ifPresent(e -> {
+                    e.setCnpjIdTenant(producao.getCnpjIdTenant());
+                    extratoRepo.save(e);
+                });
     }
 
     @Transactional

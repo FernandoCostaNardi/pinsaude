@@ -3,6 +3,7 @@ package br.com.pinsaude.faturamento.conciliacao;
 import br.com.pinsaude.faturamento.conciliacao.matching.MatchingService;
 import br.com.pinsaude.faturamento.domain.*;
 import br.com.pinsaude.faturamento.repository.ConciliacaoRepository;
+import br.com.pinsaude.faturamento.repository.ExtratoBancarioRepository;
 import br.com.pinsaude.faturamento.repository.LancamentoExtratoRepository;
 import br.com.pinsaude.faturamento.repository.ProducaoRepository;
 import br.com.pinsaude.faturamento.service.CryptoService;
@@ -31,6 +32,7 @@ class MatchingServiceTest {
     @Mock ConciliacaoRepository    conciliacaoRepo;
     @Mock LancamentoExtratoRepository lancamentoRepo;
     @Mock CryptoService            cryptoService;
+    @Mock ExtratoBancarioRepository extratoRepo;
 
     @InjectMocks MatchingService service;
 
@@ -221,10 +223,43 @@ class MatchingServiceTest {
     }
 
     @Test
-    void processarExtrato_tenantVazio_retornaImediatamente() {
-        service.processarExtrato(UUID.randomUUID(), "");
+    void processarExtrato_tenantVazio_buscaCandidatasDeTodosOsTenants() {
+        UUID extratoId = UUID.randomUUID();
+        LancamentoExtrato l = lancamento(100_000L, LocalDate.of(2026, 6, 3), "PIX 12345678000190");
+        Producao p = producao(100_000L, "2026-06");
+        p.getTomador().setCnpjCpfTomadorCriptografado(new byte[]{1, 2, 3});
 
-        verifyNoInteractions(producaoRepo, conciliacaoRepo, lancamentoRepo);
+        when(lancamentoRepo.findByExtratoIdAndTipoAndStatusConciliacao(any(), any(), any()))
+                .thenReturn(List.of(l));
+        when(producaoRepo.findCandidatasParaMatchTodosTenants(List.of(StatusProducao.EMITIDA.name())))
+                .thenReturn(new ArrayList<>(List.of(p)));
+        when(cryptoService.decrypt(any())).thenReturn("12345678000190");
+        when(conciliacaoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.processarExtrato(extratoId, "");
+
+        verify(producaoRepo, never()).findCandidatasParaMatch(any(), any());
+        verify(conciliacaoRepo).save(argThat(c -> c.getNotaId().equals(p.getId())));
+    }
+
+    @Test
+    void getSugestoes_extratoSemTenant_sugereProducaoDeQualquerTenant() {
+        UUID extratoId = UUID.randomUUID();
+        LancamentoExtrato l = lancamento(1_000_000L, LocalDate.of(2026, 10, 25), "PIX RECEBIDO TOMADOR");
+        l.setExtratoId(extratoId);
+        ExtratoBancario extrato = new ExtratoBancario();
+        extrato.setCnpjIdTenant("");
+        Producao p = producao(1_000_000L, "2026-10");
+
+        UUID lancId = UUID.randomUUID();
+        when(lancamentoRepo.findById(lancId)).thenReturn(java.util.Optional.of(l));
+        when(extratoRepo.findById(extratoId)).thenReturn(java.util.Optional.of(extrato));
+        when(producaoRepo.findCandidatasParaMatchTodosTenants(List.of(StatusProducao.EMITIDA.name())))
+                .thenReturn(new ArrayList<>(List.of(p)));
+
+        var sugestoes = service.getSugestoes(lancId);
+
+        assertThat(sugestoes).extracting(s -> s.producaoId()).containsExactly(p.getId());
     }
 
     @Test
