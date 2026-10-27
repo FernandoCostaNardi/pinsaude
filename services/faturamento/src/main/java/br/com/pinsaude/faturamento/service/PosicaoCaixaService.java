@@ -2,6 +2,8 @@ package br.com.pinsaude.faturamento.service;
 
 import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse;
 import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.NotaEmAberto;
+import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.RecebidaAguardandoRepasse;
+import br.com.pinsaude.faturamento.dto.RecebimentoProducaoResponse;
 import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.RecebimentoSemana;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -32,8 +34,33 @@ public class PosicaoCaixaService {
 
         List<NotaEmAberto> emAberto = listarNotasEmAberto();
         List<RecebimentoSemana> grafico = listarRecebimentosPorSemana();
+        List<RecebidaAguardandoRepasse> aguardando = listarRecebidasAguardandoRepasse();
+        // Enquanto o repasse (EPIC-09) não existir, toda produção recebida está aguardando repasse.
+        long aRepassar = aguardando.stream().mapToLong(RecebidaAguardandoRepasse::aRepassar).sum();
 
-        return new PosicaoCaixaResponse(aReceber, recebido, repassado, saldo, emAberto, grafico);
+        return new PosicaoCaixaResponse(aReceber, recebido, aRepassar, repassado, saldo,
+                emAberto, aguardando, grafico);
+    }
+
+    /**
+     * Produções conciliadas com um crédito do extrato (recebidas do tomador), com a data e o
+     * valor do depósito. Usado pela tela de Notas para marcar as notas já recebidas.
+     */
+    @Transactional(readOnly = true)
+    public List<RecebimentoProducaoResponse> listarRecebimentos() {
+        return jdbc.query("""
+                SELECT c.nota_id AS producao_id, le.data_lancamento, le.valor, c.tipo_match
+                FROM faturamento.conciliacoes c
+                JOIN faturamento.lancamentos_extrato le ON le.id = c.lancamento_extrato_id
+                WHERE le.status_conciliacao = 'CONCILIADO'
+                ORDER BY le.data_lancamento DESC
+                """,
+                (rs, i) -> new RecebimentoProducaoResponse(
+                        UUID.fromString(rs.getString("producao_id")),
+                        rs.getDate("data_lancamento").toLocalDate().toString(),
+                        rs.getLong("valor"),
+                        rs.getString("tipo_match")
+                ));
     }
 
     private long calcularAReceber() {
@@ -87,6 +114,48 @@ public class PosicaoCaixaService {
                             dias
                     );
                 });
+    }
+
+    /**
+     * Produções recebidas (conciliadas) e ainda não repassadas, com a parte dos médicos:
+     * soma, por participação, de bruto − taxa Pin (mesma regra do extrato do portal). Produção
+     * sem participações (legado de um médico só) usa o bruto da produção e a taxa padrão de 15%.
+     */
+    private List<RecebidaAguardandoRepasse> listarRecebidasAguardandoRepasse() {
+        return jdbc.query("""
+                SELECT rp.id, rp.competencia, rp.valor_bruto,
+                       COALESCE(t.nome_fantasia, t.razao_social_nome, '') AS tomador_nome,
+                       le.data_lancamento AS recebido_em,
+                       le.valor AS valor_recebido,
+                       COALESCE(part.qtd, 0) AS qtd_medicos,
+                       COALESCE(part.a_repassar,
+                                rp.valor_bruto - CAST(ROUND(rp.valor_bruto * 0.15) AS BIGINT)) AS a_repassar
+                FROM faturamento.conciliacoes c
+                JOIN faturamento.lancamentos_extrato le ON le.id = c.lancamento_extrato_id
+                JOIN faturamento.producoes rp ON rp.id = c.nota_id
+                JOIN faturamento.tomadores t ON t.id = rp.tomador_id
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) AS qtd,
+                           SUM(pp.valor_bruto
+                               - CAST(ROUND(pp.valor_bruto * COALESCE(pp.taxa_pin_pct, 0.15)) AS BIGINT)) AS a_repassar
+                    FROM faturamento.participacoes_producao pp
+                    WHERE pp.producao_id = rp.id
+                    HAVING COUNT(*) > 0
+                ) part ON TRUE
+                WHERE le.status_conciliacao = 'CONCILIADO'
+                ORDER BY le.data_lancamento ASC
+                LIMIT 100
+                """,
+                (rs, i) -> new RecebidaAguardandoRepasse(
+                        UUID.fromString(rs.getString("id")),
+                        rs.getString("tomador_nome"),
+                        rs.getString("competencia"),
+                        rs.getDate("recebido_em").toLocalDate().toString(),
+                        rs.getLong("valor_bruto"),
+                        rs.getLong("valor_recebido"),
+                        rs.getLong("a_repassar"),
+                        rs.getInt("qtd_medicos")
+                ));
     }
 
     private List<RecebimentoSemana> listarRecebimentosPorSemana() {

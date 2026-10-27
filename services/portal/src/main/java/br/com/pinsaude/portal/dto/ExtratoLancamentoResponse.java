@@ -1,5 +1,6 @@
 package br.com.pinsaude.portal.dto;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -17,7 +18,8 @@ public record ExtratoLancamentoResponse(
     long valorBruto,
     long taxaPin,
     long valorPrevisto,     // o que o médico recebe: bruto − taxa Pin
-    String status,          // "PROVISIONADO" | "FATURADO" | "PAGO"
+    String status,          // "PROVISIONADO" | "FATURADO" | "RECEBIDO" | "PAGO"
     String numeroNota,      // número da NFS-e quando já faturado
+    LocalDate recebidoEm,   // data do depósito do tomador (conciliação), quando recebido
     OffsetDateTime dataRef
 ) {}

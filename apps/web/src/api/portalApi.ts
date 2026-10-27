@@ -69,7 +69,7 @@ export interface EmpresaPortal {
   inscricaoMunicipal: string | null
 }
 
-export type ExtratoStatus = 'PROVISIONADO' | 'FATURADO' | 'PAGO'
+export type ExtratoStatus = 'PROVISIONADO' | 'FATURADO' | 'RECEBIDO' | 'PAGO'
 
 // Um lançamento do médico (Produção ou Frequência) com o valor previsto a receber.
 export interface ExtratoLancamento {
@@ -84,6 +84,7 @@ export interface ExtratoLancamento {
   valorPrevisto: number      // centavos — bruto − taxa Pin
   status: ExtratoStatus
   numeroNota: string | null
+  recebidoEm: string | null  // YYYY-MM-DD — data em que o tomador pagou (conciliação)
   dataRef: string | null     // ISO datetime
 }
 
@@ -92,6 +93,7 @@ export interface ExtratoPortal {
   totalPrevisto: number
   totalProvisionado: number
   totalFaturado: number
+  totalRecebido: number
   totalPago: number
   competenciasDisponiveis: string[]   // mais recente primeiro
   lancamentos: ExtratoLancamento[]

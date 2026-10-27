@@ -8,6 +8,7 @@ import br.com.pinsaude.faturamento.dto.ExtratoResponse;
 import br.com.pinsaude.faturamento.dto.LancamentoExtratoResponse;
 import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse;
 import br.com.pinsaude.faturamento.dto.ProducaoCandidataResponse;
+import br.com.pinsaude.faturamento.dto.RecebimentoProducaoResponse;
 import br.com.pinsaude.faturamento.service.ExtratoService;
 import br.com.pinsaude.faturamento.service.PosicaoCaixaService;
 import jakarta.validation.Valid;
@@ -104,6 +105,12 @@ public class ConciliacaoController {
     public ResponseEntity<Void> desfazer(@PathVariable UUID id) {
         extratoService.desfazerConciliacao(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/recebimentos")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasAnyRole('perm_notas','perm_conciliacao','perm_caixa')")
+    public ResponseEntity<List<RecebimentoProducaoResponse>> listarRecebimentos() {
+        return ResponseEntity.ok(posicaoCaixaService.listarRecebimentos());
     }
 
     @GetMapping("/posicao-caixa")

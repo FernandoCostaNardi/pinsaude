@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   FileText, CheckCircle2, Clock, XCircle, AlertTriangle, ShieldCheck,
   Loader2, Search, RefreshCw, Download, X, ChevronRight, Send,
-  Ban, FileX, ThumbsUp, ThumbsDown,
+  Ban, FileX, ThumbsUp, ThumbsDown, Landmark,
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import {
@@ -12,6 +12,7 @@ import {
   NotaFiscal, StatusNota,
 } from '../api/nfseApi'
 import { producoesApi } from '../api/producoesApi'
+import { getRecebimentos, RecebimentoProducao } from '../api/conciliacaoApi'
 import { useAuth } from '../auth/useAuth'
 
 // Produção fechada/confirmada sem nenhuma NotaFiscal criada ainda vira uma linha sintética
@@ -119,6 +120,23 @@ function StatusBadge({ status }: { status: StatusNota }) {
   )
 }
 
+// Nota emitida cujo valor o tomador já pagou (conciliada com um crédito do extrato bancário).
+function RecebidaBadge({ recebimento }: { recebimento: RecebimentoProducao }) {
+  return (
+    <span
+      title={`Recebida em ${formatDia(recebimento.recebidoEm)} · ${formatBRL(recebimento.valorRecebido)}`}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-teal-50 text-teal-700"
+    >
+      <Landmark size={11} />
+      Recebida
+    </span>
+  )
+}
+
+function formatDia(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR')
+}
+
 // ─── Modal de Cancelamento / Rejeição ─────────────────────────────────────────
 
 interface MotivoModalProps {
@@ -207,9 +225,10 @@ interface DetalhePanelProps {
   onCancelar: (nota: NotaFiscal) => void
   onRejeitar: (nota: NotaFiscal) => void
   isGestaoOrContabil: boolean
+  recebimento?: RecebimentoProducao
 }
 
-function DetalhePanel({ nota, onClose, onAprovar, onCancelar, onRejeitar, isGestaoOrContabil }: DetalhePanelProps) {
+function DetalhePanel({ nota, onClose, onAprovar, onCancelar, onRejeitar, isGestaoOrContabil, recebimento }: DetalhePanelProps) {
   const [dlErro, setDlErro] = useState<string | null>(null)
 
   const handleDownload = async (tipo: 'xml' | 'pdf') => {
@@ -236,8 +255,32 @@ function DetalhePanel({ nota, onClose, onAprovar, onCancelar, onRejeitar, isGest
         {/* Status */}
         <div className="flex items-center justify-between">
           <span className="text-xs text-ds-light font-medium uppercase tracking-wide">Status</span>
-          <StatusBadge status={nota.status} />
+          <div className="flex items-center gap-1.5">
+            <StatusBadge status={nota.status} />
+            {recebimento && <RecebidaBadge recebimento={recebimento} />}
+          </div>
         </div>
+
+        {/* Recebimento */}
+        {recebimento && (
+          <div className="bg-teal-50 border border-teal-100 rounded-xl p-4 space-y-2">
+            <p className="text-xs text-teal-700 font-semibold uppercase tracking-wide flex items-center gap-1.5">
+              <Landmark size={12} /> Recebimento
+            </p>
+            <div className="flex justify-between">
+              <span className="text-xs text-teal-700/80">Recebida em</span>
+              <span className="text-sm font-medium text-teal-800">{formatDia(recebimento.recebidoEm)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-teal-700/80">Valor depositado</span>
+              <span className="text-sm font-bold text-teal-800">{formatBRL(recebimento.valorRecebido)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-teal-700/80">Conciliação</span>
+              <span className="text-xs font-medium text-teal-800">{recebimento.tipoMatch === 'AUTOMATICO' ? 'Automática' : 'Manual'}</span>
+            </div>
+          </div>
+        )}
 
         {/* Identificação */}
         <div className="bg-ds-surface rounded-xl p-4 space-y-2.5">
@@ -402,6 +445,8 @@ export function NotasPage() {
 
   // Dados
   const [notas, setNotas] = useState<NotaFiscal[]>([])
+  // producaoId → recebimento (conciliação). Opcional: sem acesso, a tela segue sem o indicador.
+  const [recebimentos, setRecebimentos] = useState<Map<string, RecebimentoProducao>>(new Map())
   const [excecoes, setExcecoes] = useState<NotaFiscal[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -425,13 +470,14 @@ export function NotasPage() {
     setLoading(true)
     setErro(null)
     try {
-      const [notasReais, exc, confirmadas] = await Promise.all([
+      const [notasReais, exc, confirmadas, recebidas] = await Promise.all([
         listarNotas(),
         listarExcecoes(),
         // Produções fechadas/confirmadas — a fonte da lacuna reportada: uma produção pode
         // existir (fechamento executado ou "Nova Produção") sem nenhuma NotaFiscal criada até
         // alguém clicar "Emitir NFS-e" em outra tela. Sem isso, ela nunca aparecia em Notas.
         producoesApi.listar({ status: 'CONFIRMADA' }).catch(() => []),
+        getRecebimentos().catch(() => [] as RecebimentoProducao[]),
       ])
 
       // Nunca duplicar: uma produção com nota real (mesmo ERRO/CANCELADA/REJEITADA, que também
@@ -446,6 +492,7 @@ export function NotasPage() {
 
       setNotas(todas)
       setExcecoes(exc)
+      setRecebimentos(new Map(recebidas.map(r => [r.producaoId, r])))
     } catch (e: unknown) {
       setErro(e instanceof Error ? e.message : 'Erro ao carregar notas')
     } finally {
@@ -495,6 +542,7 @@ export function NotasPage() {
     total:      notas.length,
     aEmitir:    notas.filter(n => n.status === 'AGUARDANDO_EMISSAO').length,
     emitidas:   notas.filter(n => n.status === 'EMITIDA').length,
+    recebidas:  notas.filter(n => n.status === 'EMITIDA' && recebimentos.has(n.producaoId)).length,
     fila:       notas.filter(n => n.status === 'PENDENTE' || n.status === 'PROCESSANDO').length,
     atencao:    notas.filter(n => ['ERRO','REJEITADA','AGUARDANDO_VALIDACAO','AGUARDANDO_EMISSAO_MANUAL'].includes(n.status)).length,
   }
@@ -581,7 +629,7 @@ export function NotasPage() {
               icon={CheckCircle2}
               label="Emitidas"
               value={stats.emitidas}
-              sub="com sucesso"
+              sub={`com sucesso · ${stats.recebidas} recebida(s)`}
               iconBg="bg-green-50"
               iconColor="text-green-600"
             />
@@ -740,7 +788,14 @@ export function NotasPage() {
                               <td className="px-3 py-2.5 text-xs text-ds-mid whitespace-nowrap">{formatCompetencia(nota.competencia)}</td>
                               <td className="px-3 py-2.5 text-sm font-medium text-ds-mid">{formatBRL(nota.valorBruto)}</td>
                               <td className="px-3 py-2.5 text-sm font-semibold text-green-700">{formatBRL(nota.valorLiquidoMedico)}</td>
-                              <td className="px-3 py-2.5"><StatusBadge status={nota.status} /></td>
+                              <td className="px-3 py-2.5">
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                  <StatusBadge status={nota.status} />
+                                  {nota.status === 'EMITIDA' && recebimentos.has(nota.producaoId) && (
+                                    <RecebidaBadge recebimento={recebimentos.get(nota.producaoId)!} />
+                                  )}
+                                </div>
+                              </td>
                               <td className="px-3 py-2.5 text-xs text-ds-light whitespace-nowrap">{formatDate(nota.emitidaAt)}</td>
                               <td className="px-3 py-2.5 font-mono text-xs font-semibold text-ds-mid">{nota.numeroNota ?? '—'}</td>
                               <td className="px-3 py-2.5">
@@ -883,6 +938,7 @@ export function NotasPage() {
             onCancelar={nota => setCancelarNota(nota)}
             onRejeitar={nota => setRejeitarNota(nota)}
             isGestaoOrContabil={isGestaoOrContabil}
+            recebimento={notaSelecionada.status === 'EMITIDA' ? recebimentos.get(notaSelecionada.producaoId) : undefined}
           />
         )}
       </div>
