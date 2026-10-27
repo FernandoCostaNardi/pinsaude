@@ -3,8 +3,9 @@ import type { DragEvent, ElementType } from 'react'
 import {
   Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle,
   Loader2, ArrowRight, History, Banknote, TrendingUp, TrendingDown,
-  RefreshCw, Calendar, Building2,
+  RefreshCw, Calendar, Building2, ArrowLeft,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   uploadExtrato, listarExtratos,
   type BancoEnum, type ExtratoResponse,
@@ -378,7 +379,14 @@ export function ConciliacaoUploadPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-black text-ds-text">Upload de Extrato Bancário</h1>
+        <Link
+          to="/conciliacao/assistida"
+          className="inline-flex items-center gap-1 text-xs font-medium text-ds-light hover:text-ds-mid mb-2"
+        >
+          <ArrowLeft size={13} />
+          Voltar para Conciliação
+        </Link>
+        <h1 className="text-2xl font-black text-ds-text">Importar extrato bancário</h1>
         <p className="text-sm text-ds-mid mt-1">
           Importe extratos CSV ou OFX para conciliação automática com as notas fiscais emitidas.
         </p>

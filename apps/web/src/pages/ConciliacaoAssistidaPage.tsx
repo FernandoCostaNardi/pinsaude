@@ -8,9 +8,11 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  Upload,
   X,
   XCircle,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   CandidatoMatchResponse,
   ExtratoResponse,
@@ -579,14 +581,23 @@ export function ConciliacaoAssistidaPage() {
                 Vincule lançamentos bancários às produções correspondentes
               </p>
             </div>
-            <button
-              onClick={carregarExtratos}
-              disabled={loadingExtratos}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-ds-border text-ds-light hover:text-ds-mid hover:bg-ds-input transition-colors text-sm"
-            >
-              <RefreshCw size={14} className={loadingExtratos ? 'animate-spin' : ''} />
-              Atualizar
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={carregarExtratos}
+                disabled={loadingExtratos}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-ds-border text-ds-light hover:text-ds-mid hover:bg-ds-input transition-colors text-sm"
+              >
+                <RefreshCw size={14} className={loadingExtratos ? 'animate-spin' : ''} />
+                Atualizar
+              </button>
+              <Link
+                to="/conciliacao/upload"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-white font-semibold hover:bg-primary-700 transition-colors text-sm"
+              >
+                <Upload size={14} />
+                Importar extrato
+              </Link>
+            </div>
           </div>
         </div>
 
