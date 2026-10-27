@@ -15,8 +15,10 @@ import {
   Layers,
   HeartPulse,
   PlusCircle,
-  Upload,
   Wallet,
+  Contact,
+  Receipt,
+  Landmark,
   CalendarDays,
   PackageCheck,
   type LucideIcon,
@@ -39,9 +41,22 @@ export interface NavItem {
    * Portal do Médico (role `medico` fixa, não é um perfil customizável por este projeto).
    */
   perm?: string
-  /** Área do checklist (PERFIL-07) — presente sempre que `perm` também estiver. */
+  /** Área do checklist (PERFIL-07) — presente sempre que `perm` também estiver. Também é o grupo do menu lateral. */
   area?: Area
+  /** Outras rotas que marcam este item como ativo (ex.: Importar extrato abre a partir da Conciliação). */
+  activeAlso?: string[]
+  /** Tela ainda em construção: aparece no menu com a etiqueta "em breve". */
+  soon?: boolean
 }
+
+/** Grupos do menu lateral, na ordem do ciclo do mês. Mesmas áreas do checklist de permissões. */
+export const menuAreas: { area: Area; icon: LucideIcon }[] = [
+  { area: 'Cadastros',   icon: Contact },
+  { area: 'Faturamento', icon: ClipboardList },
+  { area: 'Fiscal',      icon: Receipt },
+  { area: 'Financeiro',  icon: Landmark },
+  { area: 'Gestão',      icon: BarChart3 },
+]
 
 export const navItems: NavItem[] = [
   // ── Portal do Médico ─────────────────────────────────────────────────────────
@@ -50,23 +65,22 @@ export const navItems: NavItem[] = [
   { to: '/portal/frequencias',   label: 'Frequências',       icon: CalendarDays,     roles: ['medico'], end: true  },
   // ── Backoffice ───────────────────────────────────────────────────────────────
   { to: '/',                       label: 'Dashboard',        icon: LayoutDashboard,  roles: BACKOFFICE,                        end: true  },
-  { to: '/medicos',                label: 'Médicos',          icon: Stethoscope,      roles: ['gestao', 'operacao'],            end: false, perm: 'perm_medicos',      area: 'Cadastros' },
-  { to: '/medicos/aprovacao',      label: 'Aprovação',        icon: ClipboardCheck,   roles: ['gestao', 'operacao'],            end: true,  perm: 'perm_medicos',      area: 'Cadastros' },
-  { to: '/empresas',               label: 'Empresas',         icon: Building2,        roles: ['gestao'],                        end: true,  perm: 'perm_empresas',     area: 'Cadastros' },
-  { to: '/tomadores',              label: 'Tomadores',        icon: Hospital,         roles: BACKOFFICE,                        end: true,  perm: 'perm_tomadores',    area: 'Cadastros' },
-  { to: '/producao',               label: 'Produção',         icon: ClipboardList,    roles: BACKOFFICE,                        end: false, perm: 'perm_producao',     area: 'Faturamento' },
-  { to: '/frequencias',            label: 'Frequências',      icon: CalendarDays,     roles: BACKOFFICE,                        end: true,  perm: 'perm_frequencias',  area: 'Faturamento' },
-  { to: '/fechamentos',            label: 'Fechamento',       icon: PackageCheck,     roles: BACKOFFICE,                        end: true,  perm: 'perm_fechamentos',  area: 'Faturamento' },
-  { to: '/fiscal/config',          label: 'Fiscal',           icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'], end: true, perm: 'perm_fiscal',    area: 'Fiscal' },
-  { to: '/notas',                  label: 'Notas',            icon: FileText,         roles: BACKOFFICE,                        end: true,  perm: 'perm_notas',        area: 'Fiscal' },
-  { to: '/notas/lote',             label: 'Lotes NFS-e',      icon: Layers,           roles: ['operacao', 'gestao', 'contabil', 'financeiro'], end: true, perm: 'perm_notas_lote', area: 'Fiscal' },
-  { to: '/repasses',               label: 'Repasses',         icon: Banknote,         roles: BACKOFFICE,                        end: true,  perm: 'perm_repasses',     area: 'Financeiro' },
-  { to: '/conciliacao/upload',     label: 'Upload Extrato',   icon: Upload,           roles: BACKOFFICE,                        end: true,  perm: 'perm_conciliacao',  area: 'Financeiro' },
-  { to: '/conciliacao/assistida',  label: 'Conciliação',      icon: ArrowLeftRight,   roles: BACKOFFICE,                        end: true,  perm: 'perm_conciliacao',  area: 'Financeiro' },
-  { to: '/conciliacao/caixa',      label: 'Posição de Caixa', icon: Wallet,           roles: BACKOFFICE,                        end: true,  perm: 'perm_caixa',        area: 'Financeiro' },
-  { to: '/financeiro/ledger',      label: 'Extrato Ledger',   icon: BookOpen,         roles: ['financeiro', 'gestao', 'contabil'], end: true, perm: 'perm_ledger',     area: 'Financeiro' },
-  { to: '/gestao',                 label: 'Gestão',           icon: BarChart3,        roles: ['gestao'],                        end: true,  perm: 'perm_gestao',       area: 'Gestão' },
-  { to: '/usuarios',               label: 'Usuários',         icon: Users,            roles: ['gestao'],                        end: true,  perm: 'perm_usuarios',     area: 'Gestão' },
+  { to: '/medicos',                label: 'Médicos',                icon: Stethoscope,      roles: ['gestao', 'operacao'],            end: false, perm: 'perm_medicos',      area: 'Cadastros' },
+  { to: '/medicos/aprovacao',      label: 'Aprovação de cadastros', icon: ClipboardCheck,   roles: ['gestao', 'operacao'],            end: true,  perm: 'perm_medicos',      area: 'Cadastros' },
+  { to: '/empresas',               label: 'Empresas',               icon: Building2,        roles: ['gestao'],                        end: true,  perm: 'perm_empresas',     area: 'Cadastros' },
+  { to: '/tomadores',              label: 'Tomadores',              icon: Hospital,         roles: BACKOFFICE,                        end: true,  perm: 'perm_tomadores',    area: 'Cadastros' },
+  { to: '/producao',               label: 'Produção',               icon: ClipboardList,    roles: BACKOFFICE,                        end: false, perm: 'perm_producao',     area: 'Faturamento' },
+  { to: '/frequencias',            label: 'Frequências',            icon: CalendarDays,     roles: BACKOFFICE,                        end: true,  perm: 'perm_frequencias',  area: 'Faturamento' },
+  { to: '/fechamentos',            label: 'Fechamento',             icon: PackageCheck,     roles: BACKOFFICE,                        end: true,  perm: 'perm_fechamentos',  area: 'Faturamento' },
+  { to: '/notas',                  label: 'Notas fiscais',          icon: FileText,         roles: BACKOFFICE,                        end: false, perm: 'perm_notas',        area: 'Fiscal' },
+  { to: '/notas/lote',             label: 'Lotes NFS-e',            icon: Layers,           roles: ['operacao', 'gestao', 'contabil', 'financeiro'], end: true, perm: 'perm_notas_lote', area: 'Fiscal' },
+  { to: '/fiscal/config',          label: 'Configuração fiscal',    icon: SlidersHorizontal, roles: ['contabil', 'gestao', 'financeiro'], end: true, perm: 'perm_fiscal',    area: 'Fiscal' },
+  { to: '/conciliacao/assistida',  label: 'Conciliação',            icon: ArrowLeftRight,   roles: BACKOFFICE,                        end: true,  perm: 'perm_conciliacao',  area: 'Financeiro', activeAlso: ['/conciliacao/upload'] },
+  { to: '/conciliacao/caixa',      label: 'Posição de Caixa',       icon: Wallet,           roles: BACKOFFICE,                        end: true,  perm: 'perm_caixa',        area: 'Financeiro' },
+  { to: '/repasses',               label: 'Repasses',               icon: Banknote,         roles: BACKOFFICE,                        end: true,  perm: 'perm_repasses',     area: 'Financeiro', soon: true },
+  { to: '/financeiro/ledger',      label: 'Extrato Ledger',         icon: BookOpen,         roles: ['financeiro', 'gestao', 'contabil'], end: true, perm: 'perm_ledger',     area: 'Financeiro' },
+  { to: '/gestao',                 label: 'Relatórios gerenciais',  icon: BarChart3,        roles: ['gestao'],                        end: true,  perm: 'perm_gestao',       area: 'Gestão', soon: true },
+  { to: '/usuarios',               label: 'Usuários e perfis',      icon: Users,            roles: ['gestao'],                        end: true,  perm: 'perm_usuarios',     area: 'Gestão' },
 ]
 
 export interface PermCatalogEntry {
@@ -76,8 +90,8 @@ export interface PermCatalogEntry {
 }
 
 /**
- * Catálogo de permissões deduplicado por `perm` (15 entradas — `perm_medicos` e
- * `perm_conciliacao` cobrem 2 telas cada, ver ADR-004). Usado no checklist do
+ * Catálogo de permissões deduplicado por `perm` (15 entradas — `perm_medicos` cobre 2 telas
+ * e `perm_conciliacao` cobre Conciliação e Importar extrato, ver ADR-004). Usado no checklist do
  * `PerfilFormModal` (PERFIL-07): um checkbox por permissão, não por tela.
  */
 export const permCatalog: PermCatalogEntry[] = (() => {
