@@ -26,6 +26,7 @@ import static org.mockito.Mockito.*;
 class OnboardingFluxoTest {
 
     @Mock MedicoRepository               medicoRepo;
+    @Mock RegistroProfissionalService    registroProfissional;
     @Mock VinculoMedicoEmpresaRepository vinculoRepo;
     @Mock DadosBancariosMedicoRepository dadosBancariosRepo;
     @Mock DocumentoMedicoRepository      documentoRepo;
@@ -52,6 +53,8 @@ class OnboardingFluxoTest {
         var m = new Medico();
         m.setId(id);
         m.setNome("Dr. Auto");
+        m.setCrm("12345");
+        m.setCrmUf("PE");
         m.setEmail("dr.auto@pinsaude.com.br");
         m.setCpfCriptografado(new byte[0]);
         m.setStatus(StatusMedico.RASCUNHO);

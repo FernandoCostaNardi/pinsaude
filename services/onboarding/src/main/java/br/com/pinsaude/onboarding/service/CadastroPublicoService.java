@@ -37,6 +37,7 @@ public class CadastroPublicoService {
 
     private final MedicoRepository medicoRepo;
     private final DadosCivisMedicoRepository dadosCivisRepo;
+    private final RegistroProfissionalService registroProfissional;
     private final DadosBancariosMedicoRepository dadosBancariosRepo;
     private final DocumentoMedicoRepository documentoRepo;
     private final DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo;
@@ -58,7 +59,8 @@ public class CadastroPublicoService {
             CryptoService cryptoService,
             StorageService storageService,
             NotificacaoService notificacaoService,
-            KeycloakAdminService keycloakAdminService) {
+            KeycloakAdminService keycloakAdminService,
+            RegistroProfissionalService registroProfissional) {
         this.medicoRepo = medicoRepo;
         this.dadosCivisRepo = dadosCivisRepo;
         this.dadosBancariosRepo = dadosBancariosRepo;
@@ -70,6 +72,7 @@ public class CadastroPublicoService {
         this.storageService = storageService;
         this.notificacaoService = notificacaoService;
         this.keycloakAdminService = keycloakAdminService;
+        this.registroProfissional = registroProfissional;
     }
 
     @Transactional
@@ -89,6 +92,7 @@ public class CadastroPublicoService {
         medico.setStatus(StatusMedico.RASCUNHO);
         medico.setOrigemCadastro("AUTO_CADASTRO");
         medico = medicoRepo.save(medico);
+        registroProfissional.definirCrmPrincipal(medico, req.crm(), req.crmUf());
 
         var dadosCivis = new DadosCivisMedico(medico.getId());
         aplicarDadosCivis(dadosCivis, req);
@@ -119,6 +123,7 @@ public class CadastroPublicoService {
         medico.setCrmUf(req.crmUf().toUpperCase());
         medico.setEmail(req.email());
         medico.setTelefone(req.telefone());
+        registroProfissional.definirCrmPrincipal(medico, req.crm(), req.crmUf());
         medico = medicoRepo.save(medico);
 
         var dadosCivis = dadosCivisRepo.findById(id).orElseGet(() -> new DadosCivisMedico(id));
@@ -320,8 +325,8 @@ public class CadastroPublicoService {
                 "Entre em contato com falecom@pinsaude.com.br para mais informações.");
         }
         boolean crmMudou = medicoAtual == null
-            || !medicoAtual.getCrm().equals(crm)
-            || !medicoAtual.getCrmUf().equalsIgnoreCase(crmUf);
+            || !crm.equals(medicoAtual.getCrm())
+            || !crmUf.equalsIgnoreCase(medicoAtual.getCrmUf());
         if (crmMudou && medicoRepo.existsByCrmAndCrmUf(crm, crmUf.toUpperCase())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Já existe uma candidatura ou cadastro com este CRM/UF. " +

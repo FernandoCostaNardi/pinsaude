@@ -10,7 +10,7 @@ import { Button, Spinner, Alert } from '@pinsaude/ui'
 import {
   Medico, StatusMedico, StatusJuntaComercial, StatusContrato,
   TipoDocumentoMedico, StatusValidacaoDocumento, HistoricoMedico,
-  HistoricoTaxaPin, VinculoEmpresa, medicosApi,
+  HistoricoTaxaPin, VinculoEmpresa, medicosApi, formatarCrm, formatPisNit,
 } from '../api/medicosApi'
 import { empresasApi, Empresa } from '../api/empresasApi'
 import { Tomador, tomadoresApi } from '../api/tomadoresApi'
@@ -424,7 +424,7 @@ export function MedicoPerfilPage() {
               </div>
               <div className="flex flex-wrap gap-3 mt-1">
                 <span className="text-sm text-ds-mid">
-                  <span className="font-semibold">CRM</span> {medico.crm}/{medico.crmUf.trim()}
+                  <span className="font-semibold">CRM</span> {formatarCrm(medico)}
                 </span>
                 {medico.especialidade && (
                   <span className="text-sm text-ds-mid">· {medico.especialidade}</span>
@@ -505,8 +505,19 @@ export function MedicoPerfilPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               <InfoRow label="Nome completo"      value={medico.nome} />
               <InfoRow label="CPF"                value={medico.cpf ? formatCpf(medico.cpf) : '—'} />
-              <InfoRow label="CRM"                value={`${medico.crm} / ${medico.crmUf.trim()}`} />
-              <InfoRow label="Especialidade"      value={medico.especialidade} />
+              <InfoRow
+                label={(medico.crms ?? []).length > 1 ? 'CRMs' : 'CRM'}
+                value={(medico.crms ?? []).length > 0
+                  ? medico.crms!.map(c => `${c.numero} / ${c.uf.trim()}${c.principal && medico.crms!.length > 1 ? ' (principal)' : ''}`).join(' · ')
+                  : formatarCrm(medico, ' / ')}
+              />
+              <InfoRow
+                label={(medico.especialidades ?? []).length > 1 ? 'Especialidades' : 'Especialidade'}
+                value={(medico.especialidades ?? []).length > 0
+                  ? medico.especialidades!.map(e => e.nome).join(' · ')
+                  : medico.especialidade}
+              />
+              <InfoRow label="PIS/NIT"            value={medico.dadosCivis?.pisNit ? formatPisNit(medico.dadosCivis.pisNit) : '—'} />
               <InfoRow label="E-mail"             value={medico.email} />
               <InfoRow
                 label={

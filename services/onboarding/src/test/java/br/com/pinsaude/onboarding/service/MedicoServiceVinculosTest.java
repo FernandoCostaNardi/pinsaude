@@ -24,6 +24,7 @@ import static org.mockito.Mockito.*;
 class MedicoServiceVinculosTest {
 
     @Mock MedicoRepository               medicoRepo;
+    @Mock RegistroProfissionalService    registroProfissional;
     @Mock VinculoMedicoEmpresaRepository vinculoRepo;
     @Mock DadosBancariosMedicoRepository dadosBancariosRepo;
     @Mock DocumentoMedicoRepository      documentoRepo;

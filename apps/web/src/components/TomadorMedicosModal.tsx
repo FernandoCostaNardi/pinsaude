@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Stethoscope, XCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { Modal, Button, Alert, Spinner } from '@pinsaude/ui'
 import { Tomador, MedicoTomador, TomadorServicoOperacional, tomadoresApi } from '../api/tomadoresApi'
-import { Medico, medicosApi } from '../api/medicosApi'
+import { Medico, medicosApi, formatarCrm } from '../api/medicosApi'
 
 interface Props {
   tomador: Tomador
@@ -242,7 +242,7 @@ export function TomadorMedicosModal({ tomador, canWrite, onClose }: Props) {
                         </p>
                         {medico && (
                           <p className="text-xs text-ds-light">
-                            CRM {medico.crm}/{medico.crmUf}
+                            CRM {formatarCrm(medico)}
                             {medico.especialidade && ` · ${medico.especialidade}`}
                           </p>
                         )}
@@ -343,7 +343,7 @@ export function TomadorMedicosModal({ tomador, canWrite, onClose }: Props) {
                 {todosMedicos
                   .filter(m => !alocados.some(a => a.medicoId === m.id))
                   .map(m => (
-                    <option key={m.id} value={m.id}>{m.nome} — CRM {m.crm}/{m.crmUf}</option>
+                    <option key={m.id} value={m.id}>{m.nome} — CRM {formatarCrm(m)}</option>
                   ))
                 }
               </select>

@@ -5,7 +5,7 @@ import {
   UserCheck, UserCircle, CircleDot, CheckCircle2, FolderOpen, FileText,
 } from 'lucide-react'
 import { Button, Spinner, Alert, Table, THead, TBody, TRow, TH, TD } from '@pinsaude/ui'
-import { Medico, StatusMedico, medicosApi } from '../api/medicosApi'
+import { Medico, StatusMedico, medicosApi, formatarCrm } from '../api/medicosApi'
 import { MedicoWizardModal, maskPixKey } from '../components/MedicoWizardModal'
 import { BancoAvatar, bancos } from '../components/BancoSelect'
 import { MedicoInativarModal } from '../components/MedicoInativarModal'
@@ -178,7 +178,7 @@ export function MedicosPage() {
     return medicos.filter(m => {
       const matchSearch = !q
         || m.nome.toLowerCase().includes(q)
-        || m.crm.toLowerCase().includes(q)
+        || (m.crm ?? '').toLowerCase().includes(q)
         || (m.especialidade?.toLowerCase().includes(q) ?? false)
         || (qDigits.length > 0 && (m.cpf ?? '').replace(/\D/g, '').includes(qDigits))
       const matchStatus = !filterStatus || m.status === filterStatus
@@ -349,7 +349,7 @@ export function MedicosPage() {
                   <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     <div>
                       <p className="text-xs font-medium text-ds-light">CRM</p>
-                      <p className="text-ds-text font-medium">{m.crm}/{m.crmUf.trim()}</p>
+                      <p className="text-ds-text font-medium">{formatarCrm(m)}</p>
                     </div>
                     <div>
                       <p className="text-xs font-medium text-ds-light">Especialidade</p>
@@ -446,7 +446,7 @@ export function MedicosPage() {
                       <TD className="font-mono text-xs">
                         {m.cpf ? formatCpf(m.cpf).replace(/(\d{3})\.\d{3}\.\d{3}-(\d{2})/, '$1.***.**-$2') : '—'}
                       </TD>
-                      <TD className="font-semibold text-xs">{m.crm} / {m.crmUf.trim()}</TD>
+                      <TD className="font-semibold text-xs">{formatarCrm(m, ' / ')}</TD>
                       <TD className="text-xs">{m.especialidade || '—'}</TD>
                       <TD><DadosBancariosDisplay medico={m} /></TD>
                       <TD><StatusBadge status={m.status} /></TD>

@@ -15,6 +15,8 @@ public record MedicoResponse(
     String crm,
     String crmUf,
     String especialidade,
+    List<CrmResponse> crms,
+    List<EspecialidadeResponse> especialidades,
     String email,
     String telefone,
     BigDecimal taxaPinPct,
@@ -43,11 +45,14 @@ public record MedicoResponse(
             ContratoAssinaturaResponse contratoAssinatura,
             EnviarConviteResponse ultimoConvite,
             DadosCivisMedicoResponse dadosCivis,
-            DeclaracaoLgpdResponse declaracoesLgpd) {
+            DeclaracaoLgpdResponse declaracoesLgpd,
+            List<CrmResponse> crms,
+            List<EspecialidadeResponse> especialidades) {
         UUID primeiraEmpresaId = empresas.isEmpty() ? null : empresas.get(0).empresaId();
         return new MedicoResponse(
             m.getId(), cpfDecriptografado, m.getNome(),
             m.getCrm(), m.getCrmUf(), m.getEspecialidade(),
+            crms, especialidades,
             m.getEmail(), m.getTelefone(), m.getTaxaPinPct(), m.getStatus(),
             m.getStatusJuntaComercial(),
             primeiraEmpresaId, empresas, dadosBancarios, documentos, checklist,

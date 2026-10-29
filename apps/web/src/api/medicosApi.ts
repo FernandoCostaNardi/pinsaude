@@ -26,8 +26,8 @@ export type EstadoCivil =
   | 'PARTICIPACAO_FINAL_AQUESTOS'
   | 'OUTRO'
 
-// Presentes apenas para médicos vindos do auto-cadastro público (EPIC-14.1/14.2/14.8) —
-// médicos cadastrados manualmente (origemCadastro = MANUAL) não têm essas linhas.
+// Presentes para médicos vindos do auto-cadastro público (EPIC-14.1/14.2/14.8) — médicos
+// cadastrados manualmente (origemCadastro = MANUAL) só têm essa linha se o PIS/NIT foi informado.
 export interface DadosCivisMedico {
   dataNascimento?: string
   nacionalidade?: string
@@ -46,6 +46,7 @@ export interface DadosCivisMedico {
   rgOrgaoExpedidor?: string
   rgUf?: string
   rqe?: string
+  pisNit?: string
   canalOrigem?: string
   nomeIndicador?: string
   situacaoFormacao?: string[]
@@ -107,13 +108,30 @@ export interface VinculoEmpresa {
   createdAt: string
 }
 
+export interface Especialidade {
+  id: string
+  nome: string
+}
+
+export interface CrmMedico {
+  id?: string
+  numero: string
+  uf: string
+  principal: boolean
+}
+
 export interface Medico {
   id: string
-  cpf: string
+  // CPF e CRM podem faltar enquanto o médico está em RASCUNHO (sócios importados)
+  cpf?: string | null
   nome: string
-  crm: string
-  crmUf: string
+  // crm/crmUf = CRM principal; a lista completa (um por UF) vem em crms
+  crm?: string | null
+  crmUf?: string | null
+  crms?: CrmMedico[]
+  // especialidade = a primeira da lista especialidades
   especialidade?: string
+  especialidades?: Especialidade[]
   email?: string
   telefone?: string
   taxaPinPct: number
@@ -144,13 +162,29 @@ export interface HistoricoTaxaPin {
 export interface MedicoRequest {
   cpf: string
   nome: string
-  crm: string
-  crmUf: string
-  especialidade: string
+  crms: CrmMedico[]
+  especialidadeIds: string[]
   email: string
   telefone: string
+  // '' remove o PIS/NIT
+  pisNit: string
   empresaId?: string
   taxaPinPct?: number
+}
+
+/** 000.00000.00-0 (aceita valor parcial, para usar como máscara de digitação). */
+export function formatPisNit(value: string): string {
+  const d = value.replace(/\D/g, '').slice(0, 11)
+  if (d.length <= 3) return d
+  if (d.length <= 8) return `${d.slice(0, 3)}.${d.slice(3)}`
+  if (d.length <= 10) return `${d.slice(0, 3)}.${d.slice(3, 8)}.${d.slice(8)}`
+  return `${d.slice(0, 3)}.${d.slice(3, 8)}.${d.slice(8, 10)}-${d.slice(10)}`
+}
+
+/** "12345/PE" (CRM principal) ou "Sem CRM". */
+export function formatarCrm(m: { crm?: string | null; crmUf?: string | null }, separador = '/'): string {
+  if (!m.crm) return 'Sem CRM'
+  return `${m.crm}${separador}${(m.crmUf ?? '').trim()}`
 }
 
 export interface DadosBancariosMedicoRequest {
@@ -249,6 +283,11 @@ async function atualizar(id: string, data: MedicoRequest): Promise<Medico> {
     body: JSON.stringify(data),
   })
   return handleResponse<Medico>(res)
+}
+
+async function listarEspecialidades(): Promise<Especialidade[]> {
+  const res = await fetch('/api/medicos/especialidades', { headers: authHeaders() })
+  return handleResponse<Especialidade[]>(res)
 }
 
 async function ativar(id: string): Promise<Medico> {
@@ -458,7 +497,7 @@ async function removerVinculo(medicoId: string, empresaId: string): Promise<void
 }
 
 export const medicosApi = {
-  listar, buscarPorId, criar, atualizar, ativar, inativar,
+  listar, buscarPorId, criar, atualizar, ativar, inativar, listarEspecialidades,
   listarDadosBancarios, adicionarDadosBancarios, atualizarDadosBancarios, removerDadosBancarios,
   listarDocumentos, uploadDocumento,
   validarDocumento, getDocumentoUrl, deletarDocumento, listarHistorico,

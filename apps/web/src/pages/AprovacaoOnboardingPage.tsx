@@ -9,7 +9,7 @@ import { Button, Spinner, Alert } from '@pinsaude/ui'
 import {
   Medico, StatusJuntaComercial, StatusContrato,
   TipoDocumentoMedico, DocumentoMedico, EstadoCivil,
-  medicosApi,
+  medicosApi, formatarCrm,
 } from '../api/medicosApi'
 import { useAuth } from '../auth/useAuth'
 import { ChecklistEditor } from '../components/ChecklistEditor'
@@ -360,7 +360,7 @@ function DetalhePanel({
             <p className="text-base font-bold text-ds-text truncate">{medico.nome}</p>
             {medico.origemCadastro === 'AUTO_CADASTRO' && <AutoCadastroBadge />}
           </div>
-          <p className="text-xs text-ds-mid">CRM {medico.crm}/{medico.crmUf.trim()} · {medico.especialidade ?? '—'}</p>
+          <p className="text-xs text-ds-mid">CRM {formatarCrm(medico)} · {medico.especialidade ?? '—'}</p>
           {medico.email && <p className="text-[11px] text-ds-light mt-0.5">{medico.email}</p>}
         </div>
       </div>
@@ -840,7 +840,7 @@ export function AprovacaoOnboardingPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-ds-text truncate">{m.nome}</p>
-                      <p className="text-[11px] text-ds-mid">CRM {m.crm}/{m.crmUf.trim()}</p>
+                      <p className="text-[11px] text-ds-mid">CRM {formatarCrm(m)}</p>
                     </div>
                     <ChevronRight size={14} className={`shrink-0 mt-0.5 ${isSelected ? 'text-primary' : 'text-ds-light'}`} />
                   </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { UserX } from 'lucide-react'
 import { Modal, Button, Alert } from '@pinsaude/ui'
-import { Medico, medicosApi } from '../api/medicosApi'
+import { Medico, medicosApi, formatarCrm } from '../api/medicosApi'
 
 interface Props {
   medico: Medico
@@ -39,7 +39,7 @@ export function MedicoInativarModal({ medico, onClose, onInativado }: Props) {
               Tem certeza que deseja inativar este médico?
             </p>
             <p className="mt-1 text-sm text-gray-500 font-semibold">{medico.nome}</p>
-            <p className="text-xs text-gray-400 mt-0.5">CRM {medico.crm}/{medico.crmUf.trim()}</p>
+            <p className="text-xs text-gray-400 mt-0.5">CRM {formatarCrm(medico)}</p>
             <p className="mt-2 text-xs text-gray-400">
               O médico não aparecerá mais na listagem. O histórico de dados é preservado.
             </p>

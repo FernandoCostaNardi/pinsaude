@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { Button, Spinner, Alert, Table, THead, TBody, TRow, TH, TD } from '@pinsaude/ui'
 import { tomadoresApi, Tomador, TomadorGrupoFaturamento, TomadorModalidade, TomadorOcorrencia, TomadorServicoOperacional } from '../api/tomadoresApi'
-import { medicosApi, Medico, MedicoPage } from '../api/medicosApi'
+import { medicosApi, Medico, MedicoPage, formatarCrm } from '../api/medicosApi'
 import {
   frequenciasApi,
   FrequenciaMedicaResp,
@@ -555,7 +555,7 @@ function NovaFrequenciaModal({
             items={medicosFiltrados}
             value={medico}
             onChange={m => { setMedico(m) }}
-            getLabel={m => `${m.nome} — CRM ${m.crm}/${m.crmUf}`}
+            getLabel={m => `${m.nome} — CRM ${formatarCrm(m)}`}
           />
 
           {/* Linha 2: Tomador (full width) */}
@@ -1727,7 +1727,7 @@ function PainelFrequencia({
           <div className="px-6 py-3 border-r border-ds-border">
             <p className="text-[10px] font-bold text-ds-light uppercase tracking-wider mb-0.5">Médico</p>
             <p className="text-sm font-semibold text-ds-text truncate">{medico?.nome ?? '—'}</p>
-            {medico && <p className="text-xs text-ds-light">CRM {medico.crm}/{medico.crmUf} · {freq.tipoMedico ?? '—'}</p>}
+            {medico && <p className="text-xs text-ds-light">CRM {formatarCrm(medico)} · {freq.tipoMedico ?? '—'}</p>}
           </div>
           <div className="px-6 py-3 border-r border-ds-border">
             <p className="text-[10px] font-bold text-ds-light uppercase tracking-wider mb-0.5">Tomador</p>

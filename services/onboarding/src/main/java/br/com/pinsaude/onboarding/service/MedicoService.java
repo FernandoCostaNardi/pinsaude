@@ -54,6 +54,7 @@ public class MedicoService {
     private final KeycloakAdminService keycloakAdminService;
     private final DadosCivisMedicoRepository dadosCivisRepo;
     private final DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo;
+    private final RegistroProfissionalService registroProfissional;
 
     private static final BigDecimal TAXA_PIN_DEFAULT = new BigDecimal("0.1500");
 
@@ -75,7 +76,8 @@ public class MedicoService {
             HistoricoTaxaPinRepository historicoTaxaPinRepo,
             KeycloakAdminService keycloakAdminService,
             DadosCivisMedicoRepository dadosCivisRepo,
-            DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo) {
+            DeclaracoesLgpdMedicoRepository declaracoesLgpdRepo,
+            RegistroProfissionalService registroProfissional) {
         this.medicoRepo = medicoRepo;
         this.vinculoRepo = vinculoRepo;
         this.dadosBancariosRepo = dadosBancariosRepo;
@@ -94,6 +96,7 @@ public class MedicoService {
         this.keycloakAdminService = keycloakAdminService;
         this.dadosCivisRepo = dadosCivisRepo;
         this.declaracoesLgpdRepo = declaracoesLgpdRepo;
+        this.registroProfissional = registroProfissional;
     }
 
     public List<MedicoResponse> listarFilaAprovacao() {
@@ -130,30 +133,29 @@ public class MedicoService {
 
     @Transactional
     public MedicoResponse criar(MedicoRequest req) {
-        String cpfNormalizado = req.cpf().replaceAll("\\D", "");
-        String cpfHash = hashCpf(cpfNormalizado);
+        String cpfNormalizado = normalizarCpf(req.cpf());
+        String cpfHash = cpfNormalizado != null ? hashCpf(cpfNormalizado) : null;
 
-        if (medicoRepo.existsByCpfHash(cpfHash)) {
+        if (cpfHash != null && medicoRepo.existsByCpfHash(cpfHash)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Já existe um médico cadastrado com este CPF");
         }
-        if (medicoRepo.existsByCrmAndCrmUf(req.crm(), req.crmUf().toUpperCase())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "Já existe um médico com este CRM para a UF informada");
-        }
+        List<CrmRequest> crms = registroProfissional.validarCrms(req.crms(), null);
 
         var medico = new Medico();
         medico.setCpfCriptografado(cryptoService.encrypt(cpfNormalizado));
         medico.setCpfHash(cpfHash);
         medico.setNome(req.nome());
-        medico.setCrm(req.crm());
-        medico.setCrmUf(req.crmUf().toUpperCase());
-        medico.setEspecialidade(req.especialidade());
         medico.setEmail(req.email());
         medico.setTelefone(req.telefone());
         medico.setTaxaPinPct(req.taxaPinPct() != null ? req.taxaPinPct() : TAXA_PIN_DEFAULT);
         medico.setStatus(StatusMedico.RASCUNHO);
         medico = medicoRepo.save(medico);
+
+        registroProfissional.gravarCrms(medico, crms);
+        registroProfissional.gravarEspecialidades(medico, req.especialidadeIds());
+        medico = medicoRepo.save(medico);
+        aplicarPisNit(medico.getId(), req.pisNit());
 
         if (req.empresaId() != null) {
             var vinculoId = new VinculoMedicoEmpresaId(medico.getId(), req.empresaId());
@@ -170,30 +172,29 @@ public class MedicoService {
     public MedicoResponse atualizar(UUID id, MedicoRequest req) {
         Medico medico = findOrThrow(id);
 
-        String cpfNormalizado = req.cpf().replaceAll("\\D", "");
-        String cpfHash = hashCpf(cpfNormalizado);
+        String cpfNormalizado = normalizarCpf(req.cpf());
+        String cpfHash = cpfNormalizado != null ? hashCpf(cpfNormalizado) : null;
 
-        boolean cpfMudou = !cpfHash.equals(medico.getCpfHash());
+        boolean cpfMudou = cpfHash != null && !cpfHash.equals(medico.getCpfHash());
         if (cpfMudou && medicoRepo.existsByCpfHash(cpfHash)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Já existe um médico cadastrado com este CPF");
         }
 
-        boolean crmMudou = !medico.getCrm().equals(req.crm())
-            || !medico.getCrmUf().equalsIgnoreCase(req.crmUf());
-        if (crmMudou && medicoRepo.existsByCrmAndCrmUf(req.crm(), req.crmUf().toUpperCase())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "Já existe um médico com este CRM para a UF informada");
+        List<CrmRequest> crms = registroProfissional.validarCrms(req.crms(), id);
+        if (medico.getStatus() == StatusMedico.ATIVO && (cpfNormalizado == null || crms.isEmpty())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Médico ativo precisa ter CPF e ao menos um CRM");
         }
 
         medico.setCpfCriptografado(cryptoService.encrypt(cpfNormalizado));
         medico.setCpfHash(cpfHash);
         medico.setNome(req.nome());
-        medico.setCrm(req.crm());
-        medico.setCrmUf(req.crmUf().toUpperCase());
-        medico.setEspecialidade(req.especialidade());
         medico.setEmail(req.email());
         medico.setTelefone(req.telefone());
+        registroProfissional.gravarCrms(medico, crms);
+        registroProfissional.gravarEspecialidades(medico, req.especialidadeIds());
+        aplicarPisNit(id, req.pisNit());
 
         BigDecimal taxaAtual = medico.getTaxaPinPct();
         BigDecimal taxaNova  = req.taxaPinPct() != null ? req.taxaPinPct() : taxaAtual;
@@ -697,6 +698,17 @@ public class MedicoService {
                 "Ativação bloqueada: registro na Junta Comercial ainda não aprovado " +
                 "(status atual: " + medico.getStatusJuntaComercial() + ").");
         }
+
+        // CPF e CRM podem faltar em RASCUNHO (sócios importados da planilha) — V24.
+        // medicos.crm espelha o CRM principal de medico_crms.
+        if (medico.getCpfCriptografado() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ativação bloqueada: médico sem CPF cadastrado.");
+        }
+        if (medico.getCrm() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Ativação bloqueada: médico sem CRM cadastrado.");
+        }
     }
 
     private String mapearStatusClicksign(String eventoNome) {
@@ -735,6 +747,33 @@ public class MedicoService {
         return medicoRepo.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                 "Médico não encontrado: " + id));
+    }
+
+    public List<EspecialidadeResponse> listarCatalogoEspecialidades() {
+        return registroProfissional.listarCatalogo();
+    }
+
+    private String normalizarCpf(String cpf) {
+        if (cpf == null) return null;
+        String digitos = cpf.replaceAll("\\D", "");
+        return digitos.isEmpty() ? null : digitos;
+    }
+
+    // null = não altera; vazio = remove. Cria a linha de dados civis se ainda não existir
+    // (médicos de cadastro manual não têm).
+    private void aplicarPisNit(UUID medicoId, String pisNit) {
+        if (pisNit == null) return;
+        String digitos = pisNit.replaceAll("\\D", "");
+        if (!digitos.isEmpty() && digitos.length() != 11) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PIS/NIT deve ter 11 dígitos");
+        }
+        var dadosCivis = dadosCivisRepo.findById(medicoId).orElse(null);
+        if (dadosCivis == null) {
+            if (digitos.isEmpty()) return;
+            dadosCivis = new DadosCivisMedico(medicoId);
+        }
+        dadosCivis.setPisNitCriptografado(digitos.isEmpty() ? null : cryptoService.encrypt(digitos));
+        dadosCivisRepo.save(dadosCivis);
     }
 
     private String hashCpf(String cpfDigitsOnly) {
@@ -789,10 +828,11 @@ public class MedicoService {
             .orElse(null);
 
         // Presentes apenas para médicos vindos do auto-cadastro público (EPIC-14.1/14.2) —
-        // cadastros manuais (origemCadastro = MANUAL) não têm essas linhas.
+        // cadastros manuais (origemCadastro = MANUAL) não têm essas linhas, salvo quando o
+        // PIS/NIT é informado no cadastro (aplicarPisNit cria a linha).
         DadosCivisMedicoResponse dadosCivis = dadosCivisRepo
             .findById(medico.getId())
-            .map(DadosCivisMedicoResponse::from)
+            .map(dc -> DadosCivisMedicoResponse.from(dc, cryptoService.decrypt(dc.getPisNitCriptografado())))
             .orElse(null);
 
         DeclaracaoLgpdResponse declaracoesLgpd = declaracoesLgpdRepo
@@ -802,7 +842,9 @@ public class MedicoService {
 
         return MedicoResponse.from(medico, cpfDecriptografado, empresas,
             dadosBancarios, documentos, checklist, contratoAssinatura, ultimoConvite,
-            dadosCivis, declaracoesLgpd);
+            dadosCivis, declaracoesLgpd,
+            registroProfissional.listarCrms(medico.getId()),
+            registroProfissional.listarEspecialidades(medico.getId()));
     }
 
     @Transactional
