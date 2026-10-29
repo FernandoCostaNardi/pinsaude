@@ -15,7 +15,7 @@ import {
   FechamentoMedicoStatusResp,
   StatusMedicoFechamento,
 } from '../api/fechamentosApi'
-import { medicosApi, Medico } from '../api/medicosApi'
+import { medicosApi, Medico, formatarCrm } from '../api/medicosApi'
 import { useAuth } from '../auth/AuthContext'
 import { labelTipoEscala, isTipoModalidadeFixa } from '../utils/tipoEscala'
 
@@ -478,7 +478,7 @@ export function FechamentoPage() {
         return {
           medicoId,
           nome: m?.nome ?? medicoId,
-          crm: m ? `${m.crm}/${m.crmUf}` : null,
+          crm: m ? formatarCrm(m) : null,
           totalCentavos: totalPorMedico[medicoId] ?? 0,
           status: statusMedicos[medicoId]?.status,
           alocado: idsAlocados.has(medicoId),

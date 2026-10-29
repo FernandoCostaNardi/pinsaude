@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { User, Stethoscope } from 'lucide-react'
+import { User, Stethoscope, Plus, X } from 'lucide-react'
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -10,7 +10,7 @@ function WhatsAppIcon({ className }: { className?: string }) {
 }
 import { Modal, Input, Button, Alert, StepWizard } from '@pinsaude/ui'
 import { CpfInput } from './CpfInput'
-import { Medico, MedicoRequest, medicosApi } from '../api/medicosApi'
+import { CrmMedico, Especialidade, Medico, MedicoRequest, formatPisNit, medicosApi } from '../api/medicosApi'
 import { TipoPix } from '../api/medicosApi'
 
 import { isValidCpf, formatCpf } from '../utils/cpf'
@@ -37,9 +37,27 @@ interface Props {
 }
 
 const emptyMedico = (): MedicoRequest => ({
-  cpf: '', nome: '', crm: '', crmUf: '', especialidade: '',
-  email: '', telefone: '', taxaPinPct: 0.15,
+  cpf: '', nome: '', crms: [{ numero: '', uf: '', principal: true }], especialidadeIds: [],
+  email: '', telefone: '', pisNit: '', taxaPinPct: 0.15,
 })
+
+// Linha de CRM deixada totalmente em branco é ignorada (CRM é opcional no rascunho)
+const crmVazio = (c: CrmMedico) => !c.numero.trim() && !c.uf
+
+function crmsPreenchidos(crms: CrmMedico[]): CrmMedico[] {
+  const preenchidos = crms.filter(c => !crmVazio(c))
+  if (preenchidos.length > 0 && !preenchidos.some(c => c.principal)) {
+    preenchidos[0] = { ...preenchidos[0], principal: true }
+  }
+  return preenchidos
+}
+
+function crmsDoMedico(m: Medico): CrmMedico[] {
+  if (m.crms && m.crms.length > 0) {
+    return m.crms.map(c => ({ numero: c.numero, uf: c.uf.trim(), principal: c.principal }))
+  }
+  return m.crm ? [{ numero: m.crm, uf: (m.crmUf ?? '').trim(), principal: true }] : []
+}
 
 // ─── PIX masking ─────────────────────────────────────────────────────────────
 // Reaproveitado por MedicoPerfilPage / ContasBancariasSection para mascarar a
@@ -82,18 +100,27 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
   const [errors, setErrors]         = useState<Partial<Record<string, string>>>({})
   const [apiError, setApiError]     = useState<string | null>(null)
   const [loading, setLoading]       = useState(false)
+  const [catalogo, setCatalogo]     = useState<Especialidade[]>([])
+  // CPF e CRM só são obrigatórios para médico ativo; em RASCUNHO podem ficar para depois
+  const exigeCpfCrm = medico?.status === 'ATIVO'
+
+  useEffect(() => {
+    medicosApi.listarEspecialidades()
+      .then(setCatalogo)
+      .catch(() => setCatalogo([]))
+  }, [])
 
   useEffect(() => {
     if (medico) {
       setForm({
-        cpf:           formatCpf(medico.cpf),
-        nome:          medico.nome,
-        crm:           medico.crm,
-        crmUf:         medico.crmUf.trim(),
-        especialidade: medico.especialidade ?? '',
-        email:         medico.email ?? '',
-        telefone:      medico.telefone ?? '',
-        taxaPinPct:    medico.taxaPinPct ?? 0.15,
+        cpf:              formatCpf(medico.cpf ?? ''),
+        nome:             medico.nome,
+        crms:             crmsDoMedico(medico),
+        especialidadeIds: (medico.especialidades ?? []).map(e => e.id),
+        email:            medico.email ?? '',
+        telefone:         medico.telefone ?? '',
+        pisNit:           formatPisNit(medico.dadosCivis?.pisNit ?? ''),
+        taxaPinPct:       medico.taxaPinPct ?? 0.15,
       })
       setMaxVisited(1)
     } else {
@@ -114,11 +141,22 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
     const errs: Record<string, string> = {}
     if (s === 0) {
       if (!form.nome.trim()) errs.nome = 'Obrigatório'
-      if (!form.cpf || !isValidCpf(form.cpf)) errs.cpf = 'CPF inválido'
+      if (form.cpf ? !isValidCpf(form.cpf) : exigeCpfCrm) {
+        errs.cpf = form.cpf ? 'CPF inválido' : 'Obrigatório para médico ativo'
+      }
+      const pis = form.pisNit.replace(/\D/g, '')
+      if (pis && pis.length !== 11) errs.pisNit = 'PIS/NIT deve ter 11 dígitos'
     }
     if (s === 1) {
-      if (!form.crm.trim()) errs.crm = 'Obrigatório'
-      if (!form.crmUf)       errs.crmUf = 'Obrigatório'
+      const ufs = new Set<string>()
+      form.crms.forEach((c, i) => {
+        if (crmVazio(c)) return
+        if (!c.numero.trim()) errs[`crm_${i}_numero`] = 'Obrigatório'
+        if (!c.uf) errs[`crm_${i}_uf`] = 'Obrigatório'
+        else if (ufs.has(c.uf)) errs[`crm_${i}_uf`] = 'UF já usada'
+        ufs.add(c.uf)
+      })
+      if (exigeCpfCrm && crmsPreenchidos(form.crms).length === 0) errs.crms = 'Médico ativo precisa de ao menos um CRM'
     }
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -144,9 +182,10 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
     setLoading(true)
     setApiError(null)
     try {
+      const payload: MedicoRequest = { ...form, crms: crmsPreenchidos(form.crms) }
       const saved = isEditing
-        ? await medicosApi.atualizar(medico.id, form)
-        : await medicosApi.criar(form)
+        ? await medicosApi.atualizar(medico.id, payload)
+        : await medicosApi.criar(payload)
       onSaved(saved)
     } catch (err) {
       setApiError(err instanceof Error ? err.message : 'Erro ao salvar médico')
@@ -178,6 +217,8 @@ export function MedicoWizardModal({ medico, onClose, onSaved }: Props) {
               form={form}
               errors={errors}
               onChange={setField}
+              catalogo={catalogo}
+              exigeCrm={exigeCpfCrm}
             />
           )}
         </div>
@@ -231,12 +272,15 @@ function StepDadosPessoais({
             placeholder="Nome do médico"
           />
         </div>
-        <CpfInput
-          label="CPF *"
-          value={form.cpf}
-          onChange={v => onChange('cpf', v)}
-          error={errors.cpf}
-        />
+        <div>
+          <CpfInput
+            label="CPF"
+            value={form.cpf}
+            onChange={v => onChange('cpf', v)}
+            error={errors.cpf}
+          />
+          <p className="text-xs text-gray-400 mt-1">Pode ficar em branco no rascunho; obrigatório para ativar.</p>
+        </div>
         <Input
           label={
             <span className="flex items-center gap-2">
@@ -251,6 +295,13 @@ function StepDadosPessoais({
           onChange={e => onChange('telefone', e.target.value)}
           error={errors.telefone}
           placeholder="(00) 00000-0000"
+        />
+        <Input
+          label="PIS/NIT"
+          value={form.pisNit}
+          onChange={e => onChange('pisNit', formatPisNit(e.target.value))}
+          error={errors.pisNit}
+          placeholder="000.00000.00-0"
         />
         <div className="sm:col-span-2">
           <Input
@@ -290,45 +341,137 @@ function StepDadosPessoais({
 }
 
 // ─── Step 1: Dados Profissionais ──────────────────────────────────────────────
+// Vários CRMs (um por UF, um deles principal) e uma ou mais especialidades do
+// catálogo — a primeira especialidade é a principal.
 
 function StepDadosProfissionais({
   form,
   errors,
   onChange,
+  catalogo,
+  exigeCrm,
 }: {
   form: MedicoRequest
   errors: Partial<Record<string, string>>
   onChange: <K extends keyof MedicoRequest>(k: K, v: MedicoRequest[K]) => void
+  catalogo: Especialidade[]
+  exigeCrm: boolean
 }) {
+  function setCrm(i: number, patch: Partial<CrmMedico>) {
+    onChange('crms', form.crms.map((c, idx) => (idx === i ? { ...c, ...patch } : c)))
+  }
+
+  function marcarPrincipal(i: number) {
+    onChange('crms', form.crms.map((c, idx) => ({ ...c, principal: idx === i })))
+  }
+
+  function adicionarCrm() {
+    onChange('crms', [...form.crms, { numero: '', uf: '', principal: form.crms.length === 0 }])
+  }
+
+  function removerCrm(i: number) {
+    const restantes = form.crms.filter((_, idx) => idx !== i)
+    if (restantes.length > 0 && !restantes.some(c => c.principal)) restantes[0] = { ...restantes[0], principal: true }
+    onChange('crms', restantes)
+  }
+
+  const nomePorId = new Map(catalogo.map(e => [e.id, e.nome]))
+  const disponiveis = catalogo.filter(e => !form.especialidadeIds.includes(e.id))
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <p className="text-sm text-gray-500">Informe os dados profissionais do médico.</p>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Input
-          label="CRM *"
-          value={form.crm}
-          onChange={e => onChange('crm', e.target.value)}
-          error={errors.crm}
-          placeholder="Ex: 123456"
-        />
-        <SelectField
-          label="UF do CRM *"
-          value={form.crmUf}
-          onChange={v => onChange('crmUf', v)}
-          error={errors.crmUf}
-          placeholder="Selecione a UF"
-        >
-          {UFS.map(uf => <option key={uf} value={uf}>{uf}</option>)}
-        </SelectField>
-        <div className="sm:col-span-2">
-          <Input
-            label="Especialidade"
-            value={form.especialidade}
-            onChange={e => onChange('especialidade', e.target.value)}
-            error={errors.especialidade}
-            placeholder="Ex: Cardiologia"
-          />
+
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-700">CRM{exigeCrm ? ' *' : ''}</span>
+          <button
+            type="button"
+            onClick={adicionarCrm}
+            className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+          >
+            <Plus className="w-4 h-4" /> Adicionar CRM
+          </button>
         </div>
+        {form.crms.length === 0 && (
+          <p className="text-xs text-gray-400">Nenhum CRM informado. Pode ficar em branco no rascunho; obrigatório para ativar.</p>
+        )}
+        {form.crms.map((c, i) => {
+          const ufsUsadas = new Set(form.crms.filter((_, idx) => idx !== i).map(o => o.uf))
+          return (
+            <div key={i} className="grid grid-cols-[1fr_110px_auto_auto] items-start gap-2">
+              <Input
+                label={i === 0 ? 'Número' : undefined}
+                value={c.numero}
+                onChange={e => setCrm(i, { numero: e.target.value })}
+                error={errors[`crm_${i}_numero`]}
+                placeholder="Ex: 123456"
+              />
+              <SelectField
+                label={i === 0 ? 'UF' : ''}
+                value={c.uf}
+                onChange={v => setCrm(i, { uf: v })}
+                error={errors[`crm_${i}_uf`]}
+                placeholder="UF"
+              >
+                {UFS.filter(uf => !ufsUsadas.has(uf)).map(uf => <option key={uf} value={uf}>{uf}</option>)}
+              </SelectField>
+              <label className={`flex items-center gap-1.5 text-sm text-gray-700 h-[38px] ${i === 0 ? 'mt-6' : ''}`}>
+                <input
+                  type="radio"
+                  name="crm-principal"
+                  checked={c.principal}
+                  onChange={() => marcarPrincipal(i)}
+                />
+                Principal
+              </label>
+              <button
+                type="button"
+                onClick={() => removerCrm(i)}
+                className={`h-[38px] px-2 text-gray-400 hover:text-red-600 ${i === 0 ? 'mt-6' : ''}`}
+                aria-label="Remover CRM"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )
+        })}
+        {errors.crms && <p className="text-xs text-red-500">{errors.crms}</p>}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-medium text-gray-700">Especialidades</span>
+        {form.especialidadeIds.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {form.especialidadeIds.map((id, i) => (
+              <span
+                key={id}
+                className="flex items-center gap-1.5 rounded-full bg-primary-50 border border-primary-200 px-3 py-1 text-sm text-gray-800"
+              >
+                {nomePorId.get(id) ?? '—'}
+                {i === 0 && <span className="text-[11px] text-gray-500">principal</span>}
+                <button
+                  type="button"
+                  onClick={() => onChange('especialidadeIds', form.especialidadeIds.filter(e => e !== id))}
+                  className="text-gray-400 hover:text-red-600"
+                  aria-label={`Remover ${nomePorId.get(id) ?? 'especialidade'}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <SelectField
+          label=""
+          value=""
+          onChange={v => v && onChange('especialidadeIds', [...form.especialidadeIds, v])}
+          placeholder={disponiveis.length ? 'Adicionar especialidade...' : 'Todas as especialidades já foram adicionadas'}
+          disabled={disponiveis.length === 0}
+        >
+          {disponiveis.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+        </SelectField>
+        <p className="text-xs text-gray-400">A primeira da lista é a principal.</p>
       </div>
     </div>
   )
@@ -355,7 +498,7 @@ export function SelectField({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium text-gray-700">{label}</label>
+      {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
       <select
         value={value}
         onChange={e => onChange(e.target.value)}

@@ -6,7 +6,7 @@ import {
 import { Modal, Button, Alert, Spinner } from '@pinsaude/ui'
 import {
   Medico, TipoDocumentoMedico, StatusValidacaoDocumento,
-  DocumentoMedico, medicosApi,
+  DocumentoMedico, medicosApi, formatarCrm,
 } from '../api/medicosApi'
 import { useAuth } from '../auth/useAuth'
 
@@ -607,7 +607,7 @@ export function DocumentosModal({ medico, onClose, onDocumentosChange }: Props) 
         <div className="flex items-start justify-between gap-4 -mt-1">
           <div>
             <h2 className="text-base font-bold text-ds-text">Documentos do Médico</h2>
-            <p className="text-xs text-ds-light mt-0.5">{medico.nome} · CRM {medico.crm}/{medico.crmUf.trim()}</p>
+            <p className="text-xs text-ds-light mt-0.5">{medico.nome} · CRM {formatarCrm(medico)}</p>
           </div>
           <div className="shrink-0 flex flex-col items-end gap-2">
             <span className={`px-3 py-1 rounded-full text-sm font-bold ${totalEnviados > 0 && aprovados === totalEnviados ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-700'}`}>

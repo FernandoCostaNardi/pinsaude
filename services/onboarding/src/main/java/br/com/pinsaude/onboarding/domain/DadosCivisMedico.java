@@ -71,6 +71,10 @@ public class DadosCivisMedico {
     @Column(name = "rg_uf", columnDefinition = "char(2)")
     private String rgUf;
 
+    // PIS/NIT criptografado com pgcrypto (V25), mesmo padrão do CPF
+    @Column(name = "pis_nit_criptografado")
+    private byte[] pisNitCriptografado;
+
     @Column(name = "rqe", length = 20)
     private String rqe;
 
@@ -154,6 +158,9 @@ public class DadosCivisMedico {
 
     public String getRgUf() { return rgUf; }
     public void setRgUf(String rgUf) { this.rgUf = rgUf; }
+
+    public byte[] getPisNitCriptografado() { return pisNitCriptografado; }
+    public void setPisNitCriptografado(byte[] pisNitCriptografado) { this.pisNitCriptografado = pisNitCriptografado; }
 
     public String getRqe() { return rqe; }
     public void setRqe(String rqe) { this.rqe = rqe; }

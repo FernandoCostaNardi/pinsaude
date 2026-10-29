@@ -40,6 +40,12 @@ public class MedicoController {
         return ResponseEntity.ok(service.listar(page, size, status));
     }
 
+    @GetMapping("/especialidades")
+    @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil') or hasRole('perm_medicos')")
+    public ResponseEntity<List<EspecialidadeResponse>> listarEspecialidades() {
+        return ResponseEntity.ok(service.listarCatalogoEspecialidades());
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('gestao','operacao','financeiro','contabil','medico') or hasRole('perm_medicos')")
     public ResponseEntity<MedicoResponse> buscarPorId(@PathVariable UUID id) {

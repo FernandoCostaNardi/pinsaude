@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { Button, Spinner, Alert } from '@pinsaude/ui'
 import { Tomador, tomadoresApi } from '../api/tomadoresApi'
-import { Medico, medicosApi } from '../api/medicosApi'
+import { Medico, medicosApi, formatarCrm } from '../api/medicosApi'
 import { ProducaoRequest, producoesApi } from '../api/producoesApi'
 import { Empresa, empresasApi } from '../api/empresasApi'
 
@@ -339,7 +339,7 @@ export function ProducaoNovaPage() {
   const medicoItems: AutocompleteItem[] = medicos.map(m => ({
     id: m.id,
     label: m.nome,
-    sublabel: `CRM ${m.crm}-${m.crmUf}${m.especialidade ? ` · ${m.especialidade}` : ''}`,
+    sublabel: `CRM ${formatarCrm(m, '-')}${m.especialidade ? ` · ${m.especialidade}` : ''}`,
   }))
 
   const tomadorItems: AutocompleteItem[] = tomadoresDisponiveis.map(t => ({

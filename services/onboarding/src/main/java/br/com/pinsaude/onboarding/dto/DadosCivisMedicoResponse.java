@@ -30,6 +30,7 @@ public record DadosCivisMedicoResponse(
     String rgOrgaoExpedidor,
     String rgUf,
     String rqe,
+    String pisNit,
     String canalOrigem,
     String nomeIndicador,
     List<String> situacaoFormacao,
@@ -37,6 +38,10 @@ public record DadosCivisMedicoResponse(
     String procedimentosRealiza
 ) {
     public static DadosCivisMedicoResponse from(DadosCivisMedico dc) {
+        return from(dc, null);
+    }
+
+    public static DadosCivisMedicoResponse from(DadosCivisMedico dc, String pisNitDecriptografado) {
         return new DadosCivisMedicoResponse(
             dc.getDataNascimento(),
             dc.getNacionalidade(),
@@ -55,6 +60,7 @@ public record DadosCivisMedicoResponse(
             dc.getRgOrgaoExpedidor(),
             dc.getRgUf(),
             dc.getRqe(),
+            pisNitDecriptografado,
             dc.getCanalOrigem(),
             dc.getNomeIndicador(),
             dc.getSituacaoFormacao() != null ? List.of(dc.getSituacaoFormacao()) : null,

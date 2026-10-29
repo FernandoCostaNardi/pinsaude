@@ -25,6 +25,7 @@ import static org.mockito.Mockito.*;
 class MedicoServiceDocumentosTest {
 
     @Mock MedicoRepository               medicoRepo;
+    @Mock RegistroProfissionalService    registroProfissional;
     @Mock VinculoMedicoEmpresaRepository vinculoRepo;
     @Mock DadosBancariosMedicoRepository dadosBancariosRepo;
     @Mock DocumentoMedicoRepository      documentoRepo;
@@ -46,6 +47,8 @@ class MedicoServiceDocumentosTest {
         var m = new Medico();
         m.setId(id);
         m.setNome("Dr. Teste");
+        m.setCrm("12345");
+        m.setCrmUf("PE");
         m.setCpfCriptografado(new byte[0]);
         return m;
     }
