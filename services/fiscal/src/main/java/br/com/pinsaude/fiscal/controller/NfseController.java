@@ -82,7 +82,9 @@ public class NfseController {
      * Retorna o status atual de uma nota pelo producaoId — usado para polling.
      */
     @GetMapping("/status/{producaoId}")
-    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro', 'medico') or hasRole('perm_notas')")
+    // perm_producao: o faturamento consulta este endpoint (com o token do usuário) antes de
+    // excluir uma produção — o lançador com só permissão de produção também precisa ler.
+    @PreAuthorize("hasAnyRole('contabil', 'gestao', 'operacao', 'financeiro', 'medico') or hasRole('perm_notas') or hasRole('perm_producao')")
     public ResponseEntity<NotaFiscalStatusResponse> getStatus(@PathVariable UUID producaoId) {
         return ResponseEntity.ok(nfseService.getStatus(producaoId));
     }

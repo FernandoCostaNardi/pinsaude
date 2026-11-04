@@ -424,6 +424,10 @@ export function ProducoesPage() {
         producao={selectedProducao}
         medicoNomeMap={medicoNomeMap}
         onClose={() => setSelectedProducao(null)}
+        onExcluida={id => {
+          setProducoes(prev => prev.filter(p => p.id !== id))
+          setSelectedProducao(null)
+        }}
       />
     </div>
   )

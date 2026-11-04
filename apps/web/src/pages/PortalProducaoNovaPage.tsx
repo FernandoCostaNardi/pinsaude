@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Calculator, CheckCircle2, ChevronDown,
   Plus, Loader2, ClipboardList,
-  TrendingDown, DollarSign,
+  TrendingDown, DollarSign, Trash2,
 } from 'lucide-react'
 import { Button, Spinner, Alert, Modal } from '@pinsaude/ui'
 import { Tomador, tomadoresApi } from '../api/tomadoresApi'
 import { producoesApi } from '../api/producoesApi'
 import { portalApi, PerfilMedico, ProducaoPortal } from '../api/portalApi'
 import { formatCnae } from '../components/CnaeSelect'
+import { ProducaoExcluirModal } from '../components/ProducaoExcluirModal'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -212,7 +213,24 @@ function PreviewCard({ valorBruto, taxaPinPct }: { valorBruto: number; taxaPinPc
 
 // ─── Histórico ─────────────────────────────────────────────────────────────────
 
-function HistoricoProducoes({ producoes, loading }: { producoes: ProducaoPortal[]; loading: boolean }) {
+function BotaoExcluir({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Excluir produção lançada errado"
+      aria-label="Excluir produção"
+      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-red-600 hover:bg-red-50 transition-colors"
+    >
+      <Trash2 size={12} />
+      Excluir
+    </button>
+  )
+}
+
+function HistoricoProducoes({ producoes, loading, onExcluir }: {
+  producoes: ProducaoPortal[]; loading: boolean; onExcluir: (p: ProducaoPortal) => void
+}) {
   if (loading) return (
     <div className="flex justify-center py-8"><Spinner /></div>
   )
@@ -230,7 +248,7 @@ function HistoricoProducoes({ producoes, loading }: { producoes: ProducaoPortal[
         <table className="w-full text-sm min-w-[500px]">
           <thead>
             <tr className="bg-ds-surface border-b border-ds-border">
-              {['Competência','Tomador','Serviço','Valor Bruto','Estimativa Líquida','Status','Data'].map(h => (
+              {['Competência','Tomador','Serviço','Valor Bruto','Estimativa Líquida','Status','Data',''].map(h => (
                 <th key={h} className="px-4 py-3 text-[10px] font-bold text-ds-light uppercase tracking-wider text-left">
                   {h}
                 </th>
@@ -271,6 +289,9 @@ function HistoricoProducoes({ producoes, loading }: { producoes: ProducaoPortal[
                 <td className="px-4 py-3">
                   <span className="text-xs text-ds-light">{formatDate(p.createdAt)}</span>
                 </td>
+                <td className="px-2 py-3 text-right">
+                  {p.podeExcluir && <BotaoExcluir onClick={() => onExcluir(p)} />}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -303,7 +324,10 @@ function HistoricoProducoes({ producoes, loading }: { producoes: ProducaoPortal[
                 <span className="text-xs tabular-nums font-bold text-green-700">{formatBRL(p.valorLiquidoEstimadoCentavos)}</span>
               </div>
             </div>
-            <p className="text-[11px] text-ds-light text-right">{formatDate(p.createdAt)}</p>
+            <div className="flex items-center justify-between">
+              {p.podeExcluir ? <BotaoExcluir onClick={() => onExcluir(p)} /> : <span />}
+              <p className="text-[11px] text-ds-light text-right">{formatDate(p.createdAt)}</p>
+            </div>
           </div>
         ))}
       </div>
@@ -517,6 +541,7 @@ export function PortalProducaoNovaPage() {
   const [historico, setHistorico] = useState<ProducaoPortal[]>([])
   const [initLoading, setInitLoading] = useState(true)
   const [histLoading, setHistLoading] = useState(true)
+  const [excluindo, setExcluindo] = useState<ProducaoPortal | null>(null)
   const [initError,   setInitError]   = useState<string | null>(null)
 
   const [modalAberto, setModalAberto] = useState(false)
@@ -639,8 +664,21 @@ export function PortalProducaoNovaPage() {
           <p className="text-sm font-bold text-ds-text">Minhas Solicitações</p>
           <p className="text-xs text-ds-light mt-0.5">Histórico de produções registradas</p>
         </div>
-        <HistoricoProducoes producoes={historico} loading={histLoading} />
+        <HistoricoProducoes producoes={historico} loading={histLoading} onExcluir={setExcluindo} />
       </div>
+
+      {excluindo && (
+        <ProducaoExcluirModal
+          producaoId={excluindo.id}
+          resumo={`${excluindo.tomadorNome} · ${formatCompetencia(excluindo.competencia)} · ${formatBRL(excluindo.valorBrutoCentavos)}`}
+          onClose={() => setExcluindo(null)}
+          onExcluida={id => {
+            setExcluindo(null)
+            setHistorico(prev => prev.filter(p => p.id !== id))
+            carregarHistorico()
+          }}
+        />
+      )}
 
       {perfil && (
         <NovaProducaoModal

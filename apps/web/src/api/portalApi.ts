@@ -134,6 +134,8 @@ export interface ProducaoPortal {
   valorLiquidoEstimadoCentavos: number
   status: string
   createdAt: string
+  // true quando o médico pode excluir (ainda sem NFS-e, só ele de participante)
+  podeExcluir?: boolean
 }
 
 async function getNotas(params?: { competencia?: string; status?: string }): Promise<NotaPortal[]> {

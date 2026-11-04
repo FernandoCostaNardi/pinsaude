@@ -4,6 +4,7 @@ import br.com.pinsaude.faturamento.config.SecurityConfig;
 import br.com.pinsaude.faturamento.dto.ParticipacaoRequest;
 import br.com.pinsaude.faturamento.dto.ProducaoRequest;
 import br.com.pinsaude.faturamento.dto.ProducaoResponse;
+import br.com.pinsaude.faturamento.service.ExclusaoProducaoService;
 import br.com.pinsaude.faturamento.service.ProducaoService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -45,6 +46,9 @@ class ProducaoControllerTest {
 
     @MockBean
     ProducaoService service;
+
+    @MockBean
+    ExclusaoProducaoService exclusaoService;
 
     private static final SimpleGrantedAuthority PERM_PRODUCAO = new SimpleGrantedAuthority("ROLE_perm_producao");
     private static final SimpleGrantedAuthority PERM_OUTRO_DOMINIO = new SimpleGrantedAuthority("ROLE_perm_tomadores");
@@ -182,6 +186,34 @@ class ProducaoControllerTest {
         mockMvc.perform(post("/api/producoes/preview-calculo")
                         .contentType(MediaType.APPLICATION_JSON).content(body)
                         .with(jwt().authorities(PERM_OUTRO_DOMINIO)))
+                .andExpect(status().isForbidden());
+    }
+
+    // ─── Grupo 5: excluir (operacao,gestao,medico) — DELETE /{id} ──────────────
+
+    @ParameterizedTest
+    @ValueSource(strings = {"operacao", "gestao", "medico"})
+    void excluir_papelPermitido_retorna204(String role) throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/producoes/{id}", UUID.randomUUID()).param("motivo", "lançada em duplicidade")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_" + role))))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void excluir_permProducao_retorna204() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/producoes/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(PERM_PRODUCAO)))
+                .andExpect(status().isNoContent());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"financeiro", "contabil", "perm_tomadores"})
+    void excluir_papelSemPermissao_retorna403(String role) throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/producoes/{id}", UUID.randomUUID())
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_" + role))))
                 .andExpect(status().isForbidden());
     }
 
