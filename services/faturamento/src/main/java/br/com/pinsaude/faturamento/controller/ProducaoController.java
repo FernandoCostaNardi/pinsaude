@@ -5,6 +5,7 @@ import br.com.pinsaude.faturamento.dto.PreviewCalculoRequest;
 import br.com.pinsaude.faturamento.dto.PreviewCalculoResponse;
 import br.com.pinsaude.faturamento.dto.ProducaoRequest;
 import br.com.pinsaude.faturamento.dto.ProducaoResponse;
+import br.com.pinsaude.faturamento.service.ExclusaoProducaoService;
 import br.com.pinsaude.faturamento.service.ProducaoService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -20,9 +21,11 @@ import java.util.UUID;
 public class ProducaoController {
 
     private final ProducaoService service;
+    private final ExclusaoProducaoService exclusaoService;
 
-    public ProducaoController(ProducaoService service) {
+    public ProducaoController(ProducaoService service, ExclusaoProducaoService exclusaoService) {
         this.service = service;
+        this.exclusaoService = exclusaoService;
     }
 
     @GetMapping
@@ -56,6 +59,16 @@ public class ProducaoController {
     public ResponseEntity<ProducaoResponse> atualizarServico(
             @PathVariable UUID id, @Valid @RequestBody AtualizarServicoProducaoRequest req) {
         return ResponseEntity.ok(service.atualizarServico(id, req.servicoId()));
+    }
+
+    // Exclui uma produção lançada errado (backoffice ou o próprio médico pelo Portal). Só antes
+    // de existir NFS-e/conciliação — regras e auditoria em ExclusaoProducaoService.
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('operacao','gestao','medico') or hasRole('perm_producao')")
+    public ResponseEntity<Void> excluir(@PathVariable UUID id,
+                                        @RequestParam(required = false) String motivo) {
+        exclusaoService.excluir(id, motivo);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/preview-calculo")

@@ -1,6 +1,8 @@
-import { X, CheckCircle2, Clock, FileText, XCircle, Building2, Stethoscope, Calendar, Send } from 'lucide-react'
+import { useState } from 'react'
+import { X, CheckCircle2, Clock, FileText, XCircle, Building2, Stethoscope, Calendar, Send, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Producao } from '../api/producoesApi'
+import { Producao, producaoPodeSerExcluida } from '../api/producoesApi'
+import { ProducaoExcluirModal } from '../components/ProducaoExcluirModal'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -68,10 +70,13 @@ interface Props {
   producao: Producao | null
   medicoNomeMap: Record<string, string>
   onClose: () => void
+  // Chamado depois que a produção foi excluída (lançada errado) — a lista remove a linha.
+  onExcluida?: (id: string) => void
 }
 
-export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props) {
+export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose, onExcluida }: Props) {
   const navigate = useNavigate()
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false)
   if (!producao) return null
 
   const { tomador, servico, valorBruto, status } = producao
@@ -122,6 +127,16 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
               >
                 <Send size={12} />
                 Emitir NFS-e
+              </button>
+            )}
+            {onExcluida && producaoPodeSerExcluida(producao) && (
+              <button
+                onClick={() => setConfirmandoExclusao(true)}
+                title="Excluir produção lançada errado"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-50 transition-colors"
+              >
+                <Trash2 size={12} />
+                Excluir
               </button>
             )}
             <button
@@ -242,6 +257,17 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose }: Props
           </div>
         </div>
       </div>
+
+      {confirmandoExclusao && onExcluida && (
+        <div onClick={e => e.stopPropagation()}>
+          <ProducaoExcluirModal
+            producaoId={producao.id}
+            resumo={`${tomador.nomeFantasia || tomador.razaoSocialNome} · ${formatCompetencia(producao.competencia)} · ${formatBRL(valorBruto)} · ${producao.participantes.map(p => medicoNomeMap[p.medicoId] ?? 'Médico').join(', ')}`}
+            onClose={() => setConfirmandoExclusao(false)}
+            onExcluida={id => { setConfirmandoExclusao(false); onExcluida(id) }}
+          />
+        </div>
+      )}
     </div>
   )
 }

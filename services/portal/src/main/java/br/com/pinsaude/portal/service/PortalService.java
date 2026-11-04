@@ -122,7 +122,18 @@ public class PortalService {
                        s.descricao_padrao AS servico_descricao,
                        pp.valor_bruto AS valor_bruto_medico,
                        COALESCE(pp.taxa_pin_pct, 0.15) AS taxa_pin_pct,
-                       p.status, p.created_at
+                       p.status, p.created_at,
+                       -- Espelha as regras de ExclusaoProducaoService (faturamento) só para a UI
+                       -- mostrar o botão Excluir; o faturamento valida tudo de novo no DELETE.
+                       (CAST(p.status AS varchar) IN ('RASCUNHO', 'CONFIRMADA')
+                        AND p.fechamento_id IS NULL
+                        AND (SELECT COUNT(*) FROM faturamento.participacoes_producao x
+                             WHERE x.producao_id = p.id) = 1
+                        AND NOT EXISTS (SELECT 1 FROM fiscal.notas_fiscais n
+                                        WHERE n.producao_id = p.id
+                                          AND CAST(n.status AS varchar) NOT IN ('CANCELADA', 'REJEITADA'))
+                        AND NOT EXISTS (SELECT 1 FROM faturamento.conciliacoes c
+                                        WHERE c.nota_id = p.id)) AS pode_excluir
                 FROM faturamento.participacoes_producao pp
                 JOIN faturamento.producoes p ON p.id = pp.producao_id
                 JOIN faturamento.tomadores t ON t.id = p.tomador_id
@@ -151,7 +162,8 @@ public class PortalService {
                     bruto,
                     bruto - taxaPin,
                     rs.getString("status"),
-                    toOffsetDateTime(rs.getTimestamp("created_at"))
+                    toOffsetDateTime(rs.getTimestamp("created_at")),
+                    rs.getBoolean("pode_excluir")
             );
         }, params.toArray());
     }

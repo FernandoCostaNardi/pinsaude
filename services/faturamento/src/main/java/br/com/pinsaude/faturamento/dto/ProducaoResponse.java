@@ -24,7 +24,9 @@ public record ProducaoResponse(
     String descricaoComplementar,
     String cnaeCodigo,
     String status,
-    OffsetDateTime createdAt
+    OffsetDateTime createdAt,
+    // Preenchido quando a produção veio do Fechamento por Grupo — a tela esconde o Excluir.
+    UUID fechamentoId
 ) {
     public record TomadorResumo(UUID id, String razaoSocialNome, String nomeFantasia,
                                 String municipio, boolean retencaoFederal, boolean retencaoIss) {
@@ -61,7 +63,8 @@ public record ProducaoResponse(
             p.getDescricaoComplementar(),
             p.getCnaeCodigo(),
             p.getStatus().name(),
-            p.getCreatedAt()
+            p.getCreatedAt(),
+            p.getFechamentoId()
         );
     }
 }

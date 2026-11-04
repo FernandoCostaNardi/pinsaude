@@ -11,5 +11,8 @@ public record ProducaoPortalResponse(
     long valorBrutoCentavos,
     long valorLiquidoEstimadoCentavos,
     String status,
-    OffsetDateTime createdAt
+    OffsetDateTime createdAt,
+    // true quando o médico pode excluir esta produção (lançada errado): ainda sem NFS-e nem
+    // conciliação, fora do Fechamento por Grupo e só com ele de participante.
+    boolean podeExcluir
 ) {}

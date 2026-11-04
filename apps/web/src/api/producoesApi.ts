@@ -50,6 +50,13 @@ export interface Producao {
   cnaeCodigo?: string | null
   status: 'RASCUNHO' | 'CONFIRMADA' | 'EMITIDA' | 'CANCELADA'
   createdAt: string
+  // Preenchido quando a produção veio do Fechamento por Grupo (não pode ser excluída por aqui).
+  fechamentoId?: string | null
+}
+
+// Excluir só faz sentido antes da NFS-e; o backend revalida (nota no Fiscal, conciliação etc.).
+export function producaoPodeSerExcluida(p: Pick<Producao, 'status' | 'fechamentoId'>): boolean {
+  return (p.status === 'CONFIRMADA' || p.status === 'RASCUNHO') && !p.fechamentoId
 }
 
 export interface ParticipacaoRequest {
@@ -159,4 +166,15 @@ async function atualizarServico(id: string, servicoId: string): Promise<Producao
   return handleResponse<Producao>(res)
 }
 
-export const producoesApi = { listar, buscarPorId, criar, previewCalculo, atualizarServico }
+// Exclui uma produção lançada errado (backoffice ou o próprio médico pelo Portal). O backend só
+// permite antes de existir NFS-e/conciliação e guarda uma cópia para auditoria.
+async function excluir(id: string, motivo?: string): Promise<void> {
+  const q = motivo?.trim() ? `?${new URLSearchParams({ motivo: motivo.trim() })}` : ''
+  const res = await fetch(`/api/producoes/${id}${q}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<void>(res)
+}
+
+export const producoesApi = { listar, buscarPorId, criar, previewCalculo, atualizarServico, excluir }
