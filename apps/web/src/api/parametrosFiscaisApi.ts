@@ -38,6 +38,8 @@ export interface ParametroFiscal {
   reducaoIbsCbsSaude: number | null
   aliqIbsCbsEfetiva: number | null  // calculada: aliqIbsCbs * (1 - reducao)
   homologado: boolean
+  homologadoPor: string | null
+  homologadoEm: string | null
   observacoes: string | null
   createdAt: string
 }

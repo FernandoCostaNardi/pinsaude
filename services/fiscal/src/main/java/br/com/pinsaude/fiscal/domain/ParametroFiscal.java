@@ -51,6 +51,12 @@ public class ParametroFiscal {
     @Column(name = "homologado", nullable = false)
     private boolean homologado;
 
+    @Column(name = "homologado_por", length = 100)
+    private String homologadoPor;
+
+    @Column(name = "homologado_em")
+    private OffsetDateTime homologadoEm;
+
     @Column(name = "observacoes")
     private String observacoes;
 
@@ -87,6 +93,10 @@ public class ParametroFiscal {
     public void setReducaoIbsCbsSaude(BigDecimal v) { this.reducaoIbsCbsSaude = v; }
     public boolean isHomologado()                { return homologado; }
     public void setHomologado(boolean v)         { this.homologado = v; }
+    public String getHomologadoPor()             { return homologadoPor; }
+    public void setHomologadoPor(String v)       { this.homologadoPor = v; }
+    public OffsetDateTime getHomologadoEm()      { return homologadoEm; }
+    public void setHomologadoEm(OffsetDateTime v){ this.homologadoEm = v; }
     public String getObservacoes()               { return observacoes; }
     public void setObservacoes(String v)         { this.observacoes = v; }
     public OffsetDateTime getCreatedAt()         { return createdAt; }

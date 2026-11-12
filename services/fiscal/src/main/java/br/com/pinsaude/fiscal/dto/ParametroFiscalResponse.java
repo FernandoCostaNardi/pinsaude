@@ -26,6 +26,8 @@ public record ParametroFiscalResponse(
     BigDecimal aliqIbsCbsEfetiva,
     // Controle
     boolean homologado,
+    String homologadoPor,
+    OffsetDateTime homologadoEm,
     String observacoes,
     OffsetDateTime createdAt
 ) {
@@ -42,7 +44,7 @@ public record ParametroFiscalResponse(
             p.getId(), p.getCnpjId(), p.getVigenciaInicio(), comp,
             p.getAliqIss(), p.getAliqIr(), p.getAliqCsll(), p.getAliqPis(), p.getAliqCofins(),
             p.isIbsCbsAtivo(), p.getAliqIbsCbs(), p.getReducaoIbsCbsSaude(), efetiva,
-            p.isHomologado(), p.getObservacoes(), p.getCreatedAt()
+            p.isHomologado(), p.getHomologadoPor(), p.getHomologadoEm(), p.getObservacoes(), p.getCreatedAt()
         );
     }
 }

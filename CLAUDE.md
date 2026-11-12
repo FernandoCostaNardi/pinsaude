@@ -1325,6 +1325,22 @@ Parâmetros criados via `POST /api/parametros-fiscais/ibs-cbs` começam com `hom
 A contabilidade deve chamar `PUT /api/parametros-fiscais/{id}/homologar` antes do go-live.
 O frontend exibe alerta de governança quando há parâmetros não homologados.
 
+### Cronograma da reforma e chave por empresa (CBS-10)
+`fiscal.cronograma_reforma` (V15) é um catálogo global, sem RLS, com as alíquotas de referência por
+ano de 2026 a 2033. Colunas: `aliq_cbs`, `aliq_ibs_uf`, `aliq_ibs_mun`, `fator_iss` (1 até 2028;
+0,9/0,8/0,7/0,6 de 2029 a 2032; 0 em 2033) e `aliquotas_definitivas`. Todas as alíquotas são frações.
+Valor nulo = ainda não fixado. Um CHECK impede marcar o ano como definitivo sem as 3 alíquotas.
+2027–2028 nascem **provisórios** (CBS 11,2% = referência TCU 11,3% − 0,1 p.p.) e serão ajustados
+pela resolução do Senado (CBS-50) via `PUT /api/fiscal/cronograma-reforma/{ano}`.
+- Leitura: `contabil`/`gestao`/`financeiro`/`perm_fiscal`.
+- Escrita: `contabil`/`gestao`/`perm_fiscal`.
+
+A chave continua por empresa em `parametro_fiscal`: `ibs_cbs_ativo=true` + `vigencia_inicio` na
+primeira competência no regime novo, valendo só homologada. A homologação agora grava
+`homologado_por` (preferred_username do JWT, via `SecurityUtils.currentUsuario()`) e `homologado_em`.
+`aliq_ibs_cbs`/`reducao_ibs_cbs_saude` estão **deprecados**: as alíquotas vêm do cronograma do ano e a
+redução de 60% passa a ser do serviço (cClassTrib 200029, CBS-12).
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

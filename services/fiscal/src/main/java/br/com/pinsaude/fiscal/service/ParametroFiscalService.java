@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -111,6 +112,8 @@ public class ParametroFiscalService {
         ParametroFiscal p = repo.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Parâmetro não encontrado: " + id));
         p.setHomologado(true);
+        p.setHomologadoPor(SecurityUtils.currentUsuario());
+        p.setHomologadoEm(OffsetDateTime.now());
         return ParametroFiscalResponse.from(repo.save(p));
     }
 
