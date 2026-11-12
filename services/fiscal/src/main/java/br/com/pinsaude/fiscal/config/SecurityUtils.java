@@ -40,6 +40,16 @@ public class SecurityUtils {
         return null;
     }
 
+    /** Identificador do usuário logado para auditoria: preferred_username do JWT, ou o subject. */
+    public static String currentUsuario() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth instanceof JwtAuthenticationToken token) {
+            String username = token.getToken().getClaimAsString("preferred_username");
+            return username != null && !username.isBlank() ? username : token.getToken().getSubject();
+        }
+        return auth != null ? auth.getName() : null;
+    }
+
     public static String currentCnpjTenant() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth instanceof JwtAuthenticationToken token) {
