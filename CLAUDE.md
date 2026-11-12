@@ -1341,6 +1341,15 @@ primeira competência no regime novo, valendo só homologada. A homologação ag
 `aliq_ibs_cbs`/`reducao_ibs_cbs_saude` estão **deprecados**: as alíquotas vêm do cronograma do ano e a
 redução de 60% passa a ser do serviço (cClassTrib 200029, CBS-12).
 
+### Regime e valores de CBS/IBS na nota fiscal (CBS-11)
+`fiscal.notas_fiscais` (V16) guarda o snapshot do regime usado no cálculo: `regime_tributario`
+(`LEGADO` | `IBS_CBS`, default `LEGADO`, enum Java `RegimeTributario`), `valor_cbs`/`valor_ibs`
+(centavos, default 0), `aliq_cbs`/`aliq_ibs` (fração efetiva, já com a redução do serviço),
+`cst_ibs_cbs` (3 dígitos), `c_class_trib` (6 dígitos) e `fator_iss`. Notas antigas ficaram LEGADO
+com CBS/IBS zerados. Telas e relatórios devem ler esses campos da nota, nunca do parâmetro fiscal
+atual da empresa. `NotaFiscalStatusResponse` e o tipo `NotaFiscal` do `nfseApi.ts` expõem tudo.
+`retencoes_sofridas` não mudou: retenção de CBS/IBS só existe para tomador público, fora de escopo.
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

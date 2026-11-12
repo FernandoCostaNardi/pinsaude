@@ -1,8 +1,10 @@
 package br.com.pinsaude.fiscal.dto;
 
 import br.com.pinsaude.fiscal.domain.NotaFiscal;
+import br.com.pinsaude.fiscal.domain.RegimeTributario;
 import br.com.pinsaude.fiscal.domain.StatusNota;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -25,7 +27,16 @@ public record NotaFiscalStatusResponse(
     String discriminacao,
     boolean emissaoExterna,
     boolean temPdf,
-    boolean temXml
+    boolean temXml,
+    // CBS-11 — snapshot do regime e dos tributos da reforma gravados na nota
+    RegimeTributario regimeTributario,
+    Long valorCbs,
+    Long valorIbs,
+    BigDecimal aliqCbs,
+    BigDecimal aliqIbs,
+    String cstIbsCbs,
+    String cClassTrib,
+    BigDecimal fatorIss
 ) {
     public static NotaFiscalStatusResponse from(NotaFiscal n) {
         return new NotaFiscalStatusResponse(
@@ -37,7 +48,15 @@ public record NotaFiscalStatusResponse(
             n.getDiscriminacao(),
             n.isEmissaoExterna(),
             n.getPdfNota() != null,
-            n.getXmlNota() != null
+            n.getXmlNota() != null,
+            n.getRegimeTributario(),
+            n.getValorCbs(),
+            n.getValorIbs(),
+            n.getAliqCbs(),
+            n.getAliqIbs(),
+            n.getCstIbsCbs(),
+            n.getCClassTrib(),
+            n.getFatorIss()
         );
     }
 }
