@@ -46,14 +46,21 @@ public class ParametroFiscalController {
     }
 
     /**
-     * Endpoint simplificado para parametrizar a Reforma Tributária.
-     * Zera IR/CSLL/PIS/COFINS e ativa ibs_cbs_ativo=true.
+     * Liga a chave CBS/IBS a partir de uma competência (CBS-14). Mantém ISS/IR/CSLL;
+     * o regime só vale no motor depois da homologação.
      */
     @PostMapping("/ibs-cbs")
     @PreAuthorize("hasAnyRole('contabil','gestao') or hasRole('perm_fiscal')")
     public ResponseEntity<ParametroFiscalResponse> criarIbsCbs(
             @Valid @RequestBody IbsCbsRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.criarIbsCbs(req));
+    }
+
+    /** Desliga a chave CBS/IBS. 422 se já houver nota emitida no regime novo no período. */
+    @DeleteMapping("/{id}/ibs-cbs")
+    @PreAuthorize("hasAnyRole('contabil','gestao') or hasRole('perm_fiscal')")
+    public ResponseEntity<ParametroFiscalResponse> desligarIbsCbs(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.desligarIbsCbs(id));
     }
 
     /**
