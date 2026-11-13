@@ -11,5 +11,11 @@ public record AuditoriaCenario(
     BigDecimal aliqPisUsada,
     BigDecimal aliqCofinsUsada,
     boolean ibsCbsAtivo,
-    BigDecimal aliqIbsCbsEfetivaUsada
+    /** CBS + IBS efetivos (com a redução do serviço). Null no regime LEGADO. */
+    BigDecimal aliqIbsCbsEfetivaUsada,
+    /** LEGADO ou IBS_CBS. */
+    String regime,
+    BigDecimal aliqCbsUsada,
+    BigDecimal aliqIbsUsada,
+    BigDecimal fatorIssUsado
 ) {}

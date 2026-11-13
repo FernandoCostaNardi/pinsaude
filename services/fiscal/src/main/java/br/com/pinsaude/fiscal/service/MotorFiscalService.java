@@ -1,15 +1,20 @@
 package br.com.pinsaude.fiscal.service;
 
+import br.com.pinsaude.fiscal.domain.CronogramaReforma;
 import br.com.pinsaude.fiscal.domain.ParametroFiscal;
+import br.com.pinsaude.fiscal.domain.RegimeTributario;
 import br.com.pinsaude.fiscal.domain.TipoTributo;
 import br.com.pinsaude.fiscal.dto.AuditoriaCenario;
 import br.com.pinsaude.fiscal.dto.CalculoFiscalRequest;
 import br.com.pinsaude.fiscal.dto.CalculoFiscalResponse;
+import br.com.pinsaude.fiscal.repository.CronogramaReformaRepository;
 import br.com.pinsaude.fiscal.repository.ParametroFiscalRepository;
 import br.com.pinsaude.fiscal.repository.ParametrosFiscaisRepository;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -28,6 +33,10 @@ import java.util.Optional;
  *   C — Tomador PF com equiparação hospitalar (nota com tributos zerados)
  *   D — Tomador PF sem equiparação (IR na fonte pelo tomador PF)
  *
+ * Regime por competência (CBS-13): o parâmetro fiscal vigente com ibs_cbs_ativo e homologado
+ * liga o regime IBS_CBS. Nele PIS/COFINS somem, CBS e IBS aparecem (alíquota do ano no
+ * cronograma × (1 − redução do serviço)), ISS é multiplicado pelo fator do ano e IR/CSLL seguem.
+ *
  * Invariante: médico SEMPRE recebe 85% do valorBruto (valorBruto − taxaPin).
  * Tributos são custo fiscal da Pin Saúde, jamais deduzidos do médico.
  */
@@ -38,44 +47,43 @@ public class MotorFiscalService {
 
     private final ParametrosFiscaisRepository pfRepo;
     private final ParametroFiscalRepository p1Repo;
+    private final CronogramaReformaRepository cronogramaRepo;
     private final AuditoriaFiscalService auditoriaService;
 
     public MotorFiscalService(ParametrosFiscaisRepository pfRepo,
                                ParametroFiscalRepository p1Repo,
+                               CronogramaReformaRepository cronogramaRepo,
                                AuditoriaFiscalService auditoriaService) {
         this.pfRepo = pfRepo;
         this.p1Repo = p1Repo;
+        this.cronogramaRepo = cronogramaRepo;
         this.auditoriaService = auditoriaService;
     }
 
     @Transactional(readOnly = true)
     public CalculoFiscalResponse calcular(String cnpjId, CalculoFiscalRequest req) {
-        AliquotasCenario aliquotas = carregarAliquotas(cnpjId, req.competencia(), req.aliquotasOverride());
+        AliquotasCenario aliquotas = carregarAliquotas(cnpjId, req);
         String cenario = derivarCenario(req);
+        long bruto = req.valorBruto();
 
-        long taxaPin = aplicar(req.valorBruto(), PERC_PIN);
-        long valorLiquidoMedico = req.valorBruto() - taxaPin;
+        long taxaPin = aplicar(bruto, PERC_PIN);
+        long valorLiquidoMedico = bruto - taxaPin;
 
-        // Calcula valores por tributo (usa IBS/CBS efetivo para federais se ativo)
-        long issCalc = aplicar(req.valorBruto(), aliquotas.iss());
-        long irCalc, csllCalc, pisCalc, cofinsCalc;
-
-        if (aliquotas.ibsCbsAtivo() && aliquotas.aliqIbsCbsEfetiva() != null) {
-            irCalc = aplicar(req.valorBruto(), aliquotas.aliqIbsCbsEfetiva());
-            csllCalc = 0; pisCalc = 0; cofinsCalc = 0;
-        } else {
-            irCalc   = aplicar(req.valorBruto(), aliquotas.ir());
-            csllCalc = aplicar(req.valorBruto(), aliquotas.csll());
-            pisCalc  = aplicar(req.valorBruto(), aliquotas.pis());
-            cofinsCalc = aplicar(req.valorBruto(), aliquotas.cofins());
-        }
+        // ISS: no regime IBS_CBS, multiplicado pelo fator do ano (extinção gradual 2029–2033).
+        BigDecimal aliqIssAno = aliquotas.iss() == null ? null : aliquotas.iss().multiply(aliquotas.fatorIss());
+        long issCalc    = aplicar(bruto, aliqIssAno);
+        // IR e CSLL continuam com a reforma. PIS/COFINS já vêm zerados no regime IBS_CBS.
+        long irCalc     = aplicar(bruto, aliquotas.ir());
+        long csllCalc   = aplicar(bruto, aliquotas.csll());
+        long pisCalc    = aplicar(bruto, aliquotas.pis());
+        long cofinsCalc = aplicar(bruto, aliquotas.cofins());
 
         long valorIss, valorIr, valorCsll, valorPis, valorCofins, totalRetencoes;
 
         switch (cenario) {
             case "A" -> {
                 // PJ com retenção: ISS destacado + federais retidos pelo tomador
-                valorIss    = req.indicadorRetencaoIss() ? issCalc : issCalc;
+                valorIss    = issCalc;
                 valorIr     = irCalc;
                 valorCsll   = csllCalc;
                 valorPis    = pisCalc;
@@ -103,17 +111,43 @@ public class MotorFiscalService {
             default -> throw new IllegalStateException("Cenário não mapeado: " + cenario);
         }
 
-        long totalTributos = valorIss + valorIr + valorCsll + valorPis + valorCofins;
-        long resultadoPin  = taxaPin - totalTributos;
+        // CBS/IBS: débito próprio da Pin em todos os cenários (retenção só existe para tomador
+        // público, fora de escopo), por isso nunca entram em totalRetencoes.
+        boolean porFora = Boolean.TRUE.equals(req.cbsIbsPorFora());
+        long baseIbsCbs = bruto;
+        long valorCbs = 0, valorIbs = 0;
+        if (aliquotas.ibsCbsAtivo()) {
+            BigDecimal somaAliq = aliquotas.aliqCbs().add(aliquotas.aliqIbs());
+            if (!porFora && somaAliq.signum() > 0) {
+                // Dentro do preço: o bruto já contém CBS/IBS → base = bruto / (1 + alíquotas)
+                baseIbsCbs = BigDecimal.valueOf(bruto)
+                    .divide(BigDecimal.ONE.add(somaAliq), 0, RoundingMode.HALF_UP)
+                    .longValue();
+            }
+            valorCbs = aplicar(baseIbsCbs, aliquotas.aliqCbs());
+            valorIbs = aplicar(baseIbsCbs, aliquotas.aliqIbs());
+        }
+        long valorTotalNota = porFora ? bruto + valorCbs + valorIbs : bruto;
+
+        long totalTributos = valorIss + valorIr + valorCsll + valorPis + valorCofins + valorCbs + valorIbs;
+        // Por fora, CBS/IBS são pagos pelo tomador por cima do bruto e não saem da cota da Pin.
+        long tributosDaPin = porFora ? totalTributos - valorCbs - valorIbs : totalTributos;
+        long resultadoPin  = taxaPin - tributosDaPin;
 
         AuditoriaCenario auditoria = auditoriaService.registrar(req.competencia(), cenario, aliquotas);
 
         return new CalculoFiscalResponse(
-            req.valorBruto(), taxaPin,
+            bruto, taxaPin,
             valorIss, valorIr, valorCsll, valorPis, valorCofins,
             totalRetencoes, totalTributos,
             valorLiquidoMedico, resultadoPin,
-            cenario, req.competencia(), auditoria
+            cenario, req.competencia(), auditoria,
+            aliquotas.regime().name(),
+            valorCbs, valorIbs,
+            aliquotas.aliqCbs(), aliquotas.aliqIbs(), aliquotas.fatorIss(),
+            aliquotas.ibsCbsAtivo() ? req.cstIbsCbs() : null,
+            aliquotas.ibsCbsAtivo() ? req.cClassTrib() : null,
+            porFora, baseIbsCbs, valorTotalNota
         );
     }
 
@@ -134,8 +168,9 @@ public class MotorFiscalService {
             .longValue();
     }
 
-    private AliquotasCenario carregarAliquotas(String cnpjId, String competencia,
-                                               Map<String, BigDecimal> overrides) {
+    private AliquotasCenario carregarAliquotas(String cnpjId, CalculoFiscalRequest req) {
+        String competencia = req.competencia();
+        Map<String, BigDecimal> overrides = req.aliquotasOverride();
         // 1. Override do tomador tem prioridade; depois busca da empresa; depois fallback V1
         Optional<BigDecimal> iss   = override(overrides, "ISS")
             .or(() -> buscarAliquotaPerTributo(cnpjId, TipoTributo.ISS,    competencia));
@@ -148,38 +183,45 @@ public class MotorFiscalService {
         Optional<BigDecimal> cofins = override(overrides, "COFINS")
             .or(() -> buscarAliquotaPerTributo(cnpjId, TipoTributo.COFINS, competencia));
 
-        // 2. Regime geral (TASK-04.5, tabela parametro_fiscal V1) como fallback e fonte de IBS/CBS
+        // 2. Regime geral (parametro_fiscal V1): fallback das alíquotas e chave do regime
         LocalDate dataRef = competenciaToDate(competencia);
         Optional<ParametroFiscal> regimeGeral =
             p1Repo.findFirstByCnpjIdAndVigenciaInicioLessThanEqualOrderByVigenciaInicioDesc(cnpjId, dataRef);
 
-        if (regimeGeral.isPresent()) {
-            ParametroFiscal pf = regimeGeral.get();
-            BigDecimal ibsCbsEfetiva = null;
-            if (pf.isIbsCbsAtivo() && pf.getAliqIbsCbs() != null && pf.getReducaoIbsCbsSaude() != null) {
-                ibsCbsEfetiva = pf.getAliqIbsCbs()
-                    .multiply(BigDecimal.ONE.subtract(pf.getReducaoIbsCbsSaude()))
-                    .setScale(8, RoundingMode.HALF_UP);
-            }
+        BigDecimal aliqIss    = iss.orElse(regimeGeral.map(ParametroFiscal::getAliqIss).orElse(BigDecimal.ZERO));
+        BigDecimal aliqIr     = ir.orElse(regimeGeral.map(ParametroFiscal::getAliqIr).orElse(BigDecimal.ZERO));
+        BigDecimal aliqCsll   = csll.orElse(regimeGeral.map(ParametroFiscal::getAliqCsll).orElse(BigDecimal.ZERO));
+
+        // A chave só vale ligada e homologada pela contabilidade (CBS-10).
+        boolean regimeNovo = regimeGeral.map(pf -> pf.isIbsCbsAtivo() && pf.isHomologado()).orElse(false);
+        if (!regimeNovo) {
             return new AliquotasCenario(
-                iss.orElse(pf.getAliqIss()),
-                ir.orElse(pf.getAliqIr()),
-                csll.orElse(pf.getAliqCsll()),
-                pis.orElse(pf.getAliqPis()),
-                cofins.orElse(pf.getAliqCofins()),
-                pf.isIbsCbsAtivo(),
-                ibsCbsEfetiva
+                aliqIss, aliqIr, aliqCsll,
+                pis.orElse(regimeGeral.map(ParametroFiscal::getAliqPis).orElse(BigDecimal.ZERO)),
+                cofins.orElse(regimeGeral.map(ParametroFiscal::getAliqCofins).orElse(BigDecimal.ZERO)),
+                RegimeTributario.LEGADO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ONE
             );
         }
 
-        // 3. Sem nenhum parâmetro configurado: tributos zero (calcula mas não lança)
+        // 3. Regime IBS_CBS: alíquotas do ano no cronograma × (1 − redução do serviço).
+        short ano = (short) dataRef.getYear();
+        CronogramaReforma cron = cronogramaRepo.findById(ano).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Cronograma da reforma não cadastrado para " + ano));
+        if (cron.getAliqCbs() == null || cron.getAliqIbsUf() == null || cron.getAliqIbsMun() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Alíquotas de CBS/IBS de " + ano + " ainda não foram fixadas no cronograma da reforma");
+        }
+        BigDecimal reducao = req.reducaoIbsCbs() != null ? req.reducaoIbsCbs() : BigDecimal.ZERO;
+        BigDecimal fatorReducao = BigDecimal.ONE.subtract(reducao);
+        BigDecimal aliqCbs = cron.getAliqCbs().multiply(fatorReducao).setScale(8, RoundingMode.HALF_UP);
+        BigDecimal aliqIbs = cron.getAliqIbsUf().add(cron.getAliqIbsMun())
+            .multiply(fatorReducao).setScale(8, RoundingMode.HALF_UP);
+
         return new AliquotasCenario(
-            iss.orElse(BigDecimal.ZERO),
-            ir.orElse(BigDecimal.ZERO),
-            csll.orElse(BigDecimal.ZERO),
-            pis.orElse(BigDecimal.ZERO),
-            cofins.orElse(BigDecimal.ZERO),
-            false, null
+            aliqIss, aliqIr, aliqCsll,
+            BigDecimal.ZERO, BigDecimal.ZERO,   // PIS/COFINS extintos
+            RegimeTributario.IBS_CBS, aliqCbs, aliqIbs, cron.getFatorIss()
         );
     }
 

@@ -1406,11 +1406,19 @@ org.mockito.Mockito.lenient()
 **Compatibilidade:** jqwik 1.8.3 + Spring Boot 3.2.5 (JUnit 5.10.x) — funciona via SPI sem configuração extra.
 Maven: `<dependency><groupId>net.jqwik</groupId><artifactId>jqwik</artifactId><version>1.8.3</version><scope>test</scope></dependency>`
 
-### ISS vs IBS/CBS na transição 2027
-No cenário A (PJ com retenção), ISS permanece separado mesmo quando `ibsCbsAtivo=true`:
-- `valorIss = aliqIss * valorBruto` (ISS municipal persiste na transição)
-- `valorIr = aliqIbsCbsEfetiva * valorBruto` (IBS/CBS substitui IR/CSLL/PIS/COFINS)
-- `valorCsll = valorPis = valorCofins = 0`
+### Motor no regime IBS_CBS (CBS-13)
+O regime da competência vem do `parametro_fiscal` vigente: `ibs_cbs_ativo` **e** `homologado` →
+`IBS_CBS`; senão `LEGADO` (cálculo idêntico ao anterior). No `IBS_CBS`:
+- PIS/COFINS = 0; IR/CSLL continuam como antes (a reforma não os extingue).
+- ISS = alíquota × `fator_iss` do ano no `cronograma_reforma` (1 até 2028, 0 em 2033).
+- CBS = `aliq_cbs` do ano × (1 − redução do serviço); IBS = (`aliq_ibs_uf` + `aliq_ibs_mun`) × (1 − redução).
+  A redução e CST/cClassTrib chegam no `CalculoFiscalRequest` (vêm do serviço LC116, CBS-12).
+- `cbsIbsPorFora` (acerto com o tomador, CBS-01): `false`/null = dentro do preço, base =
+  bruto / (1 + CBS + IBS); `true` = base = bruto e `valorTotalNota` = bruto + CBS + IBS.
+- CBS/IBS são débito próprio da Pin em todos os cenários e **nunca** entram em `totalRetencoes`.
+  `totalTributos` inclui CBS/IBS; `resultadoPin` só desconta CBS/IBS quando estão dentro do preço.
+- Ano sem cronograma ou com alíquotas nulas → 422.
+- O antigo comportamento (IBS/CBS gravado em `valorIr` e IR/CSLL zerados) foi removido: estava errado.
 
 ---
 

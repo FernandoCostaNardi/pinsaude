@@ -12,12 +12,12 @@ public class AuditoriaFiscalService {
 
     public AuditoriaCenario registrar(String competencia, String cenario, AliquotasCenario aliquotas) {
         log.info(
-            "AUDITORIA_FISCAL competencia={} cenario={} iss={} ir={} csll={} pis={} cofins={} ibs_cbs={}",
-            competencia, cenario,
-            aliquotas.iss(), aliquotas.ir(), aliquotas.csll(),
-            aliquotas.pis(), aliquotas.cofins(),
-            aliquotas.ibsCbsAtivo()
+            "AUDITORIA_FISCAL competencia={} cenario={} regime={} iss={} fator_iss={} ir={} csll={} pis={} cofins={} cbs={} ibs={}",
+            competencia, cenario, aliquotas.regime(),
+            aliquotas.iss(), aliquotas.fatorIss(), aliquotas.ir(), aliquotas.csll(),
+            aliquotas.pis(), aliquotas.cofins(), aliquotas.aliqCbs(), aliquotas.aliqIbs()
         );
+        boolean novo = aliquotas.ibsCbsAtivo();
         return new AuditoriaCenario(
             competencia,
             cenario,
@@ -26,8 +26,12 @@ public class AuditoriaFiscalService {
             aliquotas.csll(),
             aliquotas.pis(),
             aliquotas.cofins(),
-            aliquotas.ibsCbsAtivo(),
-            aliquotas.aliqIbsCbsEfetiva()
+            novo,
+            novo ? aliquotas.aliqCbs().add(aliquotas.aliqIbs()) : null,
+            aliquotas.regime().name(),
+            aliquotas.aliqCbs(),
+            aliquotas.aliqIbs(),
+            aliquotas.fatorIss()
         );
     }
 }
