@@ -4,9 +4,10 @@ import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 
 /**
- * Endpoint simplificado para parametrizar IBS/CBS (Reforma Tributária 2027).
- * Cria um parametro_fiscal com ibsCbsAtivo=true e IR/CSLL/PIS/COFINS zerados.
- * Alíquotas como fração decimal: 0.01 = 1%, 0.60 = 60%.
+ * Liga a chave CBS/IBS da empresa a partir de uma competência (CBS-14).
+ * ISS/IR/CSLL/PIS/COFINS são copiados do parâmetro vigente; aliqIss opcional sobrescreve o ISS.
+ * aliqIbsCbs e reducaoSaude estão deprecados (alíquotas vêm do cronograma; redução vem do serviço LC116)
+ * e só são gravados se informados. Frações decimais: 0.01 = 1%, 0.60 = 60%.
  */
 public record IbsCbsRequest(
 
@@ -14,13 +15,15 @@ public record IbsCbsRequest(
     @Pattern(regexp = "\\d{4}-\\d{2}", message = "Formato: YYYY-MM")
     String competenciaInicio,
 
-    @NotNull @Positive
+    /** Deprecado. */
+    @Positive
     BigDecimal aliqIbsCbs,
 
-    @NotNull @DecimalMin("0") @DecimalMax("1")
+    /** Deprecado. */
+    @DecimalMin("0") @DecimalMax("1")
     BigDecimal reducaoSaude,
 
-    /** ISS ainda pode incidir no regime IBS/CBS — padrão 2% se não informado. */
+    /** Opcional: sobrescreve o ISS copiado do parâmetro vigente. */
     BigDecimal aliqIss,
 
     String observacoes

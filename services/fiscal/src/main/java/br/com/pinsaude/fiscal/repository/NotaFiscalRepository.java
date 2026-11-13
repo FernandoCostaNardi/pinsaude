@@ -1,6 +1,7 @@
 package br.com.pinsaude.fiscal.repository;
 
 import br.com.pinsaude.fiscal.domain.NotaFiscal;
+import br.com.pinsaude.fiscal.domain.RegimeTributario;
 import br.com.pinsaude.fiscal.domain.StatusNota;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -28,4 +29,26 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, UUID> {
 
     @Query("SELECT COUNT(n) FROM NotaFiscal n WHERE n.competencia = :comp AND n.status = :status")
     int countByCompetenciaAndStatus(@Param("comp") String competencia, @Param("status") StatusNota status);
+
+    /** CBS-14: há nota (não cancelada/rejeitada) da empresa entre as competências [de, ate). */
+    @Query("""
+        SELECT COUNT(n) > 0 FROM NotaFiscal n
+         WHERE n.cnpjIdTenant = :cnpj
+           AND n.competencia >= :de AND n.competencia < :ate
+           AND n.status NOT IN :ignorar
+        """)
+    boolean existeNotaNoPeriodo(@Param("cnpj") String cnpj, @Param("de") String de,
+                                @Param("ate") String ate, @Param("ignorar") Collection<StatusNota> ignorar);
+
+    /** CBS-14: idem, só notas calculadas num regime específico. */
+    @Query("""
+        SELECT COUNT(n) > 0 FROM NotaFiscal n
+         WHERE n.cnpjIdTenant = :cnpj
+           AND n.competencia >= :de AND n.competencia < :ate
+           AND n.status NOT IN :ignorar
+           AND n.regimeTributario = :regime
+        """)
+    boolean existeNotaNoPeriodoNoRegime(@Param("cnpj") String cnpj, @Param("de") String de,
+                                        @Param("ate") String ate, @Param("ignorar") Collection<StatusNota> ignorar,
+                                        @Param("regime") RegimeTributario regime);
 }

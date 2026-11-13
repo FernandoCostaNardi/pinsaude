@@ -17,4 +17,10 @@ public interface ParametroFiscalRepository extends JpaRepository<ParametroFiscal
     /** Retorna o parâmetro mais recente válido para a competência do fato gerador. */
     Optional<ParametroFiscal> findFirstByCnpjIdAndVigenciaInicioLessThanEqualOrderByVigenciaInicioDesc(
             String cnpjId, LocalDate dataReferencia);
+
+    /** Próximo parâmetro da empresa depois de uma vigência (delimita o período coberto por um parâmetro). */
+    Optional<ParametroFiscal> findFirstByCnpjIdAndVigenciaInicioGreaterThanOrderByVigenciaInicioAsc(
+            String cnpjId, LocalDate vigencia);
+
+    Optional<ParametroFiscal> findByCnpjIdAndVigenciaInicio(String cnpjId, LocalDate vigencia);
 }
