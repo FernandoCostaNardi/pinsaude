@@ -6,10 +6,11 @@ import {
 import {
   getParametrosFiscais, createParametroFiscal, verificarProximaCompetencia,
   getRegrasEquiparacao, createRegraEquiparacao, updateRegraEquiparacao,
-  getServicos,
+  getServicos, atualizarClassificacaoServico,
   type ParametroFiscalV2, type RegraEquiparacao, type ServicoLc116,
 } from '../api/fiscalApi'
 import { ParametroFiscal, IbsCbsRequest, parametrosFiscaisApi } from '../api/parametrosFiscaisApi'
+import { useAuth } from '../auth/useAuth'
 
 type Tab = 'aliquotas' | 'ibscbs' | 'equiparacao' | 'servicos'
 
@@ -410,9 +411,21 @@ function AbaEquiparacao() {
 // ─── Aba Serviços Cadastrados ──────────────────────────────────────────────────
 
 function AbaServicos() {
+  const { user } = useAuth()
+  const roles = user?.realm_access?.roles ?? []
+  const podeEditar = ['contabil', 'gestao', 'perm_fiscal'].some(r => roles.includes(r))
+
   const [servicos, setServicos] = useState<ServicoLc116[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
+
+  const [editId, setEditId] = useState<string | null>(null)
+  const [fNbs, setFNbs] = useState('')
+  const [fCst, setFCst] = useState('')
+  const [fClass, setFClass] = useState('')
+  const [fReducao, setFReducao] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [erroForm, setErroForm] = useState('')
 
   useEffect(() => {
     getServicos()
@@ -421,8 +434,40 @@ function AbaServicos() {
       .finally(() => setLoading(false))
   }, [])
 
+  const abrirEdicao = (s: ServicoLc116) => {
+    setEditId(s.id)
+    setFNbs(s.nbs ?? '')
+    setFCst(s.cstIbsCbs ?? '200')
+    setFClass(s.cClassTrib ?? '200029')
+    setFReducao(s.reducaoIbsCbs != null ? String(+(s.reducaoIbsCbs * 100).toFixed(2)) : '60')
+    setErroForm('')
+  }
+
+  const salvar = async () => {
+    if (!/^\d\.\d{4}\.\d{2}\.\d{2}$/.test(fNbs)) { setErroForm('NBS no formato 1.2301.19.00'); return }
+    if (!/^\d{3}$/.test(fCst)) { setErroForm('CST deve ter 3 dígitos'); return }
+    if (!/^\d{6}$/.test(fClass)) { setErroForm('cClassTrib deve ter 6 dígitos'); return }
+    const red = Number(fReducao.replace(',', '.'))
+    if (!Number.isFinite(red) || red < 0 || red > 100) { setErroForm('Redução deve estar entre 0% e 100%'); return }
+    setSaving(true); setErroForm('')
+    try {
+      const atualizado = await atualizarClassificacaoServico(editId!, {
+        nbs: fNbs, cstIbsCbs: fCst, cClassTrib: fClass, reducaoIbsCbs: red / 100,
+      })
+      setServicos(ss => ss.map(x => (x.id === atualizado.id ? atualizado : x)))
+      setEditId(null)
+    } catch (e) {
+      setErroForm(e instanceof Error ? e.message : 'Erro ao salvar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) return <p className="text-ds-mid text-sm py-8 text-center">Carregando...</p>
   if (erro) return <p className="text-red-500 text-sm py-4">{erro}</p>
+
+  const semClassificacao = servicos.filter(s => !s.nbs || !s.cClassTrib).length
+  const inputCls = 'w-full border border-ds-border rounded px-2 py-1 text-xs font-mono'
 
   return (
     <div className="space-y-4">
@@ -430,8 +475,15 @@ function AbaServicos() {
         <strong>Estes são os valores padrão do catálogo LC 116/2003</strong> — fixos por tipo de serviço.
         As alíquotas efetivas usadas nos cálculos fiscais e no preview de produção são as configuradas
         na aba <strong>"Alíquotas por Competência"</strong>, que substituem estes valores padrão.
+        A classificação CBS/IBS (NBS, CST, cClassTrib e redução) é usada pelas notas no regime novo.
       </div>
-      <div className="border border-ds-border rounded-xl overflow-hidden">
+      {semClassificacao > 0 && (
+        <div className="rounded-lg border border-ds-border bg-white px-4 py-3 text-sm text-ds-nav flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+          {semClassificacao} serviço(s) sem classificação CBS/IBS. Só precisam dela os serviços que a Pin fatura.
+        </div>
+      )}
+      <div className="border border-ds-border rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-xs text-ds-mid uppercase">
             <tr>
@@ -442,10 +494,33 @@ function AbaServicos() {
               <th className="px-4 py-2 text-right">CSLL</th>
               <th className="px-4 py-2 text-right">PIS</th>
               <th className="px-4 py-2 text-right">COFINS</th>
+              <th className="px-4 py-2 text-left">NBS</th>
+              <th className="px-4 py-2 text-left">CST</th>
+              <th className="px-4 py-2 text-left">cClassTrib</th>
+              <th className="px-4 py-2 text-right">Redução</th>
+              {podeEditar && <th className="px-4 py-2" />}
             </tr>
           </thead>
           <tbody>
-            {servicos.map(s => (
+            {servicos.map(s => editId === s.id ? (
+              <tr key={s.id} className="border-t border-ds-border bg-primary-50/40">
+                <td className="px-4 py-2 font-mono text-xs font-semibold">{s.codigoLc116}</td>
+                <td className="px-4 py-2 text-ds-nav" colSpan={6}>
+                  {s.descricaoPadrao}
+                  {erroForm && <p className="text-red-600 text-xs mt-1">{erroForm}</p>}
+                </td>
+                <td className="px-2 py-2 min-w-[120px]"><input className={inputCls} value={fNbs} onChange={e => setFNbs(e.target.value)} placeholder="1.2301.19.00" /></td>
+                <td className="px-2 py-2 min-w-[60px]"><input className={inputCls} value={fCst} onChange={e => setFCst(e.target.value)} maxLength={3} /></td>
+                <td className="px-2 py-2 min-w-[80px]"><input className={inputCls} value={fClass} onChange={e => setFClass(e.target.value)} maxLength={6} /></td>
+                <td className="px-2 py-2 min-w-[70px]"><input className={inputCls + ' text-right'} value={fReducao} onChange={e => setFReducao(e.target.value)} placeholder="60" /></td>
+                <td className="px-2 py-2 whitespace-nowrap">
+                  <button onClick={salvar} disabled={saving} className="text-xs bg-primary text-white rounded px-2 py-1 mr-1 disabled:opacity-50">
+                    {saving ? 'Salvando...' : 'Salvar'}
+                  </button>
+                  <button onClick={() => setEditId(null)} className="text-xs text-ds-mid px-1"><X className="w-3.5 h-3.5 inline" /></button>
+                </td>
+              </tr>
+            ) : (
               <tr key={s.id} className="border-t border-ds-border hover:bg-ds-input/30">
                 <td className="px-4 py-2 font-mono text-xs font-semibold">{s.codigoLc116}</td>
                 <td className="px-4 py-2 text-ds-nav">{s.descricaoPadrao}</td>
@@ -454,6 +529,17 @@ function AbaServicos() {
                 <td className="px-4 py-2 text-right text-xs">{fmtPct(s.aliquotaCsll / 100)}</td>
                 <td className="px-4 py-2 text-right text-xs">{fmtPct(s.aliquotaPis / 100)}</td>
                 <td className="px-4 py-2 text-right text-xs">{fmtPct(s.aliquotaCofins / 100)}</td>
+                <td className="px-4 py-2 font-mono text-xs">{s.nbs ?? <span className="text-ds-light">—</span>}</td>
+                <td className="px-4 py-2 font-mono text-xs">{s.cstIbsCbs ?? <span className="text-ds-light">—</span>}</td>
+                <td className="px-4 py-2 font-mono text-xs">{s.cClassTrib ?? <span className="text-ds-light">—</span>}</td>
+                <td className="px-4 py-2 text-right text-xs">{s.nbs ? fmtPct(s.reducaoIbsCbs ?? 0) : '—'}</td>
+                {podeEditar && (
+                  <td className="px-2 py-2 text-right">
+                    <button onClick={() => abrirEdicao(s)} title="Editar classificação CBS/IBS" className="text-ds-mid hover:text-primary">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

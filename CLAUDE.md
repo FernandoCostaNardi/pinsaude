@@ -1350,6 +1350,19 @@ com CBS/IBS zerados. Telas e relatórios devem ler esses campos da nota, nunca d
 atual da empresa. `NotaFiscalStatusResponse` e o tipo `NotaFiscal` do `nfseApi.ts` expõem tudo.
 `retencoes_sofridas` não mudou: retenção de CBS/IBS só existe para tomador público, fora de escopo.
 
+### Classificação CBS/IBS do serviço LC116 (CBS-12)
+Decisão (Fernando, 2026-11-13): o NBS fica no **serviço LC116** (`faturamento.servicos`), não no
+setor operacional. A V53 do faturamento adicionou `nbs` (formato `1.2301.19.00`), `cst_ibs_cbs`
+(3 dígitos), `c_class_trib` (6 dígitos) e `reducao_ibs_cbs` (**fração**, 0.6000 = 60%, default 0),
+com CHECKs de formato e de 0..1. Atenção: as alíquotas antigas dessa mesma tabela são percentuais
+(5.0000), a redução nova é fração.
+Preenchidos na V53 (provisório, a confirmar com o contador): 4.01/4.03/4.11 → NBS 1.2301.19.00 e
+4.02/4.13 → 1.2301.22.00, todos com CST 200, cClassTrib 200029 e redução 60%. Os demais ficam nulos
+(a Pin não fatura). Edição: `PUT /api/servicos/{id}/classificacao-tributaria`
+(`contabil`/`gestao`/`perm_fiscal`), na aba "Serviços Cadastrados" da Configuração Fiscal (a tela
+recebe a redução em % e envia fração). O fiscal não conhece o serviço (`EmitirNfseRequest` não tem
+servicoId): o motor (CBS-13) precisa receber a classificação vinda do serviço da produção.
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

@@ -40,6 +40,19 @@ public class Servico {
     @Column(name = "aliquota_cofins", nullable = false, precision = 7, scale = 4)
     private BigDecimal aliquotaCofins;
 
+    // CBS-12 — classificação tributária para CBS/IBS
+    @Column(name = "nbs", length = 12)
+    private String nbs;
+
+    @Column(name = "cst_ibs_cbs", length = 3)
+    private String cstIbsCbs;
+
+    @Column(name = "c_class_trib", length = 6)
+    private String cClassTrib;
+
+    @Column(name = "reducao_ibs_cbs", nullable = false, precision = 5, scale = 4)
+    private BigDecimal reducaoIbsCbs = BigDecimal.ZERO;
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     public String getCodigoLc116() { return codigoLc116; }
@@ -60,4 +73,12 @@ public class Servico {
     public void setAliquotaPis(BigDecimal aliquotaPis) { this.aliquotaPis = aliquotaPis; }
     public BigDecimal getAliquotaCofins() { return aliquotaCofins; }
     public void setAliquotaCofins(BigDecimal aliquotaCofins) { this.aliquotaCofins = aliquotaCofins; }
+    public String getNbs() { return nbs; }
+    public void setNbs(String nbs) { this.nbs = nbs; }
+    public String getCstIbsCbs() { return cstIbsCbs; }
+    public void setCstIbsCbs(String cstIbsCbs) { this.cstIbsCbs = cstIbsCbs; }
+    public String getCClassTrib() { return cClassTrib; }
+    public void setCClassTrib(String cClassTrib) { this.cClassTrib = cClassTrib; }
+    public BigDecimal getReducaoIbsCbs() { return reducaoIbsCbs; }
+    public void setReducaoIbsCbs(BigDecimal reducaoIbsCbs) { this.reducaoIbsCbs = reducaoIbsCbs; }
 }
