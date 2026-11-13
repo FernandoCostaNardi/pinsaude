@@ -2,6 +2,7 @@ package br.com.pinsaude.fiscal.domain;
 
 import jakarta.persistence.*;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +59,32 @@ public class NotaFiscal {
     @Column(name = "valor_cofins", nullable = false)
     private Long valorCofins = 0L;
 
+    // Reforma tributária (CBS-11): snapshot do regime usado no cálculo desta nota.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "regime_tributario", nullable = false, length = 10)
+    private RegimeTributario regimeTributario = RegimeTributario.LEGADO;
+
+    @Column(name = "valor_cbs", nullable = false)
+    private Long valorCbs = 0L;
+
+    @Column(name = "valor_ibs", nullable = false)
+    private Long valorIbs = 0L;
+
+    @Column(name = "aliq_cbs", precision = 8, scale = 4)
+    private BigDecimal aliqCbs;
+
+    @Column(name = "aliq_ibs", precision = 8, scale = 4)
+    private BigDecimal aliqIbs;
+
+    @Column(name = "cst_ibs_cbs", length = 3)
+    private String cstIbsCbs;
+
+    @Column(name = "c_class_trib", length = 6)
+    private String cClassTrib;
+
+    @Column(name = "fator_iss", precision = 6, scale = 4)
+    private BigDecimal fatorIss;
+
     // CHECK constraint no DB garante: valor_liquido_medico = valor_bruto - taxa_pin (sempre 85%)
     @Column(name = "valor_liquido_medico", nullable = false)
     private Long valorLiquidoMedico;
@@ -100,6 +127,9 @@ public class NotaFiscal {
     void prePersist() {
         if (createdAt == null) createdAt = OffsetDateTime.now();
         if (status == null) status = StatusNota.PENDENTE;
+        if (regimeTributario == null) regimeTributario = RegimeTributario.LEGADO;
+        if (valorCbs == null) valorCbs = 0L;
+        if (valorIbs == null) valorIbs = 0L;
     }
 
     public UUID getId()                              { return id; }
@@ -131,6 +161,22 @@ public class NotaFiscal {
     public void setValorPis(Long v)                  { this.valorPis = v; }
     public Long getValorCofins()                     { return valorCofins; }
     public void setValorCofins(Long v)               { this.valorCofins = v; }
+    public RegimeTributario getRegimeTributario()    { return regimeTributario; }
+    public void setRegimeTributario(RegimeTributario v) { this.regimeTributario = v; }
+    public Long getValorCbs()                        { return valorCbs; }
+    public void setValorCbs(Long v)                  { this.valorCbs = v; }
+    public Long getValorIbs()                        { return valorIbs; }
+    public void setValorIbs(Long v)                  { this.valorIbs = v; }
+    public BigDecimal getAliqCbs()                   { return aliqCbs; }
+    public void setAliqCbs(BigDecimal v)             { this.aliqCbs = v; }
+    public BigDecimal getAliqIbs()                   { return aliqIbs; }
+    public void setAliqIbs(BigDecimal v)             { this.aliqIbs = v; }
+    public String getCstIbsCbs()                     { return cstIbsCbs; }
+    public void setCstIbsCbs(String v)               { this.cstIbsCbs = v; }
+    public String getCClassTrib()                    { return cClassTrib; }
+    public void setCClassTrib(String v)              { this.cClassTrib = v; }
+    public BigDecimal getFatorIss()                  { return fatorIss; }
+    public void setFatorIss(BigDecimal v)            { this.fatorIss = v; }
     public Long getValorLiquidoMedico()              { return valorLiquidoMedico; }
     public void setValorLiquidoMedico(Long v)        { this.valorLiquidoMedico = v; }
     public StatusNota getStatus()                    { return status; }

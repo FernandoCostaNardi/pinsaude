@@ -44,7 +44,19 @@ export interface NotaFiscal {
   emissaoExterna?: boolean
   temPdf?: boolean
   temXml?: boolean
+  // Reforma tributária (CBS-11): snapshot do regime e dos tributos gravados na nota.
+  // Valores em centavos; alíquotas em fração (0.0360 = 3,6%), já com a redução do serviço.
+  regimeTributario?: RegimeTributario
+  valorCbs?: number
+  valorIbs?: number
+  aliqCbs?: number | null
+  aliqIbs?: number | null
+  cstIbsCbs?: string | null
+  cClassTrib?: string | null
+  fatorIss?: number | null
 }
+
+export type RegimeTributario = 'LEGADO' | 'IBS_CBS'
 
 export interface EmitirNfseRequest {
   producaoId: string
