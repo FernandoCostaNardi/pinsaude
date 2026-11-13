@@ -17,6 +17,10 @@ export interface Servico {
   aliquotaCsll: number
   aliquotaPis: number
   aliquotaCofins: number
+  nbs?: string | null
+  cstIbsCbs?: string | null
+  cClassTrib?: string | null
+  reducaoIbsCbs?: number | null
 }
 
 function authHeaders(): HeadersInit {

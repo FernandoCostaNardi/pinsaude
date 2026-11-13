@@ -15,13 +15,18 @@ public record ServicoResponse(
     BigDecimal aliquotaIr,
     BigDecimal aliquotaCsll,
     BigDecimal aliquotaPis,
-    BigDecimal aliquotaCofins
+    BigDecimal aliquotaCofins,
+    String nbs,
+    String cstIbsCbs,
+    String cClassTrib,
+    BigDecimal reducaoIbsCbs
 ) {
     public static ServicoResponse from(Servico s) {
         return new ServicoResponse(
             s.getId(), s.getCodigoLc116(), s.getCnae(), s.getDescricaoPadrao(),
             s.isIndicadorEquiparacao(), s.getAliquotaIss(), s.getAliquotaIr(),
-            s.getAliquotaCsll(), s.getAliquotaPis(), s.getAliquotaCofins()
+            s.getAliquotaCsll(), s.getAliquotaPis(), s.getAliquotaCofins(),
+            s.getNbs(), s.getCstIbsCbs(), s.getCClassTrib(), s.getReducaoIbsCbs()
         );
     }
 }

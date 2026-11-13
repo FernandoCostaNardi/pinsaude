@@ -158,6 +158,37 @@ export interface ServicoLc116 {
   aliquotaCsll: number
   aliquotaPis: number
   aliquotaCofins: number
+  /** Classificação CBS/IBS do serviço (CBS-12). Nulos = serviço ainda não classificado. */
+  nbs?: string | null
+  cstIbsCbs?: string | null
+  cClassTrib?: string | null
+  /** Fração: 0.6 = 60% de redução */
+  reducaoIbsCbs?: number | null
+}
+
+export interface ServicoClassificacaoRequest {
+  nbs: string
+  cstIbsCbs: string
+  cClassTrib: string
+  /** Fração: 0.6 = 60% */
+  reducaoIbsCbs: number
+}
+
+export async function atualizarClassificacaoServico(
+  id: string,
+  req: ServicoClassificacaoRequest,
+): Promise<ServicoLc116> {
+  const r = await fetch(`/api/servicos/${id}/classificacao-tributaria`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!r.ok) {
+    let msg = `Erro ao salvar classificação: ${r.status}`
+    try { const b = await r.json(); msg = b.mensagem ?? b.message ?? b.detail ?? msg } catch { /* ignore */ }
+    throw new Error(msg)
+  }
+  return r.json()
 }
 
 export async function getServicos(): Promise<ServicoLc116[]> {
