@@ -4,6 +4,7 @@ import br.com.pinsaude.fiscal.domain.ParametroFiscal;
 import br.com.pinsaude.fiscal.domain.TipoTributo;
 import br.com.pinsaude.fiscal.dto.CalculoFiscalRequest;
 import br.com.pinsaude.fiscal.dto.CalculoFiscalResponse;
+import br.com.pinsaude.fiscal.repository.CronogramaReformaRepository;
 import br.com.pinsaude.fiscal.repository.ParametroFiscalRepository;
 import br.com.pinsaude.fiscal.repository.ParametrosFiscaisRepository;
 import br.com.pinsaude.fiscal.service.AuditoriaFiscalService;
@@ -52,7 +53,7 @@ class MotorFiscalPropertyTest {
                 anyString(), any(LocalDate.class)))
             .thenReturn(Optional.of(parametroPadrao()));
 
-        motor = new MotorFiscalService(pfRepo, p1Repo, new AuditoriaFiscalService());
+        motor = new MotorFiscalService(pfRepo, p1Repo, mock(CronogramaReformaRepository.class), new AuditoriaFiscalService());
     }
 
     /**

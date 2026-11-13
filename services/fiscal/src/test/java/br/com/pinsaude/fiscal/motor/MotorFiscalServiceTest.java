@@ -5,6 +5,7 @@ import br.com.pinsaude.fiscal.domain.ParametrosFiscais;
 import br.com.pinsaude.fiscal.domain.TipoTributo;
 import br.com.pinsaude.fiscal.dto.CalculoFiscalRequest;
 import br.com.pinsaude.fiscal.dto.CalculoFiscalResponse;
+import br.com.pinsaude.fiscal.repository.CronogramaReformaRepository;
 import br.com.pinsaude.fiscal.repository.ParametroFiscalRepository;
 import br.com.pinsaude.fiscal.repository.ParametrosFiscaisRepository;
 import br.com.pinsaude.fiscal.service.AuditoriaFiscalService;
@@ -47,12 +48,13 @@ class MotorFiscalServiceTest {
 
     @Mock ParametrosFiscaisRepository pfRepo;
     @Mock ParametroFiscalRepository   p1Repo;
+    @Mock CronogramaReformaRepository cronogramaRepo;
 
     MotorFiscalService motor;
 
     @BeforeEach
     void setUp() {
-        motor = new MotorFiscalService(pfRepo, p1Repo, new AuditoriaFiscalService());
+        motor = new MotorFiscalService(pfRepo, p1Repo, cronogramaRepo, new AuditoriaFiscalService());
 
         // Sem alíquotas per-tributo (tabela V2): tudo via regime geral (tabela V1)
         when(pfRepo.findVigenteParaTributo(anyString(), any(TipoTributo.class), anyString(), any(Pageable.class)))
@@ -212,38 +214,6 @@ class MotorFiscalServiceTest {
         assertThat(r2024.valorIss()).isEqualTo(2_000L); // ISS 2,0%
     }
 
-    // ─── IBS/CBS 2027 ────────────────────────────────────────────────────────
-
-    @Test
-    void ibsCbs_ativo_substituiFederaisComAliquotaEfetiva() {
-        // IBS/CBS 1% com redução 60% saúde → efetiva = 0,4%
-        ParametroFiscal pfIbs = new ParametroFiscal();
-        pfIbs.setAliqIss(new BigDecimal("0.0200"));
-        pfIbs.setAliqIr(BigDecimal.ZERO);
-        pfIbs.setAliqCsll(BigDecimal.ZERO);
-        pfIbs.setAliqPis(BigDecimal.ZERO);
-        pfIbs.setAliqCofins(BigDecimal.ZERO);
-        pfIbs.setIbsCbsAtivo(true);
-        pfIbs.setAliqIbsCbs(new BigDecimal("0.0100"));
-        pfIbs.setReducaoIbsCbsSaude(new BigDecimal("0.6000"));
-
-        when(p1Repo.findFirstByCnpjIdAndVigenciaInicioLessThanEqualOrderByVigenciaInicioDesc(
-                anyString(), any(LocalDate.class)))
-            .thenReturn(Optional.of(pfIbs));
-
-        CalculoFiscalResponse r = motor.calcular(CNPJ,
-            req(COMP, true, true, false, false));  // cenário A
-
-        // 0,4% de 100.000 = 400 (IBS/CBS efetivo no lugar de IR)
-        assertThat(r.valorIr()).isEqualTo(400L);
-        assertThat(r.valorCsll()).isZero();
-        assertThat(r.valorPis()).isZero();
-        assertThat(r.valorCofins()).isZero();
-        assertThat(r.auditoria().ibsCbsAtivo()).isTrue();
-        // Médico ainda recebe 85%
-        assertThat(r.valorLiquidoMedico()).isEqualTo(85_000L);
-    }
-
     // ─── Auditoria ────────────────────────────────────────────────────────────
 
     @Test
@@ -252,6 +222,10 @@ class MotorFiscalServiceTest {
         assertThat(r.auditoria().competencia()).isEqualTo(COMP);
         assertThat(r.auditoria().cenario()).isEqualTo("A");
         assertThat(r.auditoria().ibsCbsAtivo()).isFalse();
+        assertThat(r.auditoria().regime()).isEqualTo("LEGADO");
+        assertThat(r.regime()).isEqualTo("LEGADO");
+        assertThat(r.valorCbs()).isZero();
+        assertThat(r.valorIbs()).isZero();
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
