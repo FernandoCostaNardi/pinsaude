@@ -1,3 +1,5 @@
+import type { RegimeTributario } from '../fiscal/tributos'
+
 const STORAGE_KEY = 'pinsaude_tokens'
 
 function getToken(): string {
@@ -56,7 +58,7 @@ export interface NotaFiscal {
   fatorIss?: number | null
 }
 
-export type RegimeTributario = 'LEGADO' | 'IBS_CBS'
+export type { RegimeTributario }
 
 export interface EmitirNfseRequest {
   producaoId: string

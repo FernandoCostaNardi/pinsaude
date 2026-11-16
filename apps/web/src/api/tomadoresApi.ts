@@ -1,3 +1,5 @@
+import type { TributoComAliquotaCadastrada } from '../fiscal/tributos'
+
 import type { TipoEscala } from '../utils/tipoEscala'
 
 const STORAGE_KEY = 'pinsaude_tokens'
@@ -32,7 +34,7 @@ export type TipoTomador = 'HOSPITAL' | 'CLINICA' | 'OPERADORA' | 'PACIENTE_PF'
 
 export interface TomadorAliquota {
   id: string
-  tipoTributo: 'ISS' | 'IR' | 'CSLL' | 'PIS' | 'COFINS'
+  tipoTributo: TributoComAliquotaCadastrada
   valorAliquota: number  // percentual: 5.0000 = 5%
 }
 

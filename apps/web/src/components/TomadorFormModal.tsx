@@ -4,6 +4,7 @@ import { Modal, Input, Button, Alert } from '@pinsaude/ui'
 import { CnpjInput } from './CnpjInput'
 import { CpfInput } from './CpfInput'
 import { isValidCnpj } from '../utils/cnpj'
+import { TRIBUTOS_COM_ALIQUOTA_CADASTRADA, type TributoComAliquotaCadastrada } from '../fiscal/tributos'
 import { Tomador, TomadorRequest, TipoTomador, TomadorCnae, TomadorServico, TomadorEmpresa, tomadoresApi } from '../api/tomadoresApi'
 import { Servico, servicosApi } from '../api/servicosApi'
 import { Empresa, empresasApi } from '../api/empresasApi'
@@ -24,8 +25,9 @@ const TIPO_COLORS: Record<TipoTomador, string> = {
   PACIENTE_PF: 'border-orange-400 bg-orange-50 text-orange-700',
 }
 
-const TRIBUTOS = ['ISS', 'IR', 'CSLL', 'PIS', 'COFINS'] as const
-type Tributo = typeof TRIBUTOS[number]
+// Alíquotas por tomador só existem para os tributos com alíquota cadastrada (CBS/IBS vêm do cronograma)
+const TRIBUTOS = TRIBUTOS_COM_ALIQUOTA_CADASTRADA
+type Tributo = TributoComAliquotaCadastrada
 
 const EMPTY_ALIQ: Record<Tributo, string> = { ISS: '', IR: '', CSLL: '', PIS: '', COFINS: '' }
 
