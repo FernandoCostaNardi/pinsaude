@@ -193,7 +193,7 @@ public class MotorFiscalService {
         BigDecimal aliqCsll   = csll.orElse(regimeGeral.map(ParametroFiscal::getAliqCsll).orElse(BigDecimal.ZERO));
 
         // A chave só vale ligada e homologada pela contabilidade (CBS-10).
-        boolean regimeNovo = regimeGeral.map(pf -> pf.isIbsCbsAtivo() && pf.isHomologado()).orElse(false);
+        boolean regimeNovo = regimeGeral.map(ParametroFiscal::isRegimeIbsCbsVigente).orElse(false);
         if (!regimeNovo) {
             return new AliquotasCenario(
                 aliqIss, aliqIr, aliqCsll,
