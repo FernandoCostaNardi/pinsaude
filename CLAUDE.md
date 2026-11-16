@@ -1377,6 +1377,20 @@ Preenchidos na V53 (provisório, a confirmar com o contador): 4.01/4.03/4.11 →
 recebe a redução em % e envia fração). O fiscal não conhece o serviço (`EmitirNfseRequest` não tem
 servicoId): o motor (CBS-13) precisa receber a classificação vinda do serviço da produção.
 
+### Regime por competência para telas e faturamento (CBS-15)
+`GET /api/fiscal/regime?competencia=AAAA-MM` devolve o regime da empresa do token na competência,
+com a mesma regra do motor (`ParametroFiscal.isRegimeIbsCbsVigente()`: chave ligada **e** homologada):
+`regime` (`LEGADO` | `IBS_CBS`), `tributosVisiveis` (`[ISS, IR, CSLL, PIS, COFINS]` ou
+`[ISS, IR, CSLL, CBS, IBS]`, sem ISS quando o `fator_iss` do ano é 0, isto é, 2033), `chaveLigada`,
+`homologado` (do parâmetro vigente, para a tela avisar "ligada, aguardando homologação"),
+`vigenciaParametro` (AAAA-MM) e `aliquotas` do ano no cronograma (frações, sem a redução do serviço;
+`ibs` = UF + municipal; nulas se ainda não fixadas; `null` no LEGADO). Ano sem cronograma → 422;
+competência fora do formato → 400.
+Perfis: `contabil`/`gestao`/`financeiro`/`operacao`/`perm_fiscal`/`perm_notas`/`perm_producao`
+(os mesmos que calculam tributos nas telas). Quem não tem `cnpj_id` no token (gestão) passa
+`&cnpj=` (sem ele, 400); com `cnpj_id` no token o parâmetro é ignorado. Médico não usa: o portal
+lê o regime gravado na nota (CBS-22). Para notas já emitidas, sempre o snapshot da nota (CBS-11).
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

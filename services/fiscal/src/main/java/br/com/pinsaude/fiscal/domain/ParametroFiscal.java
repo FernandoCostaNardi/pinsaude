@@ -100,4 +100,7 @@ public class ParametroFiscal {
     public String getObservacoes()               { return observacoes; }
     public void setObservacoes(String v)         { this.observacoes = v; }
     public OffsetDateTime getCreatedAt()         { return createdAt; }
+
+    /** A chave CBS/IBS só vale ligada e homologada pela contabilidade (CBS-10/13/15). */
+    public boolean isRegimeIbsCbsVigente()       { return ibsCbsAtivo && homologado; }
 }
