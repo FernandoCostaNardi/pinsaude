@@ -1341,6 +1341,20 @@ primeira competência no regime novo, valendo só homologada. A homologação ag
 `aliq_ibs_cbs`/`reducao_ibs_cbs_saude` estão **deprecados**: as alíquotas vêm do cronograma do ano e a
 redução de 60% passa a ser do serviço (cClassTrib 200029, CBS-12).
 
+### Ligar e desligar a chave CBS/IBS (CBS-14)
+`POST /api/parametros-fiscais/ibs-cbs` só liga a chave da empresa a partir de `competenciaInicio`:
+copia ISS/IR/CSLL/PIS/COFINS do parâmetro vigente (422 se não houver nenhum), não zera mais nada
+(`aliqIss` opcional sobrescreve o ISS; `aliqIbsCbs`/`reducaoSaude` viraram opcionais e deprecados).
+Se já existe parâmetro na mesma vigência, liga nesse registro (409 se já ligado). Ligar sempre zera
+a homologação. `DELETE /api/parametros-fiscais/{id}/ibs-cbs` desliga.
+Travas (422), sempre no período do parâmetro, isto é, da vigência até a vigência do próximo parâmetro:
+- ligar (aqui ou no `POST` genérico) e homologar uma chave ligada: bloqueia se já há nota da empresa
+  não cancelada/rejeitada no período;
+- desligar (aqui ou num `POST` genérico com chave desligada depois de um regime novo homologado):
+  bloqueia se há nota no regime `IBS_CBS` no período.
+`homologar` virou idempotente e, como `desligar`, devolve "não encontrado" para parâmetro de outra
+empresa (gestão sem tenant altera qualquer um).
+
 ### Regime e valores de CBS/IBS na nota fiscal (CBS-11)
 `fiscal.notas_fiscais` (V16) guarda o snapshot do regime usado no cálculo: `regime_tributario`
 (`LEGADO` | `IBS_CBS`, default `LEGADO`, enum Java `RegimeTributario`), `valor_cbs`/`valor_ibs`
