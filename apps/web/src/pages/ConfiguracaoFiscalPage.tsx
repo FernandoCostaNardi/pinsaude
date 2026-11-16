@@ -11,10 +11,12 @@ import {
 } from '../api/fiscalApi'
 import { ParametroFiscal, IbsCbsRequest, parametrosFiscaisApi } from '../api/parametrosFiscaisApi'
 import { useAuth } from '../auth/useAuth'
+import { TRIBUTOS_COM_ALIQUOTA_CADASTRADA } from '../fiscal/tributos'
 
 type Tab = 'aliquotas' | 'ibscbs' | 'equiparacao' | 'servicos'
 
-const TRIBUTOS = ['ISS', 'IR', 'CSLL', 'PIS', 'COFINS'] as const
+// Alíquotas por competência só existem para estes tributos; CBS/IBS vêm do cronograma da reforma
+const TRIBUTOS = TRIBUTOS_COM_ALIQUOTA_CADASTRADA
 const fmtPct = (v: number | null) =>
   v == null ? '—' : `${(v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`
 const fmtComp = (comp: string) => {
