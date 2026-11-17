@@ -4,7 +4,10 @@ import { Modal, Input, Button, Alert } from '@pinsaude/ui'
 import { CnpjInput } from './CnpjInput'
 import { CpfInput } from './CpfInput'
 import { isValidCnpj } from '../utils/cnpj'
-import { TRIBUTOS_COM_ALIQUOTA_CADASTRADA, type TributoComAliquotaCadastrada } from '../fiscal/tributos'
+import { TRIBUTOS_COM_ALIQUOTA_CADASTRADA, competenciaAtual, type TributoComAliquotaCadastrada } from '../fiscal/tributos'
+import { rotuloRetencaoFederal } from '../fiscal/calculoNota'
+import { useRegimeFiscal } from '../hooks/useRegimeFiscal'
+import { useAuth } from '../auth/useAuth'
 import { Tomador, TomadorRequest, TipoTomador, TomadorCnae, TomadorServico, TomadorEmpresa, tomadoresApi } from '../api/tomadoresApi'
 import { Servico, servicosApi } from '../api/servicosApi'
 import { Empresa, empresasApi } from '../api/empresasApi'
@@ -105,6 +108,18 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
   // Empresas Pin vinculadas — catálogo + vínculos do tomador
   const [todasEmpresas, setTodasEmpresas]       = useState<Empresa[]>([])
   const [vinculadas, setVinculadas]             = useState<TomadorEmpresa[]>([])
+
+  // CBS-21: as alíquotas do tomador não têm competência; a tela segue o regime do mês corrente.
+  // No regime novo (CBS/IBS) PIS e COFINS somem da tela; valores já cadastrados ficam guardados
+  // e continuam valendo para notas de competências anteriores à virada.
+  const { user } = useAuth()
+  const cnpjRegime = user?.cnpj_id
+    ? null
+    : todasEmpresas.find(e => vinculadas.some(v => v.empresaId === e.id))?.cnpj ?? null
+  const { regime, tributosVisiveis } = useRegimeFiscal(
+    user?.cnpj_id || cnpjRegime ? competenciaAtual() : null, cnpjRegime)
+  const tributosAliquota = TRIBUTOS.filter(t => tributosVisiveis.includes(t))
+  const retencaoFederalTxt = rotuloRetencaoFederal(tributosVisiveis)
   const [pendingEmpresas, setPendingEmpresas]   = useState<PendingEmpresa[]>([])
   const [novoEmpresaId, setNovoEmpresaId]       = useState('')
   const [empresaLoading, setEmpresaLoading]     = useState(false)
@@ -654,11 +669,11 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm font-medium text-ds-text">Retenção Federal</span>
                   <span className="cursor-help text-ds-light hover:text-primary transition-colors"
-                    title="Retém IR, CSLL, PIS e COFINS sobre o valor do serviço na emissão da nota fiscal">
+                    title={`Retém ${retencaoFederalTxt} sobre o valor do serviço na emissão da nota fiscal`}>
                     <Info size={13} />
                   </span>
                 </div>
-                <p className="text-xs text-ds-light mt-0.5">IR, CSLL, PIS e COFINS retidos na fonte</p>
+                <p className="text-xs text-ds-light mt-0.5">{retencaoFederalTxt} retidos na fonte</p>
               </div>
             </label>
 
@@ -690,8 +705,14 @@ export function TomadorFormModal({ tomador, onClose, onSaved }: Props) {
             <p className="text-[11px] text-ds-light mb-4">
               Deixe em branco para usar as alíquotas padrão do serviço. Preencha apenas os tributos que este tomador tem alíquota específica.
             </p>
+            {regime === 'IBS_CBS' && (
+              <p className="text-[11px] text-ds-light mb-3 -mt-2">
+                Regime da reforma tributária: PIS e COFINS não incidem. CBS e IBS vêm do cronograma da
+                reforma e da classificação do serviço, sem alíquota por tomador.
+              </p>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {TRIBUTOS.map(tributo => (
+              {tributosAliquota.map(tributo => (
                 <div key={tributo}>
                   <label className="block text-xs font-medium text-ds-mid mb-1">{tributo} (%)</label>
                   <div className="relative">

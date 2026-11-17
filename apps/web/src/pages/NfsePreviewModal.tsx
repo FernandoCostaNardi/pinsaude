@@ -3,6 +3,10 @@ import { X, Printer, Paperclip, Loader2, AlertTriangle } from 'lucide-react'
 import { Producao, ServicoResumo } from '../api/producoesApi'
 import { Empresa } from '../api/empresasApi'
 import { tomadoresApi, Tomador } from '../api/tomadoresApi'
+import LinhasTributo from '../components/LinhasTributo'
+import type { NotaCalculada } from '../fiscal/calculoNota'
+import { rotuloRetencaoFederal } from '../fiscal/calculoNota'
+import { ROTULO_TRIBUTO, type TipoTributo } from '../fiscal/tributos'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -29,9 +33,11 @@ function formatCnpj(digits: string): string {
   return digits
 }
 
-function calcPct(valorCentavos: number, aliquotaPct: number): number {
-  return Math.round(valorCentavos * aliquotaPct / 100)
+function fmtPct(v: number | undefined): string {
+  return `${Number(v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`
 }
+
+const FEDERAIS: readonly TipoTributo[] = ['IR', 'CSLL', 'PIS', 'COFINS']
 
 // ─── Componentes da DANFSe ────────────────────────────────────────────────────
 
@@ -89,7 +95,9 @@ interface Props {
   empresaInfo: Empresa | null
   medicoNomeMap: Record<string, string>
   cnaeCodigo?: string | null
-  aliquotasOverride?: Record<string, number>
+  /** Tributos calculados pelo motor fiscal (CBS-21); null enquanto calcula ou se falhou */
+  calculo: NotaCalculada | null
+  erroCalculo?: string | null
   onClose: () => void
   // A NFS-e é emitida no portal da prefeitura com base nesta prévia; depois a operação
   // anexa o PDF/XML recebidos (NotaEmitidaArquivosModal).
@@ -100,7 +108,7 @@ interface Props {
 
 export function NfsePreviewModal({
   producao, cnpjPrestador, empresaInfo, medicoNomeMap,
-  cnaeCodigo, aliquotasOverride,
+  cnaeCodigo, calculo, erroCalculo,
   onClose, onAnexarNota,
 }: Props) {
   const [tomador, setTomador] = useState<Tomador | null>(null)
@@ -116,23 +124,15 @@ export function NfsePreviewModal({
 
   const { servico, valorBruto, competencia, participantes } = producao
 
-  function efAliq(tipo: string, servicoAliq: number): number {
-    return aliquotasOverride?.[tipo] !== undefined ? aliquotasOverride[tipo] : servicoAliq
-  }
-  const aliqIss    = efAliq('ISS',    servico.aliquotaIss)
-  const aliqIr     = efAliq('IR',     servico.aliquotaIr)
-  const aliqCsll   = efAliq('CSLL',   servico.aliquotaCsll)
-  const aliqPis    = efAliq('PIS',    servico.aliquotaPis)
-  const aliqCofins = efAliq('COFINS', servico.aliquotaCofins)
-
-  const issRetido    = producao.tomador.retencaoIss     ? calcPct(valorBruto, aliqIss)    : 0
-  const irRetido     = producao.tomador.retencaoFederal ? calcPct(valorBruto, aliqIr)     : 0
-  const csllRetido   = producao.tomador.retencaoFederal ? calcPct(valorBruto, aliqCsll)   : 0
-  const pisRetido    = producao.tomador.retencaoFederal ? calcPct(valorBruto, aliqPis)    : 0
-  const cofinsRetido = producao.tomador.retencaoFederal ? calcPct(valorBruto, aliqCofins) : 0
-  const totalFederal = irRetido + csllRetido + pisRetido + cofinsRetido
-  const totalRetidos = issRetido + totalFederal
-  const valorLiquido = valorBruto - totalRetidos
+  // Tudo que é tributo vem do motor fiscal (regime da competência). Sem cálculo, as seções de
+  // tributação mostram o aviso no lugar dos valores.
+  const c = calculo
+  const temIss       = !!c && c.tributos.includes('ISS')
+  const issRetido    = c?.valoresRetidos.ISS ?? 0
+  const federais     = c ? FEDERAIS.filter(t => c.tributos.includes(t)) : []
+  const totalFederal = federais.reduce((s, t) => s + (c?.valoresRetidos[t] ?? 0), 0)
+  const contribRetidas = federais.filter(t => t !== 'IR').reduce((s, t) => s + (c?.valoresRetidos[t] ?? 0), 0)
+  const ibsCbs       = c?.regime === 'IBS_CBS'
 
   // Nomes dos médicos para a discriminação
   const medicoNomes = participantes
@@ -390,89 +390,123 @@ ${outerHtml}
               </pre>
             </div>
 
-            {/* ── Tributação Municipal ── */}
-            <SecaoHeader>Tributação Municipal — ISSQN</SecaoHeader>
-            <CamposGrid cols={4}>
-              <Campo label="Tributação do ISSQN"
-                     value={issRetido > 0 ? 'Retido pelo Tomador' : 'Operação Tributável'} />
-              <Campo label="Município de Incidência"
-                     value={`${empresaInfo?.municipio || 'Olinda'} - ${empresaInfo?.uf || 'PE'}`} />
-              <Campo label="Regime Especial" value="Nenhum" />
-              <Campo label="Suspensão ISSQN" value="Não" />
-              <Campo label="BC ISSQN" value={formatBRL(valorBruto)} />
-              <Campo label="Alíquota ISSQN" value={`${Number(aliqIss).toFixed(2)}%`} />
-              <Campo label="ISSQN Retido?" value={issRetido > 0 ? 'Sim' : 'Não Retido'} />
-              <Campo label="ISSQN Apurado" value={formatBRL(calcPct(valorBruto, aliqIss))} />
-            </CamposGrid>
+            {!c && (
+              <>
+                <SecaoHeader>Tributação</SecaoHeader>
+                <div className="px-3 py-3 bg-white text-[11px] text-gray-600">
+                  {erroCalculo
+                    ? <span className="text-red-600">Não foi possível calcular os tributos: {erroCalculo}</span>
+                    : <span className="inline-flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Calculando tributos...</span>}
+                </div>
+              </>
+            )}
 
-            {/* ── Tributação Federal ── */}
-            <SecaoHeader>Tributação Federal</SecaoHeader>
-            <CamposGrid cols={4}>
-              <Campo label="IRRF"
-                     value={irRetido > 0 ? formatBRL(irRetido) : `${formatBRL(calcPct(valorBruto, aliqIr))} (a recolher)`} />
-              <Campo label="CSLL"
-                     value={csllRetido > 0 ? formatBRL(csllRetido) : `${formatBRL(calcPct(valorBruto, aliqCsll))} (a recolher)`} />
-              <Campo label="PIS"
-                     value={pisRetido > 0 ? formatBRL(pisRetido) : `${formatBRL(calcPct(valorBruto, aliqPis))} (a recolher)`} />
-              <Campo label="COFINS"
-                     value={cofinsRetido > 0 ? formatBRL(cofinsRetido) : `${formatBRL(calcPct(valorBruto, aliqCofins))} (a recolher)`} />
-              {totalFederal > 0 && (
-                <Campo
-                  label="Contrib. Sociais Retidas (PIS/COFINS/CSLL)"
-                  value={formatBRL(csllRetido + pisRetido + cofinsRetido)}
-                  span={2}
-                />
-              )}
-              <Campo
-                label={totalFederal > 0 ? 'Total Retenções Federais' : 'Observação'}
-                value={totalFederal > 0
-                  ? formatBRL(totalFederal)
-                  : 'Tributos federais a recolher pela prestadora via DARF'}
-                span={totalFederal > 0 ? 2 : 4}
-              />
-            </CamposGrid>
+            {/* ── Tributação Municipal (some em 2033, quando o ISS é extinto) ── */}
+            {c && temIss && (
+              <>
+                <SecaoHeader>Tributação Municipal — ISSQN</SecaoHeader>
+                <CamposGrid cols={4}>
+                  <Campo label="Tributação do ISSQN"
+                         value={issRetido > 0 ? 'Retido pelo Tomador' : 'Operação Tributável'} />
+                  <Campo label="Município de Incidência"
+                         value={`${empresaInfo?.municipio || 'Olinda'} - ${empresaInfo?.uf || 'PE'}`} />
+                  <Campo label="Regime Especial" value="Nenhum" />
+                  <Campo label="Suspensão ISSQN" value="Não" />
+                  <Campo label="BC ISSQN" value={formatBRL(valorBruto)} />
+                  <Campo label="Alíquota ISSQN" value={fmtPct(c.aliquotasPct.ISS)} />
+                  <Campo label="ISSQN Retido?" value={issRetido > 0 ? 'Sim' : 'Não Retido'} />
+                  <Campo label="ISSQN Apurado" value={formatBRL(c.valores.ISS ?? 0)} />
+                </CamposGrid>
+              </>
+            )}
+
+            {/* ── Tributação Federal (PIS/COFINS só no regime antigo) ── */}
+            {c && (
+              <>
+                <SecaoHeader>Tributação Federal</SecaoHeader>
+                <CamposGrid cols={4}>
+                  {federais.map(t => (
+                    <Campo
+                      key={t}
+                      label={t === 'IR' ? 'IRRF' : ROTULO_TRIBUTO[t]}
+                      value={(c.valoresRetidos[t] ?? 0) > 0
+                        ? formatBRL(c.valoresRetidos[t] ?? 0)
+                        : `${formatBRL(c.valores[t] ?? 0)} (a recolher)`}
+                    />
+                  ))}
+                  {contribRetidas > 0 && (
+                    <Campo
+                      label={`Contrib. Sociais Retidas (${federais.filter(t => t !== 'IR').join('/')})`}
+                      value={formatBRL(contribRetidas)}
+                      span={2}
+                    />
+                  )}
+                  <Campo
+                    label={totalFederal > 0 ? 'Total Retenções Federais' : 'Observação'}
+                    value={totalFederal > 0
+                      ? formatBRL(totalFederal)
+                      : 'Tributos federais a recolher pela prestadora via DARF'}
+                    span={totalFederal > 0 || federais.length < 4 ? 2 : 4}
+                  />
+                </CamposGrid>
+              </>
+            )}
+
+            {/* ── IBS e CBS (reforma tributária, regime novo) ── */}
+            {c && ibsCbs && (
+              <>
+                <SecaoHeader>Tributação IBS e CBS — Reforma Tributária</SecaoHeader>
+                <CamposGrid cols={4}>
+                  <Campo label="CST IBS/CBS" value={servico.cstIbsCbs || c.calculo.cstIbsCbs || '—'} />
+                  <Campo label="cClassTrib" value={servico.cClassTrib || c.calculo.cClassTrib || '—'} />
+                  <Campo label="NBS" value={servico.nbs || '—'} />
+                  <Campo label="Redução" value={servico.reducaoIbsCbs ? fmtPct(Number(servico.reducaoIbsCbs) * 100) : 'Sem redução'} />
+                  <Campo label="BC IBS/CBS" value={formatBRL(c.baseCalculoIbsCbs)} />
+                  <Campo label={`CBS (${fmtPct(c.aliquotasPct.CBS)})`} value={formatBRL(c.valores.CBS ?? 0)} />
+                  <Campo label={`IBS (${fmtPct(c.aliquotasPct.IBS)})`} value={formatBRL(c.valores.IBS ?? 0)} />
+                  <Campo label="CBS/IBS no preço"
+                         value={c.cbsIbsPorFora ? 'Somados ao valor do serviço' : 'Incluídos no valor do serviço'} />
+                </CamposGrid>
+              </>
+            )}
 
             {/* ── Valor Total ── */}
             <SecaoHeader>Valor Total da NFS-e</SecaoHeader>
             <div className="px-4 py-3 bg-white grid grid-cols-2 gap-6">
               <div>
                 <LinhaValor label="Valor dos Serviços" value={valorBruto} />
+                {c?.cbsIbsPorFora && (
+                  <>
+                    <LinhaValor label="CBS + IBS (somados ao preço)" value={c.valorTotalNota - valorBruto} />
+                    <LinhaValor label="Valor Total da NFS-e" value={c.valorTotalNota} destaque />
+                  </>
+                )}
                 {issRetido > 0 && (
-                  <LinhaValor label={`ISSQN Retido (${Number(aliqIss).toFixed(2)}%)`} value={issRetido} sub negativo />
+                  <LinhaValor label={`ISSQN Retido (${fmtPct(c?.aliquotasPct.ISS)})`} value={issRetido} sub negativo />
                 )}
                 {totalFederal > 0 && (
-                  <LinhaValor label="Total Retenções Federais" value={totalFederal} sub negativo />
+                  <LinhaValor label={`Retenções Federais (${rotuloRetencaoFederal(c?.retidos ?? [])})`} value={totalFederal} sub negativo />
                 )}
-                <LinhaValor
-                  label={totalRetidos > 0 ? 'Valor Líquido da NFS-e' : 'Valor Líquido da NFS-e (sem retenções)'}
-                  value={valorLiquido}
-                  destaque
-                />
+                {c && (
+                  <LinhaValor
+                    label={c.totalRetencoes > 0 ? 'Valor Líquido da NFS-e' : 'Valor Líquido da NFS-e (sem retenções)'}
+                    value={c.valorLiquidoNota}
+                    destaque
+                  />
+                )}
               </div>
               <div className="pl-4 border-l border-gray-200 text-[9px] text-gray-500 space-y-1.5">
                 <p className="font-bold text-gray-700 text-[10px]">Composição dos Tributos</p>
-                {[
-                  { nome: 'ISS',    aliq: aliqIss,    retido: issRetido > 0 },
-                  { nome: 'IR',     aliq: aliqIr,     retido: irRetido > 0 },
-                  { nome: 'CSLL',   aliq: aliqCsll,   retido: csllRetido > 0 },
-                  { nome: 'PIS',    aliq: aliqPis,    retido: pisRetido > 0 },
-                  { nome: 'COFINS', aliq: aliqCofins, retido: cofinsRetido > 0 },
-                ].map(t => (
-                  <div key={t.nome} className="flex justify-between">
-                    <span>
-                      {t.nome} ({Number(t.aliq).toFixed(2)}%)
-                      {' '}
-                      <span className={`px-1 rounded text-[8px] font-bold ${
-                        t.retido ? 'bg-orange-100 text-orange-700' : 'bg-blue-50 text-blue-600'
-                      }`}>
-                        {t.retido ? 'RETIDO' : 'PRESTADORA'}
-                      </span>
-                    </span>
-                    <span className="tabular-nums text-gray-700">
-                      {formatBRL(calcPct(valorBruto, t.aliq))}
-                    </span>
-                  </div>
-                ))}
+                {c ? (
+                  <LinhasTributo
+                    tributos={c.tributos}
+                    valores={c.valores}
+                    aliquotasPct={c.aliquotasPct}
+                    situacao={c.situacao}
+                  />
+                ) : (
+                  <p>{erroCalculo ? 'Cálculo indisponível' : 'Calculando...'}</p>
+                )}
               </div>
             </div>
 

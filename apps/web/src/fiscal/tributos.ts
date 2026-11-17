@@ -84,3 +84,8 @@ export function valoresTributo(src: {
 export function totalTributos(tributos: readonly TipoTributo[], valores: ValoresTributo): number {
   return tributos.reduce((s, t) => s + (valores[t] ?? 0), 0)
 }
+
+/** Competência do mês corrente (AAAA-MM, horário local). Para cadastros sem competência, como o do tomador. */
+export function competenciaAtual(hoje: Date = new Date()): string {
+  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
+}

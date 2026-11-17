@@ -24,6 +24,12 @@ export interface ServicoResumo {
   aliquotaCsll: number
   aliquotaPis: number
   aliquotaCofins: number
+  // Classificação CBS/IBS do serviço (CBS-12), usada pelo motor fiscal na prévia (CBS-21).
+  // Nulos = serviço ainda não classificado. reducaoIbsCbs é fração (0.6 = 60%).
+  nbs?: string | null
+  cstIbsCbs?: string | null
+  cClassTrib?: string | null
+  reducaoIbsCbs?: number | null
 }
 
 export interface Participacao {

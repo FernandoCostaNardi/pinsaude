@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -79,6 +80,8 @@ public class MotorFiscalService {
         long cofinsCalc = aplicar(bruto, aliquotas.cofins());
 
         long valorIss, valorIr, valorCsll, valorPis, valorCofins, totalRetencoes;
+        // Tributos que o tomador retém na fonte (CBS-21): as telas marcam RETIDO/PRESTADORA por aqui.
+        List<String> retidos = new ArrayList<>();
 
         switch (cenario) {
             case "A" -> {
@@ -91,12 +94,16 @@ public class MotorFiscalService {
                 long retFederal = irCalc + csllCalc + pisCalc + cofinsCalc;
                 long retIss = req.indicadorRetencaoIss() ? issCalc : 0;
                 totalRetencoes = retFederal + retIss;
+                if (req.indicadorRetencaoIss()) retidos.add("ISS");
+                retidos.addAll(List.of("IR", "CSLL", "PIS", "COFINS"));
             }
             case "B" -> {
-                // PJ sem retenção: todos calculados, Pin paga por guia
+                // PJ sem retenção federal: todos calculados, Pin paga os federais por guia.
+                // A retenção de ISS (substituição tributária municipal) independe da federal.
                 valorIss = issCalc; valorIr = irCalc; valorCsll = csllCalc;
                 valorPis = pisCalc; valorCofins = cofinsCalc;
-                totalRetencoes = 0;
+                totalRetencoes = req.indicadorRetencaoIss() ? issCalc : 0;
+                if (req.indicadorRetencaoIss()) retidos.add("ISS");
             }
             case "C" -> {
                 // PF equiparado: nota com tributos zerados, Pin apura internamente
@@ -107,6 +114,7 @@ public class MotorFiscalService {
                 // PF sem equiparação: IR na fonte pelo tomador PF; ISS/CSLL/PIS/COFINS não se aplicam
                 valorIss = 0; valorIr = irCalc; valorCsll = 0; valorPis = 0; valorCofins = 0;
                 totalRetencoes = irCalc;
+                retidos.add("IR");
             }
             default -> throw new IllegalStateException("Cenário não mapeado: " + cenario);
         }
@@ -134,6 +142,12 @@ public class MotorFiscalService {
         long tributosDaPin = porFora ? totalTributos - valorCbs - valorIbs : totalTributos;
         long resultadoPin  = taxaPin - tributosDaPin;
 
+        // Só tributos com valor: PIS/COFINS zerados no regime novo não aparecem como retidos.
+        List<String> retidosComValor = new ArrayList<>();
+        for (String t : retidos) {
+            if (valorDo(t, valorIss, valorIr, valorCsll, valorPis, valorCofins) > 0) retidosComValor.add(t);
+        }
+
         AuditoriaCenario auditoria = auditoriaService.registrar(req.competencia(), cenario, aliquotas);
 
         return new CalculoFiscalResponse(
@@ -147,11 +161,23 @@ public class MotorFiscalService {
             aliquotas.aliqCbs(), aliquotas.aliqIbs(), aliquotas.fatorIss(),
             aliquotas.ibsCbsAtivo() ? req.cstIbsCbs() : null,
             aliquotas.ibsCbsAtivo() ? req.cClassTrib() : null,
-            porFora, baseIbsCbs, valorTotalNota
+            porFora, baseIbsCbs, valorTotalNota,
+            retidosComValor
         );
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private static long valorDo(String tributo, long iss, long ir, long csll, long pis, long cofins) {
+        return switch (tributo) {
+            case "ISS" -> iss;
+            case "IR" -> ir;
+            case "CSLL" -> csll;
+            case "PIS" -> pis;
+            case "COFINS" -> cofins;
+            default -> 0L;
+        };
+    }
 
     private String derivarCenario(CalculoFiscalRequest req) {
         if (req.tomadorPj()) {

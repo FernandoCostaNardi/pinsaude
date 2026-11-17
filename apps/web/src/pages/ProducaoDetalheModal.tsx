@@ -1,8 +1,15 @@
-import { useState } from 'react'
-import { X, CheckCircle2, Clock, FileText, XCircle, Building2, Stethoscope, Calendar, Send, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { X, CheckCircle2, Clock, FileText, XCircle, Building2, Stethoscope, Calendar, Send, Trash2, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Producao, producaoPodeSerExcluida } from '../api/producoesApi'
 import { ProducaoExcluirModal } from '../components/ProducaoExcluirModal'
+import LinhasTributo from '../components/LinhasTributo'
+import { tomadoresApi, Tomador } from '../api/tomadoresApi'
+import { empresasApi } from '../api/empresasApi'
+import { useAuth } from '../auth/useAuth'
+import { useCalculoNota } from '../hooks/useCalculoNota'
+import { rotuloRetencaoFederal, type EntradaCalculoNota } from '../fiscal/calculoNota'
+import { TRIBUTOS_LEGADO } from '../fiscal/tributos'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -18,10 +25,6 @@ function formatCompetencia(comp: string): string {
 
 function formatPct(fracao: number): string {
   return `${(fracao * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
-}
-
-function calcPct(valorCentavos: number, aliquotaPct: number): number {
-  return Math.round(valorCentavos * aliquotaPct / 100)
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -77,6 +80,53 @@ interface Props {
 export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose, onExcluida }: Props) {
   const navigate = useNavigate()
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false)
+  const { user } = useAuth()
+
+  // CBS-21: retenções pelo motor fiscal, com as alíquotas do tomador e o regime da competência.
+  // Tomador completo (tipo, alíquotas) e, para gestão (sem cnpj_id no token), o CNPJ da empresa.
+  const [tomadorFull, setTomadorFull] = useState<{ id: string; t: Tomador | null } | null>(null)
+  const [empresaCnpj, setEmpresaCnpj] = useState<{ id: string; cnpj: string | null } | null>(null)
+  const tomadorId = producao?.tomador.id
+  const empresaId = producao?.empresaId ?? null
+  const precisaEmpresa = !user?.cnpj_id && !!empresaId
+
+  useEffect(() => {
+    if (!tomadorId || !producao?.servico) return
+    let ativo = true
+    tomadoresApi.buscarPorId(tomadorId)
+      .then(t => { if (ativo) setTomadorFull({ id: tomadorId, t }) })
+      .catch(() => { if (ativo) setTomadorFull({ id: tomadorId, t: null }) })
+    return () => { ativo = false }
+  }, [tomadorId, !!producao?.servico])
+
+  useEffect(() => {
+    if (!precisaEmpresa || !empresaId) return
+    let ativo = true
+    empresasApi.buscarPorId(empresaId)
+      .then(e => { if (ativo) setEmpresaCnpj({ id: empresaId, cnpj: e.cnpj ?? null }) })
+      .catch(() => { if (ativo) setEmpresaCnpj({ id: empresaId, cnpj: null }) })
+    return () => { ativo = false }
+  }, [precisaEmpresa, empresaId])
+
+  const tomadorPronto = tomadorFull && tomadorFull.id === tomadorId ? tomadorFull : null
+  const empresaPronta = !precisaEmpresa || (empresaCnpj && empresaCnpj.id === empresaId)
+  const entradaCalculo = useMemo<EntradaCalculoNota | null>(() => {
+    if (!producao?.servico || !tomadorPronto || !empresaPronta) return null
+    return {
+      valorBruto: producao.valorBruto,
+      competencia: producao.competencia,
+      tomador: {
+        retencaoFederal: producao.tomador.retencaoFederal,
+        retencaoIss: producao.tomador.retencaoIss,
+        tipo: tomadorPronto.t?.tipo ?? null,
+        aliquotas: tomadorPronto.t?.aliquotas ?? null,
+      },
+      servico: producao.servico,
+    }
+  }, [producao, tomadorPronto, empresaPronta])
+  const { nota: calculo, carregando: calculando, erro: erroCalculo } =
+    useCalculoNota(entradaCalculo, precisaEmpresa ? empresaCnpj?.cnpj : null)
+
   if (!producao) return null
 
   const { tomador, servico, valorBruto, status } = producao
@@ -92,12 +142,7 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose, onExclu
 
   // servico pode ser null — o Serviço (LC 116/2003) é definido na emissão da NFS-e. Sem ele
   // não dá pra calcular retenções ainda; a apuração mostra um aviso no lugar dos tributos.
-  const issRetido      = servico && tomador.retencaoIss     ? calcPct(valorBruto, servico.aliquotaIss)    : 0
-  const irRetido       = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaIr)     : 0
-  const csllRetido     = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCsll)   : 0
-  const pisRetido      = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaPis)    : 0
-  const cofinsRetido   = servico && tomador.retencaoFederal ? calcPct(valorBruto, servico.aliquotaCofins) : 0
-  const totalRetencoes = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
+  const tributosRegime = calculo?.tributos ?? [...TRIBUTOS_LEGADO]
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -185,7 +230,7 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose, onExclu
             <InfoRow
               label="Retenção Federal"
               value={tomador.retencaoFederal
-                ? <span className="text-orange-600">Sim — retém IR, CSLL, PIS, COFINS</span>
+                ? <span className="text-orange-600">Sim — retém {rotuloRetencaoFederal(tributosRegime)}</span>
                 : <span className="text-green-600">Não</span>}
             />
             <InfoRow
@@ -231,27 +276,35 @@ export function ProducaoDetalheModal({ producao, medicoNomeMap, onClose, onExclu
             <div className="bg-ds-surface rounded-xl p-4">
               <p className="text-xs font-semibold text-ds-light uppercase tracking-wide mb-3">Apuração Fiscal Pin Saúde</p>
               <FiscalRow label={`Pin Saúde retém (${taxaPinLabel})`} value={taxaPin} />
-              {servico && issRetido > 0 && (
-                <FiscalRow label={`ISS (${Number(servico.aliquotaIss).toFixed(2)}%)`} value={issRetido} indent negative />
-              )}
-              {servico && irRetido > 0 && (
-                <FiscalRow label={`IR (${Number(servico.aliquotaIr).toFixed(2)}%)`} value={irRetido} indent negative />
-              )}
-              {servico && csllRetido > 0 && (
-                <FiscalRow label={`CSLL (${Number(servico.aliquotaCsll).toFixed(2)}%)`} value={csllRetido} indent negative />
-              )}
-              {servico && pisRetido > 0 && (
-                <FiscalRow label={`PIS (${Number(servico.aliquotaPis).toFixed(2)}%)`} value={pisRetido} indent negative />
-              )}
-              {servico && cofinsRetido > 0 && (
-                <FiscalRow label={`COFINS (${Number(servico.aliquotaCofins).toFixed(2)}%)`} value={cofinsRetido} indent negative />
+              {calculo && calculo.totalRetencoes > 0 && (
+                <div className="pl-3 py-1.5 text-sm text-ds-light">
+                  <LinhasTributo
+                    tributos={calculo.tributos}
+                    valores={calculo.valoresRetidos}
+                    aliquotasPct={calculo.aliquotasPct}
+                    ocultarZerados
+                    negativo
+                  />
+                </div>
               )}
               {!servico ? (
                 <p className="text-xs text-orange-600 mt-1">
                   Serviço (LC 116/2003) ainda não definido — as retenções aparecem depois que ele for definido na emissão da NFS-e.
                 </p>
-              ) : totalRetencoes === 0 && (
+              ) : erroCalculo ? (
+                <p className="text-xs text-red-600 mt-1">Não foi possível calcular as retenções: {erroCalculo}</p>
+              ) : !calculo ? (
+                <p className="text-xs text-ds-light mt-1 inline-flex items-center gap-1.5">
+                  {calculando && <Loader2 size={12} className="animate-spin" />} Calculando retenções...
+                </p>
+              ) : calculo.totalRetencoes === 0 && (
                 <p className="text-xs text-ds-light mt-1">Tomador não faz retenções sobre esta nota.</p>
+              )}
+              {calculo?.regime === 'IBS_CBS' && (
+                <p className="text-[10px] text-ds-light mt-1.5 italic">
+                  Competência no regime da reforma tributária: sem PIS/COFINS; CBS {formatBRL(calculo.valores.CBS ?? 0)} e
+                  IBS {formatBRL(calculo.valores.IBS ?? 0)} recolhidos pela Pin (não são retidos).
+                </p>
               )}
             </div>
           </div>
