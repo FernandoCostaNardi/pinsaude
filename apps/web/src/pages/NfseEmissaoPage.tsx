@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, CheckCircle2, Clock, XCircle, AlertTriangle,
@@ -18,6 +18,9 @@ import { empresasApi, Empresa } from '../api/empresasApi'
 import { tomadoresApi, Tomador } from '../api/tomadoresApi'
 import { NfsePreviewModal } from './NfsePreviewModal'
 import { NotaEmitidaArquivosModal, DadosNotaEmitida } from './NotaEmitidaArquivosModal'
+import LinhasTributo from '../components/LinhasTributo'
+import { useCalculoNota } from '../hooks/useCalculoNota'
+import type { EntradaCalculoNota } from '../fiscal/calculoNota'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -55,10 +58,6 @@ function calcTaxaPin(producao: Producao, taxaCadastro: Record<string, number>) {
     repasseLabel: unico != null ? formatPct(1 - unico) : 'conforme cada médico',
     divergeDoLancamento,
   }
-}
-
-function calcPct(valorCentavos: number, aliquotaPct: number): number {
-  return Math.round(valorCentavos * aliquotaPct / 100)
 }
 
 // ─── Status da NFS-e ─────────────────────────────────────────────────────────
@@ -134,6 +133,18 @@ function StepItem({ step, status, isLast }: { step: StepDef; status: StepStatus;
 }
 
 // ─── Linha fiscal ─────────────────────────────────────────────────────────────
+
+function CalculoPendente({ carregando, erro }: { carregando: boolean; erro: string | null }) {
+  if (erro) {
+    return <p className="text-xs text-red-600 py-1.5">Não foi possível calcular os tributos: {erro}</p>
+  }
+  return (
+    <p className="text-xs text-ds-light py-1.5 inline-flex items-center gap-1.5">
+      {carregando && <Loader2 size={12} className="animate-spin" />}
+      Calculando tributos...
+    </p>
+  )
+}
 
 function FiscalRow({ label, value, indent, negative, bold }: {
   label: string; value: number; indent?: boolean; negative?: boolean; bold?: boolean
@@ -247,6 +258,10 @@ export function NfseEmissaoPage() {
   const [empresaInfo, setEmpresaInfo] = useState<Empresa | null>(null)
   const [medicoNomeMap, setMedicoNomeMap] = useState<Record<string, string>>({})
   const [taxaCadastro, setTaxaCadastro] = useState<Record<string, number>>({})
+  // O motor fiscal só é chamado depois que tomador (alíquotas, tipo) e empresa (CNPJ para gestão)
+  // carregaram ou falharam — evita calcular duas vezes e mostrar números que mudam na tela.
+  const [tomadorCarregado, setTomadorCarregado] = useState(false)
+  const [empresaCarregada, setEmpresaCarregada] = useState(false)
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -285,6 +300,7 @@ export function NfseEmissaoPage() {
     empresasApi.buscarPorId(producao.empresaId)
       .then(setEmpresaInfo)
       .catch(() => {})
+      .finally(() => setEmpresaCarregada(true))
   }, [producao?.empresaId])
 
   // Carrega tomador completo (com alíquotas e CNAEs)
@@ -296,7 +312,27 @@ export function NfseEmissaoPage() {
         if (t.cnaes && t.cnaes.length === 1) setCnaeSelecionado(t.cnaes[0].codigoCnae)
       })
       .catch(() => {})
+      .finally(() => setTomadorCarregado(true))
   }, [producao?.tomador?.id])
+
+  // CBS-21: tributos da nota vêm do motor fiscal (regime da competência, CBS/IBS, retenções)
+  const entradaCalculo = useMemo<EntradaCalculoNota | null>(() => {
+    if (!producao?.servico || !tomadorCarregado) return null
+    if (producao.empresaId && !empresaCarregada) return null
+    return {
+      valorBruto: producao.valorBruto,
+      competencia: producao.competencia,
+      tomador: {
+        retencaoFederal: producao.tomador.retencaoFederal,
+        retencaoIss: producao.tomador.retencaoIss,
+        tipo: tomadorFull?.tipo ?? null,
+        aliquotas: tomadorFull?.aliquotas ?? null,
+      },
+      servico: producao.servico,
+    }
+  }, [producao, tomadorFull, tomadorCarregado, empresaCarregada])
+  const { nota: calculo, carregando: calculando, erro: erroCalculo } =
+    useCalculoNota(entradaCalculo, empresaInfo?.cnpj ?? null)
 
   // Carrega nomes dos médicos participantes para a discriminação
   useEffect(() => {
@@ -330,32 +366,23 @@ export function NfseEmissaoPage() {
     return pararPolling
   }, [producaoId, atualizarStatus, pararPolling])
 
-  // Dados fiscais da nota (mesmo cálculo exibido na Composição da NFS-e)
+  // Dados fiscais da nota: as retenções calculadas pelo motor (mesmas da Composição da NFS-e)
   const montarDadosNota = (): EmitirNfseRequest | null => {
     if (!producao || !producaoId || !producao.servico) return null
-    const { tomador, servico, valorBruto, competencia } = producao
+    if (!calculo) throw new Error(erroCalculo ?? 'O cálculo dos tributos ainda não terminou. Tente de novo em instantes.')
+    const { tomador, valorBruto, competencia } = producao
     const medicoId = producao.participantes.length === 1
       ? producao.participantes[0].medicoId
       : null
 
-    // Alíquotas efetivas: tomador substitui serviço quando configurado
-    const efAliq = (tipo: string, servicoAliq: number): number => {
-      const override = tomadorFull?.aliquotas?.find(a => a.tipoTributo === tipo)
-      return override !== undefined ? Number(override.valorAliquota) : servicoAliq
-    }
-
-    const { taxaPin }   = calcTaxaPin(producao, taxaCadastro)
-    const issRetido     = tomador.retencaoIss     ? calcPct(valorBruto, efAliq('ISS',    servico.aliquotaIss))    : 0
-    const irRetido      = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('IR',     servico.aliquotaIr))     : 0
-    const csllRetido    = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('CSLL',   servico.aliquotaCsll))   : 0
-    const pisRetido     = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('PIS',    servico.aliquotaPis))    : 0
-    const cofinsRetido  = tomador.retencaoFederal ? calcPct(valorBruto, efAliq('COFINS', servico.aliquotaCofins)) : 0
+    const { taxaPin } = calcTaxaPin(producao, taxaCadastro)
+    const ret = calculo.valoresRetidos
 
     return {
       producaoId, medicoId, tomadorId: tomador.id,
       competencia, valorBruto, taxaPin,
-      valorIss: issRetido, valorIr: irRetido, valorCsll: csllRetido,
-      valorPis: pisRetido, valorCofins: cofinsRetido,
+      valorIss: ret.ISS ?? 0, valorIr: ret.IR ?? 0, valorCsll: ret.CSLL ?? 0,
+      valorPis: ret.PIS ?? 0, valorCofins: ret.COFINS ?? 0,
       tomadorNome: tomador.razaoSocialNome ?? null,
       cnaeCodigo: cnaeSelecionado || null,
       discriminacao: producao.descricaoComplementar ?? null,
@@ -431,34 +458,11 @@ export function NfseEmissaoPage() {
 
   const { tomador, servico, valorBruto } = producao
 
-  // Alíquotas efetivas para exibição (tomador sobrepõe serviço)
-  function efAliq(tipo: string, servicoAliq: number): number {
-    const override = tomadorFull?.aliquotas?.find(a => a.tipoTributo === tipo)
-    return override !== undefined ? Number(override.valorAliquota) : servicoAliq
-  }
-  const aliqIss    = efAliq('ISS',    servico.aliquotaIss)
-  const aliqIr     = efAliq('IR',     servico.aliquotaIr)
-  const aliqCsll   = efAliq('CSLL',   servico.aliquotaCsll)
-  const aliqPis    = efAliq('PIS',    servico.aliquotaPis)
-  const aliqCofins = efAliq('COFINS', servico.aliquotaCofins)
-
   const { taxaPin, taxaLabel, repasseLabel, divergeDoLancamento } = calcTaxaPin(producao, taxaCadastro)
-  const issRetido      = tomador.retencaoIss     ? calcPct(valorBruto, aliqIss)    : 0
-  const irRetido       = tomador.retencaoFederal ? calcPct(valorBruto, aliqIr)     : 0
-  const csllRetido     = tomador.retencaoFederal ? calcPct(valorBruto, aliqCsll)   : 0
-  const pisRetido      = tomador.retencaoFederal ? calcPct(valorBruto, aliqPis)    : 0
-  const cofinsRetido   = tomador.retencaoFederal ? calcPct(valorBruto, aliqCofins) : 0
-  const totalRetidos   = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido
-  const valorLiquidoNota = valorBruto - totalRetidos
   const valorRepasse   = valorBruto - taxaPin
-  // Totais brutos de cada tributo — retido ou não, sempre custo fiscal da Pin
-  const issTotal    = calcPct(valorBruto, aliqIss)
-  const irTotal     = calcPct(valorBruto, aliqIr)
-  const csllTotal   = calcPct(valorBruto, aliqCsll)
-  const pisTotal    = calcPct(valorBruto, aliqPis)
-  const cofinsTotal = calcPct(valorBruto, aliqCofins)
-  const totalTributos = issTotal + irTotal + csllTotal + pisTotal + cofinsTotal
-  const resultadoPin  = taxaPin - totalTributos
+  // Tributos que saem da taxa da Pin, retidos ou não (CBS/IBS por fora são pagos pelo tomador)
+  const resultadoPin   = calculo ? taxaPin - calculo.tributosDaPin : null
+  const servicoSemClassificacao = calculo?.regime === 'IBS_CBS' && !servico.cClassTrib
 
   const tomadorCnaes = tomadorFull?.cnaes ?? []
 
@@ -520,19 +524,38 @@ export function NfseEmissaoPage() {
             <div className="bg-primary-50 border border-primary-100 rounded-xl p-4 mb-3">
               <p className="text-xs font-semibold text-primary-700 uppercase tracking-wide mb-2">Nota Fiscal ao Tomador</p>
               <FiscalRow label="Valor dos Serviços" value={valorBruto} />
-              {issRetido   > 0 && <FiscalRow label={`ISS retido pelo tomador (${aliqIss}%)`}    value={issRetido}   indent negative />}
-              {irRetido    > 0 && <FiscalRow label={`IR retido pelo tomador (${aliqIr}%)`}       value={irRetido}    indent negative />}
-              {csllRetido  > 0 && <FiscalRow label={`CSLL retido pelo tomador (${aliqCsll}%)`}  value={csllRetido}  indent negative />}
-              {pisRetido   > 0 && <FiscalRow label={`PIS retido pelo tomador (${aliqPis}%)`}    value={pisRetido}   indent negative />}
-              {cofinsRetido > 0 && <FiscalRow label={`COFINS retido pelo tomador (${aliqCofins}%)`} value={cofinsRetido} indent negative />}
-              <div className="border-t-2 border-primary-200 mt-2 pt-2.5 flex justify-between">
-                <span className="font-bold text-primary-800 text-sm">Valor Líquido da Nota</span>
-                <span className="font-bold text-primary">{formatBRL(valorLiquidoNota)}</span>
-              </div>
-              {totalRetidos === 0 && (
-                <p className="text-xs text-primary-600 mt-1 italic">
-                  Sem retenções — tributos recolhidos pela Pin Saúde via guia própria.
-                </p>
+              {!calculo ? (
+                <CalculoPendente carregando={calculando} erro={erroCalculo} />
+              ) : (
+                <>
+                  {calculo.cbsIbsPorFora && (
+                    <>
+                      <FiscalRow label="+ CBS e IBS (somados ao preço)" value={calculo.valorTotalNota - valorBruto} />
+                      <FiscalRow label="Valor Total da Nota" value={calculo.valorTotalNota} bold />
+                    </>
+                  )}
+                  {calculo.totalRetencoes > 0 && (
+                    <div className="pl-3 py-1.5 text-sm text-ds-light">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide mb-1">Retido pelo tomador</p>
+                      <LinhasTributo
+                        tributos={calculo.tributos}
+                        valores={calculo.valoresRetidos}
+                        aliquotasPct={calculo.aliquotasPct}
+                        ocultarZerados
+                        negativo
+                      />
+                    </div>
+                  )}
+                  <div className="border-t-2 border-primary-200 mt-2 pt-2.5 flex justify-between">
+                    <span className="font-bold text-primary-800 text-sm">Valor Líquido da Nota</span>
+                    <span className="font-bold text-primary">{formatBRL(calculo.valorLiquidoNota)}</span>
+                  </div>
+                  {calculo.totalRetencoes === 0 && (
+                    <p className="text-xs text-primary-600 mt-1 italic">
+                      Sem retenções — tributos recolhidos pela Pin Saúde via guia própria.
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
@@ -577,38 +600,49 @@ export function NfseEmissaoPage() {
               <div className="border-t border-ds-border pt-3">
                 <p className="text-[10px] font-semibold text-ds-mid uppercase tracking-wide mb-2">Apuração Pin Saúde</p>
                 <FiscalRow label={`Pin retém (${taxaLabel} do bruto)`} value={taxaPin} />
-                <FiscalRow
-                  label={`ISS (${aliqIss}%)${aliqIss !== servico.aliquotaIss ? ' *' : ''} ${issRetido > 0 ? '— retido pelo tomador' : '— a recolher via guia'}`}
-                  value={issTotal} indent negative
-                />
-                <FiscalRow
-                  label={`IR (${aliqIr}%)${aliqIr !== servico.aliquotaIr ? ' *' : ''} ${irRetido > 0 ? '— retido pelo tomador' : '— a recolher via guia'}`}
-                  value={irTotal} indent negative
-                />
-                <FiscalRow
-                  label={`CSLL (${aliqCsll}%)${aliqCsll !== servico.aliquotaCsll ? ' *' : ''} ${csllRetido > 0 ? '— retido' : '— via guia'}`}
-                  value={csllTotal} indent negative
-                />
-                <FiscalRow
-                  label={`PIS (${aliqPis}%)${aliqPis !== servico.aliquotaPis ? ' *' : ''} ${pisRetido > 0 ? '— retido' : '— via guia'}`}
-                  value={pisTotal} indent negative
-                />
-                <FiscalRow
-                  label={`COFINS (${aliqCofins}%)${aliqCofins !== servico.aliquotaCofins ? ' *' : ''} ${cofinsRetido > 0 ? '— retido' : '— via guia'}`}
-                  value={cofinsTotal} indent negative
-                />
-                <div className="border-t-2 border-ds-border mt-2 pt-2.5 flex justify-between">
-                  <span className="font-bold text-ds-mid text-sm">Resultado Pin Saúde</span>
-                  <span className={`font-bold text-sm ${resultadoPin >= 0 ? 'text-primary' : 'text-red-600'}`}>
-                    {formatBRL(resultadoPin)}
-                  </span>
-                </div>
+                {!calculo ? (
+                  <CalculoPendente carregando={calculando} erro={erroCalculo} />
+                ) : (
+                  <>
+                    <div className="pl-3 py-1.5 text-sm text-ds-light">
+                      <LinhasTributo
+                        tributos={calculo.tributos}
+                        valores={calculo.valores}
+                        aliquotasPct={calculo.aliquotasPct}
+                        situacao={calculo.situacao}
+                        negativo
+                      />
+                    </div>
+                    <div className="border-t-2 border-ds-border mt-2 pt-2.5 flex justify-between">
+                      <span className="font-bold text-ds-mid text-sm">Resultado Pin Saúde</span>
+                      <span className={`font-bold text-sm ${resultadoPin! >= 0 ? 'text-primary' : 'text-red-600'}`}>
+                        {formatBRL(resultadoPin!)}
+                      </span>
+                    </div>
+                  </>
+                )}
                 <p className="text-[10px] text-ds-light mt-2 italic">
                   O médico recebe o bruto menos a taxa Pin acordada. Os tributos saem da taxa da Pin, retidos ou não.
+                  RETIDO = o tomador retém na fonte; PRESTADORA = a Pin recolhe por guia.
                 </p>
+                {calculo?.regime === 'IBS_CBS' && (
+                  <p className="text-[10px] text-ds-light mt-1.5 italic">
+                    Competência no regime da reforma tributária: PIS e COFINS não incidem; CBS e IBS
+                    {calculo.cbsIbsPorFora
+                      ? ' são somados ao preço.'
+                      : ` estão dentro do valor bruto (base ${formatBRL(calculo.baseCalculoIbsCbs)}).`}
+                    {servico.reducaoIbsCbs ? ` Redução do serviço: ${formatPct(Number(servico.reducaoIbsCbs))}.` : ''}
+                  </p>
+                )}
+                {servicoSemClassificacao && (
+                  <p className="text-[10px] text-amber-600 mt-1.5">
+                    Serviço {servico.codigoLc116} sem classificação de CBS/IBS (NBS, CST, cClassTrib): CBS e IBS
+                    calculados sem a redução da saúde. Classifique o serviço em Configuração Fiscal › Serviços.
+                  </p>
+                )}
                 {tomadorFull?.aliquotas && tomadorFull.aliquotas.length > 0 && (
                   <p className="text-[10px] text-amber-600 mt-1.5 italic">
-                    * Alíquota diferenciada configurada para este tomador.
+                    Este tomador tem alíquota diferenciada para {tomadorFull.aliquotas.map(a => a.tipoTributo).join(', ')}.
                   </p>
                 )}
               </div>
@@ -858,9 +892,8 @@ export function NfseEmissaoPage() {
           empresaInfo={empresaInfo}
           medicoNomeMap={medicoNomeMap}
           cnaeCodigo={cnaeSelecionado || null}
-          aliquotasOverride={tomadorFull?.aliquotas?.length ? tomadorFull.aliquotas.reduce((acc, a) => ({
-            ...acc, [a.tipoTributo]: Number(a.valorAliquota)
-          }), {} as Record<string, number>) : undefined}
+          calculo={calculo}
+          erroCalculo={erroCalculo}
           onClose={() => setShowPreview(false)}
           onAnexarNota={() => {
             setShowPreview(false)

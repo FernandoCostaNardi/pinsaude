@@ -163,15 +163,28 @@ export interface CalculoFiscalResult {
   baseCalculoIbsCbs?: number
   /** Bruto + CBS + IBS quando por fora; senão igual ao bruto */
   valorTotalNota?: number
+  /** Tributos retidos pelo tomador, só os com valor (CBS-21). A soma deles é totalRetencoes. */
+  tributosRetidos?: string[]
+  cenario?: 'A' | 'B' | 'C' | 'D'
 }
 
-export async function calcularFiscal(req: CalculoFiscalRequest): Promise<CalculoFiscalResult> {
-  const r = await fetch('/api/motor-fiscal/calcular', {
+/**
+ * Calcula os tributos de uma nota pelo motor fiscal.
+ * @param cnpj empresa emissora, só usada por quem não tem cnpj_id no token (gestão)
+ */
+export async function calcularFiscal(req: CalculoFiscalRequest, cnpj?: string | null): Promise<CalculoFiscalResult> {
+  const digitos = (cnpj ?? '').replace(/\D/g, '')
+  const q = digitos ? `?${new URLSearchParams({ cnpj: digitos })}` : ''
+  const r = await fetch(`/api/motor-fiscal/calcular${q}`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(req),
   })
-  if (!r.ok) throw new Error(`Erro no cálculo fiscal: ${r.status}`)
+  if (!r.ok) {
+    let msg = `Erro no cálculo fiscal: ${r.status}`
+    try { const b = await r.json(); msg = b.mensagem || b.message || b.detail || msg } catch { /* ignore */ }
+    throw new Error(msg)
+  }
   return r.json()
 }
 
@@ -213,7 +226,7 @@ export async function atualizarClassificacaoServico(
   })
   if (!r.ok) {
     let msg = `Erro ao salvar classificação: ${r.status}`
-    try { const b = await r.json(); msg = b.mensagem ?? b.message ?? b.detail ?? msg } catch { /* ignore */ }
+    try { const b = await r.json(); msg = b.mensagem || b.message || b.detail || msg } catch { /* ignore */ }
     throw new Error(msg)
   }
   return r.json()

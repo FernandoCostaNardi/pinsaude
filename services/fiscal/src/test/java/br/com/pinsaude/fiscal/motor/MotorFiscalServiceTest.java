@@ -120,6 +120,23 @@ class MotorFiscalServiceTest {
         assertThat(r.valorLiquidoMedico()).isEqualTo(85_000L);
     }
 
+    // CBS-21: a retenção de ISS pelo tomador independe da federal (as telas já mostravam assim)
+    @Test
+    void cenarioB_comRetencaoIss_soIssEhRetido() {
+        CalculoFiscalResponse r = calcular(true, false, true, false);
+        assertThat(r.cenario()).isEqualTo("B");
+        assertThat(r.totalRetencoes()).isEqualTo(2_000L);
+        assertThat(r.tributosRetidos()).containsExactly("ISS");
+    }
+
+    @Test
+    void cenarioA_tributosRetidos_listaFederaisEIss() {
+        assertThat(calcular(true, true, true, false).tributosRetidos())
+            .containsExactly("ISS", "IR", "CSLL", "PIS", "COFINS");
+        assertThat(calcular(true, true, false, false).tributosRetidos())
+            .containsExactly("IR", "CSLL", "PIS", "COFINS");
+    }
+
     @Test
     void cenarioB_tributosCalculados_pinPagaPorGuia() {
         CalculoFiscalResponse r = calcular(true, false, false, false);

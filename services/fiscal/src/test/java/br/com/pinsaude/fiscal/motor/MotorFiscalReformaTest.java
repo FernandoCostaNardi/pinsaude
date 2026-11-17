@@ -101,6 +101,7 @@ class MotorFiscalReformaTest {
         assertThat(r.valorCbs()).isEqualTo(10_063L);   // 89.847 × 11,2%
         assertThat(r.valorIbs()).isEqualTo(90L);       // 89.847 × 0,1%
         assertThat(r.totalRetencoes()).isEqualTo(2_500L);   // só IR + CSLL
+        assertThat(r.tributosRetidos()).containsExactly("IR", "CSLL");   // PIS/COFINS zerados não aparecem
         assertThat(r.totalTributos()).isEqualTo(14_653L);
         assertThat(r.resultadoPin()).isEqualTo(347L);
         assertThat(r.valorLiquidoMedico()).isEqualTo(85_000L);

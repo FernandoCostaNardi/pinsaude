@@ -14,6 +14,9 @@ import { TomadorFormModal } from '../components/TomadorFormModal'
 import { TomadorGruposModal } from '../components/TomadorGruposModal'
 import { TomadorMedicosModal } from '../components/TomadorMedicosModal'
 import { useAuth } from '../auth/useAuth'
+import { useRegimeFiscal } from '../hooks/useRegimeFiscal'
+import { rotuloRetencaoFederal } from '../fiscal/calculoNota'
+import { competenciaAtual } from '../fiscal/tributos'
 
 // ─── Tipo badges ──────────────────────────────────────────────────────────────
 
@@ -129,6 +132,9 @@ const PAGE_SIZES = [10, 25, 50]
 
 export function TomadoresPage() {
   const { user } = useAuth()
+  // CBS-21: texto da retenção federal pelo regime do mês corrente (gestão sem empresa: regime antigo)
+  const { tributosVisiveis } = useRegimeFiscal(user?.cnpj_id ? competenciaAtual() : null)
+  const retencaoFederalTxt = rotuloRetencaoFederal(tributosVisiveis)
   const roles = user?.realm_access?.roles ?? []
   const canWrite = roles.some(r => ['operacao', 'gestao'].includes(r))
 
@@ -361,7 +367,7 @@ export function TomadoresPage() {
                     <p className="mt-2 text-xs text-ds-mid">{t.municipio}</p>
                   )}
                   <div className="mt-3 flex items-center gap-3 text-xs text-ds-mid border-t border-ds-border pt-2">
-                    <RetencaoIcon ativo={t.indicadorRetencaoFederal} tooltip="Retenção Federal (IR/CSLL/PIS/COFINS)" />
+                    <RetencaoIcon ativo={t.indicadorRetencaoFederal} tooltip={`Retenção Federal (${retencaoFederalTxt})`} />
                     <span>Federal</span>
                     <RetencaoIcon ativo={t.indicadorRetencaoIss} tooltip="Retenção ISS" />
                     <span>ISS</span>
@@ -432,7 +438,7 @@ export function TomadoresPage() {
                         <div className="flex items-center justify-center gap-3">
                           <RetencaoIcon
                             ativo={t.indicadorRetencaoFederal}
-                            tooltip="Retenção Federal (IR, CSLL, PIS e COFINS)"
+                            tooltip={`Retenção Federal (${retencaoFederalTxt})`}
                           />
                           <RetencaoIcon
                             ativo={t.indicadorRetencaoIss}

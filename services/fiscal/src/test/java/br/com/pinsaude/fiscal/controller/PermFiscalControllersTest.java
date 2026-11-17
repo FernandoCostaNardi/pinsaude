@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -132,6 +134,47 @@ class PermFiscalControllersTest {
                         .contentType(MediaType.APPLICATION_JSON).content(CALCULO_BODY)
                         .with(jwt().jwt(j -> j.claim("cnpj_id", "12.345.678/0001-90")).authorities(PERM_FISCAL)))
                 .andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ROLE_perm_notas", "ROLE_perm_producao"})
+    void motorFiscalCalcular_permNotasOuProducao_retorna200(String authority) throws Exception {
+        when(motorFiscalService.calcular(any(), any())).thenReturn(mock(CalculoFiscalResponse.class));
+        mockMvc.perform(post("/api/motor-fiscal/calcular")
+                        .contentType(MediaType.APPLICATION_JSON).content(CALCULO_BODY)
+                        .with(jwt().jwt(j -> j.claim("cnpj_id", "12.345.678/0001-90"))
+                                .authorities(new SimpleGrantedAuthority(authority))))
+                .andExpect(status().isOk());
+    }
+
+    // CBS-21: gestão não tem cnpj_id no token e informa a empresa emissora por parâmetro
+    @Test
+    void motorFiscalCalcular_gestaoSemCnpjNoToken_usaParametro() throws Exception {
+        when(motorFiscalService.calcular(eq("12345678000190"), any())).thenReturn(mock(CalculoFiscalResponse.class));
+        mockMvc.perform(post("/api/motor-fiscal/calcular").param("cnpj", "12.345.678/0001-90")
+                        .contentType(MediaType.APPLICATION_JSON).content(CALCULO_BODY)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .andExpect(status().isOk());
+        verify(motorFiscalService).calcular(eq("12345678000190"), any());
+    }
+
+    @Test
+    void motorFiscalCalcular_semCnpjNoTokenNemParametro_retorna400() throws Exception {
+        mockMvc.perform(post("/api/motor-fiscal/calcular")
+                        .contentType(MediaType.APPLICATION_JSON).content(CALCULO_BODY)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void motorFiscalCalcular_cnpjDoTokenPrevaleceSobreParametro() throws Exception {
+        when(motorFiscalService.calcular(any(), any())).thenReturn(mock(CalculoFiscalResponse.class));
+        mockMvc.perform(post("/api/motor-fiscal/calcular").param("cnpj", "99.999.999/0001-99")
+                        .contentType(MediaType.APPLICATION_JSON).content(CALCULO_BODY)
+                        .with(jwt().jwt(j -> j.claim("cnpj_id", "12.345.678/0001-90"))
+                                .authorities(new SimpleGrantedAuthority("ROLE_operacao"))))
+                .andExpect(status().isOk());
+        verify(motorFiscalService).calcular(eq("12345678000190"), any());
     }
 
     @Test

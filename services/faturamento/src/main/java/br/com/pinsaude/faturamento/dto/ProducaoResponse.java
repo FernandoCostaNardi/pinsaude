@@ -36,14 +36,21 @@ public record ProducaoResponse(
         }
     }
 
+    /**
+     * Alíquotas antigas em percentual (5.0000 = 5%). Classificação CBS/IBS (CBS-12) para o motor
+     * fiscal calcular a prévia da nota (CBS-21): reducaoIbsCbs é fração (0.6000 = 60%).
+     */
     public record ServicoResumo(UUID id, String codigoLc116, String descricaoPadrao,
                                 BigDecimal aliquotaIss, BigDecimal aliquotaIr,
                                 BigDecimal aliquotaCsll, BigDecimal aliquotaPis,
-                                BigDecimal aliquotaCofins) {
+                                BigDecimal aliquotaCofins,
+                                String nbs, String cstIbsCbs, String cClassTrib,
+                                BigDecimal reducaoIbsCbs) {
         static ServicoResumo from(Servico s) {
             return new ServicoResumo(s.getId(), s.getCodigoLc116(), s.getDescricaoPadrao(),
                 s.getAliquotaIss(), s.getAliquotaIr(), s.getAliquotaCsll(),
-                s.getAliquotaPis(), s.getAliquotaCofins());
+                s.getAliquotaPis(), s.getAliquotaCofins(),
+                s.getNbs(), s.getCstIbsCbs(), s.getCClassTrib(), s.getReducaoIbsCbs());
         }
     }
 

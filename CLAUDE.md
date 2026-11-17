@@ -1391,6 +1391,25 @@ Perfis: `contabil`/`gestao`/`financeiro`/`operacao`/`perm_fiscal`/`perm_notas`/`
 `&cnpj=` (sem ele, 400); com `cnpj_id` no token o parâmetro é ignorado. Médico não usa: o portal
 lê o regime gravado na nota (CBS-22). Para notas já emitidas, sempre o snapshot da nota (CBS-11).
 
+### Telas de emissão, prévia e detalhe pelo motor fiscal (CBS-21)
+`NfseEmissaoPage`, `NfsePreviewModal` e `ProducaoDetalheModal` não calculam mais tributo: montam o
+pedido em `fiscal/calculoNota.ts` (`montarCalculoRequest`), chamam `POST /api/motor-fiscal/calcular`
+pelo hook `useCalculoNota` e desenham a resposta com `LinhasTributo` (CBS-20). A lista de tributos vem
+do regime devolvido pelo motor (`tributosDoRegime(regime, fatorIss)`).
+- Alíquotas ISS/IR/CSLL/PIS/COFINS: as mesmas de antes (tomador sobrepõe o serviço LC116), enviadas
+  como `aliquotasOverride` em fração. No IBS_CBS o motor zera PIS/COFINS e aplica o fator do ISS.
+- Classificação CBS/IBS do serviço (NBS, CST, cClassTrib, redução) agora vem no `ServicoResumo` da
+  produção. `cbsIbsPorFora` vai nulo (dentro do preço) até existir o cadastro por tomador (CBS-01).
+- O motor devolve `tributosRetidos` (só os com valor); as telas marcam RETIDO/PRESTADORA por ele.
+  Cenário B passou a reter ISS quando `indicadorRetencaoIss` (a retenção municipal independe da federal,
+  como as telas já mostravam).
+- Gestão sem `cnpj_id` passa `?cnpj=` com a empresa emissora (mesma regra do `/api/fiscal/regime`).
+  Perfis do motor agora incluem `perm_notas`/`perm_producao`.
+- Taxa Pin continua na tela (percentual do cadastro do médico); o `taxaPin` fixo de 15% do motor é ignorado.
+- A emissão envia as retenções do motor; CBS/IBS ainda não vão no `EmitirNfseRequest` (CBS-41/42).
+- Cadastro do tomador (sem competência) segue o regime do mês corrente: no IBS_CBS esconde PIS/COFINS
+  das alíquotas diferenciadas (valores guardados continuam) e o texto da retenção federal vira "IR e CSLL".
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

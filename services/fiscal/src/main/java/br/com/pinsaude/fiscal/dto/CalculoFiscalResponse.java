@@ -65,5 +65,11 @@ public record CalculoFiscalResponse(
     long baseCalculoIbsCbs,
 
     /** Valor total da nota: bruto + CBS + IBS quando por fora; senão igual ao bruto. */
-    long valorTotalNota
+    long valorTotalNota,
+
+    /**
+     * Tributos retidos pelo tomador na fonte (ISS, IR, CSLL, PIS, COFINS), só os com valor.
+     * A soma deles é totalRetencoes. CBS/IBS nunca aparecem aqui. Usado pelas telas (CBS-21).
+     */
+    java.util.List<String> tributosRetidos
 ) {}

@@ -75,13 +75,15 @@ class MotorFiscalReformaPropertyTest {
         assertThat(r.valorPis() + r.valorCofins()).isZero();
 
         // CBS/IBS nunca entram nas retenções
-        long retIssEsperado = (r.cenario().equals("A") && retIss) ? r.valorIss() : 0;
+        long retIssEsperado = ((r.cenario().equals("A") || r.cenario().equals("B")) && retIss) ? r.valorIss() : 0;
         long retEsperada = switch (r.cenario()) {
             case "A" -> r.valorIr() + r.valorCsll() + retIssEsperado;
+            case "B" -> retIssEsperado;
             case "D" -> r.valorIr();
             default  -> 0L;
         };
         assertThat(r.totalRetencoes()).isEqualTo(retEsperada);
+        assertThat(r.tributosRetidos()).doesNotContain("CBS", "IBS", "PIS", "COFINS");
 
         long cbsIbs = r.valorCbs() + r.valorIbs();
         if (porFora) {
