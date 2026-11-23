@@ -87,19 +87,45 @@ export interface PreviewCalculoRequest {
   servicoId: string
   tomadorId: string
   valorBruto: number
+  /** Taxa Pin em fração (0.15 = 15%); ausente = 15% */
+  taxaPinPct?: number | null
+  /** AAAA-MM; define o regime (LEGADO ou IBS_CBS). Ausente = mês atual */
+  competencia?: string | null
 }
 
+// CBS-30: calculado pelo motor fiscal (mesma conta da emissão). Centavos; alíquotas em fração.
 export interface PreviewCalculoResponse {
   valorBruto: number
   taxaPin: number
+  /** Só o que o tomador retém na fonte (0 quando a Pin paga por guia) */
   issRetido: number
   irRetido: number
   csllRetido: number
   pisRetido: number
   cofinsRetido: number
   totalRetencoes: number
-  valorLiquidoMedico: number  // sempre 85% do bruto — não afetado por impostos
-  resultadoPin: number        // taxaPin - totalRetencoes (lucro Pin após tributos)
+  valorLiquidoMedico: number  // sempre bruto − taxa Pin — não afetado por impostos
+  resultadoPin: number        // taxa Pin − tributos que saem da cota da Pin
+  competencia: string
+  regime: 'LEGADO' | 'IBS_CBS'
+  cenario: string | null
+  valorIss: number
+  valorIr: number
+  valorCsll: number
+  valorPis: number
+  valorCofins: number
+  valorCbs: number
+  valorIbs: number
+  totalTributos: number
+  aliqCbs: number | null
+  aliqIbs: number | null
+  fatorIss: number | null
+  cstIbsCbs: string | null
+  cClassTrib: string | null
+  cbsIbsPorFora: boolean
+  baseCalculoIbsCbs: number
+  valorTotalNota: number
+  tributosRetidos: string[]
 }
 
 function authHeaders(): HeadersInit {

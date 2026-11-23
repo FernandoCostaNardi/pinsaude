@@ -5,6 +5,7 @@ import br.com.pinsaude.faturamento.dto.ParticipacaoRequest;
 import br.com.pinsaude.faturamento.dto.ProducaoRequest;
 import br.com.pinsaude.faturamento.dto.ProducaoResponse;
 import br.com.pinsaude.faturamento.service.ExclusaoProducaoService;
+import br.com.pinsaude.faturamento.service.PreviaTributosService;
 import br.com.pinsaude.faturamento.service.ProducaoService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,9 @@ class ProducaoControllerTest {
 
     @MockBean
     ExclusaoProducaoService exclusaoService;
+
+    @MockBean
+    PreviaTributosService previaService;
 
     private static final SimpleGrantedAuthority PERM_PRODUCAO = new SimpleGrantedAuthority("ROLE_perm_producao");
     private static final SimpleGrantedAuthority PERM_OUTRO_DOMINIO = new SimpleGrantedAuthority("ROLE_perm_tomadores");
@@ -152,12 +156,12 @@ class ProducaoControllerTest {
                 .andExpect(status().isForbidden());
     }
 
-    // ─── Grupo 4: leitura mais ampla (operacao,gestao,financeiro,contabil,medico) — POST /preview-calculo ──
+    // ─── Grupo 4: prévia pelo motor fiscal (operacao,gestao,financeiro,contabil) — POST /preview-calculo ──
 
     @ParameterizedTest
-    @ValueSource(strings = {"operacao", "gestao", "financeiro", "contabil", "medico"})
+    @ValueSource(strings = {"operacao", "gestao", "financeiro", "contabil"})
     void previewCalculo_papelLegado_retorna200(String role) throws Exception {
-        when(service.calcularPreview(any())).thenReturn(
+        when(previaService.calcular(any())).thenReturn(
                 org.mockito.Mockito.mock(br.com.pinsaude.faturamento.dto.PreviewCalculoResponse.class));
         String body = "{\"servicoId\":\"" + UUID.randomUUID() + "\",\"tomadorId\":\"" + UUID.randomUUID()
                 + "\",\"valorBruto\":1000}";
@@ -169,7 +173,7 @@ class ProducaoControllerTest {
 
     @Test
     void previewCalculo_permProducao_retorna200() throws Exception {
-        when(service.calcularPreview(any())).thenReturn(
+        when(previaService.calcular(any())).thenReturn(
                 org.mockito.Mockito.mock(br.com.pinsaude.faturamento.dto.PreviewCalculoResponse.class));
         String body = "{\"servicoId\":\"" + UUID.randomUUID() + "\",\"tomadorId\":\"" + UUID.randomUUID()
                 + "\",\"valorBruto\":1000}";
@@ -177,6 +181,26 @@ class ProducaoControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content(body)
                         .with(jwt().authorities(PERM_PRODUCAO)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void previewCalculo_medico_retorna403() throws Exception {
+        String body = "{\"servicoId\":\"" + UUID.randomUUID() + "\",\"tomadorId\":\"" + UUID.randomUUID()
+                + "\",\"valorBruto\":1000}";
+        mockMvc.perform(post("/api/producoes/preview-calculo")
+                        .contentType(MediaType.APPLICATION_JSON).content(body)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_medico"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void previewCalculo_competenciaInvalida_retorna400() throws Exception {
+        String body = "{\"servicoId\":\"" + UUID.randomUUID() + "\",\"tomadorId\":\"" + UUID.randomUUID()
+                + "\",\"valorBruto\":1000,\"competencia\":\"2027-13\"}";
+        mockMvc.perform(post("/api/producoes/preview-calculo")
+                        .contentType(MediaType.APPLICATION_JSON).content(body)
+                        .with(jwt().authorities(PERM_PRODUCAO)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
