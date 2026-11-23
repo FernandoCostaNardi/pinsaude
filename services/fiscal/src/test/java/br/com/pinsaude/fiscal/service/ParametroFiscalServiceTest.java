@@ -203,6 +203,32 @@ class ParametroFiscalServiceTest {
                 e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
+    @Test
+    void ligar_gestaoSemTenant_usaEmpresaInformada() {
+        autenticar(null);
+        when(repo.findByCnpjIdAndVigenciaInicio(CNPJ, JAN_2027)).thenReturn(Optional.empty());
+        when(repo.findFirstByCnpjIdAndVigenciaInicioLessThanEqualOrderByVigenciaInicioDesc(CNPJ, JAN_2027))
+            .thenReturn(Optional.of(legado(LocalDate.of(2026, 1, 1))));
+
+        ParametroFiscalResponse r = service.criarIbsCbs(
+            new IbsCbsRequest("2027-01", null, null, null, null, "11.222.333/0001-81"));
+
+        assertThat(r.cnpjId()).isEqualTo(CNPJ);
+        assertThat(r.ibsCbsAtivo()).isTrue();
+    }
+
+    @Test
+    void ligar_comTenant_ignoraEmpresaInformada() {
+        when(repo.findByCnpjIdAndVigenciaInicio(CNPJ, JAN_2027)).thenReturn(Optional.empty());
+        when(repo.findFirstByCnpjIdAndVigenciaInicioLessThanEqualOrderByVigenciaInicioDesc(CNPJ, JAN_2027))
+            .thenReturn(Optional.of(legado(LocalDate.of(2026, 1, 1))));
+
+        ParametroFiscalResponse r = service.criarIbsCbs(
+            new IbsCbsRequest("2027-01", null, null, null, null, "99888777000166"));
+
+        assertThat(r.cnpjId()).isEqualTo(CNPJ);
+    }
+
     // ─── Desligar ─────────────────────────────────────────────────────────────
 
     @Test

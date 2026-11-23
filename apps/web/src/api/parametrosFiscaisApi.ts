@@ -44,12 +44,17 @@ export interface ParametroFiscal {
   createdAt: string
 }
 
+/** Liga a chave CBS/IBS (CBS-14). ISS/IR/CSLL/PIS/COFINS são copiados do parâmetro vigente. */
 export interface IbsCbsRequest {
   competenciaInicio: string
-  aliqIbsCbs: number
-  reducaoSaude: number
+  /** @deprecated alíquotas vêm do cronograma da reforma */
+  aliqIbsCbs?: number
+  /** @deprecated a redução vem do serviço LC116 */
+  reducaoSaude?: number
   aliqIss?: number
   observacoes?: string
+  /** Empresa (só para quem não tem cnpj_id no token, ex.: gestão) */
+  cnpj?: string
 }
 
 export interface ParametroFiscalRequest {
@@ -89,6 +94,15 @@ async function criarIbsCbs(req: IbsCbsRequest): Promise<ParametroFiscal> {
   return handleResponse<ParametroFiscal>(res)
 }
 
+/** Desliga a chave CBS/IBS (422 se já há nota no regime novo no período). */
+async function desligarIbsCbs(id: string): Promise<ParametroFiscal> {
+  const res = await fetch(`/api/parametros-fiscais/${id}/ibs-cbs`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return handleResponse<ParametroFiscal>(res)
+}
+
 async function homologar(id: string): Promise<ParametroFiscal> {
   const res = await fetch(`/api/parametros-fiscais/${id}/homologar`, {
     method: 'PUT',
@@ -97,4 +111,47 @@ async function homologar(id: string): Promise<ParametroFiscal> {
   return handleResponse<ParametroFiscal>(res)
 }
 
-export const parametrosFiscaisApi = { listar, criar, criarIbsCbs, homologar }
+// ─── Cronograma da reforma (CBS-10) ───────────────────────────────────────────
+
+/** Um ano do cronograma. Alíquotas em fração (0.1120 = 11,2%); nulas = ainda não fixadas. */
+export interface CronogramaReformaAno {
+  ano: number
+  aliqCbs: number | null
+  aliqIbsUf: number | null
+  aliqIbsMun: number | null
+  /** IBS estadual + municipal */
+  aliqIbs: number | null
+  /** Fração do ISS cobrada no ano (1 até 2028, 0 em 2033) */
+  fatorIss: number
+  aliquotasDefinitivas: boolean
+  fonte: string | null
+  atualizadoPor: string | null
+  atualizadoEm: string | null
+}
+
+export interface CronogramaReformaRequest {
+  aliqCbs: number | null
+  aliqIbsUf: number | null
+  aliqIbsMun: number | null
+  fatorIss: number
+  aliquotasDefinitivas: boolean
+  fonte: string | null
+}
+
+async function listarCronograma(): Promise<CronogramaReformaAno[]> {
+  const res = await fetch('/api/fiscal/cronograma-reforma', { headers: authHeaders() })
+  return handleResponse<CronogramaReformaAno[]>(res)
+}
+
+async function atualizarCronograma(ano: number, req: CronogramaReformaRequest): Promise<CronogramaReformaAno> {
+  const res = await fetch(`/api/fiscal/cronograma-reforma/${ano}`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(req),
+  })
+  return handleResponse<CronogramaReformaAno>(res)
+}
+
+export const parametrosFiscaisApi = {
+  listar, criar, criarIbsCbs, desligarIbsCbs, homologar, listarCronograma, atualizarCronograma,
+}

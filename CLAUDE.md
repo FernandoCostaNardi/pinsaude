@@ -1418,6 +1418,18 @@ nota antiga mostra PIS/COFINS, nota IBS_CBS mostra CBS/IBS (rótulos sem "Retido
 O CSV ganhou as colunas CBS e IBS. No celular (< md) o painel de detalhe abre em tela cheia.
 O Extrato do portal não mostra tributos (só bruto, taxa Pin e previsto), então não mudou.
 
+### Tela da chave CBS/IBS na Configuração Fiscal (CBS-23)
+A aba "Reforma tributária" da `ConfiguracaoFiscalPage` é o `ReformaTributariaAba.tsx` (o antigo
+`ParametrosFiscaisPage`, sem rota e com o texto errado "IR, CSLL, PIS e COFINS substituídos", foi removido).
+- Card da chave: a chave é o parâmetro mais recente da empresa quando `ibsCbsAtivo`. Estados: desligada,
+  ligada aguardando homologação (aviso amarelo) e ligada/homologada. Ligar abre modal com a competência
+  (mês atual até 2033-12, sugestão 2027-01) e caixa de confirmação; desligar e homologar pedem confirmação.
+  Ações para `contabil`/`gestao`/`perm_fiscal` (os mesmos perfis do backend).
+- Gestão sem `cnpj_id` escolhe a empresa (lista de `empresasApi`); a lista de parâmetros é filtrada pelo
+  CNPJ e o `POST /api/parametros-fiscais/ibs-cbs` recebe `cnpj` no corpo (ignorado quando o token tem `cnpj_id`).
+- Cronograma 2026–2033 em tabela (`GET /api/fiscal/cronograma-reforma`); edição por linha só para
+  `contabil`/`gestao` (`PUT /{ano}`), em % na tela e fração no envio.
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

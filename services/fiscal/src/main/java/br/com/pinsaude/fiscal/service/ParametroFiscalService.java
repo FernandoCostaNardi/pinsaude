@@ -110,7 +110,7 @@ public class ParametroFiscalService {
      */
     @Transactional
     public ParametroFiscalResponse criarIbsCbs(IbsCbsRequest req) {
-        String cnpj = requireCnpj();
+        String cnpj = resolverEmpresa(req.cnpj());
         LocalDate vigencia = competenciaToDate(req.competenciaInicio());
 
         ParametroFiscal p = repo.findByCnpjIdAndVigenciaInicio(cnpj, vigencia).orElse(null);
@@ -241,6 +241,19 @@ public class ParametroFiscalService {
                 "CNPJ do tenant não encontrado no token. Configure o atributo cnpj_id no Keycloak.");
         }
         return cnpj;
+    }
+
+    /**
+     * Empresa do token; quem não tem cnpj_id no token (gestão) informa a empresa (CBS-23),
+     * com a mesma regra do GET /api/fiscal/regime.
+     */
+    private String resolverEmpresa(String cnpjInformado) {
+        String doToken = currentCnpj();
+        if (!doToken.isBlank()) return doToken;
+        String informado = cnpjInformado == null ? "" : cnpjInformado.replaceAll("\\D", "");
+        if (informado.length() == 14) return informado;
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            "Informe o CNPJ da empresa: seu usuário não está vinculado a uma empresa");
     }
 
     private void validarIbsCbs(boolean ativo, BigDecimal aliq, BigDecimal reducao) {
