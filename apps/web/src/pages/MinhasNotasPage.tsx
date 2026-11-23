@@ -7,8 +7,33 @@ import {
 } from 'lucide-react'
 import { Spinner, Alert } from '@pinsaude/ui'
 import { portalApi, NotaPortal } from '../api/portalApi'
+import {
+  tributosDaNota, valoresTributo, totalTributos, type TipoTributo, type ValoresTributo,
+} from '../fiscal/tributos'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// CBS-22 — tributos pelo regime gravado na nota: nota antiga mostra PIS/COFINS,
+// nota do regime novo mostra CBS/IBS. Rótulos do portal (retidos x débito da Pin).
+const ROTULO_TRIBUTO_PORTAL: Record<TipoTributo, string> = {
+  ISS: 'ISS',
+  IR: 'IR Retido na Fonte',
+  CSLL: 'CSLL Retida',
+  PIS: 'PIS Retido',
+  COFINS: 'COFINS Retida',
+  CBS: 'CBS',
+  IBS: 'IBS',
+}
+
+function tributosNota(n: NotaPortal): { lista: TipoTributo[]; valores: ValoresTributo; total: number } {
+  const lista = tributosDaNota(n)
+  const valores = valoresTributo(n)
+  return { lista, valores, total: totalTributos(lista, valores) }
+}
+
+function centavosCsv(v: number | null | undefined): string {
+  return ((v ?? 0) / 100).toFixed(2).replace('.', ',')
+}
 
 function formatBRL(centavos: number): string {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -85,12 +110,12 @@ function LinhaValor({ label, value, sub, destaque, negativo }: {
 
 // ─── Painel lateral de detalhe ────────────────────────────────────────────────
 
-function PainelDetalhe({ nota, onClose }: { nota: NotaPortal; onClose: () => void }) {
+export function PainelDetalhe({ nota, onClose }: { nota: NotaPortal; onClose: () => void }) {
   const [downloadingXml, setDownloadingXml] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [downloadError, setDownloadError]   = useState<string | null>(null)
 
-  const totalTributos = nota.valorIss + nota.valorIr + nota.valorCsll + nota.valorPis + nota.valorCofins
+  const trib = tributosNota(nota)
 
   async function handleDownloadXml() {
     setDownloadingXml(true)
@@ -108,8 +133,9 @@ function PainelDetalhe({ nota, onClose }: { nota: NotaPortal; onClose: () => voi
     finally { setDownloadingPdf(false) }
   }
 
+  // Celular: o painel ocupa a tela inteira (ao lado da tabela sobrava ~70px para a lista).
   return (
-    <div className="w-80 bg-white border-l border-ds-border flex flex-col h-full shrink-0">
+    <div className="fixed inset-0 z-40 w-full bg-white flex flex-col md:static md:inset-auto md:z-auto md:w-80 md:h-full md:border-l md:border-ds-border md:shrink-0">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-ds-border shrink-0">
         <div>
@@ -170,24 +196,12 @@ function PainelDetalhe({ nota, onClose }: { nota: NotaPortal; onClose: () => voi
           </p>
           <div className="bg-ds-surface rounded-lg px-3 py-1 divide-y divide-ds-border">
             <LinhaValor label="Valor Bruto da Nota" value={nota.valorBrutoCentavos} />
-            {nota.valorIss > 0 && (
-              <LinhaValor label="ISS" value={nota.valorIss} sub negativo />
-            )}
-            {nota.valorIr > 0 && (
-              <LinhaValor label="IR Retido na Fonte" value={nota.valorIr} sub negativo />
-            )}
-            {nota.valorCsll > 0 && (
-              <LinhaValor label="CSLL Retida" value={nota.valorCsll} sub negativo />
-            )}
-            {nota.valorPis > 0 && (
-              <LinhaValor label="PIS Retido" value={nota.valorPis} sub negativo />
-            )}
-            {nota.valorCofins > 0 && (
-              <LinhaValor label="COFINS Retida" value={nota.valorCofins} sub negativo />
-            )}
+            {trib.lista.filter(t => (trib.valores[t] ?? 0) > 0).map(t => (
+              <LinhaValor key={t} label={ROTULO_TRIBUTO_PORTAL[t]} value={trib.valores[t] ?? 0} sub negativo />
+            ))}
             <LinhaValor label="Taxa Pin Saúde (15%)" value={nota.taxaPinCentavos} sub negativo />
-            {totalTributos > 0 && (
-              <LinhaValor label="Total Tributos" value={totalTributos} sub negativo />
+            {trib.total > 0 && (
+              <LinhaValor label="Total Tributos" value={trib.total} sub negativo />
             )}
             <LinhaValor label="Seu Valor Líquido" value={nota.valorLiquidoMedicoCentavos} destaque />
           </div>
@@ -306,8 +320,7 @@ export function MinhasNotasPage() {
 
   const totalBruto  = notasFiltradas.reduce((s, n) => s + n.valorBrutoCentavos, 0)
   const totalLiquid = notasFiltradas.reduce((s, n) => s + n.valorLiquidoMedicoCentavos, 0)
-  const totalTrib   = notasFiltradas.reduce((s, n) =>
-    s + n.valorIss + n.valorIr + n.valorCsll + n.valorPis + n.valorCofins, 0)
+  const totalTrib   = notasFiltradas.reduce((s, n) => s + tributosNota(n).total, 0)
 
   const temFiltro = !!(filtroCompetencia || filtroStatus || filtroTomador)
 
@@ -320,7 +333,7 @@ export function MinhasNotasPage() {
   function exportarCSV() {
     const cabecalho = [
       'Competência','Nº Nota','Tomador',
-      'Valor Bruto','ISS','IR','CSLL','PIS','COFINS',
+      'Valor Bruto','ISS','IR','CSLL','PIS','COFINS','CBS','IBS',
       'Taxa Pin','Valor Líquido','Status','Emissão',
     ]
     const linhas = notasFiltradas.map(n => [
@@ -328,11 +341,13 @@ export function MinhasNotasPage() {
       n.numeroNota ?? '—',
       n.tomadorNome ?? '—',
       (n.valorBrutoCentavos / 100).toFixed(2).replace('.', ','),
-      (n.valorIss / 100).toFixed(2).replace('.', ','),
-      (n.valorIr / 100).toFixed(2).replace('.', ','),
-      (n.valorCsll / 100).toFixed(2).replace('.', ','),
-      (n.valorPis / 100).toFixed(2).replace('.', ','),
-      (n.valorCofins / 100).toFixed(2).replace('.', ','),
+      centavosCsv(n.valorIss),
+      centavosCsv(n.valorIr),
+      centavosCsv(n.valorCsll),
+      centavosCsv(n.valorPis),
+      centavosCsv(n.valorCofins),
+      centavosCsv(n.valorCbs),
+      centavosCsv(n.valorIbs),
       (n.taxaPinCentavos / 100).toFixed(2).replace('.', ','),
       (n.valorLiquidoMedicoCentavos / 100).toFixed(2).replace('.', ','),
       STATUS_CFG[n.status]?.label ?? n.status,
@@ -493,7 +508,7 @@ export function MinhasNotasPage() {
                 <tbody className="divide-y divide-ds-border">
                   {notasFiltradas.map(nota => {
                     const sel = selecionada?.id === nota.id
-                    const tribNota = nota.valorIss + nota.valorIr + nota.valorCsll + nota.valorPis + nota.valorCofins
+                    const tribNota = tributosNota(nota).total
                     return (
                       <tr
                         key={nota.id}

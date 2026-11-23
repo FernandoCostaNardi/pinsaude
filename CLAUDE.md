@@ -1410,6 +1410,14 @@ do regime devolvido pelo motor (`tributosDoRegime(regime, fatorIss)`).
 - Cadastro do tomador (sem competência) segue o regime do mês corrente: no IBS_CBS esconde PIS/COFINS
   das alíquotas diferenciadas (valores guardados continuam) e o texto da retenção federal vira "IR e CSLL".
 
+### Portal do médico pelo regime da nota (CBS-22)
+`NotaPortalResponse` (`/api/portal/notas` e últimas notas do dashboard) traz `regimeTributario`
+(`LEGADO` quando nulo), `valorCbs`, `valorIbs` e `fatorIss`, lidos da própria nota (CBS-11).
+`MinhasNotasPage` monta linhas, total por nota e totalizador com `tributosDaNota` + `totalTributos`:
+nota antiga mostra PIS/COFINS, nota IBS_CBS mostra CBS/IBS (rótulos sem "Retido": é débito da Pin).
+O CSV ganhou as colunas CBS e IBS. No celular (< md) o painel de detalhe abre em tela cheia.
+O Extrato do portal não mostra tributos (só bruto, taxa Pin e previsto), então não mudou.
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.
