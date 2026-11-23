@@ -1445,6 +1445,23 @@ token do próprio usuário, `?cnpj=` com o `cnpj_id_tenant` do tomador para a ge
 - Perfil `medico` saiu do endpoint (o motor não aceita médico e o portal não usa a prévia).
 Com isso o único cálculo de tributo do sistema é o `MotorFiscalService`.
 
+### Conciliação pelo líquido esperado da nota (CBS-31)
+O tomador deposita o bruto **menos o que reteve na fonte** (6,15% = IR+CSLL+PIS+COFINS até 2026-12;
+2,5% = IRRF+CSLL a partir de 2027-01). O matching (`MatchingService`) não compara mais só com o bruto:
+- O Fiscal manda no evento `faturamento.producao.emitida` (`ProducaoEmitidaMessage`) o
+  `valorLiquidoEsperado` = bruto da nota − ISS/IR/CSLL/PIS/COFINS gravados nela (desde a CBS-21 esses
+  campos são os **retidos** pelo tomador) e `emitidaEm` (AAAA-MM-DD, fuso de São Paulo). CBS/IBS não entram
+  (débito da Pin; split payment ainda não vale). O `ProducaoEmitidaConsumer` grava em
+  `producoes.valor_liquido_esperado` / `nota_emitida_em` (V54) e atualiza se a nota for substituída.
+- Produção emitida antes da V54 (colunas nulas): o líquido é **estimado** pelo cadastro do tomador na regra
+  LEGADO (PJ com retenção federal → IR/CSLL/PIS/COFINS; retenção de ISS → ISS; alíquota do tomador sobrepõe a
+  do serviço, percentual). PF não tem estimativa.
+- Valor: compara com o líquido **e** com o bruto (tomador que não reteve) e fica o melhor. "Exato" (+40) =
+  diferença ≤ 10 centavos (arredondamento das retenções); ±1% = +20.
+- Data: com a emissão conhecida, depósito de 3 dias antes até 45 dias depois da nota = +20, até 90 = +10;
+  sem ela, a regra antiga (início da competência ±7/±30).
+- `CandidatoMatchResponse` traz `valorLiquidoEsperado`; a Conciliação mostra "Líquido esperado" na sugestão.
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

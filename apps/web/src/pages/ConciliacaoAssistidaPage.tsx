@@ -218,11 +218,18 @@ function DetalhePanel({
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-ds-text truncate">{c.tomadorNome}</p>
-                        <div className="flex gap-2 text-xs text-ds-mid mt-0.5">
+                        <div className="flex flex-wrap gap-x-2 text-xs text-ds-mid mt-0.5">
                           <span>{formatCompetencia(c.competencia)}</span>
-                          <span>{formatBRL(c.valorBruto)}</span>
+                          <span>Bruto {formatBRL(c.valorBruto)}</span>
                           <span className="text-primary font-semibold">Score {c.score}</span>
                         </div>
+                        {c.valorLiquidoEsperado !== c.valorBruto && (
+                          <p className="text-xs text-ds-mid mt-0.5">
+                            Líquido esperado{' '}
+                            <span className="font-semibold text-ds-text">{formatBRL(c.valorLiquidoEsperado)}</span>
+                            {' '}(− {formatBRL(c.valorBruto - c.valorLiquidoEsperado)} retidos)
+                          </p>
+                        )}
                       </div>
                       <button
                         disabled={busy}
