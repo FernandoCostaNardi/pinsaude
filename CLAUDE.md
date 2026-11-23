@@ -1430,6 +1430,21 @@ A aba "Reforma tributária" da `ConfiguracaoFiscalPage` é o `ReformaTributariaA
 - Cronograma 2026–2033 em tabela (`GET /api/fiscal/cronograma-reforma`); edição por linha só para
   `contabil`/`gestao` (`PUT /{ano}`), em % na tela e fração no envio.
 
+### Prévia da produção pelo motor fiscal (CBS-30)
+`POST /api/producoes/preview-calculo` (faturamento) não calcula mais tributo: o `PreviaTributosService`
+monta o pedido e chama `POST /api/motor-fiscal/calcular` do Fiscal (`MotorFiscalPort`/`MotorFiscalAdapter`,
+token do próprio usuário, `?cnpj=` com o `cnpj_id_tenant` do tomador para a gestão). Mesmas regras de
+`apps/web/src/fiscal/calculoNota.ts`: alíquota do tomador sobrepõe a do serviço LC116, convertidas de
+**percentual (5.0000) para fração (0.05)**; redução/CST/cClassTrib do serviço; PACIENTE_PF = não PJ;
+`cbsIbsPorFora` nulo (dentro do preço). O pedido aceita `competencia` (AAAA-MM, nula = mês atual).
+- Resposta mantém os campos antigos (`issRetido`… só o retido pelo tomador) e ganha `regime`, `cenario`,
+  `valorIss..valorCofins`, `valorCbs`/`valorIbs`, alíquotas, `valorTotalNota`, `tributosRetidos`.
+- Taxa Pin = a do pedido (cadastro do médico) ou 15%; `resultadoPin` = taxa Pin − tributos que saem da
+  cota da Pin segundo o motor (antes era só taxa Pin − retenções).
+- Recusa do Fiscal (4xx) volta com o mesmo status e mensagem; Fiscal fora do ar → 503.
+- Perfil `medico` saiu do endpoint (o motor não aceita médico e o portal não usa a prévia).
+Com isso o único cálculo de tributo do sistema é o `MotorFiscalService`.
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

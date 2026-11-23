@@ -6,8 +6,6 @@ import br.com.pinsaude.faturamento.domain.Producao;
 import br.com.pinsaude.faturamento.domain.Servico;
 import br.com.pinsaude.faturamento.domain.StatusProducao;
 import br.com.pinsaude.faturamento.domain.Tomador;
-import br.com.pinsaude.faturamento.dto.PreviewCalculoRequest;
-import br.com.pinsaude.faturamento.dto.PreviewCalculoResponse;
 import br.com.pinsaude.faturamento.dto.ProducaoRequest;
 import br.com.pinsaude.faturamento.dto.ProducaoResponse;
 import br.com.pinsaude.faturamento.repository.MedicoTomadorRepository;
@@ -23,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -167,58 +164,7 @@ public class ProducaoService {
         return ProducaoResponse.from(p, participacaoRepo.findByProducaoId(id));
     }
 
-    @Transactional(readOnly = true)
-    public PreviewCalculoResponse calcularPreview(PreviewCalculoRequest req) {
-        if (req.valorBruto() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Valor bruto deve ser maior que zero");
-        }
-
-        Tomador tomador = tomadorRepo.findById(req.tomadorId())
-            .orElseThrow(() -> new EntityNotFoundException("Tomador não encontrado: " + req.tomadorId()));
-        Servico servico = servicoRepo.findById(req.servicoId())
-            .orElseThrow(() -> new EntityNotFoundException("Serviço não encontrado: " + req.servicoId()));
-
-        BigDecimal taxaPinPct = req.taxaPinPct() != null ? req.taxaPinPct() : TAXA_PIN_DEFAULT;
-        return calcular(req.valorBruto(), servico, tomador, taxaPinPct);
-    }
-
     // ─── helpers ─────────────────────────────────────────────────────────────────
-
-    private PreviewCalculoResponse calcular(long valorBruto, Servico servico, Tomador tomador,
-                                            BigDecimal taxaPinPct) {
-        BigDecimal bruto = BigDecimal.valueOf(valorBruto);
-
-        long taxaPin = pct(bruto, taxaPinPct);
-
-        long issRetido    = tomador.isIndicadorRetencaoIss()
-            ? pct(bruto, pct(servico.getAliquotaIss()))    : 0L;
-        long irRetido     = tomador.isIndicadorRetencaoFederal()
-            ? pct(bruto, pct(servico.getAliquotaIr()))     : 0L;
-        long csllRetido   = tomador.isIndicadorRetencaoFederal()
-            ? pct(bruto, pct(servico.getAliquotaCsll()))   : 0L;
-        long pisRetido    = tomador.isIndicadorRetencaoFederal()
-            ? pct(bruto, pct(servico.getAliquotaPis()))    : 0L;
-        long cofinsRetido = tomador.isIndicadorRetencaoFederal()
-            ? pct(bruto, pct(servico.getAliquotaCofins())) : 0L;
-
-        long totalRetencoes     = issRetido + irRetido + csllRetido + pisRetido + cofinsRetido;
-        long valorLiquidoMedico = valorBruto - taxaPin;
-        long resultadoPin       = taxaPin - totalRetencoes;
-
-        return new PreviewCalculoResponse(
-            valorBruto, taxaPin,
-            issRetido, irRetido, csllRetido, pisRetido, cofinsRetido,
-            totalRetencoes, valorLiquidoMedico, resultadoPin
-        );
-    }
-
-    private BigDecimal pct(BigDecimal aliquota) {
-        return aliquota.divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP);
-    }
-
-    private long pct(BigDecimal valorCentavos, BigDecimal fator) {
-        return valorCentavos.multiply(fator).setScale(0, RoundingMode.HALF_UP).longValue();
-    }
 
     private Producao findOrThrow(UUID id) {
         return producaoRepo.findById(id)

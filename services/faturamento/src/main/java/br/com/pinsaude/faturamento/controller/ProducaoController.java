@@ -6,6 +6,7 @@ import br.com.pinsaude.faturamento.dto.PreviewCalculoResponse;
 import br.com.pinsaude.faturamento.dto.ProducaoRequest;
 import br.com.pinsaude.faturamento.dto.ProducaoResponse;
 import br.com.pinsaude.faturamento.service.ExclusaoProducaoService;
+import br.com.pinsaude.faturamento.service.PreviaTributosService;
 import br.com.pinsaude.faturamento.service.ProducaoService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -22,10 +23,13 @@ public class ProducaoController {
 
     private final ProducaoService service;
     private final ExclusaoProducaoService exclusaoService;
+    private final PreviaTributosService previaService;
 
-    public ProducaoController(ProducaoService service, ExclusaoProducaoService exclusaoService) {
+    public ProducaoController(ProducaoService service, ExclusaoProducaoService exclusaoService,
+                              PreviaTributosService previaService) {
         this.service = service;
         this.exclusaoService = exclusaoService;
+        this.previaService = previaService;
     }
 
     @GetMapping
@@ -71,10 +75,12 @@ public class ProducaoController {
         return ResponseEntity.noContent().build();
     }
 
+    // CBS-30: calculado pelo motor fiscal (mesma conta da nota). Sem 'medico': o motor exige a
+    // empresa emissora no token ou um perfil de backoffice, e o portal não usa esta prévia.
     @PostMapping("/preview-calculo")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil','medico') or hasRole('perm_producao')")
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasRole('perm_producao')")
     public ResponseEntity<PreviewCalculoResponse> previewCalculo(
             @Valid @RequestBody PreviewCalculoRequest req) {
-        return ResponseEntity.ok(service.calcularPreview(req));
+        return ResponseEntity.ok(previaService.calcular(req));
     }
 }
