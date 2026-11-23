@@ -38,7 +38,7 @@ import smtplib
 import ssl
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -77,6 +77,7 @@ SMTP_PORT = 465
 SMTP_USER = "noreply@pinsaude.com.br"
 SMTP_PASS_FILE = "/home/pinsaude/infra/backup-smtp-password.txt"  # chmod 600, nunca no git
 EMAIL_TO = "fcostanardi@gmail.com"
+CERT_PATH = "/etc/letsencrypt/live/pingestao.com/fullchain.pem"
 
 
 def dump_database(nome: str) -> str:
@@ -192,6 +193,36 @@ def _smtp_password() -> str:
         return f.read().strip()
 
 
+def _linha_certificado() -> str:
+    """Validade do TLS de pingestao.com, para o e-mail diário."""
+    try:
+        result = subprocess.run(
+            ["openssl", "x509", "-in", CERT_PATH, "-noout", "-enddate"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "openssl falhou")
+        raw = result.stdout.strip().split("=", 1)[1].replace(" GMT", "")
+        expira = datetime.strptime(raw, "%b %d %H:%M:%S %Y").replace(tzinfo=timezone.utc)
+        data = expira.astimezone().strftime("%d/%m/%Y")
+        dias = (expira.astimezone().date() - datetime.now().astimezone().date()).days
+        if dias > 1:
+            texto = f"Certificado TLS válido até {data} — faltam {dias} dias."
+        elif dias == 1:
+            texto = f"Certificado TLS válido até {data} — falta 1 dia."
+        elif dias == 0:
+            texto = f"Certificado TLS vence hoje ({data})."
+        else:
+            atraso = -dias
+            unidade = "dia" if atraso == 1 else "dias"
+            texto = f"Certificado TLS vencido em {data} — há {atraso} {unidade}."
+        cor = "#b45309" if dias <= 14 else "#666"
+    except Exception as e:
+        texto = f"Certificado TLS: não foi possível ler a validade ({e})."
+        cor = "#b45309"
+    return f'<p style="color:{cor};font-size:13px;margin-top:16px;">{texto}</p>'
+
+
 def _enviar(assunto: str, html: str):
     msg = MIMEMultipart("alternative")
     msg["From"] = f"Pin Saude <{SMTP_USER}>"
@@ -225,6 +256,7 @@ def enviar_email_sucesso(resultados: list):
               <th style="padding:8px;text-align:left;">Tamanho</th></tr>
           {linhas}
         </table>
+        {_linha_certificado()}
         <p style="color:#666;font-size:12px;margin-top:20px;">O arquivo de configuração contém senhas de produção — não compartilhe.<br>Enviado automaticamente pelo Pin Saúde — pingestao.com.br</p>
       </div>
     </div>"""
@@ -253,6 +285,7 @@ def enviar_email_falha(erro: str, resultados: list):
       <div style="background:#fff;padding:24px;border:1px solid #eee;border-top:none;">
         <p style="color:#b45309;font-weight:bold;">O backup de hoje não foi concluído</p>
         <p style="font-family:monospace;background:#f5f5f5;padding:12px;border-radius:4px;">{erro}</p>
+        {_linha_certificado()}
         <p style="color:#666;font-size:12px;margin-top:20px;">Verifique os logs em /home/pinsaude/logs/backup-db.log</p>
       </div>
     </div>"""
