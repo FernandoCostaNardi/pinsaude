@@ -78,7 +78,7 @@ class NfseEmissaoExternaServiceTest {
         assertThat(r.valorLiquidoMedico()).isEqualTo(85_000L);
         assertThat(r.emitidaAt().toLocalDate()).isEqualTo(LocalDate.of(2026, 10, 20));
         verify(emailProducer).notificarNotaEmitida(any(NotaFiscal.class));
-        verify(faturamentoProducer).notificarProducaoEmitida(producaoId, CNPJ);
+        verify(faturamentoProducer).notificarProducaoEmitida(argThat(n -> producaoId.equals(n.getProducaoId())));
     }
 
     @Test

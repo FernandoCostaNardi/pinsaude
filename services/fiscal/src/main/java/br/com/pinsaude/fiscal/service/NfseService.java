@@ -166,7 +166,7 @@ public class NfseService {
 
         if (nota.getStatus() == StatusNota.EMITIDA) {
             emailProducer.notificarNotaEmitida(nota);
-            faturamentoProducer.notificarProducaoEmitida(nota.getProducaoId(), nota.getCnpjIdTenant());
+            faturamentoProducer.notificarProducaoEmitida(nota);
         }
 
         atualizarContadoresLote(nota.getCompetencia(), nota.getStatus());

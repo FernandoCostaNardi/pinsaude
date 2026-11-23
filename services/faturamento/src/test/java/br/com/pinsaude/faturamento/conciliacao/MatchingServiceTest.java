@@ -6,6 +6,7 @@ import br.com.pinsaude.faturamento.repository.ConciliacaoRepository;
 import br.com.pinsaude.faturamento.repository.ExtratoBancarioRepository;
 import br.com.pinsaude.faturamento.repository.LancamentoExtratoRepository;
 import br.com.pinsaude.faturamento.repository.ProducaoRepository;
+import br.com.pinsaude.faturamento.repository.TomadorAliquotaRepository;
 import br.com.pinsaude.faturamento.service.CryptoService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +35,7 @@ class MatchingServiceTest {
     @Mock LancamentoExtratoRepository lancamentoRepo;
     @Mock CryptoService            cryptoService;
     @Mock ExtratoBancarioRepository extratoRepo;
+    @Mock TomadorAliquotaRepository aliquotaRepo;
 
     @InjectMocks MatchingService service;
 
@@ -270,6 +273,159 @@ class MatchingServiceTest {
         service.processarExtrato(UUID.randomUUID(), "12345678000190");
 
         verifyNoInteractions(producaoRepo);
+    }
+
+    // ─── CBS-31 — conciliação pelo líquido esperado da nota ────────────────────
+
+    @Test
+    void cbs31_nota2026Com615Retido_conciliaSozinha() {
+        // Bruto R$ 10.000; tomador reteve IR+CSLL+PIS+COFINS (6,15%) e depositou R$ 9.385
+        UUID extratoId = UUID.randomUUID();
+        String tenant  = "12345678000190";
+        LancamentoExtrato l = lancamento(938_500L, LocalDate.of(2026, 12, 15), "TED 12345678000190 HOSPITAL");
+        Producao p = producao(1_000_000L, "2026-10");
+        p.setValorLiquidoEsperado(938_500L);
+        p.setNotaEmitidaEm(LocalDate.of(2026, 11, 5)); // 40 dias antes do depósito
+        p.getTomador().setCnpjCpfTomadorCriptografado(new byte[]{1});
+        stubProcessar(extratoId, tenant, l, p);
+
+        service.processarExtrato(extratoId, tenant);
+
+        verify(conciliacaoRepo).save(argThat(c -> c.getTipoMatch() == TipoMatchEnum.AUTOMATICO
+                && c.getNotaId().equals(p.getId()) && c.getScoreConfianca() == 100));
+    }
+
+    @Test
+    void cbs31_nota2027Com25Retido_conciliaSozinha() {
+        // 2027: só IRRF 1,5% + CSLL 1% retidos → depósito R$ 9.750
+        UUID extratoId = UUID.randomUUID();
+        String tenant  = "12345678000190";
+        LancamentoExtrato l = lancamento(975_000L, LocalDate.of(2027, 2, 20), "PIX 12.345.678/0001-90");
+        Producao p = producao(1_000_000L, "2027-01");
+        p.setValorLiquidoEsperado(975_000L);
+        p.setNotaEmitidaEm(LocalDate.of(2027, 2, 3));
+        p.getTomador().setCnpjCpfTomadorCriptografado(new byte[]{1});
+        stubProcessar(extratoId, tenant, l, p);
+
+        service.processarExtrato(extratoId, tenant);
+
+        verify(conciliacaoRepo).save(argThat(c -> c.getTipoMatch() == TipoMatchEnum.AUTOMATICO
+                && c.getNotaId().equals(p.getId())));
+    }
+
+    @Test
+    void cbs31_depositoDoBrutoComMenos615_antesNaoCasava() {
+        // Sem o líquido esperado o depósito de R$ 9.385 ficava 6,15% abaixo do bruto → descartado
+        LancamentoExtrato l = lancamento(938_500L, LocalDate.of(2026, 12, 15), "TED");
+        Producao p = producao(1_000_000L, "2026-10");
+
+        assertThat(service.calcularScore(l, p, null)).isZero();
+
+        p.setValorLiquidoEsperado(938_500L);
+        assertThat(service.calcularScore(l, p, null)).isEqualTo(40);
+    }
+
+    @Test
+    void cbs31_tomadorQueNaoReteve_aindaCasaPeloBruto() {
+        LancamentoExtrato l = lancamento(1_000_000L, LocalDate.of(2026, 12, 1), "TED");
+        Producao p = producao(1_000_000L, "2026-10");
+        p.setValorLiquidoEsperado(938_500L);
+
+        assertThat(service.calcularScore(l, p, null)).isEqualTo(40);
+    }
+
+    @Test
+    void cbs31_diferencaDeArredondamentoDeCentavos_contaComoExato() {
+        LancamentoExtrato l = lancamento(938_503L, LocalDate.of(2026, 1, 1), "TED");
+        Producao p = producao(1_000_000L, "2026-10");
+        p.setValorLiquidoEsperado(938_500L);
+
+        assertThat(service.calcularScore(l, p, null)).isEqualTo(40);
+    }
+
+    @Test
+    void cbs31_dataPelaEmissaoDaNota() {
+        Producao p = producao(100_000L, "2026-06");
+        p.setNotaEmitidaEm(LocalDate.of(2026, 8, 10));
+
+        // até 45 dias depois da emissão: +20
+        assertThat(service.calcularScore(lancamento(100_000L, LocalDate.of(2026, 9, 24), "TED"), p, null))
+                .isEqualTo(60);
+        // de 46 a 90 dias: +10
+        assertThat(service.calcularScore(lancamento(100_000L, LocalDate.of(2026, 10, 30), "TED"), p, null))
+                .isEqualTo(50);
+        // muito antes da emissão: +0
+        assertThat(service.calcularScore(lancamento(100_000L, LocalDate.of(2026, 7, 1), "TED"), p, null))
+                .isEqualTo(40);
+    }
+
+    @Test
+    void cbs31_producaoAntiga_estimaLiquidoPeloCadastroDoTomador() {
+        Producao p = producao(1_000_000L, "2026-09");
+        p.getTomador().setId(UUID.randomUUID());
+        p.getTomador().setTipo(TipoTomador.HOSPITAL);
+        p.getTomador().setIndicadorRetencaoFederal(true);
+        Servico s = new Servico();
+        s.setAliquotaIss(new BigDecimal("5.0000"));
+        s.setAliquotaIr(new BigDecimal("1.5000"));
+        s.setAliquotaCsll(new BigDecimal("1.0000"));
+        s.setAliquotaPis(new BigDecimal("0.6500"));
+        s.setAliquotaCofins(new BigDecimal("3.0000"));
+        p.setServico(s);
+        TomadorAliquota irDoTomador = new TomadorAliquota();
+        irDoTomador.setTomadorId(p.getTomador().getId());
+        irDoTomador.setTipoTributo("IR");
+        irDoTomador.setValorAliquota(new BigDecimal("1.0000"));
+        when(aliquotaRepo.findByTomadorIdIn(any())).thenReturn(List.of(irDoTomador));
+
+        // ISS não é retido (sem indicador); IR do tomador 1% + CSLL 1% + PIS 0,65% + COFINS 3% = 5,65%
+        assertThat(service.liquidosEsperados(List.of(p))).containsEntry(p.getId(), 943_500L);
+    }
+
+    @Test
+    void cbs31_producaoAntigaDeTomadorSemRetencao_semEstimativa() {
+        Producao p = producao(1_000_000L, "2026-09");
+        p.getTomador().setTipo(TipoTomador.CLINICA);
+
+        assertThat(service.liquidosEsperados(List.of(p))).isEmpty();
+        verifyNoInteractions(aliquotaRepo);
+    }
+
+    @Test
+    void cbs31_sugestoesTrazemOLiquidoEsperado() {
+        UUID lancId = UUID.randomUUID();
+        UUID extratoId = UUID.randomUUID();
+        LancamentoExtrato l = lancamento(938_500L, LocalDate.of(2026, 12, 1), "TED");
+        l.setExtratoId(extratoId);
+        ExtratoBancario e = new ExtratoBancario();
+        e.setCnpjIdTenant("12345678000190");
+        Producao p = producao(1_000_000L, "2026-10");
+        p.setValorLiquidoEsperado(938_500L);
+        p.setNotaEmitidaEm(LocalDate.of(2026, 11, 5));
+        when(lancamentoRepo.findById(lancId)).thenReturn(java.util.Optional.of(l));
+        when(extratoRepo.findById(extratoId)).thenReturn(java.util.Optional.of(e));
+        when(producaoRepo.findCandidatasParaMatch(eq("12345678000190"), anyList()))
+                .thenReturn(new ArrayList<>(List.of(p)));
+
+        var sugestoes = service.getSugestoes(lancId);
+
+        assertThat(sugestoes).singleElement().satisfies(c -> {
+            assertThat(c.valorBruto()).isEqualTo(1_000_000L);
+            assertThat(c.valorLiquidoEsperado()).isEqualTo(938_500L);
+            assertThat(c.score()).isEqualTo(60);
+        });
+    }
+
+    private void stubProcessar(UUID extratoId, String tenant, LancamentoExtrato l, Producao p) {
+        when(lancamentoRepo.findByExtratoIdAndTipoAndStatusConciliacao(
+                extratoId, TipoLancamentoExtrato.CREDITO.name(), StatusConciliacao.PENDENTE.name()))
+                .thenReturn(List.of(l));
+        when(producaoRepo.findCandidatasParaMatch(tenant, List.of(StatusProducao.EMITIDA.name())))
+                .thenReturn(new ArrayList<>(List.of(p)));
+        when(conciliacaoRepo.existsByLancamentoExtratoId(any())).thenReturn(false);
+        when(cryptoService.decrypt(any())).thenReturn("12345678000190");
+        when(conciliacaoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(lancamentoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

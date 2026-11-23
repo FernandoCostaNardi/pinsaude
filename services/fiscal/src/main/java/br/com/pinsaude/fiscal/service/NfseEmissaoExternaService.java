@@ -119,7 +119,7 @@ public class NfseEmissaoExternaService {
 
         aposCommit(() -> {
             emailProducer.notificarNotaEmitida(salva);
-            faturamentoProducer.notificarProducaoEmitida(salva.getProducaoId(), salva.getCnpjIdTenant());
+            faturamentoProducer.notificarProducaoEmitida(salva);
         });
         return NotaFiscalStatusResponse.from(salva);
     }

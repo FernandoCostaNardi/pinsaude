@@ -3,6 +3,7 @@ package br.com.pinsaude.faturamento.domain;
 import jakarta.persistence.*;
 import org.hibernate.annotations.ColumnTransformer;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -59,6 +60,13 @@ public class Producao {
     @Column(name = "grupo_id")
     private UUID grupoId;
 
+    // CBS-31: preenchidos pelo evento "produção emitida" do Fiscal (líquido = bruto − retenções da nota)
+    @Column(name = "valor_liquido_esperado")
+    private Long valorLiquidoEsperado;
+
+    @Column(name = "nota_emitida_em")
+    private LocalDate notaEmitidaEm;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -95,4 +103,8 @@ public class Producao {
     public UUID getGrupoId() { return grupoId; }
     public void setGrupoId(UUID grupoId) { this.grupoId = grupoId; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
+    public Long getValorLiquidoEsperado() { return valorLiquidoEsperado; }
+    public void setValorLiquidoEsperado(Long v) { this.valorLiquidoEsperado = v; }
+    public LocalDate getNotaEmitidaEm() { return notaEmitidaEm; }
+    public void setNotaEmitidaEm(LocalDate v) { this.notaEmitidaEm = v; }
 }

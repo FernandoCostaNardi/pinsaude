@@ -55,6 +55,8 @@ export interface CandidatoMatchResponse {
   producaoId: string
   tomadorNome: string
   valorBruto: number
+  /** Depósito esperado: bruto − tributos retidos pelo tomador (CBS-31). Igual ao bruto sem retenção. */
+  valorLiquidoEsperado: number
   competencia: string
   score: number
 }
