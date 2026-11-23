@@ -1,3 +1,4 @@
+import type { RegimeTributario } from '../fiscal/tributos'
 import type { TipoEscala } from '../utils/tipoEscala'
 
 const STORAGE_KEY = 'pinsaude_tokens'
@@ -40,6 +41,11 @@ export interface NotaPortal {
   valorCsll: number
   valorPis: number
   valorCofins: number
+  // CBS-22 — regime gravado na nota (CBS-11). Nota antiga vem LEGADO com CBS/IBS zerados.
+  regimeTributario?: RegimeTributario | null
+  valorCbs?: number | null
+  valorIbs?: number | null
+  fatorIss?: number | null
   status: string
   numeroNota: string | null
   temXml: boolean

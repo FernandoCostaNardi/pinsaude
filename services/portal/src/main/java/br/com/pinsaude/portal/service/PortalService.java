@@ -539,6 +539,7 @@ public class PortalService {
                             ELSE pp.valor_bruto - CAST(ROUND(pp.valor_bruto * COALESCE(pp.taxa_pin_pct, 0.15)) AS BIGINT)
                        END AS valor_liquido_medico,
                        nf.valor_iss, nf.valor_ir, nf.valor_csll, nf.valor_pis, nf.valor_cofins,
+                       nf.regime_tributario, nf.valor_cbs, nf.valor_ibs, nf.fator_iss,
                        nf.status, nf.numero_nota,
                        (nf.xml_nota IS NOT NULL) AS tem_xml,
                        (nf.pdf_nota IS NOT NULL) AS tem_pdf,
@@ -614,6 +615,10 @@ public class PortalService {
                 rs.getLong("valor_csll"),
                 rs.getLong("valor_pis"),
                 rs.getLong("valor_cofins"),
+                rs.getString("regime_tributario") != null ? rs.getString("regime_tributario") : "LEGADO",
+                rs.getLong("valor_cbs"),
+                rs.getLong("valor_ibs"),
+                rs.getBigDecimal("fator_iss"),
                 rs.getString("status"),
                 rs.getString("numero_nota"),
                 rs.getBoolean("tem_xml"),
