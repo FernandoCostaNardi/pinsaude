@@ -203,7 +203,11 @@
       "Bash(Format-Table)",
       "Bash(git rebase *)",
       "Bash(grep -c *)",
-      "Bash(echo \"markers: $?\")"
+      "Bash(echo \"markers: $?\")",
+      "Bash(ssh -T -o ConnectTimeout=15 -i ~/.ssh/pinsaude_vps_deploy:*)",
+      "Bash(ssh -T -i ~/.ssh/pinsaude_vps_deploy:*)",
+      "Bash(scp -i ~/.ssh/pinsaude_vps_deploy:*)",
+      "Bash(ssh -T -o ConnectTimeout=15 -i ~/.ssh/pinsaude_vps_deploy -p 22022 root@pingestao.com:*)"
     ]
   }
 }
