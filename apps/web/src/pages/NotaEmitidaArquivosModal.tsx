@@ -16,6 +16,21 @@ function formatTamanho(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+function centavosParaTexto(centavos: number): string {
+  return (centavos / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function textoParaCentavos(texto: string): number {
+  const digitos = texto.replace(/\D/g, '')
+  return digitos ? parseInt(digitos, 10) : 0
+}
+
+// Valor monetário do XML (ponto decimal, ex.: "42.70") em centavos
+function decimalXmlParaCentavos(txt: string | null): number | null {
+  if (!txt || !/^\d+(\.\d{1,2})?$/.test(txt)) return null
+  return Math.round(parseFloat(txt) * 100)
+}
+
 function primeiroTexto(doc: Document, tags: string[]): string | null {
   for (const tag of tags) {
     const el = doc.getElementsByTagNameNS('*', tag)[0] ?? doc.getElementsByTagName(tag)[0]
@@ -27,16 +42,25 @@ function primeiroTexto(doc: Document, tags: string[]): string | null {
 
 // Lê número e data da NFS-e do XML para pré-preencher o formulário. Cobre o padrão nacional
 // (nNFSe / dhProc / dhEmi) e o ABRASF usado pela maioria das prefeituras (Numero / DataEmissao).
-async function extrairDadosXml(arquivo: File): Promise<{ numero: string | null; data: string | null }> {
+// CBS-42: no grupo IBSCBS do padrão nacional, também lê CBS (vCBS) e IBS (vIBSTot) quando existem.
+interface DadosXml { numero: string | null; data: string | null; cbs: number | null; ibs: number | null }
+
+async function extrairDadosXml(arquivo: File): Promise<DadosXml> {
+  const vazio: DadosXml = { numero: null, data: null, cbs: null, ibs: null }
   try {
     const doc = new DOMParser().parseFromString(await arquivo.text(), 'application/xml')
-    if (doc.getElementsByTagName('parsererror').length > 0) return { numero: null, data: null }
+    if (doc.getElementsByTagName('parsererror').length > 0) return vazio
     const numero = primeiroTexto(doc, ['nNFSe', 'NumeroNfse', 'Numero', 'NumeroNota'])
     const dataRaw = primeiroTexto(doc, ['dhProc', 'DataEmissao', 'dhEmi', 'DataEmissaoNfse'])
     const data = dataRaw && /^\d{4}-\d{2}-\d{2}/.test(dataRaw) ? dataRaw.slice(0, 10) : null
-    return { numero: numero && numero.length <= 20 ? numero : null, data }
+    return {
+      numero: numero && numero.length <= 20 ? numero : null,
+      data,
+      cbs: decimalXmlParaCentavos(primeiroTexto(doc, ['vCBS'])),
+      ibs: decimalXmlParaCentavos(primeiroTexto(doc, ['vIBSTot', 'vIBS'])),
+    }
   } catch {
-    return { numero: null, data: null }
+    return vazio
   }
 }
 
@@ -134,6 +158,15 @@ export interface DadosNotaEmitida {
   numeroNota: string
   dataEmissao: string
   arquivos: ArquivosNota
+  /** CBS-42: CBS/IBS da nota real em centavos, só quando diferem do cálculo do sistema */
+  valorCbs?: number | null
+  valorIbs?: number | null
+}
+
+/** CBS e IBS calculados pelo motor para a nota (centavos) */
+export interface CbsIbsCalculado {
+  cbs: number
+  ibs: number
 }
 
 interface Props {
@@ -143,11 +176,13 @@ interface Props {
   numeroAtual?: string | null
   temPdf?: boolean
   temXml?: boolean
+  /** CBS-42: competência no regime CBS/IBS; mostra os campos para conferir/corrigir */
+  cbsIbs?: CbsIbsCalculado | null
   onClose: () => void
   onSalvar: (dados: DadosNotaEmitida) => Promise<void>
 }
 
-export function NotaEmitidaArquivosModal({ modo, numeroAtual, temPdf, temXml, onClose, onSalvar }: Props) {
+export function NotaEmitidaArquivosModal({ modo, numeroAtual, temPdf, temXml, cbsIbs, onClose, onSalvar }: Props) {
   const [numeroNota, setNumeroNota] = useState('')
   const [dataEmissao, setDataEmissao] = useState(hojeIso())
   const [pdf, setPdf] = useState<File | null>(null)
@@ -155,8 +190,15 @@ export function NotaEmitidaArquivosModal({ modo, numeroAtual, temPdf, temXml, on
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [preenchidoDoXml, setPreenchidoDoXml] = useState(false)
+  const [cbsTexto, setCbsTexto] = useState(cbsIbs ? centavosParaTexto(cbsIbs.cbs) : '')
+  const [ibsTexto, setIbsTexto] = useState(cbsIbs ? centavosParaTexto(cbsIbs.ibs) : '')
+  const [cbsIbsDoXml, setCbsIbsDoXml] = useState(false)
 
   const registrar = modo === 'registrar'
+  const mostrarCbsIbs = registrar && !!cbsIbs
+  const valorCbs = textoParaCentavos(cbsTexto)
+  const valorIbs = textoParaCentavos(ibsTexto)
+  const cbsIbsCorrigidos = mostrarCbsIbs && (valorCbs !== cbsIbs.cbs || valorIbs !== cbsIbs.ibs)
   const faltaArquivo = !pdf && !xml
   const faltaNumero = registrar && !numeroNota.trim()
   const dataFutura = registrar && dataEmissao > hojeIso()
@@ -166,11 +208,16 @@ export function NotaEmitidaArquivosModal({ modo, numeroAtual, temPdf, temXml, on
     setXml(f)
     setErro(null)
     if (!f || !registrar) return
-    const { numero, data } = await extrairDadosXml(f)
+    const { numero, data, cbs, ibs } = await extrairDadosXml(f)
     let preencheu = false
     if (numero && !numeroNota.trim()) { setNumeroNota(numero); preencheu = true }
     if (data && data <= hojeIso()) { setDataEmissao(data); preencheu = true }
     setPreenchidoDoXml(preencheu)
+    if (cbsIbs && (cbs != null || ibs != null)) {
+      if (cbs != null) setCbsTexto(centavosParaTexto(cbs))
+      if (ibs != null) setIbsTexto(centavosParaTexto(ibs))
+      setCbsIbsDoXml(true)
+    }
   }
 
   async function salvar() {
@@ -178,7 +225,12 @@ export function NotaEmitidaArquivosModal({ modo, numeroAtual, temPdf, temXml, on
     setSalvando(true)
     setErro(null)
     try {
-      await onSalvar({ numeroNota: numeroNota.trim(), dataEmissao, arquivos: { pdf, xml } })
+      await onSalvar({
+        numeroNota: numeroNota.trim(), dataEmissao, arquivos: { pdf, xml },
+        // Só manda CBS/IBS quando a nota real diverge do cálculo; senão vale o cálculo do fiscal
+        valorCbs: cbsIbsCorrigidos ? valorCbs : null,
+        valorIbs: cbsIbsCorrigidos ? valorIbs : null,
+      })
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao salvar os arquivos da nota')
       setSalvando(false)
@@ -244,6 +296,47 @@ export function NotaEmitidaArquivosModal({ modo, numeroAtual, temPdf, temXml, on
               )}
               {dataFutura && (
                 <p className="sm:col-span-2 text-[11px] text-red-600 -mt-1">A data de emissão não pode ser futura.</p>
+              )}
+            </div>
+          )}
+
+          {mostrarCbsIbs && (
+            <div className="rounded-xl border border-ds-border bg-ds-surface px-3 py-3">
+              <p className="text-xs font-bold text-ds-mid">CBS e IBS da nota</p>
+              <p className="text-[11px] text-ds-light mt-0.5 mb-2">
+                Calculados pelo sistema para a competência no regime da reforma. Se a nota emitida na
+                prefeitura saiu com outros valores, corrija para os valores da nota.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ['CBS', cbsTexto, setCbsTexto],
+                  ['IBS', ibsTexto, setIbsTexto],
+                ] as const).map(([rotulo, texto, setTexto]) => (
+                  <div key={rotulo}>
+                    <label className="block text-xs font-bold text-ds-mid mb-1">{rotulo} (R$)</label>
+                    <input
+                      value={texto}
+                      inputMode="numeric"
+                      onChange={e => setTexto(centavosParaTexto(textoParaCentavos(e.target.value)))}
+                      className="w-full h-10 rounded-lg border border-ds-border bg-white text-sm text-ds-mid px-3 text-right tabular-nums focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                ))}
+              </div>
+              {cbsIbsDoXml && (
+                <p className="text-[11px] text-primary mt-1.5">CBS e IBS lidos do XML. Confira antes de salvar.</p>
+              )}
+              {cbsIbsCorrigidos && (
+                <p className="text-[11px] text-yellow-700 mt-1.5">
+                  Diferente do cálculo do sistema (CBS {centavosParaTexto(cbsIbs.cbs)}, IBS {centavosParaTexto(cbsIbs.ibs)}).
+                  {' '}<button
+                    type="button"
+                    onClick={() => { setCbsTexto(centavosParaTexto(cbsIbs.cbs)); setIbsTexto(centavosParaTexto(cbsIbs.ibs)); setCbsIbsDoXml(false) }}
+                    className="underline font-medium"
+                  >
+                    Voltar ao cálculo
+                  </button>
+                </p>
               )}
             </div>
           )}

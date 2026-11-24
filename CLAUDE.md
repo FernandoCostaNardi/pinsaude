@@ -1505,7 +1505,18 @@ manda a classificação do serviço LC116 da produção no `EmitirNfseRequest` (
   ainda não foi validado em homologação:** os nomes dos campos são os nossos; mapear para o JSON da
   PlugNotas quando houver credenciais (`nfse.enabled` vem desligado por padrão).
 - O `LedgerProducer` manda `cbsIbsPorFora` da nota (nulo no LEGADO).
-- A emissão externa (`NfseEmissaoExternaService`) ainda não grava CBS/IBS: é a CBS-42.
+- A emissão externa também grava (CBS-42, abaixo).
+
+### Nota emitida na prefeitura com CBS/IBS (CBS-42)
+`NfseEmissaoExternaService.registrar` grava o regime e CBS/IBS pela mesma regra da emissão pelo sistema:
+os dois caminhos usam `ReformaNota.aplicar` (motor `tributacaoIbsCbs`, 422 sem CST/cClassTrib no IBS_CBS,
+PIS/COFINS zerados). No LEGADO os campos da reforma voltam ao padrão (nota reaproveitada de tentativa anterior).
+- `RegistrarEmissaoExternaRequest` ganhou `valorCbs`/`valorIbs` (centavos, opcionais): os valores impressos
+  na nota real quando diferem do cálculo (`ReformaNota.corrigirValores`). Nulos = vale o motor. Informar no
+  LEGADO → 422. O IBS corrigido é repartido entre UF e município na proporção das alíquotas do ano.
+- Front: o modal "Registrar nota emitida" mostra CBS/IBS do motor (só no IBS_CBS), editáveis; lê `vCBS` e
+  `vIBSTot` do XML do padrão nacional quando houver; só envia os valores se diferirem do cálculo.
+- O ledger recebe os valores gravados na nota (corrigidos, se for o caso).
 
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.

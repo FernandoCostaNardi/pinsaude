@@ -396,11 +396,12 @@ export function NfseEmissaoPage() {
   }
 
   // Erros sobem para o modal, que os mostra sem fechar (o usuário não perde os arquivos escolhidos)
-  const handleRegistrarNotaEmitida = async ({ numeroNota, dataEmissao, arquivos }: DadosNotaEmitida) => {
+  const handleRegistrarNotaEmitida = async ({ numeroNota, dataEmissao, arquivos, valorCbs, valorIbs }: DadosNotaEmitida) => {
     const dados = montarDadosNota()
     if (!dados) throw new Error('Produção sem serviço definido')
     pararPolling()
-    const n = await registrarEmissaoExterna(dados, numeroNota, dataEmissao, arquivos)
+    const n = await registrarEmissaoExterna(dados, numeroNota, dataEmissao, arquivos,
+      { valorCbs: valorCbs ?? null, valorIbs: valorIbs ?? null })
     setNota(n)
     setErro(null)
     setModalArquivos(null)
@@ -913,6 +914,9 @@ export function NfseEmissaoPage() {
           numeroAtual={nota?.numeroNota}
           temPdf={modalArquivos === 'anexar' ? nota?.temPdf : undefined}
           temXml={modalArquivos === 'anexar' ? nota?.temXml : undefined}
+          cbsIbs={modalArquivos === 'registrar' && calculo?.regime === 'IBS_CBS'
+            ? { cbs: calculo.valores.CBS ?? 0, ibs: calculo.valores.IBS ?? 0 }
+            : null}
           onClose={() => setModalArquivos(null)}
           onSalvar={modalArquivos === 'registrar' ? handleRegistrarNotaEmitida : handleAnexarArquivos}
         />
