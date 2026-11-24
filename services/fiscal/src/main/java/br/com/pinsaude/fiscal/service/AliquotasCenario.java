@@ -10,6 +10,7 @@ import java.math.BigDecimal;
  * No regime IBS_CBS, {@code pis}/{@code cofins} vêm zeradas, {@code aliqCbs}/{@code aliqIbs}
  * já incluem a redução do serviço e {@code fatorIss} é o fator do ano no cronograma.
  * No regime LEGADO, CBS/IBS são zero e {@code fatorIss} = 1.
+ * {@code aliqIbsUf} + {@code aliqIbsMun} = {@code aliqIbs} (partes estadual e municipal, CBS-41).
  */
 record AliquotasCenario(
     BigDecimal iss,
@@ -20,7 +21,9 @@ record AliquotasCenario(
     RegimeTributario regime,
     BigDecimal aliqCbs,
     BigDecimal aliqIbs,
-    BigDecimal fatorIss
+    BigDecimal fatorIss,
+    BigDecimal aliqIbsUf,
+    BigDecimal aliqIbsMun
 ) {
     boolean ibsCbsAtivo() { return regime == RegimeTributario.IBS_CBS; }
 }

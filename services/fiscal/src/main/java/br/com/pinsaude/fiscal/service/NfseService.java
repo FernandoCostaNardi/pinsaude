@@ -1,6 +1,7 @@
 package br.com.pinsaude.fiscal.service;
 
 import br.com.pinsaude.fiscal.domain.NotaFiscal;
+import br.com.pinsaude.fiscal.domain.RegimeTributario;
 import br.com.pinsaude.fiscal.domain.StatusNota;
 import br.com.pinsaude.fiscal.dto.EmitirNfseRequest;
 import br.com.pinsaude.fiscal.dto.EmitirNfseResponse;
@@ -41,6 +42,7 @@ public class NfseService {
     private final EmailNotificacaoProducer emailProducer;
     private final FaturamentoProducer faturamentoProducer;
     private final LedgerProducer ledgerProducer;
+    private final MotorFiscalService motorFiscal;
     private final boolean mockEnabled;
 
     public NfseService(NotaFiscalRepository notaRepo,
@@ -50,6 +52,7 @@ public class NfseService {
                        EmailNotificacaoProducer emailProducer,
                        FaturamentoProducer faturamentoProducer,
                        LedgerProducer ledgerProducer,
+                       MotorFiscalService motorFiscal,
                        @Value("${nfse.mock.enabled:false}") boolean mockEnabled) {
         this.notaRepo             = notaRepo;
         this.loteRepo             = loteRepo;
@@ -58,6 +61,7 @@ public class NfseService {
         this.emailProducer        = emailProducer;
         this.faturamentoProducer  = faturamentoProducer;
         this.ledgerProducer       = ledgerProducer;
+        this.motorFiscal          = motorFiscal;
         this.mockEnabled          = mockEnabled;
     }
 
@@ -99,6 +103,7 @@ public class NfseService {
         nota.setCnaeCodigo(req.cnaeCodigo());
         nota.setDiscriminacao(req.discriminacao());
         nota.setStatus(statusInicial);
+        aplicarReforma(nota, req, cnpjTenant);
 
         nota = notaRepo.save(nota);
 
@@ -145,7 +150,7 @@ public class NfseService {
             nota.getValorBruto(), nota.getTaxaPin(),
             nota.getValorIss(), nota.getValorIr(), nota.getValorCsll(),
             nota.getValorPis(), nota.getValorCofins(), nota.getValorLiquidoMedico(),
-            nota.getDiscriminacao()
+            nota.getDiscriminacao(), grupoIbsCbs(nota)
         );
 
         ResultadoEmissao resultado = emissaoPort.emitir(dados);
@@ -175,6 +180,61 @@ public class NfseService {
         }
 
         atualizarContadoresLote(nota.getCompetencia(), nota.getStatus());
+    }
+
+    /**
+     * CBS-41 — grava na nota o regime da competência e, no IBS_CBS, a CBS e o IBS calculados pela
+     * regra do motor a partir da chave da empresa (o navegador só manda a classificação do serviço).
+     * No IBS_CBS a NFS-e exige o grupo IBSCBS: sem CST/cClassTrib no serviço a emissão é recusada.
+     */
+    void aplicarReforma(NotaFiscal nota, EmitirNfseRequest req, String cnpjTenant) {
+        String cnpj = cnpjTenant == null ? "" : cnpjTenant.replaceAll("\\D", "");
+        TributacaoIbsCbs t = motorFiscal.tributacaoIbsCbs(cnpj, req.competencia(), req.valorBruto(),
+            req.reducaoIbsCbs(), req.cbsIbsPorFora());
+        nota.setRegimeTributario(t.regime());
+        if (!t.ibsCbs()) return;
+
+        if (req.cstIbsCbs() == null || req.cClassTrib() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "A competência " + req.competencia() + " já está no regime CBS/IBS e o serviço da produção "
+                + "não tem a classificação (CST e cClassTrib). Cadastre em Configuração Fiscal › Serviços "
+                + "antes de emitir.");
+        }
+        // PIS/COFINS não existem no regime novo (o motor já devolve zero; aqui é só proteção).
+        nota.setValorPis(0L);
+        nota.setValorCofins(0L);
+        nota.setFatorIss(t.fatorIss());
+        nota.setCstIbsCbs(req.cstIbsCbs());
+        nota.setCClassTrib(req.cClassTrib());
+        nota.setReducaoIbsCbs(req.reducaoIbsCbs() != null ? req.reducaoIbsCbs() : java.math.BigDecimal.ZERO);
+        nota.setCbsIbsPorFora(t.porFora());
+        nota.setBaseCalculoIbsCbs(t.baseCalculo());
+        nota.setAliqCbs(t.aliqCbs());
+        nota.setAliqIbs(t.aliqIbs());
+        nota.setAliqIbsUf(t.aliqIbsUf());
+        nota.setAliqIbsMun(t.aliqIbsMun());
+        nota.setValorCbs(t.valorCbs());
+        nota.setValorIbs(t.valorIbs());
+        nota.setValorIbsUf(t.valorIbsUf());
+        nota.setValorIbsMun(t.valorIbsMun());
+    }
+
+    /** Grupo IBSCBS para o agregador, a partir do snapshot da nota. Nulo no LEGADO. */
+    static DadosNota.IbsCbs grupoIbsCbs(NotaFiscal nota) {
+        if (nota.getRegimeTributario() != RegimeTributario.IBS_CBS) return null;
+        long bruto = nota.getValorBruto() != null ? nota.getValorBruto() : 0L;
+        long cbs = nota.getValorCbs() != null ? nota.getValorCbs() : 0L;
+        long ibs = nota.getValorIbs() != null ? nota.getValorIbs() : 0L;
+        long base = nota.getBaseCalculoIbsCbs() != null ? nota.getBaseCalculoIbsCbs() : bruto;
+        return new DadosNota.IbsCbs(
+            nota.getCstIbsCbs(), nota.getCClassTrib(), base, nota.isCbsIbsPorFora(),
+            nota.getReducaoIbsCbs(), nota.getAliqCbs(), nota.getAliqIbsUf(), nota.getAliqIbsMun(),
+            cbs,
+            nota.getValorIbsUf() != null ? nota.getValorIbsUf() : 0L,
+            nota.getValorIbsMun() != null ? nota.getValorIbsMun() : 0L,
+            ibs,
+            nota.isCbsIbsPorFora() ? bruto + cbs + ibs : bruto
+        );
     }
 
     // Atualiza contadores do lote EM_ANDAMENTO atomicamente (se houver lote ativo para a competÃªncia)

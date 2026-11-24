@@ -64,6 +64,57 @@ class MotorFiscalReformaTest {
         motor = new MotorFiscalService(pfRepo, p1Repo, cronRepo, new AuditoriaFiscalService());
     }
 
+    // ─── CBS-41: tributação de CBS/IBS usada na emissão ─────────────────────
+
+    @Test
+    void tributacaoIbsCbs_dezembro2026_legado() {
+        var t = motor.tributacaoIbsCbs(CNPJ, "2026-12", BRUTO, RED_SAUDE, null);
+
+        assertThat(t.ibsCbs()).isFalse();
+        assertThat(t.valorCbs()).isZero();
+        assertThat(t.valorIbs()).isZero();
+    }
+
+    @Test
+    void tributacaoIbsCbs_igualAoMotor_eIbsSeparadoEmUfEMunicipio() {
+        var t = motor.tributacaoIbsCbs(CNPJ, "2027-03", BRUTO, RED_SAUDE, null);
+        CalculoFiscalResponse r = motor.calcular(CNPJ, req("2027-03", true, false, false, false, RED_SAUDE, null));
+
+        assertThat(t.ibsCbs()).isTrue();
+        assertThat(t.baseCalculo()).isEqualTo(r.baseCalculoIbsCbs()).isEqualTo(95_675L);
+        assertThat(t.valorCbs()).isEqualTo(r.valorCbs()).isEqualTo(4_286L);
+        assertThat(t.valorIbs()).isEqualTo(r.valorIbs()).isEqualTo(38L);
+        assertThat(t.valorIbsUf()).isEqualTo(19L);    // 95.675 × 0,02%
+        assertThat(t.valorIbsMun()).isEqualTo(19L);
+        assertThat(t.aliqIbsUf().add(t.aliqIbsMun())).isEqualByComparingTo(t.aliqIbs());
+        assertThat(t.aliqIbsUf()).isEqualByComparingTo("0.0002");
+        assertThat(t.fatorIss()).isEqualByComparingTo("1");
+        assertThat(t.porFora()).isFalse();
+    }
+
+    @Test
+    void tributacaoIbsCbs_porFora_baseEhOBruto() {
+        var t = motor.tributacaoIbsCbs(CNPJ, "2027-03", BRUTO, RED_SAUDE, true);
+
+        assertThat(t.porFora()).isTrue();
+        assertThat(t.baseCalculo()).isEqualTo(BRUTO);
+        assertThat(t.valorCbs()).isEqualTo(4_480L);
+        assertThat(t.valorIbs()).isEqualTo(40L);
+        assertThat(t.valorIbsUf()).isEqualTo(20L);
+        assertThat(t.valorIbsMun()).isEqualTo(20L);
+    }
+
+    @Test
+    void tributacaoIbsCbs_2029_ibsUfEMunicipalDiferentes_somamOTotal() {
+        // 2029 (fixture): IBS UF 2% + mun 1%, sem redução, por fora → base 100.000
+        var t = motor.tributacaoIbsCbs(CNPJ, "2029-05", BRUTO, null, true);
+
+        assertThat(t.valorIbs()).isEqualTo(3_000L);
+        assertThat(t.valorIbsUf()).isEqualTo(2_000L);
+        assertThat(t.valorIbsMun()).isEqualTo(1_000L);
+        assertThat(t.fatorIss()).isEqualByComparingTo("0.9");
+    }
+
     // ─── Virada ─────────────────────────────────────────────────────────────
 
     @Test

@@ -30,6 +30,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -43,6 +45,7 @@ class NfseServiceTest {
     @Mock EmailNotificacaoProducer emailProducer;
     @Mock FaturamentoProducer faturamentoProducer;
     @Mock LedgerProducer ledgerProducer;
+    @Mock MotorFiscalService motorFiscal;
 
     NfseService nfseService;
 
@@ -51,7 +54,127 @@ class NfseServiceTest {
     @BeforeEach
     void setUp() {
         nfseService = new NfseService(notaRepo, loteRepo, emissaoPort, producer,
-                emailProducer, faturamentoProducer, ledgerProducer, false);
+                emailProducer, faturamentoProducer, ledgerProducer, motorFiscal, false);
+        // Regime anterior por padrão; os testes da reforma sobrepõem.
+        lenient().when(motorFiscal.tributacaoIbsCbs(anyString(), anyString(), anyLong(), any(), any()))
+            .thenReturn(TributacaoIbsCbs.legado(java.math.BigDecimal.ONE));
+    }
+
+    // --- CBS-41: snapshot da reforma gravado na emissão ---
+
+    private static TributacaoIbsCbs ibsCbs2027(boolean porFora) {
+        // Bruto 1.000.000, redução 60%: CBS 4,48%, IBS 0,04% (UF 0,02% + mun 0,02%)
+        long base = porFora ? 1_000_000L : 956_755L;
+        long cbs = porFora ? 44_800L : 42_863L;
+        long ibs = porFora ? 400L : 383L;
+        long uf = porFora ? 200L : 191L;
+        return new TributacaoIbsCbs(br.com.pinsaude.fiscal.domain.RegimeTributario.IBS_CBS, porFora, base,
+            new java.math.BigDecimal("0.0448"), new java.math.BigDecimal("0.0004"),
+            new java.math.BigDecimal("0.0002"), new java.math.BigDecimal("0.0002"), java.math.BigDecimal.ONE,
+            cbs, ibs, uf, ibs - uf);
+    }
+
+    private EmitirNfseRequest requestReforma(UUID producaoId, String cst, String cClassTrib, Boolean porFora) {
+        return new EmitirNfseRequest(
+            producaoId, UUID.randomUUID(), UUID.randomUUID(),
+            "2027-01", 1_000_000L, 150_000L,
+            20_000L, 15_000L, 10_000L, 6_500L, 30_000L, "Hospital Teste", null, null,
+            "12.345.678/0001-95",
+            new java.math.BigDecimal("0.6"), cst, cClassTrib, porFora);
+    }
+
+    @Test
+    void emitir_competenciaNoRegimeNovo_gravaCbsIbsNaNota() {
+        UUID producaoId = UUID.randomUUID();
+        when(notaRepo.existsByProducaoId(producaoId)).thenReturn(false);
+        when(notaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(motorFiscal.tributacaoIbsCbs(eq(CNPJ_TENANT), eq("2027-01"), eq(1_000_000L), any(), any()))
+            .thenReturn(ibsCbs2027(false));
+
+        nfseService.emitir(requestReforma(producaoId, "200", "200029", null), "12.345.678/0001-95");
+
+        ArgumentCaptor<NotaFiscal> captor = ArgumentCaptor.forClass(NotaFiscal.class);
+        verify(notaRepo).save(captor.capture());
+        NotaFiscal n = captor.getValue();
+        assertThat(n.getRegimeTributario()).isEqualTo(br.com.pinsaude.fiscal.domain.RegimeTributario.IBS_CBS);
+        assertThat(n.getValorCbs()).isEqualTo(42_863L);
+        assertThat(n.getValorIbs()).isEqualTo(383L);
+        assertThat(n.getValorIbsUf() + n.getValorIbsMun()).isEqualTo(383L);
+        assertThat(n.getBaseCalculoIbsCbs()).isEqualTo(956_755L);
+        assertThat(n.getCstIbsCbs()).isEqualTo("200");
+        assertThat(n.getCClassTrib()).isEqualTo("200029");
+        assertThat(n.getReducaoIbsCbs()).isEqualByComparingTo("0.6");
+        assertThat(n.getAliqCbs()).isEqualByComparingTo("0.0448");
+        assertThat(n.getFatorIss()).isEqualByComparingTo("1");
+        assertThat(n.isCbsIbsPorFora()).isFalse();
+        // PIS/COFINS não existem no regime novo, mesmo que o pedido traga valor
+        assertThat(n.getValorPis()).isZero();
+        assertThat(n.getValorCofins()).isZero();
+        assertThat(n.getValorIr()).isEqualTo(15_000L);
+        assertThat(n.getValorCsll()).isEqualTo(10_000L);
+    }
+
+    @Test
+    void emitir_regimeNovoSemClassificacaoDoServico_recusa422() {
+        UUID producaoId = UUID.randomUUID();
+        when(notaRepo.existsByProducaoId(producaoId)).thenReturn(false);
+        when(motorFiscal.tributacaoIbsCbs(anyString(), anyString(), anyLong(), any(), any()))
+            .thenReturn(ibsCbs2027(false));
+
+        assertThatThrownBy(() -> nfseService.emitir(requestReforma(producaoId, null, null, null), CNPJ_TENANT))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("cClassTrib");
+        verify(notaRepo, never()).save(any());
+    }
+
+    @Test
+    void emitir_competenciaLegado_naoGravaCbsIbs() {
+        UUID producaoId = UUID.randomUUID();
+        when(notaRepo.existsByProducaoId(producaoId)).thenReturn(false);
+        when(notaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        nfseService.emitir(requestFor(producaoId), CNPJ_TENANT);
+
+        ArgumentCaptor<NotaFiscal> captor = ArgumentCaptor.forClass(NotaFiscal.class);
+        verify(notaRepo).save(captor.capture());
+        NotaFiscal n = captor.getValue();
+        assertThat(n.getRegimeTributario()).isEqualTo(br.com.pinsaude.fiscal.domain.RegimeTributario.LEGADO);
+        assertThat(n.getValorCbs()).isZero();
+        assertThat(n.getValorPis()).isEqualTo(6_500L);
+        assertThat(n.getCstIbsCbs()).isNull();
+        assertThat(n.getFatorIss()).isNull();
+        assertThat(NfseService.grupoIbsCbs(n)).isNull();
+    }
+
+    @Test
+    void processarEmissao_notaIbsCbs_mandaGrupoIbsCbsAoAgregador() throws Exception {
+        UUID notaId = UUID.randomUUID();
+        NotaFiscal nota = notaFiscalComId(notaId, StatusNota.PENDENTE, UUID.randomUUID());
+        nota.setRegimeTributario(br.com.pinsaude.fiscal.domain.RegimeTributario.IBS_CBS);
+        nota.setCstIbsCbs("200");
+        nota.setCClassTrib("200029");
+        nota.setBaseCalculoIbsCbs(1_000_000L);
+        nota.setCbsIbsPorFora(true);
+        nota.setValorCbs(44_800L);
+        nota.setValorIbs(400L);
+        nota.setValorIbsUf(200L);
+        nota.setValorIbsMun(200L);
+        when(notaRepo.findById(notaId)).thenReturn(Optional.of(nota));
+        when(notaRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(emissaoPort.emitir(any())).thenReturn(ResultadoEmissao.sucesso("NF-1", "P-1", null, null));
+
+        nfseService.processarEmissao(notaId);
+
+        ArgumentCaptor<br.com.pinsaude.fiscal.port.DadosNota> captor =
+            ArgumentCaptor.forClass(br.com.pinsaude.fiscal.port.DadosNota.class);
+        verify(emissaoPort).emitir(captor.capture());
+        var g = captor.getValue().ibsCbs();
+        assertThat(g).isNotNull();
+        assertThat(g.cst()).isEqualTo("200");
+        assertThat(g.cClassTrib()).isEqualTo("200029");
+        assertThat(g.valorCbs()).isEqualTo(44_800L);
+        assertThat(g.valorIbsUf() + g.valorIbsMun()).isEqualTo(g.valorIbs());
+        assertThat(g.valorTotalNota()).isEqualTo(nota.getValorBruto() + 44_800L + 400L);
     }
 
     // --- Critério: idempotência — mesma producaoId não emite duas vezes ---

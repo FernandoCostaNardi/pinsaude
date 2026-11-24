@@ -36,7 +36,7 @@ public class LedgerProducer {
 
     /**
      * ISS/IR/CSLL/PIS/COFINS da nota são os retidos pelo tomador (desde a CBS-21). CBS/IBS são débito
-     * da Pin. A nota ainda não grava se CBS/IBS foram somados ao preço, então vai nulo (dentro do preço).
+     * da Pin. Desde a CBS-41 a nota grava se CBS/IBS foram somados ao preço; no LEGADO vai nulo.
      */
     static LedgerNotaEmitidaMessage mensagem(NotaFiscal nota) {
         long bruto = valor(nota.getValorBruto());
@@ -49,7 +49,8 @@ public class LedgerProducer {
             bruto, liquido,
             valor(nota.getValorIss()), valor(nota.getValorIr()), valor(nota.getValorCsll()),
             valor(nota.getValorPis()), valor(nota.getValorCofins()),
-            regime.name(), valor(nota.getValorCbs()), valor(nota.getValorIbs()), null);
+            regime.name(), valor(nota.getValorCbs()), valor(nota.getValorIbs()),
+            regime == RegimeTributario.IBS_CBS ? nota.isCbsIbsPorFora() : null);
     }
 
     private static long valor(Long v) {

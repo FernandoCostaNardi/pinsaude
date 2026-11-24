@@ -1490,6 +1490,23 @@ argumentos diferentes fazem o RabbitMQ recusar a declaração. Com o ledger para
 - A nota ainda não grava se CBS/IBS foram por fora: o Fiscal manda `cbsIbsPorFora` nulo. Nota
   multi-médico vai com `medicoId` nulo (o fiscal não conhece os participantes).
 
+### Emissão grava CBS/IBS e manda o grupo IBSCBS ao agregador (CBS-41)
+`NfseService.emitir` grava o snapshot da reforma na nota (`aplicarReforma`): o regime e os valores
+vêm de `MotorFiscalService.tributacaoIbsCbs(cnpj, competencia, bruto, reducao, porFora)`, a mesma regra
+do motor (chave ligada **e** homologada da empresa, cronograma do ano × (1 − redução)). O navegador só
+manda a classificação do serviço LC116 da produção no `EmitirNfseRequest` (`reducaoIbsCbs`, `cstIbsCbs`,
+`cClassTrib`, `cbsIbsPorFora`); nunca o regime nem os valores de CBS/IBS.
+- No IBS_CBS sem CST/cClassTrib → 422 (a NFS-e sem o grupo IBSCBS é rejeitada). PIS/COFINS gravados zero.
+- V17 (fiscal) guarda o detalhe do grupo: `base_calculo_ibs_cbs`, `cbs_ibs_por_fora`, `reducao_ibs_cbs`,
+  `aliq_ibs_uf`/`aliq_ibs_mun`, `valor_ibs_uf`/`valor_ibs_mun`. O IBS total é calculado sobre a soma das
+  alíquotas e o municipal fica com a diferença (CHECK: UF + mun = total ou 0).
+- `DadosNota.ibsCbs` (nulo no LEGADO) vira `NfseRpsRequest.ibsCbs` (`GrupoIbsCbs`). O pedido ganhou
+  CSLL/PIS/COFINS retidos e `tipoRetencaoPisCofins` (NT 007). **O contrato do agregador real (PlugNotas)
+  ainda não foi validado em homologação:** os nomes dos campos são os nossos; mapear para o JSON da
+  PlugNotas quando houver credenciais (`nfse.enabled` vem desligado por padrão).
+- O `LedgerProducer` manda `cbsIbsPorFora` da nota (nulo no LEGADO).
+- A emissão externa (`NfseEmissaoExternaService`) ainda não grava CBS/IBS: é a CBS-42.
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

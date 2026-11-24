@@ -50,7 +50,18 @@ class LedgerProducerTest {
         assertThat(m.medicoId()).isEqualTo(n.getMedicoId());
         assertThat(m.cnpjTenant()).isEqualTo("12345678000199");
         assertThat(m.competencia()).isEqualTo("2027-01");
-        assertThat(m.cbsIbsPorFora()).isNull();
+        assertThat(m.cbsIbsPorFora()).isFalse();   // CBS-41: a nota grava; dentro do preço
+    }
+
+    @Test
+    void notaIbsCbsPorFora_avisaOLedger() {
+        NotaFiscal n = nota();
+        n.setRegimeTributario(RegimeTributario.IBS_CBS);
+        n.setValorCbs(44_800L);
+        n.setValorIbs(400L);
+        n.setCbsIbsPorFora(true);
+
+        assertThat(LedgerProducer.mensagem(n).cbsIbsPorFora()).isTrue();
     }
 
     @Test
@@ -66,6 +77,7 @@ class LedgerProducerTest {
         assertThat(m.valorCbsCentavos()).isZero();
         assertThat(m.valorIbsCentavos()).isZero();
         assertThat(m.valorLiquidoMedicoCentavos()).isEqualTo(850_000L);
+        assertThat(m.cbsIbsPorFora()).isNull();
     }
 
     @Test

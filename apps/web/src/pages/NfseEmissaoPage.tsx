@@ -387,6 +387,11 @@ export function NfseEmissaoPage() {
       cnaeCodigo: cnaeSelecionado || null,
       discriminacao: producao.descricaoComplementar ?? null,
       cnpjEmpresaEmissora: empresaInfo?.cnpj?.replace(/\D/g, '') || null,
+      // Mesma classificação que foi ao motor na prévia (CBS-41): o fiscal grava CBS/IBS na nota
+      reducaoIbsCbs: producao.servico.reducaoIbsCbs ?? null,
+      cstIbsCbs: producao.servico.cstIbsCbs || null,
+      cClassTrib: producao.servico.cClassTrib || null,
+      cbsIbsPorFora: calculo.cbsIbsPorFora,
     }
   }
 
