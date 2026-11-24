@@ -7,6 +7,7 @@ import br.com.pinsaude.fiscal.dto.EmitirNfseResponse;
 import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
 import br.com.pinsaude.fiscal.messaging.EmailNotificacaoProducer;
 import br.com.pinsaude.fiscal.messaging.FaturamentoProducer;
+import br.com.pinsaude.fiscal.messaging.LedgerProducer;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoMessage;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoProducer;
 import br.com.pinsaude.fiscal.port.DadosNota;
@@ -39,6 +40,7 @@ public class NfseService {
     private final NfseEmissaoProducer producer;
     private final EmailNotificacaoProducer emailProducer;
     private final FaturamentoProducer faturamentoProducer;
+    private final LedgerProducer ledgerProducer;
     private final boolean mockEnabled;
 
     public NfseService(NotaFiscalRepository notaRepo,
@@ -47,6 +49,7 @@ public class NfseService {
                        NfseEmissaoProducer producer,
                        EmailNotificacaoProducer emailProducer,
                        FaturamentoProducer faturamentoProducer,
+                       LedgerProducer ledgerProducer,
                        @Value("${nfse.mock.enabled:false}") boolean mockEnabled) {
         this.notaRepo             = notaRepo;
         this.loteRepo             = loteRepo;
@@ -54,6 +57,7 @@ public class NfseService {
         this.producer             = producer;
         this.emailProducer        = emailProducer;
         this.faturamentoProducer  = faturamentoProducer;
+        this.ledgerProducer       = ledgerProducer;
         this.mockEnabled          = mockEnabled;
     }
 
@@ -167,6 +171,7 @@ public class NfseService {
         if (nota.getStatus() == StatusNota.EMITIDA) {
             emailProducer.notificarNotaEmitida(nota);
             faturamentoProducer.notificarProducaoEmitida(nota);
+            ledgerProducer.notificarNotaEmitida(nota);
         }
 
         atualizarContadoresLote(nota.getCompetencia(), nota.getStatus());

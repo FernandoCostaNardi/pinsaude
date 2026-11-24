@@ -27,6 +27,8 @@ public class LedgerEventService {
     static final String CONTA_CAIXA         = "1.1.02"; // Caixa e Bancos (ATIVO)
     static final String CONTA_RETENCOES     = "2.1.01"; // Retenções de Impostos a Recolher (PASSIVO)
     static final String CONTA_REPASSE_PAGAR = "2.1.02"; // Repasses a Médicos a Pagar (PASSIVO)
+    static final String CONTA_CBS_RECOLHER  = "2.1.03"; // CBS a Recolher (PASSIVO, V6, CBS-40)
+    static final String CONTA_IBS_RECOLHER  = "2.1.04"; // IBS a Recolher (PASSIVO, V6, CBS-40)
     static final String CONTA_RECEITA       = "3.1.01"; // Receita de Honorários Médicos (RECEITA)
 
     private final LancamentoService lancamentoService;
@@ -36,31 +38,49 @@ public class LedgerEventService {
     }
 
     /**
-     * NotaEmitida: DR Honorários a Receber (bruto) / CR Repasses a Pagar (85% do médico) +
-     * CR Receita da Pin (margem) + CR uma retenção por imposto.
+     * NotaEmitida: DR Honorários a Receber / CR Repasses a Pagar (líquido do médico) +
+     * CR uma retenção por imposto + CR CBS e IBS a recolher (CBS-40) + CR Receita da Pin (o que sobra).
+     *
+     * <p>CBS/IBS são débito próprio da Pin, não retenção: vão para 2.1.03/2.1.04, nunca para 2.1.01.
+     * Dentro do preço (padrão), saem da margem da Pin: receita = bruto − líquido − retenções − CBS − IBS.
+     * Por fora, o tomador paga bruto + CBS + IBS: o recebível sobe nesse valor e a receita não muda.
+     * Se a margem ficar negativa (taxa Pin menor que os tributos), a diferença é debitada na receita,
+     * para o lançamento continuar balanceado.
      */
     public void processarNotaEmitida(NotaEmitidaEvent e) {
         long bruto   = e.valorBrutoCentavos();
         long liquido = e.valorLiquidoMedicoCentavos();
+        long cbs = Math.max(0L, e.valorCbsCentavos());
+        long ibs = Math.max(0L, e.valorIbsCentavos());
         long totalRetencoes = e.valorIssCentavos() + e.valorIrCentavos() + e.valorCsllCentavos()
                             + e.valorPisCentavos() + e.valorCofinsCentavos();
-        long receitaPin = bruto - liquido - totalRetencoes; // margem da Pin após repasse e impostos
+        boolean porFora = e.porFora();
+        long aReceber   = porFora ? bruto + cbs + ibs : bruto;
+        long receitaPin = aReceber - liquido - totalRetencoes - cbs - ibs; // margem da Pin
 
         List<PartidaRequest> partidas = new ArrayList<>();
-        partidas.add(new PartidaRequest(CONTA_A_RECEBER, TipoPartida.DEBITO, bruto));
+        partidas.add(new PartidaRequest(CONTA_A_RECEBER, TipoPartida.DEBITO, aReceber));
         partidas.add(new PartidaRequest(CONTA_REPASSE_PAGAR, TipoPartida.CREDITO, liquido));
         if (receitaPin > 0) {
             partidas.add(new PartidaRequest(CONTA_RECEITA, TipoPartida.CREDITO, receitaPin));
+        } else if (receitaPin < 0) {
+            partidas.add(new PartidaRequest(CONTA_RECEITA, TipoPartida.DEBITO, -receitaPin));
         }
         addRetencao(partidas, e.valorIssCentavos());
         addRetencao(partidas, e.valorIrCentavos());
         addRetencao(partidas, e.valorCsllCentavos());
         addRetencao(partidas, e.valorPisCentavos());
         addRetencao(partidas, e.valorCofinsCentavos());
+        addCredito(partidas, CONTA_CBS_RECOLHER, cbs);
+        addCredito(partidas, CONTA_IBS_RECOLHER, ibs);
+
+        String descricao = "IBS_CBS".equals(e.regimeOuLegado())
+            ? "NFS-e emitida com CBS/IBS (nota " + e.notaId() + ")"
+            : "NFS-e emitida (nota " + e.notaId() + ")";
 
         lancamentoService.criar(new CriarLancamentoRequest(
-            e.cnpjTenant(), e.medicoId(), null, e.competencia(), TipoOrigem.NOTA, e.notaId(),
-            "NFS-e emitida (nota " + e.notaId() + ")", "NOTA:" + e.notaId(), partidas));
+            somenteDigitos(e.cnpjTenant()), e.medicoId(), null, e.competencia(), TipoOrigem.NOTA, e.notaId(),
+            descricao, "NOTA:" + e.notaId(), partidas));
     }
 
     /** RecebimentoConciliado: DR Caixa / CR Honorários a Receber (baixa do recebível). */
@@ -113,8 +133,17 @@ public class LedgerEventService {
     }
 
     private void addRetencao(List<PartidaRequest> partidas, long valor) {
+        addCredito(partidas, CONTA_RETENCOES, valor);
+    }
+
+    private void addCredito(List<PartidaRequest> partidas, String conta, long valor) {
         if (valor > 0) {
-            partidas.add(new PartidaRequest(CONTA_RETENCOES, TipoPartida.CREDITO, valor));
+            partidas.add(new PartidaRequest(conta, TipoPartida.CREDITO, valor));
         }
+    }
+
+    /** O tenant do ledger é VARCHAR(14): aceita o CNPJ formatado vindo do evento. */
+    private static String somenteDigitos(String cnpj) {
+        return cnpj != null ? cnpj.replaceAll("\\D", "") : null;
     }
 }

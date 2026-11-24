@@ -103,6 +103,23 @@ class LedgerEventIntegrationTest {
     }
 
     @Test
+    void notaEmitidaIbsCbs_creditaCbsEIbsARecolher() {
+        // CBS-40: contas 2.1.03/2.1.04 (V6) existem e o lançamento fecha no banco real
+        UUID notaId = UUID.randomUUID();
+        var evento = new NotaEmitidaEvent(notaId, UUID.randomUUID(), TENANT, "2027-01",
+                1_000_000L, 850_000L, 20_000L, 15_000L, 10_000L, 0L, 0L,
+                "IBS_CBS", 33_000L, 400L, null);
+        rabbitTemplate.convertAndSend(QUEUE_NOTA_EMITIDA, evento);
+
+        LancamentoLedger l = aguardarPorCorrelation("NOTA:" + notaId);
+        long[] dc = somaDebitoCreditoDoLancamento(l.getId());
+        assertThat(dc[0]).isEqualTo(1_000_000L);
+        assertThat(dc[0]).isEqualTo(dc[1]);
+        // a receber + repasse + receita + 3 retenções (ISS/IR/CSLL) + CBS + IBS
+        assertThat(lancamentoRepo.findByIdComPartidas(l.getId()).orElseThrow().getPartidas()).hasSize(8);
+    }
+
+    @Test
     void recebimentoConciliado_geraLancamento() {
         UUID conciliacaoId = UUID.randomUUID();
         var evento = new RecebimentoConciliadoEvent(conciliacaoId, UUID.randomUUID(), UUID.randomUUID(),

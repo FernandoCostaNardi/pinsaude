@@ -7,6 +7,7 @@ import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
 import br.com.pinsaude.fiscal.dto.RegistrarEmissaoExternaRequest;
 import br.com.pinsaude.fiscal.messaging.EmailNotificacaoProducer;
 import br.com.pinsaude.fiscal.messaging.FaturamentoProducer;
+import br.com.pinsaude.fiscal.messaging.LedgerProducer;
 import br.com.pinsaude.fiscal.repository.NotaFiscalRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ class NfseEmissaoExternaServiceTest {
     @Mock NotaFiscalRepository notaRepo;
     @Mock EmailNotificacaoProducer emailProducer;
     @Mock FaturamentoProducer faturamentoProducer;
+    @Mock LedgerProducer ledgerProducer;
 
     NfseEmissaoExternaService service;
 
@@ -41,7 +43,7 @@ class NfseEmissaoExternaServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new NfseEmissaoExternaService(notaRepo, emailProducer, faturamentoProducer);
+        service = new NfseEmissaoExternaService(notaRepo, emailProducer, faturamentoProducer, ledgerProducer);
     }
 
     private static RegistrarEmissaoExternaRequest request(UUID producaoId) {
@@ -79,6 +81,7 @@ class NfseEmissaoExternaServiceTest {
         assertThat(r.emitidaAt().toLocalDate()).isEqualTo(LocalDate.of(2026, 10, 20));
         verify(emailProducer).notificarNotaEmitida(any(NotaFiscal.class));
         verify(faturamentoProducer).notificarProducaoEmitida(argThat(n -> producaoId.equals(n.getProducaoId())));
+        verify(ledgerProducer).notificarNotaEmitida(argThat(n -> producaoId.equals(n.getProducaoId())));
     }
 
     @Test

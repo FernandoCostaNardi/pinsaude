@@ -19,6 +19,11 @@ public class RabbitConfig {
     public static final String DLQ_ROUTING    = "nfse.emissao.dlq";
     public static final String EMAIL_QUEUE             = "email.envio";
     public static final String PRODUCAO_EMITIDA_QUEUE  = "faturamento.producao.emitida";
+    // Fila do ledger (CBS-40). Declarada com os MESMOS argumentos do RabbitLedgerConfig do ledger
+    // (DLX ledger.dlx, routing key = nome da fila): argumentos diferentes fazem o RabbitMQ recusar a
+    // declaração. Declarar aqui garante que a mensagem fica na fila mesmo com o ledger parado.
+    public static final String LEDGER_NOTA_EMITIDA_QUEUE = "ledger.nota.emitida";
+    public static final String LEDGER_DLX                = "ledger.dlx";
 
     // ── Exchanges ───────────────────────────────────────────────────────────
 
@@ -55,6 +60,14 @@ public class RabbitConfig {
     @Bean
     public Queue producaoEmitidaQueue() {
         return QueueBuilder.durable(PRODUCAO_EMITIDA_QUEUE).build();
+    }
+
+    @Bean
+    public Queue ledgerNotaEmitidaQueue() {
+        return QueueBuilder.durable(LEDGER_NOTA_EMITIDA_QUEUE)
+            .withArgument("x-dead-letter-exchange", LEDGER_DLX)
+            .withArgument("x-dead-letter-routing-key", LEDGER_NOTA_EMITIDA_QUEUE)
+            .build();
     }
 
     // ── Bindings ────────────────────────────────────────────────────────────
