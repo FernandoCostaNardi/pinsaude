@@ -6,6 +6,7 @@ import br.com.pinsaude.fiscal.dto.EmitirNfseRequest;
 import br.com.pinsaude.fiscal.dto.EmitirNfseResponse;
 import br.com.pinsaude.fiscal.messaging.EmailNotificacaoProducer;
 import br.com.pinsaude.fiscal.messaging.FaturamentoProducer;
+import br.com.pinsaude.fiscal.messaging.LedgerProducer;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoMessage;
 import br.com.pinsaude.fiscal.messaging.NfseEmissaoProducer;
 import br.com.pinsaude.fiscal.port.EmissaoNfsePort;
@@ -41,6 +42,7 @@ class NfseServiceTest {
     @Mock NfseEmissaoProducer producer;
     @Mock EmailNotificacaoProducer emailProducer;
     @Mock FaturamentoProducer faturamentoProducer;
+    @Mock LedgerProducer ledgerProducer;
 
     NfseService nfseService;
 
@@ -49,7 +51,7 @@ class NfseServiceTest {
     @BeforeEach
     void setUp() {
         nfseService = new NfseService(notaRepo, loteRepo, emissaoPort, producer,
-                emailProducer, faturamentoProducer, false);
+                emailProducer, faturamentoProducer, ledgerProducer, false);
     }
 
     // --- Critério: idempotência — mesma producaoId não emite duas vezes ---

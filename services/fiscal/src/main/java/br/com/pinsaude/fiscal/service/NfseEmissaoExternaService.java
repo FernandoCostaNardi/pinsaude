@@ -7,6 +7,7 @@ import br.com.pinsaude.fiscal.dto.NotaFiscalStatusResponse;
 import br.com.pinsaude.fiscal.dto.RegistrarEmissaoExternaRequest;
 import br.com.pinsaude.fiscal.messaging.EmailNotificacaoProducer;
 import br.com.pinsaude.fiscal.messaging.FaturamentoProducer;
+import br.com.pinsaude.fiscal.messaging.LedgerProducer;
 import br.com.pinsaude.fiscal.repository.NotaFiscalRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,13 +58,16 @@ public class NfseEmissaoExternaService {
     private final NotaFiscalRepository notaRepo;
     private final EmailNotificacaoProducer emailProducer;
     private final FaturamentoProducer faturamentoProducer;
+    private final LedgerProducer ledgerProducer;
 
     public NfseEmissaoExternaService(NotaFiscalRepository notaRepo,
                                      EmailNotificacaoProducer emailProducer,
-                                     FaturamentoProducer faturamentoProducer) {
+                                     FaturamentoProducer faturamentoProducer,
+                                     LedgerProducer ledgerProducer) {
         this.notaRepo            = notaRepo;
         this.emailProducer       = emailProducer;
         this.faturamentoProducer = faturamentoProducer;
+        this.ledgerProducer      = ledgerProducer;
     }
 
     @Transactional
@@ -120,6 +124,7 @@ public class NfseEmissaoExternaService {
         aposCommit(() -> {
             emailProducer.notificarNotaEmitida(salva);
             faturamentoProducer.notificarProducaoEmitida(salva);
+            ledgerProducer.notificarNotaEmitida(salva);
         });
         return NotaFiscalStatusResponse.from(salva);
     }

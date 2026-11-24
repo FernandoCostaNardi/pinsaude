@@ -1474,6 +1474,22 @@ A `PosicaoCaixaPage` chama esse endpoint direto (o faturamento não lê o schema
 nele não derruba a página. O `PosicaoCaixaService` não mudou: as retenções por recebimento continuam
 bruto − depósito. Enquanto a emissão não gravar CBS/IBS na nota (CBS-41/42), o bloco de CBS/IBS fica zerado.
 
+### Ledger: CBS e IBS a recolher (CBS-40)
+O Fiscal agora publica a nota emitida para o ledger (`LedgerProducer`, fila `ledger.nota.emitida`,
+`LedgerNotaEmitidaMessage`) nos dois caminhos de emissão (`NfseService.processarEmissao` e
+`NfseEmissaoExternaService`). Antes disso nenhum serviço publicava nessa fila. O Fiscal declara a fila
+com os **mesmos argumentos** do `RabbitLedgerConfig` (DLX `ledger.dlx`, routing key = nome da fila):
+argumentos diferentes fazem o RabbitMQ recusar a declaração. Com o ledger parado, a mensagem fica na fila.
+- `NotaEmitidaEvent` ganhou `regime`, `valorCbsCentavos`, `valorIbsCentavos` e `cbsIbsPorFora`, todos
+  opcionais: mensagem antiga vira LEGADO, CBS/IBS 0, dentro do preço (lançamento igual ao de antes).
+- Contas novas (ledger V6, códigos provisórios a validar com o contador): `2.1.03 CBS a Recolher` e
+  `2.1.04 IBS a Recolher`. CBS/IBS **nunca** vão para `2.1.01` (retenções do tomador).
+- Receita da Pin = a receber − líquido do médico − retenções − CBS − IBS. Por fora, o recebível é
+  bruto + CBS + IBS e a receita não muda. Margem negativa vira **débito** na receita (continua balanceado).
+- O tenant do evento é normalizado para dígitos (`lancamentos_ledger.cnpj_id_tenant` é VARCHAR(14)).
+- A nota ainda não grava se CBS/IBS foram por fora: o Fiscal manda `cbsIbsPorFora` nulo. Nota
+  multi-médico vai com `medicoId` nulo (o fiscal não conhece os participantes).
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.
