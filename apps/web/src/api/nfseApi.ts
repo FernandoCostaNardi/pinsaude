@@ -56,6 +56,11 @@ export interface NotaFiscal {
   cstIbsCbs?: string | null
   cClassTrib?: string | null
   fatorIss?: number | null
+  // CBS-41: detalhe do grupo IBSCBS da NFS-e
+  baseCalculoIbsCbs?: number | null
+  cbsIbsPorFora?: boolean
+  valorIbsUf?: number
+  valorIbsMun?: number
 }
 
 export type { RegimeTributario }
@@ -76,6 +81,12 @@ export interface EmitirNfseRequest {
   cnaeCodigo?: string | null
   discriminacao?: string | null
   cnpjEmpresaEmissora?: string | null  // tenant da nota quando o usuário não tem cnpj_id no token
+  // CBS-41: classificação CBS/IBS do serviço LC116 da produção. O fiscal decide o regime pela
+  // chave da empresa e calcula CBS/IBS; no regime novo, sem CST/cClassTrib a emissão é recusada.
+  reducaoIbsCbs?: number | null   // fração (0.6 = 60%)
+  cstIbsCbs?: string | null
+  cClassTrib?: string | null
+  cbsIbsPorFora?: boolean | null  // acerto por tomador (CBS-01) ainda sem cadastro: dentro do preço
 }
 
 export interface EmitirNfseResponse {

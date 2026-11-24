@@ -85,6 +85,28 @@ public class NotaFiscal {
     @Column(name = "fator_iss", precision = 6, scale = 4)
     private BigDecimal fatorIss;
 
+    // CBS-41: detalhe para o grupo IBSCBS da NFS-e e para o ledger.
+    @Column(name = "base_calculo_ibs_cbs")
+    private Long baseCalculoIbsCbs;
+
+    @Column(name = "cbs_ibs_por_fora", nullable = false)
+    private boolean cbsIbsPorFora;
+
+    @Column(name = "reducao_ibs_cbs", precision = 5, scale = 4)
+    private BigDecimal reducaoIbsCbs;
+
+    @Column(name = "aliq_ibs_uf", precision = 8, scale = 4)
+    private BigDecimal aliqIbsUf;
+
+    @Column(name = "aliq_ibs_mun", precision = 8, scale = 4)
+    private BigDecimal aliqIbsMun;
+
+    @Column(name = "valor_ibs_uf", nullable = false)
+    private Long valorIbsUf = 0L;
+
+    @Column(name = "valor_ibs_mun", nullable = false)
+    private Long valorIbsMun = 0L;
+
     // CHECK constraint no DB garante: valor_liquido_medico = valor_bruto - taxa_pin (sempre 85%)
     @Column(name = "valor_liquido_medico", nullable = false)
     private Long valorLiquidoMedico;
@@ -130,6 +152,8 @@ public class NotaFiscal {
         if (regimeTributario == null) regimeTributario = RegimeTributario.LEGADO;
         if (valorCbs == null) valorCbs = 0L;
         if (valorIbs == null) valorIbs = 0L;
+        if (valorIbsUf == null) valorIbsUf = 0L;
+        if (valorIbsMun == null) valorIbsMun = 0L;
     }
 
     public UUID getId()                              { return id; }
@@ -177,6 +201,20 @@ public class NotaFiscal {
     public void setCClassTrib(String v)              { this.cClassTrib = v; }
     public BigDecimal getFatorIss()                  { return fatorIss; }
     public void setFatorIss(BigDecimal v)            { this.fatorIss = v; }
+    public Long getBaseCalculoIbsCbs()               { return baseCalculoIbsCbs; }
+    public void setBaseCalculoIbsCbs(Long v)         { this.baseCalculoIbsCbs = v; }
+    public boolean isCbsIbsPorFora()                 { return cbsIbsPorFora; }
+    public void setCbsIbsPorFora(boolean v)          { this.cbsIbsPorFora = v; }
+    public BigDecimal getReducaoIbsCbs()             { return reducaoIbsCbs; }
+    public void setReducaoIbsCbs(BigDecimal v)       { this.reducaoIbsCbs = v; }
+    public BigDecimal getAliqIbsUf()                 { return aliqIbsUf; }
+    public void setAliqIbsUf(BigDecimal v)           { this.aliqIbsUf = v; }
+    public BigDecimal getAliqIbsMun()                { return aliqIbsMun; }
+    public void setAliqIbsMun(BigDecimal v)          { this.aliqIbsMun = v; }
+    public Long getValorIbsUf()                      { return valorIbsUf; }
+    public void setValorIbsUf(Long v)                { this.valorIbsUf = v; }
+    public Long getValorIbsMun()                     { return valorIbsMun; }
+    public void setValorIbsMun(Long v)               { this.valorIbsMun = v; }
     public Long getValorLiquidoMedico()              { return valorLiquidoMedico; }
     public void setValorLiquidoMedico(Long v)        { this.valorLiquidoMedico = v; }
     public StatusNota getStatus()                    { return status; }

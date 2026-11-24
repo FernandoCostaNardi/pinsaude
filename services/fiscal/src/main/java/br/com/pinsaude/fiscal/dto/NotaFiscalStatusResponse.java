@@ -36,7 +36,12 @@ public record NotaFiscalStatusResponse(
     BigDecimal aliqIbs,
     String cstIbsCbs,
     String cClassTrib,
-    BigDecimal fatorIss
+    BigDecimal fatorIss,
+    // CBS-41 — detalhe do grupo IBSCBS
+    Long baseCalculoIbsCbs,
+    boolean cbsIbsPorFora,
+    Long valorIbsUf,
+    Long valorIbsMun
 ) {
     public static NotaFiscalStatusResponse from(NotaFiscal n) {
         return new NotaFiscalStatusResponse(
@@ -56,7 +61,11 @@ public record NotaFiscalStatusResponse(
             n.getAliqIbs(),
             n.getCstIbsCbs(),
             n.getCClassTrib(),
-            n.getFatorIss()
+            n.getFatorIss(),
+            n.getBaseCalculoIbsCbs(),
+            n.isCbsIbsPorFora(),
+            n.getValorIbsUf(),
+            n.getValorIbsMun()
         );
     }
 }

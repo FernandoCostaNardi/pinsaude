@@ -122,19 +122,11 @@ public class MotorFiscalService {
         // CBS/IBS: débito próprio da Pin em todos os cenários (retenção só existe para tomador
         // público, fora de escopo), por isso nunca entram em totalRetencoes.
         boolean porFora = Boolean.TRUE.equals(req.cbsIbsPorFora());
-        long baseIbsCbs = bruto;
-        long valorCbs = 0, valorIbs = 0;
-        if (aliquotas.ibsCbsAtivo()) {
-            BigDecimal somaAliq = aliquotas.aliqCbs().add(aliquotas.aliqIbs());
-            if (!porFora && somaAliq.signum() > 0) {
-                // Dentro do preço: o bruto já contém CBS/IBS → base = bruto / (1 + alíquotas)
-                baseIbsCbs = BigDecimal.valueOf(bruto)
-                    .divide(BigDecimal.ONE.add(somaAliq), 0, RoundingMode.HALF_UP)
-                    .longValue();
-            }
-            valorCbs = aplicar(baseIbsCbs, aliquotas.aliqCbs());
-            valorIbs = aplicar(baseIbsCbs, aliquotas.aliqIbs());
-        }
+        TributacaoIbsCbs ibsCbs = ibsCbs(aliquotas, bruto, porFora);
+        // No LEGADO a resposta sempre trouxe a base igual ao bruto.
+        long baseIbsCbs = ibsCbs.ibsCbs() ? ibsCbs.baseCalculo() : bruto;
+        long valorCbs = ibsCbs.valorCbs();
+        long valorIbs = ibsCbs.valorIbs();
         long valorTotalNota = porFora ? bruto + valorCbs + valorIbs : bruto;
 
         long totalTributos = valorIss + valorIr + valorCsll + valorPis + valorCofins + valorCbs + valorIbs;
@@ -166,7 +158,48 @@ public class MotorFiscalService {
         );
     }
 
+    /**
+     * CBS-41 — regime e CBS/IBS de uma nota pela mesma regra do motor, sem os tributos antigos.
+     * A emissão usa isto para gravar o snapshot da reforma na nota a partir do parâmetro fiscal
+     * da empresa (o regime não vem do navegador). Ano sem cronograma ou com alíquotas nulas → 422.
+     */
+    @Transactional(readOnly = true)
+    public TributacaoIbsCbs tributacaoIbsCbs(String cnpjId, String competencia, long valorBruto,
+                                             BigDecimal reducaoIbsCbs, Boolean cbsIbsPorFora) {
+        var req = new CalculoFiscalRequest(valorBruto, competencia, true, false, false, false,
+            null, reducaoIbsCbs, null, null, cbsIbsPorFora);
+        return ibsCbs(carregarAliquotas(cnpjId, req), valorBruto, Boolean.TRUE.equals(cbsIbsPorFora));
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * CBS/IBS: débito próprio da Pin em todos os cenários (retenção só existe para tomador público,
+     * fora de escopo). Dentro do preço, base = bruto / (1 + CBS + IBS); por fora, base = bruto.
+     * O IBS total é calculado sobre a soma das alíquotas e o municipal fica com a diferença, para
+     * as partes somarem sempre o total (mesmo arredondamento das telas).
+     */
+    private TributacaoIbsCbs ibsCbs(AliquotasCenario aliquotas, long bruto, boolean porFora) {
+        if (!aliquotas.ibsCbsAtivo()) {
+            return TributacaoIbsCbs.legado(aliquotas.fatorIss());
+        }
+        BigDecimal somaAliq = aliquotas.aliqCbs().add(aliquotas.aliqIbs());
+        long base = bruto;
+        if (!porFora && somaAliq.signum() > 0) {
+            base = BigDecimal.valueOf(bruto)
+                .divide(BigDecimal.ONE.add(somaAliq), 0, RoundingMode.HALF_UP)
+                .longValue();
+        }
+        long valorCbs = aplicar(base, aliquotas.aliqCbs());
+        long valorIbs = aplicar(base, aliquotas.aliqIbs());
+        long valorIbsUf = Math.min(aplicar(base, aliquotas.aliqIbsUf()), valorIbs);
+        return new TributacaoIbsCbs(
+            RegimeTributario.IBS_CBS, porFora, base,
+            aliquotas.aliqCbs(), aliquotas.aliqIbs(), aliquotas.aliqIbsUf(), aliquotas.aliqIbsMun(),
+            aliquotas.fatorIss(),
+            valorCbs, valorIbs, valorIbsUf, valorIbs - valorIbsUf
+        );
+    }
 
     private static long valorDo(String tributo, long iss, long ir, long csll, long pis, long cofins) {
         return switch (tributo) {
@@ -225,7 +258,8 @@ public class MotorFiscalService {
                 aliqIss, aliqIr, aliqCsll,
                 pis.orElse(regimeGeral.map(ParametroFiscal::getAliqPis).orElse(BigDecimal.ZERO)),
                 cofins.orElse(regimeGeral.map(ParametroFiscal::getAliqCofins).orElse(BigDecimal.ZERO)),
-                RegimeTributario.LEGADO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ONE
+                RegimeTributario.LEGADO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ONE,
+                BigDecimal.ZERO, BigDecimal.ZERO
             );
         }
 
@@ -243,11 +277,14 @@ public class MotorFiscalService {
         BigDecimal aliqCbs = cron.getAliqCbs().multiply(fatorReducao).setScale(8, RoundingMode.HALF_UP);
         BigDecimal aliqIbs = cron.getAliqIbsUf().add(cron.getAliqIbsMun())
             .multiply(fatorReducao).setScale(8, RoundingMode.HALF_UP);
+        BigDecimal aliqIbsUf = cron.getAliqIbsUf().multiply(fatorReducao).setScale(8, RoundingMode.HALF_UP);
+        BigDecimal aliqIbsMun = aliqIbs.subtract(aliqIbsUf);
 
         return new AliquotasCenario(
             aliqIss, aliqIr, aliqCsll,
             BigDecimal.ZERO, BigDecimal.ZERO,   // PIS/COFINS extintos
-            RegimeTributario.IBS_CBS, aliqCbs, aliqIbs, cron.getFatorIss()
+            RegimeTributario.IBS_CBS, aliqCbs, aliqIbs, cron.getFatorIss(),
+            aliqIbsUf, aliqIbsMun
         );
     }
 

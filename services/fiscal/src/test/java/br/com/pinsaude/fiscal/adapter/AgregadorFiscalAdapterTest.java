@@ -116,6 +116,47 @@ class AgregadorFiscalAdapterTest {
             .withHeader("X-API-Key", equalTo("test-token")));
     }
 
+    // --- CBS-41: grupo IBSCBS e retenções separadas no pedido ---
+
+    @Test
+    void notaIbsCbs_enviaGrupoIbsCbsERetencaoSoDeCsll() {
+        wireMock.stubFor(post(urlEqualTo("/nfse/rps"))
+            .willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json").withBody(successJson())));
+        var grupo = new DadosNota.IbsCbs("200", "200029", 956_755L, false,
+            new java.math.BigDecimal("0.6"), new java.math.BigDecimal("0.0448"),
+            new java.math.BigDecimal("0.0002"), new java.math.BigDecimal("0.0002"),
+            42_863L, 191L, 192L, 383L, 1_000_000L);
+        var dados = new DadosNota(UUID.randomUUID(), null, UUID.randomUUID(), "12345678000195", "2027-01",
+            1_000_000L, 150_000L, 0L, 15_000L, 10_000L, 0L, 0L, 850_000L, null, grupo);
+
+        assertThat(buildAdapter().emitir(dados).sucesso()).isTrue();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/nfse/rps"))
+            .withRequestBody(matchingJsonPath("$.ibsCbs.cst", equalTo("200")))
+            .withRequestBody(matchingJsonPath("$.ibsCbs.cClassTrib", equalTo("200029")))
+            .withRequestBody(matchingJsonPath("$.ibsCbs.baseCalculoCentavos", equalTo("956755")))
+            .withRequestBody(matchingJsonPath("$.ibsCbs.valorCbsCentavos", equalTo("42863")))
+            .withRequestBody(matchingJsonPath("$.ibsCbs.valorIbsUfCentavos", equalTo("191")))
+            .withRequestBody(matchingJsonPath("$.ibsCbs.valorIbsMunCentavos", equalTo("192")))
+            .withRequestBody(matchingJsonPath("$.csllRetidoCentavos", equalTo("10000")))
+            .withRequestBody(matchingJsonPath("$.tipoRetencaoPisCofins", equalTo("CSLL_RETIDA"))));
+    }
+
+    @Test
+    void notaLegado_semGrupoIbsCbs_comPisCofinsCsllRetidos() {
+        wireMock.stubFor(post(urlEqualTo("/nfse/rps"))
+            .willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json").withBody(successJson())));
+
+        assertThat(buildAdapter().emitir(dadosTeste()).sucesso()).isTrue();
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/nfse/rps"))
+            .withRequestBody(matchingJsonPath("$.tipoRetencaoPisCofins", equalTo("PIS_COFINS_CSLL_RETIDOS")))
+            .withRequestBody(matchingJsonPath("$.pisRetidoCentavos", equalTo("6500")))
+            .withRequestBody(notMatching(".*\\\"cst\\\".*")));
+    }
+
     // --- Critério 3: retry recupera falha temporária ---
 
     @Test
