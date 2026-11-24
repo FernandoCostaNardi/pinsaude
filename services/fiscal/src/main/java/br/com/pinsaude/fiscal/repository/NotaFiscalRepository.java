@@ -51,4 +51,22 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, UUID> {
     boolean existeNotaNoPeriodoNoRegime(@Param("cnpj") String cnpj, @Param("de") String de,
                                         @Param("ate") String ate, @Param("ignorar") Collection<StatusNota> ignorar,
                                         @Param("regime") RegimeTributario regime);
+
+    /**
+     * CBS-32: soma dos tributos das notas EMITIDAS no intervalo [de, ate) da data de emissão, por regime.
+     * Cada linha: regime, quantidade, bruto, ISS, IR, CSLL, PIS, COFINS, CBS, IBS (centavos).
+     * Isolamento por empresa pelo RLS (gestão vê todas).
+     */
+    @Query("""
+        SELECT n.regimeTributario, COUNT(n), SUM(n.valorBruto),
+               SUM(n.valorIss), SUM(n.valorIr), SUM(n.valorCsll), SUM(n.valorPis), SUM(n.valorCofins),
+               SUM(n.valorCbs), SUM(n.valorIbs)
+          FROM NotaFiscal n
+         WHERE n.status = :status
+           AND n.emitidaAt >= :de AND n.emitidaAt < :ate
+         GROUP BY n.regimeTributario
+        """)
+    List<Object[]> somarTributosPorRegime(@Param("status") StatusNota status,
+                                         @Param("de") java.time.OffsetDateTime de,
+                                         @Param("ate") java.time.OffsetDateTime ate);
 }
