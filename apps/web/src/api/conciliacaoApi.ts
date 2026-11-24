@@ -250,3 +250,47 @@ export async function getPosicaoCaixa(filtro: PosicaoCaixaFiltro = {}): Promise<
   if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`)
   return res.json()
 }
+
+// ─── Impostos das notas emitidas no mês (CBS-32) ─────────────────────────────
+// Vem do Fiscal: retido pelo tomador (ISS/IR/CSLL e, no regime antigo, PIS/COFINS) separado do
+// CBS/IBS que a Pin recolhe. Base = data de emissão da nota, só notas emitidas.
+
+export interface RetencoesTributos {
+  iss: number
+  ir: number
+  csll: number
+  pis: number
+  cofins: number
+  total: number
+}
+
+export interface CbsIbsTributos {
+  cbs: number
+  ibs: number
+  total: number
+}
+
+export interface TributosRegime {
+  regime: 'LEGADO' | 'IBS_CBS'
+  quantidadeNotas: number
+  valorNotas: number
+  retencoes: RetencoesTributos
+  cbsIbs: CbsIbsTributos
+}
+
+export interface TributosMesResponse {
+  mes: string | null      // YYYY-MM; null = todos os períodos
+  quantidadeNotas: number
+  valorNotas: number
+  retencoes: RetencoesTributos
+  cbsIbs: CbsIbsTributos
+  porRegime: TributosRegime[]
+}
+
+export async function getTributosMes(mes?: string): Promise<TributosMesResponse> {
+  const params = new URLSearchParams()
+  if (mes) params.set('mes', mes)
+  const res = await fetch(`/api/fiscal/tributos-mes?${params}`, { headers: authHeaders() })
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`)
+  return res.json()
+}

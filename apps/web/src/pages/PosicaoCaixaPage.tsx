@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Landmark, Stethoscope, Building2, RefreshCw, AlertTriangle, Loader2,
-  Search, ChevronRight, Info, CalendarDays, Receipt,
+  Search, ChevronRight, Info, CalendarDays, Receipt, Scale,
 } from 'lucide-react'
 import { Button } from '@pinsaude/ui'
 import {
-  getPosicaoCaixa, type PosicaoCaixaResponse, type RecebimentoMes,
+  getPosicaoCaixa, getTributosMes, type PosicaoCaixaResponse, type RecebimentoMes,
+  type TributosMesResponse, type RetencoesTributos,
 } from '../api/conciliacaoApi'
 
 const PAGE_SIZE = 10
@@ -162,6 +163,124 @@ function GraficoMensal({ meses, selecionado, onSelecionar }: GraficoMensalProps)
   )
 }
 
+// ─── Impostos das notas emitidas no mês (CBS-32) ─────────────────────────────
+
+const ROTULO_REGIME: Record<'LEGADO' | 'IBS_CBS', string> = {
+  LEGADO: 'Regime atual',
+  IBS_CBS: 'Regime novo (CBS/IBS)',
+}
+
+function LinhaTributo({ rotulo, valor }: { rotulo: string; valor: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-ds-mid">{rotulo}</span>
+      <span className="tabular-nums text-ds-text">{formatBRL(valor)}</span>
+    </div>
+  )
+}
+
+/** Linhas das retenções: PIS/COFINS só aparecem quando há nota do regime atual ou valor gravado. */
+function linhasRetencao(r: RetencoesTributos, temLegado: boolean): Array<[string, number]> {
+  const linhas: Array<[string, number]> = [['ISS', r.iss], ['IR', r.ir], ['CSLL', r.csll]]
+  if (temLegado || r.pis > 0) linhas.push(['PIS', r.pis])
+  if (temLegado || r.cofins > 0) linhas.push(['COFINS', r.cofins])
+  return linhas
+}
+
+interface TributosDoMesProps {
+  dados: TributosMesResponse | null
+  erro: string | null
+  carregando: boolean
+  periodoTexto: string
+}
+
+function TributosDoMes({ dados, erro, carregando, periodoTexto }: TributosDoMesProps) {
+  const temLegado = dados?.porRegime.some(r => r.regime === 'LEGADO') ?? false
+  const temNovo = dados?.porRegime.some(r => r.regime === 'IBS_CBS') ?? false
+
+  return (
+    <div className="bg-white rounded-xl border border-ds-border p-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Scale size={16} className="text-primary" />
+        <h2 className="font-semibold text-ds-text text-sm">Impostos das notas emitidas em {periodoTexto}</h2>
+        {carregando && <Loader2 size={14} className="animate-spin text-ds-light" />}
+      </div>
+      <p className="text-xs text-ds-light mb-4">
+        Pela data de emissão da nota (não pela data do depósito) e sem o filtro de tomador.
+        {dados && dados.quantidadeNotas > 0 && <> {pluralNotas(dados.quantidadeNotas)} somando {formatBRL(dados.valorNotas)}.</>}
+      </p>
+
+      {erro ? (
+        <p className="text-sm text-ds-light">Não foi possível carregar os impostos das notas ({erro}).</p>
+      ) : !dados ? (
+        <div className="flex justify-center py-6"><Loader2 className="animate-spin text-primary" size={20} /></div>
+      ) : dados.quantidadeNotas === 0 ? (
+        <p className="text-sm text-ds-light">Nenhuma nota emitida em {periodoTexto}.</p>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-lg border border-ds-border p-4 space-y-2">
+              <p className="text-xs font-medium text-ds-mid uppercase tracking-wide">Retido pelo tomador</p>
+              <p className="text-2xl font-bold tabular-nums text-ds-text">{formatBRL(dados.retencoes.total)}</p>
+              <p className="text-xs text-ds-mid leading-relaxed">
+                Já vem descontado do depósito: o tomador recolhe no lugar da Pin.
+              </p>
+              <div className="pt-2 border-t border-ds-border space-y-1">
+                {linhasRetencao(dados.retencoes, temLegado).map(([rot, v]) => (
+                  <LinhaTributo key={rot} rotulo={rot} valor={v} />
+                ))}
+              </div>
+            </div>
+
+            <div className={`rounded-lg border p-4 space-y-2 ${temNovo ? 'border-amber-200 bg-amber-50/40' : 'border-ds-border'}`}>
+              <p className="text-xs font-medium text-ds-mid uppercase tracking-wide">CBS/IBS a recolher pela Pin</p>
+              <p className={`text-2xl font-bold tabular-nums ${temNovo ? 'text-amber-700' : 'text-ds-light'}`}>
+                {formatBRL(dados.cbsIbs.total)}
+              </p>
+              <p className="text-xs text-ds-mid leading-relaxed">
+                {temNovo
+                  ? 'Ninguém retém: a Pin paga por guia própria, com o dinheiro que fica com ela.'
+                  : 'Nenhuma nota no regime novo neste período. CBS/IBS só aparecem depois da virada da empresa.'}
+              </p>
+              <div className="pt-2 border-t border-ds-border space-y-1">
+                <LinhaTributo rotulo="CBS" valor={dados.cbsIbs.cbs} />
+                <LinhaTributo rotulo="IBS" valor={dados.cbsIbs.ibs} />
+              </div>
+            </div>
+          </div>
+
+          {temLegado && temNovo && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-ds-border text-xs">
+                    <th className="text-left py-2 pr-3 font-medium text-ds-light">Regime</th>
+                    <th className="text-right py-2 px-3 font-medium text-ds-light">Notas</th>
+                    <th className="text-right py-2 px-3 font-medium text-ds-light">Valor das notas</th>
+                    <th className="text-right py-2 px-3 font-medium text-ds-light">Retido</th>
+                    <th className="text-right py-2 pl-3 font-medium text-ds-light">CBS/IBS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dados.porRegime.map(r => (
+                    <tr key={r.regime} className="border-b border-ds-border last:border-0">
+                      <td className="py-2 pr-3 text-ds-text">{ROTULO_REGIME[r.regime] ?? r.regime}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-ds-mid">{r.quantidadeNotas}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-ds-mid">{formatBRL(r.valorNotas)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-ds-mid">{formatBRL(r.retencoes.total)}</td>
+                      <td className="py-2 pl-3 text-right tabular-nums text-ds-mid">{formatBRL(r.cbsIbs.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 export function PosicaoCaixaPage() {
@@ -175,6 +294,11 @@ export function PosicaoCaixaPage() {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const ultimaReq = useRef(0)
+
+  const [tributos, setTributos] = useState<TributosMesResponse | null>(null)
+  const [tributosErro, setTributosErro] = useState<string | null>(null)
+  const [tributosCarregando, setTributosCarregando] = useState(true)
+  const ultimaReqTributos = useRef(0)
 
   const opcoesMes = useMemo(() => ultimosMeses(12), [])
 
@@ -197,6 +321,22 @@ export function PosicaoCaixaPage() {
       })
       .finally(() => { if (id === ultimaReq.current) setCarregando(false) })
   }, [mes, buscaAplicada, page, recarregar])
+
+  // CBS-32: impostos das notas emitidas no mês (Fiscal). Falha aqui não derruba a página.
+  useEffect(() => {
+    const id = ++ultimaReqTributos.current
+    setTributosCarregando(true)
+    setTributosErro(null)
+    getTributosMes(mes || undefined)
+      .then(resp => { if (id === ultimaReqTributos.current) setTributos(resp) })
+      .catch((e: unknown) => {
+        if (id === ultimaReqTributos.current) {
+          setTributos(null)
+          setTributosErro(e instanceof Error ? e.message : 'erro desconhecido')
+        }
+      })
+      .finally(() => { if (id === ultimaReqTributos.current) setTributosCarregando(false) })
+  }, [mes, recarregar])
 
   const periodoTexto = mes ? mesLongo(mes) : 'todos os períodos'
   const r = dados?.resumo
@@ -288,6 +428,9 @@ export function PosicaoCaixaPage() {
                 icon={Building2}
                 tom={r.resultadoPin >= 0 ? 'verde' : 'azul'}
                 explicacao="O que sobra depois de separar a parte dos médicos. Os impostos retidos já saíram."
+                detalhe={tributos && tributos.cbsIbs.total > 0 && (
+                  <>CBS/IBS a recolher das notas de {periodoTexto} ({formatBRL(tributos.cbsIbs.total)}) ainda sai daqui.</>
+                )}
               />
             </div>
           </div>
@@ -306,6 +449,13 @@ export function PosicaoCaixaPage() {
               </Link>
             </div>
           )}
+
+          <TributosDoMes
+            dados={tributos}
+            erro={tributosErro}
+            carregando={tributosCarregando}
+            periodoTexto={periodoTexto}
+          />
 
           <GraficoMensal meses={dados.recebimentosPorMes} selecionado={mes} onSelecionar={setMes} />
 

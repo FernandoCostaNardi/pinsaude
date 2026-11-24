@@ -1462,6 +1462,18 @@ O tomador deposita o bruto **menos o que reteve na fonte** (6,15% = IR+CSLL+PIS+
   sem ela, a regra antiga (início da competência ±7/±30).
 - `CandidatoMatchResponse` traz `valorLiquidoEsperado`; a Conciliação mostra "Líquido esperado" na sugestão.
 
+### Posição de Caixa: retenções separadas de CBS/IBS (CBS-32)
+`GET /api/fiscal/tributos-mes?mes=AAAA-MM` (Fiscal, `TributosMesService`) soma as notas **EMITIDAS** com
+`emitida_at` no mês (fuso de São Paulo; sem `mes` = todas), por regime gravado na nota:
+`retencoes` (ISS/IR/CSLL/PIS/COFINS da nota, que desde a CBS-21 são os **retidos** pelo tomador; no
+IBS_CBS não há PIS/COFINS) e `cbsIbs` (CBS/IBS da nota, débito da Pin a recolher), com totais e `porRegime`.
+Isolamento pelo RLS (gestão vê todas as empresas, como a Posição de Caixa). Perfis = os do
+`/api/conciliacao/posicao-caixa` (`operacao`/`gestao`/`financeiro`/`contabil`/`perm_caixa`/`perm_conciliacao`/`perm_notas`).
+A `PosicaoCaixaPage` chama esse endpoint direto (o faturamento não lê o schema fiscal) e mostra o bloco
+"Impostos das notas emitidas em …" pela **data de emissão**, separado do resumo por data do depósito; falha
+nele não derruba a página. O `PosicaoCaixaService` não mudou: as retenções por recebimento continuam
+bruto − depósito. Enquanto a emissão não gravar CBS/IBS na nota (CBS-41/42), o bloco de CBS/IBS fica zerado.
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.
