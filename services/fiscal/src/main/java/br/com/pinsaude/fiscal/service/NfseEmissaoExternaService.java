@@ -39,6 +39,9 @@ import java.util.regex.Pattern;
  * emitida no portal da prefeitura e a operação registra aqui número, data e o PDF e/ou XML recebidos.
  * A nota já nasce EMITIDA e dispara os mesmos eventos da emissão pelo sistema (e-mail ao médico e
  * ProducaoEmitida para o faturamento).
+ *
+ * <p>CBS-42: grava o regime e CBS/IBS na nota pela mesma regra da emissão pelo sistema
+ * ({@link ReformaNota}); a operação pode corrigir CBS/IBS para os valores da nota real.
  */
 @Service
 public class NfseEmissaoExternaService {
@@ -59,15 +62,18 @@ public class NfseEmissaoExternaService {
     private final EmailNotificacaoProducer emailProducer;
     private final FaturamentoProducer faturamentoProducer;
     private final LedgerProducer ledgerProducer;
+    private final MotorFiscalService motorFiscal;
 
     public NfseEmissaoExternaService(NotaFiscalRepository notaRepo,
                                      EmailNotificacaoProducer emailProducer,
                                      FaturamentoProducer faturamentoProducer,
-                                     LedgerProducer ledgerProducer) {
+                                     LedgerProducer ledgerProducer,
+                                     MotorFiscalService motorFiscal) {
         this.notaRepo            = notaRepo;
         this.emailProducer       = emailProducer;
         this.faturamentoProducer = faturamentoProducer;
         this.ledgerProducer      = ledgerProducer;
+        this.motorFiscal         = motorFiscal;
     }
 
     @Transactional
@@ -106,6 +112,7 @@ public class NfseEmissaoExternaService {
         nota.setTomadorNome(dados.tomadorNome());
         nota.setCnaeCodigo(dados.cnaeCodigo());
         nota.setDiscriminacao(dados.discriminacao());
+        aplicarReforma(nota, req, cnpjTenant);
 
         nota.setStatus(StatusNota.EMITIDA);
         nota.setEmissaoExterna(true);
@@ -150,6 +157,23 @@ public class NfseEmissaoExternaService {
         if (xmlTexto != null) nota.setXmlNota(xmlTexto);
         log.info("Arquivos anexados à NotaFiscal {}: pdf={} xml={}", notaId, pdfBytes != null, xmlTexto != null);
         return NotaFiscalStatusResponse.from(notaRepo.save(nota));
+    }
+
+    /**
+     * CBS-42 — regime e CBS/IBS pela regra do motor (chave ligada e homologada da empresa na
+     * competência). Se a nota real saiu com outros valores, vale o que a operação informou.
+     */
+    private void aplicarReforma(NotaFiscal nota, RegistrarEmissaoExternaRequest req, String cnpjTenant) {
+        EmitirNfseRequest dados = req.nota();
+        String cnpj = cnpjTenant == null ? "" : cnpjTenant.replaceAll("\\D", "");
+        TributacaoIbsCbs t = motorFiscal.tributacaoIbsCbs(cnpj, dados.competencia(), dados.valorBruto(),
+            dados.reducaoIbsCbs(), dados.cbsIbsPorFora());
+        ReformaNota.aplicar(nota, dados, t);
+        ReformaNota.corrigirValores(nota, req.valorCbs(), req.valorIbs());
+        if (t.ibsCbs() && (nota.getValorCbs() != t.valorCbs() || nota.getValorIbs() != t.valorIbs())) {
+            log.info("Nota externa da producao {}: CBS/IBS corrigidos para a nota real (motor CBS={} IBS={}, nota CBS={} IBS={})",
+                dados.producaoId(), t.valorCbs(), t.valorIbs(), nota.getValorCbs(), nota.getValorIbs());
+        }
     }
 
     private static long valorOuZero(Long v) {

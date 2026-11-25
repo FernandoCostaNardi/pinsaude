@@ -191,32 +191,7 @@ public class NfseService {
         String cnpj = cnpjTenant == null ? "" : cnpjTenant.replaceAll("\\D", "");
         TributacaoIbsCbs t = motorFiscal.tributacaoIbsCbs(cnpj, req.competencia(), req.valorBruto(),
             req.reducaoIbsCbs(), req.cbsIbsPorFora());
-        nota.setRegimeTributario(t.regime());
-        if (!t.ibsCbs()) return;
-
-        if (req.cstIbsCbs() == null || req.cClassTrib() == null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "A competência " + req.competencia() + " já está no regime CBS/IBS e o serviço da produção "
-                + "não tem a classificação (CST e cClassTrib). Cadastre em Configuração Fiscal › Serviços "
-                + "antes de emitir.");
-        }
-        // PIS/COFINS não existem no regime novo (o motor já devolve zero; aqui é só proteção).
-        nota.setValorPis(0L);
-        nota.setValorCofins(0L);
-        nota.setFatorIss(t.fatorIss());
-        nota.setCstIbsCbs(req.cstIbsCbs());
-        nota.setCClassTrib(req.cClassTrib());
-        nota.setReducaoIbsCbs(req.reducaoIbsCbs() != null ? req.reducaoIbsCbs() : java.math.BigDecimal.ZERO);
-        nota.setCbsIbsPorFora(t.porFora());
-        nota.setBaseCalculoIbsCbs(t.baseCalculo());
-        nota.setAliqCbs(t.aliqCbs());
-        nota.setAliqIbs(t.aliqIbs());
-        nota.setAliqIbsUf(t.aliqIbsUf());
-        nota.setAliqIbsMun(t.aliqIbsMun());
-        nota.setValorCbs(t.valorCbs());
-        nota.setValorIbs(t.valorIbs());
-        nota.setValorIbsUf(t.valorIbsUf());
-        nota.setValorIbsMun(t.valorIbsMun());
+        ReformaNota.aplicar(nota, req, t);
     }
 
     /** Grupo IBSCBS para o agregador, a partir do snapshot da nota. Nulo no LEGADO. */

@@ -132,11 +132,17 @@ export interface ArquivosNota {
  * Registra a NFS-e emitida no portal da prefeitura: mesmos dados da emissão pelo sistema, mais o
  * número e a data da nota e o PDF e/ou XML recebidos (ao menos um). A nota já nasce EMITIDA.
  */
+/**
+ * Registra a nota emitida no portal da prefeitura. CBS-42: `correcao` leva CBS/IBS da nota real
+ * (centavos) quando diferem do cálculo; nulos = o fiscal grava o cálculo do motor.
+ */
 export async function registrarEmissaoExterna(
   nota: EmitirNfseRequest, numeroNota: string, dataEmissao: string, arquivos: ArquivosNota,
+  correcao?: { valorCbs: number | null; valorIbs: number | null },
 ): Promise<NotaFiscal> {
   const form = new FormData()
-  form.append('dados', new Blob([JSON.stringify({ nota, numeroNota, dataEmissao })], { type: 'application/json' }))
+  const dados = { nota, numeroNota, dataEmissao, valorCbs: correcao?.valorCbs ?? null, valorIbs: correcao?.valorIbs ?? null }
+  form.append('dados', new Blob([JSON.stringify(dados)], { type: 'application/json' }))
   if (arquivos.pdf) form.append('pdf', arquivos.pdf)
   if (arquivos.xml) form.append('xml', arquivos.xml)
   return enviarMultipart('/api/nfse/emissao-externa', 'POST', form)

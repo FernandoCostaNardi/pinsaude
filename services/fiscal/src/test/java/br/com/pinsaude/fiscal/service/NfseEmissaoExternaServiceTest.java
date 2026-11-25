@@ -17,6 +17,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import br.com.pinsaude.fiscal.domain.RegimeTributario;
+
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -25,6 +28,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +40,7 @@ class NfseEmissaoExternaServiceTest {
     @Mock EmailNotificacaoProducer emailProducer;
     @Mock FaturamentoProducer faturamentoProducer;
     @Mock LedgerProducer ledgerProducer;
+    @Mock MotorFiscalService motorFiscal;
 
     NfseEmissaoExternaService service;
 
@@ -43,7 +50,27 @@ class NfseEmissaoExternaServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new NfseEmissaoExternaService(notaRepo, emailProducer, faturamentoProducer, ledgerProducer);
+        service = new NfseEmissaoExternaService(notaRepo, emailProducer, faturamentoProducer, ledgerProducer, motorFiscal);
+        lenient().when(motorFiscal.tributacaoIbsCbs(anyString(), anyString(), anyLong(), any(), any()))
+            .thenReturn(TributacaoIbsCbs.legado(BigDecimal.ONE));
+    }
+
+    // 2027: CBS 11,2% e IBS 0,1% (UF 0,05% + mun 0,05%) com redução de 60% → 4,48% e 0,04%.
+    private static TributacaoIbsCbs ibsCbs2027(long base) {
+        long cbs = Math.round(base * 0.0448);
+        long ibs = Math.round(base * 0.0004);
+        long uf = Math.round(base * 0.0002);
+        return new TributacaoIbsCbs(RegimeTributario.IBS_CBS, false, base,
+            new BigDecimal("0.0448"), new BigDecimal("0.0004"), new BigDecimal("0.0002"), new BigDecimal("0.0002"),
+            BigDecimal.ONE, cbs, ibs, uf, ibs - uf);
+    }
+
+    private static RegistrarEmissaoExternaRequest requestReforma(UUID producaoId, String cst, String cClassTrib,
+                                                                 Long valorCbs, Long valorIbs) {
+        var nota = new EmitirNfseRequest(producaoId, UUID.randomUUID(), UUID.randomUUID(), "2027-01",
+            100_000L, 15_000L, 0L, 1_500L, 1_000L, 650L, 3_000L, "Hospital X", "8610-1/01", "Plantões", null,
+            new BigDecimal("0.6"), cst, cClassTrib, null);
+        return new RegistrarEmissaoExternaRequest(nota, "2027000001", LocalDate.of(2026, 11, 20), valorCbs, valorIbs);
     }
 
     private static RegistrarEmissaoExternaRequest request(UUID producaoId) {
@@ -193,5 +220,128 @@ class NfseEmissaoExternaServiceTest {
 
         assertThatThrownBy(() -> service.anexarArquivos(notaId, pdf(), null))
             .isInstanceOf(ResponseStatusException.class);
+    }
+
+    // ─── CBS-42: reforma tributária na nota emitida na prefeitura ──────────────
+
+    @Test
+    void registrar_competenciaLegado_gravaRegimeLegadoSemCbsIbs() {
+        UUID producaoId = UUID.randomUUID();
+        when(notaRepo.findByProducaoId(producaoId)).thenReturn(Optional.empty());
+        saveDevolveArgumento();
+
+        NotaFiscalStatusResponse r = service.registrar(request(producaoId), pdf(), null, CNPJ);
+
+        assertThat(r.regimeTributario()).isEqualTo(RegimeTributario.LEGADO);
+        assertThat(r.valorCbs()).isZero();
+        assertThat(r.valorIbs()).isZero();
+    }
+
+    @Test
+    void registrar_competenciaIbsCbs_gravaCbsIbsDoMotor_eZeraPisCofins() {
+        UUID producaoId = UUID.randomUUID();
+        when(notaRepo.findByProducaoId(producaoId)).thenReturn(Optional.empty());
+        saveDevolveArgumento();
+        var t = ibsCbs2027(95_310L);
+        when(motorFiscal.tributacaoIbsCbs(eq(CNPJ), eq("2027-01"), eq(100_000L), any(), any())).thenReturn(t);
+
+        service.registrar(requestReforma(producaoId, "200", "200029", null, null), pdf(), null, "12.345.678/0001-95");
+
+        verify(notaRepo).save(argThat(n ->
+            n.getRegimeTributario() == RegimeTributario.IBS_CBS
+                && n.getValorCbs() == t.valorCbs() && n.getValorIbs() == t.valorIbs()
+                && n.getValorIbsUf() + n.getValorIbsMun() == n.getValorIbs()
+                && n.getValorPis() == 0L && n.getValorCofins() == 0L
+                && n.getValorIr() == 1_500L && n.getValorCsll() == 1_000L
+                && "200".equals(n.getCstIbsCbs()) && "200029".equals(n.getCClassTrib())
+                && n.getBaseCalculoIbsCbs() == 95_310L
+                && new BigDecimal("0.6").compareTo(n.getReducaoIbsCbs()) == 0));
+        verify(ledgerProducer).notificarNotaEmitida(argThat(n -> n.getValorCbs() == t.valorCbs()));
+    }
+
+    @Test
+    void registrar_competenciaIbsCbs_valoresDaNotaReal_substituemOCalculo() {
+        UUID producaoId = UUID.randomUUID();
+        when(notaRepo.findByProducaoId(producaoId)).thenReturn(Optional.empty());
+        saveDevolveArgumento();
+        when(motorFiscal.tributacaoIbsCbs(anyString(), anyString(), anyLong(), any(), any()))
+            .thenReturn(ibsCbs2027(95_310L));
+
+        NotaFiscalStatusResponse r = service.registrar(
+            requestReforma(producaoId, "200", "200029", 4_300L, 41L), pdf(), null, CNPJ);
+
+        assertThat(r.valorCbs()).isEqualTo(4_300L);
+        assertThat(r.valorIbs()).isEqualTo(41L);
+        assertThat(r.valorIbsUf() + r.valorIbsMun()).isEqualTo(41L);
+        assertThat(r.valorIbsUf()).isEqualTo(21L);   // metade (UF = mun), arredondado
+    }
+
+    @Test
+    void registrar_competenciaIbsCbs_soCbsCorrigida_mantemIbsDoMotor() {
+        UUID producaoId = UUID.randomUUID();
+        when(notaRepo.findByProducaoId(producaoId)).thenReturn(Optional.empty());
+        saveDevolveArgumento();
+        var t = ibsCbs2027(95_310L);
+        when(motorFiscal.tributacaoIbsCbs(anyString(), anyString(), anyLong(), any(), any())).thenReturn(t);
+
+        NotaFiscalStatusResponse r = service.registrar(
+            requestReforma(producaoId, "200", "200029", 4_300L, null), pdf(), null, CNPJ);
+
+        assertThat(r.valorCbs()).isEqualTo(4_300L);
+        assertThat(r.valorIbs()).isEqualTo(t.valorIbs());
+    }
+
+    @Test
+    void registrar_competenciaIbsCbs_servicoSemClassificacao_retorna422() {
+        UUID producaoId = UUID.randomUUID();
+        when(notaRepo.findByProducaoId(producaoId)).thenReturn(Optional.empty());
+        when(motorFiscal.tributacaoIbsCbs(anyString(), anyString(), anyLong(), any(), any()))
+            .thenReturn(ibsCbs2027(95_310L));
+
+        assertThatThrownBy(() -> service.registrar(requestReforma(producaoId, null, null, null, null), pdf(), null, CNPJ))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("cClassTrib");
+        verify(notaRepo, never()).save(any());
+    }
+
+    @Test
+    void registrar_competenciaLegado_comValorCbsInformado_retorna422() {
+        UUID producaoId = UUID.randomUUID();
+        when(notaRepo.findByProducaoId(producaoId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.registrar(requestReforma(producaoId, "200", "200029", 4_300L, null), pdf(), null, CNPJ))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("não está no regime CBS/IBS");
+        verify(notaRepo, never()).save(any());
+    }
+
+    @Test
+    void registrar_notaReaproveitada_competenciaLegado_limpaCbsIbsAnteriores() {
+        UUID producaoId = UUID.randomUUID();
+        var existente = new NotaFiscal();
+        existente.setProducaoId(producaoId);
+        existente.setStatus(StatusNota.ERRO);
+        existente.setRegimeTributario(RegimeTributario.IBS_CBS);
+        existente.setValorCbs(4_270L);
+        existente.setValorIbs(38L);
+        existente.setValorIbsUf(19L);
+        existente.setValorIbsMun(19L);
+        existente.setCClassTrib("200029");
+        when(notaRepo.findByProducaoId(producaoId)).thenReturn(Optional.of(existente));
+        saveDevolveArgumento();
+
+        service.registrar(request(producaoId), pdf(), null, CNPJ);
+
+        assertThat(existente.getRegimeTributario()).isEqualTo(RegimeTributario.LEGADO);
+        assertThat(existente.getValorCbs()).isZero();
+        assertThat(existente.getValorIbs()).isZero();
+        assertThat(existente.getValorIbsUf()).isZero();
+        assertThat(existente.getCClassTrib()).isNull();
+    }
+
+    @Test
+    void parteUf_semAliquotas_eZero_eProporcionalQuandoHa() {
+        assertThat(ReformaNota.parteUf(100L, null, null)).isZero();
+        assertThat(ReformaNota.parteUf(100L, new BigDecimal("0.0002"), new BigDecimal("0.0006"))).isEqualTo(25L);
     }
 }
