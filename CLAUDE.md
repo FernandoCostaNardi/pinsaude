@@ -1518,6 +1518,29 @@ PIS/COFINS zerados). No LEGADO os campos da reforma voltam ao padrão (nota reap
   `vIBSTot` do XML do padrão nacional quando houver; só envia os valores se diferirem do cálculo.
 - O ledger recebe os valores gravados na nota (corrigidos, se for o caso).
 
+### Regras de apuração parametrizáveis (APU-00)
+As fórmulas da apuração mensal (PRD §7.9) não foram homologadas pela contabilidade, então **nada fica
+fixo no código**. V18 (fiscal) cria `fiscal.regra_apuracao` (por empresa `cnpj_id` ou padrão global com
+`cnpj_id` nulo, por `competencia_inicio` AAAA-MM; índice único em `COALESCE(cnpj_id,'*'), competencia_inicio`)
+e `fiscal.regra_apuracao_tributo` (uma linha por IRPJ/CSLL/PIS/COFINS/ISS/CBS/IBS). Frações e centavos.
+- Cabeçalho: presunções IRPJ/CSLL com e sem equiparação, alíquota e limite mensal do adicional de IRPJ
+  (limite × 3 no trimestral), teto do Lucro Presumido + % de alerta (APU-03), valor mínimo da guia.
+- Tributo: `ativo`, `aplica_em` (LEGADO/IBS_CBS/AMBOS, segue a chave CBS/IBS), `aliquota` (nula só para
+  CBS/IBS = cronograma), `base_calculo` (RECEITA_BRUTA, BASE_PRESUMIDA só IRPJ/CSLL, SOMA_NOTAS só CBS/IBS),
+  `regime_reconhecimento` (CAIXA/COMPETENCIA), `periodicidade` (MENSAL/TRIMESTRAL civil), `deduz_retencao`,
+  código de receita, guia e vencimento (dia, 31 = último; meses após o fim do período; ANTECIPA/POSTERGA
+  no fim de semana, **sem feriados**).
+- Semeado o padrão global 2026-01 como **rascunho** (valores do PRD; IRPJ/CSLL trimestrais, PIS/COFINS
+  caixa dia 25, ISS/CBS/IBS sem vencimento).
+- Fórmula única: `apuracao.CalculadoraApuracao.calcular(regra, cnpj, regime, competencia, meses, reforma)`,
+  pura, devolve `ResultadoApuracao` com memória de cálculo e `aHomologar`. A APU-01 deve só alimentar os
+  `MesApuracao` com notas/recebimentos/retenções reais, nunca reescrever as fórmulas.
+- API `/api/fiscal/regras-apuracao`: GET (lista, `?cnpj=` para gestão), `/vigente?competencia=`
+  (da empresa, senão global; 422 se nenhuma), `/{id}`, POST, PUT (volta para rascunho), `/{id}/homologar`,
+  DELETE (só rascunho), POST `/simular` (não grava). Leitura/simulação: contabil/gestao/financeiro/perm_fiscal;
+  escrita: contabil/gestao/perm_fiscal. Usuário com `cnpj_id` só altera a regra da sua empresa (global → 403).
+- Front: aba "Apuração" (`ApuracaoAba.tsx`) na Configuração Fiscal, com editor e simulador.
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

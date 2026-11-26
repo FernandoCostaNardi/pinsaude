@@ -9,10 +9,11 @@ import {
   type ParametroFiscalV2, type RegraEquiparacao, type ServicoLc116,
 } from '../api/fiscalApi'
 import { ReformaTributariaAba } from './ReformaTributariaAba'
+import { ApuracaoAba } from './ApuracaoAba'
 import { useAuth } from '../auth/useAuth'
 import { TRIBUTOS_COM_ALIQUOTA_CADASTRADA } from '../fiscal/tributos'
 
-type Tab = 'aliquotas' | 'ibscbs' | 'equiparacao' | 'servicos'
+type Tab = 'aliquotas' | 'ibscbs' | 'apuracao' | 'equiparacao' | 'servicos'
 
 // Alíquotas por competência só existem para estes tributos; CBS/IBS vêm do cronograma da reforma
 const TRIBUTOS = TRIBUTOS_COM_ALIQUOTA_CADASTRADA
@@ -558,6 +559,7 @@ export function ConfiguracaoFiscalPage() {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'aliquotas',   label: 'Alíquotas por Competência' },
     { id: 'ibscbs',      label: 'Reforma tributária'        },
+    { id: 'apuracao',    label: 'Apuração'                  },
     { id: 'equiparacao', label: 'Regras de Equiparação'     },
     { id: 'servicos',    label: 'Serviços Cadastrados'      },
   ]
@@ -593,6 +595,7 @@ export function ConfiguracaoFiscalPage() {
       <div>
         {tab === 'aliquotas'   && <AbaAliquotas />}
         {tab === 'ibscbs'      && <ReformaTributariaAba />}
+        {tab === 'apuracao'    && <ApuracaoAba />}
         {tab === 'equiparacao' && <AbaEquiparacao />}
         {tab === 'servicos'    && <AbaServicos />}
       </div>
