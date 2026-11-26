@@ -1541,6 +1541,26 @@ e `fiscal.regra_apuracao_tributo` (uma linha por IRPJ/CSLL/PIS/COFINS/ISS/CBS/IB
   escrita: contabil/gestao/perm_fiscal. Usuário com `cnpj_id` só altera a regra da sua empresa (global → 403).
 - Front: aba "Apuração" (`ApuracaoAba.tsx`) na Configuração Fiscal, com editor e simulador.
 
+### Motor da apuração mensal sobre as notas reais (APU-01)
+`GET /api/fiscal/apuracao?competencia=AAAA-MM[&cnpj=]` (`ApuracaoMensalService`, só leitura, mesmos perfis de leitura
+das regras: contabil/gestao/financeiro/perm_fiscal; gestão sem `cnpj_id` precisa do `cnpj`, senão 400). Não tem
+fórmula: monta os `MesApuracao` do início do trimestre civil até a competência e chama a `CalculadoraApuracao`
+com a regra vigente (empresa ou global). Regra não homologada → `aHomologar = true`.
+- Notas: só `EMITIDA` da empresa. Receita por competência: pela competência da nota ou pela data de emissão
+  (fuso de São Paulo), conforme `regra_apuracao.referencia_competencia` (V19, `COMPETENCIA_NOTA` padrão |
+  `DATA_EMISSAO`; editável na aba Apuração).
+- Receita por caixa: mês do depósito conciliado, lido do Faturamento por HTTP com o token do usuário
+  (`RecebimentosPort`/`FaturamentoRecebimentosAdapter` → `GET /api/conciliacao/recebimentos?de=&ate=`, que aceita
+  `perm_fiscal`; `pinsaude.servicos.faturamento-url`, 8082 dev / 8182 prod). Valor = bruto da nota. Só chama se
+  algum tributo aplicável é por caixa; Faturamento fora → 503 (não apura com caixa zerado).
+- Equiparação hospitalar: CNAE da nota (dígitos) nas `regras_equiparacao` da empresa. Sem CNAE, sem regra ou com
+  regras divergentes para o CNAE → sem equiparação (presunção maior) e aviso.
+- Retenções = ISS/IR/CSLL/PIS/COFINS gravados na nota (o IR abate o IRPJ). `MesApuracao` ganhou retenções e CBS/IBS
+  também por caixa: o tributo por caixa abate as retenções das notas recebidas no mês; o por competência, as das
+  notas do mês. Notas anteriores à CBS-21 podem ter nesses campos tributos não retidos.
+- Resposta: `apuracao` (resultado da calculadora + avisos do motor), `meses` (composição por mês) e `notas`
+  (o que entrou, para conferência). Nada é gravado; fechamento/tela ficam para a APU-02.
+
 ### flyway-maven-plugin no fiscal service
 Configurado no `pom.xml` do `services/fiscal/` com `svc_fiscal / fiscal_dev / porta 5433`.
 Sempre rodar `mvn process-resources` antes de `mvn-flyway.js` para copiar os SQLs para `target/classes/`.

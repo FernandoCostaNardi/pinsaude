@@ -146,6 +146,7 @@ public class RegraApuracaoService {
         r.setTetoReceitaAnual(req.tetoReceitaAnual());
         r.setAlertaTetoPercentual(req.alertaTetoPercentual());
         r.setValorMinimoGuia(req.valorMinimoGuia());
+        r.setReferenciaCompetencia(req.referenciaCompetencia());
         r.setFonte(req.fonte());
         r.setObservacoes(req.observacoes());
         r.setAtualizadoPor(SecurityUtils.currentUsuario());

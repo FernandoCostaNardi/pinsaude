@@ -200,4 +200,15 @@ class PosicaoCaixaServiceTest {
 
         assertThat(service.listarRecebimentos()).containsExactly(rec);
     }
+
+    @Test
+    void listarRecebimentos_comPeriodo_filtraPelaDataDoDeposito() {
+        var rec = new RecebimentoProducaoResponse(UUID.randomUUID(), "2026-10-20", 938_500L, "MANUAL");
+        when(jdbc.query(contains("le.data_lancamento >= ? AND le.data_lancamento <= ?"), any(RowMapper.class),
+                eq(java.sql.Date.valueOf("2026-10-01")), eq(java.sql.Date.valueOf("2026-12-31"))))
+                .thenReturn(List.of(rec));
+
+        assertThat(service.listarRecebimentos(java.time.LocalDate.of(2026, 10, 1), java.time.LocalDate.of(2026, 12, 31)))
+                .containsExactly(rec);
+    }
 }

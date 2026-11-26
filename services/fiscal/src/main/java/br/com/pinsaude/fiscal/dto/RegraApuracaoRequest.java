@@ -1,5 +1,6 @@
 package br.com.pinsaude.fiscal.dto;
 
+import br.com.pinsaude.fiscal.domain.ReferenciaCompetencia;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 
@@ -25,5 +26,19 @@ public record RegraApuracaoRequest(
     @NotNull @PositiveOrZero Long valorMinimoGuia,
     @Size(max = 2000) String fonte,
     @Size(max = 4000) String observacoes,
-    @NotEmpty List<@Valid TributoRegraApuracaoRequest> tributos
-) {}
+    @NotEmpty List<@Valid TributoRegraApuracaoRequest> tributos,
+    /** APU-01: mês da receita por competência; nulo = COMPETENCIA_NOTA. */
+    ReferenciaCompetencia referenciaCompetencia
+) {
+    /** Pedido sem a referência da competência (APU-00): vale COMPETENCIA_NOTA. */
+    public RegraApuracaoRequest(String cnpj, String competenciaInicio, BigDecimal presuncaoIrpjEquiparado,
+                                BigDecimal presuncaoCsllEquiparado, BigDecimal presuncaoIrpjPadrao,
+                                BigDecimal presuncaoCsllPadrao, BigDecimal aliqAdicionalIrpj,
+                                Long limiteAdicionalIrpjMensal, Long tetoReceitaAnual,
+                                BigDecimal alertaTetoPercentual, Long valorMinimoGuia, String fonte,
+                                String observacoes, List<TributoRegraApuracaoRequest> tributos) {
+        this(cnpj, competenciaInicio, presuncaoIrpjEquiparado, presuncaoCsllEquiparado, presuncaoIrpjPadrao,
+             presuncaoCsllPadrao, aliqAdicionalIrpj, limiteAdicionalIrpjMensal, tetoReceitaAnual,
+             alertaTetoPercentual, valorMinimoGuia, fonte, observacoes, tributos, null);
+    }
+}

@@ -32,6 +32,8 @@ export type BaseCalculo = 'RECEITA_BRUTA' | 'BASE_PRESUMIDA' | 'SOMA_NOTAS'
 export type RegimeReconhecimento = 'CAIXA' | 'COMPETENCIA'
 export type Periodicidade = 'MENSAL' | 'TRIMESTRAL'
 export type AjusteVencimento = 'ANTECIPA' | 'POSTERGA' | 'NENHUM'
+/** APU-01: qual data põe a nota na receita por competência do mês */
+export type ReferenciaCompetencia = 'COMPETENCIA_NOTA' | 'DATA_EMISSAO'
 
 export const TRIBUTOS_APURACAO: TributoApuracao[] = ['IRPJ', 'CSLL', 'PIS', 'COFINS', 'ISS', 'CBS', 'IBS']
 
@@ -62,6 +64,7 @@ interface RegraBase {
   tetoReceitaAnual: number
   alertaTetoPercentual: number
   valorMinimoGuia: number
+  referenciaCompetencia: ReferenciaCompetencia
   fonte: string | null
   observacoes: string | null
   tributos: TributoRegra[]

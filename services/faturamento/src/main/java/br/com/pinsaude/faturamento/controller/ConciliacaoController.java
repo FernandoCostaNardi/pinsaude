@@ -111,10 +111,25 @@ public class ConciliacaoController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * @param de  data do depósito inicial (AAAA-MM-DD, opcional)
+     * @param ate data do depósito final, inclusive (AAAA-MM-DD, opcional)
+     */
     @GetMapping("/recebimentos")
-    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasAnyRole('perm_notas','perm_conciliacao','perm_caixa')")
-    public ResponseEntity<List<RecebimentoProducaoResponse>> listarRecebimentos() {
-        return ResponseEntity.ok(posicaoCaixaService.listarRecebimentos());
+    @PreAuthorize("hasAnyRole('operacao','gestao','financeiro','contabil') or hasAnyRole('perm_notas','perm_conciliacao','perm_caixa','perm_fiscal')")
+    public ResponseEntity<List<RecebimentoProducaoResponse>> listarRecebimentos(
+            @RequestParam(required = false) String de,
+            @RequestParam(required = false) String ate) {
+        return ResponseEntity.ok(posicaoCaixaService.listarRecebimentos(data(de), data(ate)));
+    }
+
+    private static LocalDate data(String valor) {
+        if (valor == null || valor.isBlank()) return null;
+        try {
+            return LocalDate.parse(valor);
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Data inválida. Use o formato AAAA-MM-DD.");
+        }
     }
 
     @GetMapping("/posicao-caixa")
