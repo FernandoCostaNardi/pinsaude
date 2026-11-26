@@ -54,6 +54,10 @@ public class RegraApuracao {
     @Column(name = "valor_minimo_guia", nullable = false)
     private Long valorMinimoGuia = 0L;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "referencia_competencia", nullable = false, length = 20)
+    private ReferenciaCompetencia referenciaCompetencia = ReferenciaCompetencia.COMPETENCIA_NOTA;
+
     @Column(name = "homologado", nullable = false)
     private boolean homologado;
 
@@ -94,6 +98,13 @@ public class RegraApuracao {
     }
 
     public boolean isGlobal() { return cnpjId == null; }
+
+    public ReferenciaCompetencia getReferenciaCompetencia() {
+        return referenciaCompetencia == null ? ReferenciaCompetencia.COMPETENCIA_NOTA : referenciaCompetencia;
+    }
+    public void setReferenciaCompetencia(ReferenciaCompetencia v) {
+        this.referenciaCompetencia = v == null ? ReferenciaCompetencia.COMPETENCIA_NOTA : v;
+    }
 
     /** Substitui os tributos da regra (orphanRemoval apaga os que saíram). */
     public void substituirTributos(List<RegraApuracaoTributo> novos) {

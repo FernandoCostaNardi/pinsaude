@@ -263,7 +263,7 @@ class ConciliacaoControllerTest {
     @Test
     void listarRecebimentos_permNotas_retorna200() throws Exception {
         // A tela de Notas marca as notas recebidas — quem vê notas precisa ler os recebimentos.
-        when(posicaoCaixaService.listarRecebimentos()).thenReturn(List.of());
+        when(posicaoCaixaService.listarRecebimentos(null, null)).thenReturn(List.of());
 
         mockMvc.perform(get("/api/conciliacao/recebimentos")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_notas"))))
@@ -275,5 +275,23 @@ class ConciliacaoControllerTest {
         mockMvc.perform(get("/api/conciliacao/recebimentos")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_medico"))))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listarRecebimentos_permFiscalComPeriodo_retorna200() throws Exception {
+        // APU-01: a apuração (perfil fiscal) lê a receita por caixa daqui, por período do depósito.
+        when(posicaoCaixaService.listarRecebimentos(java.time.LocalDate.of(2026, 10, 1), java.time.LocalDate.of(2026, 12, 31)))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/api/conciliacao/recebimentos").param("de", "2026-10-01").param("ate", "2026-12-31")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_perm_fiscal"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void listarRecebimentos_dataInvalida_retorna400() throws Exception {
+        mockMvc.perform(get("/api/conciliacao/recebimentos").param("de", "01/10/2026")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_gestao"))))
+                .andExpect(status().isBadRequest());
     }
 }

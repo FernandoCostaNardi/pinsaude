@@ -7,10 +7,12 @@ import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.RecebimentoMes;
 import br.com.pinsaude.faturamento.dto.PosicaoCaixaResponse.Resumo;
 import br.com.pinsaude.faturamento.dto.RecebimentoProducaoResponse;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Date;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -175,19 +177,37 @@ public class PosicaoCaixaService {
      */
     @Transactional(readOnly = true)
     public List<RecebimentoProducaoResponse> listarRecebimentos() {
-        return jdbc.query("""
+        return listarRecebimentos(null, null);
+    }
+
+    /**
+     * Produções recebidas com o crédito entre {@code de} e {@code ate} (inclusive; nulos = sem limite).
+     * APU-01: a apuração do Fiscal lê daqui a receita por caixa (data do depósito conciliado).
+     */
+    public List<RecebimentoProducaoResponse> listarRecebimentos(LocalDate de, LocalDate ate) {
+        StringBuilder sql = new StringBuilder("""
                 SELECT c.nota_id AS producao_id, le.data_lancamento, le.valor, c.tipo_match
                 FROM faturamento.conciliacoes c
                 JOIN faturamento.lancamentos_extrato le ON le.id = c.lancamento_extrato_id
                 WHERE le.status_conciliacao = 'CONCILIADO'
-                ORDER BY le.data_lancamento DESC
-                """,
-                (rs, i) -> new RecebimentoProducaoResponse(
-                        UUID.fromString(rs.getString("producao_id")),
-                        rs.getDate("data_lancamento").toLocalDate().toString(),
-                        rs.getLong("valor"),
-                        rs.getString("tipo_match")
-                ));
+                """);
+        List<Object> args = new ArrayList<>();
+        if (de != null) {
+            sql.append(" AND le.data_lancamento >= ?");
+            args.add(Date.valueOf(de));
+        }
+        if (ate != null) {
+            sql.append(" AND le.data_lancamento <= ?");
+            args.add(Date.valueOf(ate));
+        }
+        sql.append(" ORDER BY le.data_lancamento DESC");
+        RowMapper<RecebimentoProducaoResponse> mapper = (rs, i) -> new RecebimentoProducaoResponse(
+                UUID.fromString(rs.getString("producao_id")),
+                rs.getDate("data_lancamento").toLocalDate().toString(),
+                rs.getLong("valor"),
+                rs.getString("tipo_match"));
+        return args.isEmpty() ? jdbc.query(sql.toString(), mapper)
+                              : jdbc.query(sql.toString(), mapper, args.toArray());
     }
 
     /** [bruto, quantidade] das notas emitidas que ainda não têm crédito conciliado. */

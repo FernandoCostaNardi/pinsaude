@@ -23,6 +23,7 @@ public record RegraApuracaoResponse(
     Long tetoReceitaAnual,
     BigDecimal alertaTetoPercentual,
     Long valorMinimoGuia,
+    String referenciaCompetencia,
     boolean homologado,
     String homologadoPor,
     OffsetDateTime homologadoEm,
@@ -54,6 +55,7 @@ public record RegraApuracaoResponse(
             r.getPresuncaoIrpjPadrao(), r.getPresuncaoCsllPadrao(),
             r.getAliqAdicionalIrpj(), r.getLimiteAdicionalIrpjMensal(),
             r.getTetoReceitaAnual(), r.getAlertaTetoPercentual(), r.getValorMinimoGuia(),
+            r.getReferenciaCompetencia().name(),
             r.isHomologado(), r.getHomologadoPor(), r.getHomologadoEm(), r.getFonte(), r.getObservacoes(),
             r.getAtualizadoPor(), r.getCreatedAt(), r.getUpdatedAt(),
             r.getTributos().stream().map(Tributo::from).toList());

@@ -29,7 +29,8 @@ import java.util.stream.Collectors;
  *       ou soma do valor calculado nas notas (CBS/IBS).</li>
  *   <li>Devido = base × alíquota (CBS/IBS sem alíquota usam o cronograma; ISS × fator do ano).</li>
  *   <li>Adicional de IRPJ = (base − limite mensal × meses do período) × alíquota do adicional, se positivo.</li>
- *   <li>Retenções na fonte do período abatem o devido (se o tributo deduz); sobra vira saldo credor.</li>
+ *   <li>Retenções na fonte do período (pelo mesmo regime do tributo) abatem o devido (se o tributo deduz);
+ *       sobra vira saldo credor.</li>
  *   <li>Guia só no mês que fecha o período e se o saldo atinge o valor mínimo; vencimento pela regra.</li>
  * </ol>
  * Arredondamento: HALF_UP em centavos a cada valor calculado.
@@ -99,9 +100,9 @@ public final class CalculadoraApuracao {
             }
             recEq  += caixa ? mes.receitaCaixaEquiparada() : mes.receitaCompetenciaEquiparada();
             recPad += caixa ? mes.receitaCaixaPadrao()     : mes.receitaCompetenciaPadrao();
-            retidas += mes.retencao(tributo);
-            cbsNotas += mes.cbsNotas();
-            ibsNotas += mes.ibsNotas();
+            retidas += caixa ? mes.retencaoCaixa(tributo) : mes.retencao(tributo);
+            cbsNotas += caixa ? mes.cbsNotasCaixa() : mes.cbsNotas();
+            ibsNotas += caixa ? mes.ibsNotasCaixa() : mes.ibsNotas();
         }
         long receita = recEq + recPad;
         String periodo = per == PeriodicidadeApuracao.MENSAL ? competencia.toString()

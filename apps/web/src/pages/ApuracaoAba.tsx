@@ -7,7 +7,7 @@ import {
   regrasApuracaoApi, TRIBUTOS_APURACAO,
   type AjusteVencimento, type AplicacaoRegime, type BaseCalculo, type MesSimulacao, type Periodicidade,
   type RegimeReconhecimento, type RegraApuracao, type RegraApuracaoRequest, type ResultadoApuracao,
-  type TributoApuracao, type TributoRegra,
+  type TributoApuracao, type TributoRegra, type ReferenciaCompetencia,
 } from '../api/regrasApuracaoApi'
 import { Empresa, empresasApi } from '../api/empresasApi'
 import { useAuth } from '../auth/useAuth'
@@ -96,6 +96,7 @@ interface RegraForm {
   teto: number
   alertaTeto: string
   minimoGuia: number
+  referencia: ReferenciaCompetencia
   fonte: string
   observacoes: string
   tributos: TributoForm[]
@@ -126,6 +127,7 @@ function paraForm(r: RegraApuracao | null, competencia: string): RegraForm {
     teto: r?.tetoReceitaAnual ?? 7800000000,
     alertaTeto: fracaoParaPct(r?.alertaTetoPercentual ?? 0.8),
     minimoGuia: r?.valorMinimoGuia ?? 1000,
+    referencia: r?.referenciaCompetencia ?? 'COMPETENCIA_NOTA',
     fonte: r?.fonte ?? '',
     observacoes: r?.observacoes ?? '',
     tributos: tributos.map(t => ({
@@ -155,6 +157,7 @@ function paraRequest(f: RegraForm, cnpj: string | null): RegraApuracaoRequest {
     tetoReceitaAnual: f.teto,
     alertaTetoPercentual: obrig(f.alertaTeto, 'o percentual de alerta do teto'),
     valorMinimoGuia: f.minimoGuia,
+    referenciaCompetencia: f.referencia,
     fonte: f.fonte.trim() || null,
     observacoes: f.observacoes.trim() || null,
     tributos: f.tributos.map(t => ({
@@ -293,6 +296,16 @@ function ModalRegra({
             <label className={labelCls}>Alertar ao atingir</label>
             <PctInput value={f.alertaTeto} onChange={v => set('alertaTeto', v)} />
           </div>
+          <div className="col-span-2">
+            <label className={labelCls}>Receita por competência: a nota entra no mês</label>
+            <select className={inputCls} value={f.referencia} onChange={e => set('referencia', e.target.value as ReferenciaCompetencia)}>
+              <option value="COMPETENCIA_NOTA">da competência da nota (prestação do serviço)</option>
+              <option value="DATA_EMISSAO">da data de emissão da nota</option>
+            </select>
+          </div>
+          <p className="col-span-2 self-end text-[11px] text-ds-light">
+            Na receita por caixa a nota entra no mês do depósito conciliado.
+          </p>
         </section>
 
         <section>
@@ -421,6 +434,7 @@ function CartaoRegra({
             <Info rotulo="Presunção CSLL (com / sem equip.)" valor={`${fmtPct(r.presuncaoCsllEquiparado)} / ${fmtPct(r.presuncaoCsllPadrao)}`} />
             <Info rotulo="Adicional de IRPJ" valor={`${fmtPct(r.aliqAdicionalIrpj)} acima de ${fmtBRL(r.limiteAdicionalIrpjMensal)}/mês`} />
             <Info rotulo="Teto / alerta / guia mínima" valor={`${fmtBRL(r.tetoReceitaAnual)} / ${fmtPct(r.alertaTetoPercentual)} / ${fmtBRL(r.valorMinimoGuia)}`} />
+            <Info rotulo="Receita por competência" valor={r.referenciaCompetencia === 'DATA_EMISSAO' ? 'Pela data de emissão' : 'Pela competência da nota'} />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left">

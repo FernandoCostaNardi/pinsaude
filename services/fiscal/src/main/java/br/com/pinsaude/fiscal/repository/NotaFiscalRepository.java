@@ -69,4 +69,31 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, UUID> {
     List<Object[]> somarTributosPorRegime(@Param("status") StatusNota status,
                                          @Param("de") java.time.OffsetDateTime de,
                                          @Param("ate") java.time.OffsetDateTime ate);
+
+    /** APU-01: notas da empresa num status com competência (AAAA-MM) entre {@code de} e {@code ate}, inclusive. */
+    @Query("""
+        SELECT n FROM NotaFiscal n
+         WHERE n.cnpjIdTenant = :cnpj AND n.status = :status
+           AND n.competencia >= :de AND n.competencia <= :ate
+        """)
+    List<NotaFiscal> findDaEmpresaPorCompetencia(@Param("cnpj") String cnpj, @Param("status") StatusNota status,
+                                                 @Param("de") String de, @Param("ate") String ate);
+
+    /** APU-01: notas da empresa num status emitidas no intervalo [de, ate). */
+    @Query("""
+        SELECT n FROM NotaFiscal n
+         WHERE n.cnpjIdTenant = :cnpj AND n.status = :status
+           AND n.emitidaAt >= :de AND n.emitidaAt < :ate
+        """)
+    List<NotaFiscal> findDaEmpresaPorEmissao(@Param("cnpj") String cnpj, @Param("status") StatusNota status,
+                                             @Param("de") java.time.OffsetDateTime de,
+                                             @Param("ate") java.time.OffsetDateTime ate);
+
+    /** APU-01: notas da empresa num status das produções informadas (recebidas). */
+    @Query("""
+        SELECT n FROM NotaFiscal n
+         WHERE n.cnpjIdTenant = :cnpj AND n.status = :status AND n.producaoId IN :producoes
+        """)
+    List<NotaFiscal> findDaEmpresaPorProducoes(@Param("cnpj") String cnpj, @Param("status") StatusNota status,
+                                               @Param("producoes") Collection<UUID> producoes);
 }

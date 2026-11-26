@@ -29,6 +29,12 @@ receita-federal:
 server:
   port: 8182
 
+# Chamadas a outros serviços Pin no mesmo host (portas de produção)
+pinsaude:
+  servicos:
+    fiscal-url: ${PINSAUDE_SERVICOS_FISCAL_URL:http://localhost:8181}
+    portal-url: ${PINSAUDE_SERVICOS_PORTAL_URL:http://localhost:8187}
+
 management:
   endpoints:
     web:
